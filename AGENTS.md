@@ -16,3 +16,30 @@ This extension provides a rich UI for notebook-aware conflict resolution. Instea
 - VSCode Extension API (TypeScript)
 - Custom editor or webview for conflict UI
 - `nbformat`-compatible JSON parsing
+
+## Conflict Types
+
+1. **Raw markers** - `<<<<<<<`/`>>>>>>>` in JSON breaks parsing; use `analyzeRawConflicts()`
+2. **HTML-styled markers** - `<span><<<<<<< local</span>` in cell source; JSON valid but cells marked as local/remote
+3. **Inline conflicts** - markers within a single cell's source or outputs
+4. **Semantic conflicts** - Git `UU` status without textual markers; different execution states, outputs, or cell modifications between branches
+
+## Key Files
+
+- `conflictDetector.ts` - Detection (`hasConflictMarkers`, `analyzeNotebookConflicts`, `detectSemanticConflicts`) and resolution (`resolveAllConflicts`)
+- `gitIntegration.ts` - Git operations (retrieve base/local/remote versions from staging areas, detect `UU` status)
+- `cellMatcher.ts` - Content-based cell matching algorithm for 3-way merge
+- `resolver.ts` - VSCode commands, `quickResolveAll()` for batch resolution, semantic conflict resolution
+- `webview/ConflictResolverPanel.ts` - UI for manual conflict resolution
+
+## Testing
+
+Run CLI tests: 
+- Textual conflicts: `npx ts-node src/test/cli-test.ts`
+- Semantic conflicts: `npx ts-node src/test/test-semantic-conflicts.ts`
+
+Test files in `src/test/`:
+- `04_Cascadia.ipynb` - cell-level HTML-styled conflicts
+- `real-conflict.ipynb` - raw markers breaking JSON
+- `test-file.ipynb` - inline conflicts with output conflicts
+- `02_base.ipynb`, `02_local.ipynb`, `02_remote.ipynb` - three-way semantic conflict test case
