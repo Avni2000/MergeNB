@@ -9,13 +9,86 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:jupyter-notebook",
+    "workspaceContains:**/*.ipynb"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "merge-nb.helloWorld",
-        "title": "Hello World"
+        "command": "merge-nb.resolveConflicts",
+        "title": "Resolve Notebook Merge Conflicts",
+        "category": "MergeNB",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "merge-nb.acceptAllLocal",
+        "title": "Accept All Local Changes",
+        "category": "MergeNB"
+      },
+      {
+        "command": "merge-nb.acceptAllRemote",
+        "title": "Accept All Remote Changes",
+        "category": "MergeNB"
+      },
+      {
+        "command": "merge-nb.findConflicts",
+        "title": "Find Notebooks with Conflicts",
+        "category": "MergeNB",
+        "icon": "$(search)"
+      },
+      {
+        "command": "merge-nb.resolveSemanticConflicts",
+        "title": "Resolve Semantic Conflicts (Git UU)",
+        "category": "MergeNB",
+        "icon": "$(git-compare)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "when": "resourceExtname == .ipynb",
+          "command": "merge-nb.resolveConflicts",
+          "group": "3_compare"
+        }
+      ],
+      "editor/title": [
+        {
+          "when": "resourceExtname == .ipynb",
+          "command": "merge-nb.resolveConflicts",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "merge-nb.resolveConflicts",
+          "when": "true"
+        },
+        {
+          "command": "merge-nb.acceptAllLocal",
+          "when": "true"
+        },
+        {
+          "command": "merge-nb.acceptAllRemote",
+          "when": "true"
+        },
+        {
+          "command": "merge-nb.findConflicts",
+          "when": "true"
+        },
+        {
+          "command": "merge-nb.resolveSemanticConflicts",
+          "when": "resourceExtname == .ipynb"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "merge-nb.resolveConflicts",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m",
+        "when": "resourceExtname == .ipynb"
       }
     ]
   },
