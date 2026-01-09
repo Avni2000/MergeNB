@@ -89,13 +89,15 @@ export class UnifiedConflictPanel {
         }
 
         const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
+        // Get the directory containing the notebook for loading relative images
+        const notebookDir = vscode.Uri.file(conflict.filePath).with({ path: conflict.filePath.substring(0, conflict.filePath.lastIndexOf('/')) });
         const panel = vscode.window.createWebviewPanel(
             'mergeNbConflictResolver',
             `! ${fileName} (Resolving Conflicts)`,
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
-                localResourceRoots: [extensionUri],
+                localResourceRoots: [extensionUri, notebookDir],
                 retainContextWhenHidden: true
             }
         );
@@ -363,25 +365,199 @@ export class UnifiedConflictPanel {
     }
 
     private _renderMarkdown(source: string): string {
-        // Simple markdown rendering - convert common patterns
-        let html = escapeHtml(source);
+        // Markdown rendering that preserves HTML tags
+        // First, extract and preserve HTML tags, then escape the rest
+        // Also convert image paths to webview URIs
+        const htmlTagPlaceholders: { placeholder: string; tag: string }[] = [];
+        let placeholderIndex = 0;
         
-        // Headers
+        // Get notebook directory for resolving relative image paths
+        const notebookDir = this._conflict?.filePath 
+            ? this._conflict.filePath.substring(0, this._conflict.filePath.lastIndexOf('/'))
+            : '';
+        
+        // Preserve HTML tags (including self-closing like <br/>, <br />, <img .../>)
+        // Also convert image src attributes to webview URIs
+        let processed = source.replace(/<[^>]+>/g, (match) => {
+            // If this is an img tag, convert the src to a webview URI
+            let processedTag = match;
+            if (match.toLowerCase().startsWith('<img')) {
+                processedTag = this._convertImageSrc(match, notebookDir);
+            }
+            const placeholder = `__HTML_TAG_${placeholderIndex}__`;
+            htmlTagPlaceholders.push({ placeholder, tag: processedTag });
+            placeholderIndex++;
+            return placeholder;
+        });
+        
+        // Now escape the remaining content
+        let html = escapeHtml(processed);
+        
+        // Restore HTML tags
+        for (const { placeholder, tag } of htmlTagPlaceholders) {
+            html = html.replace(placeholder, tag);
+        }
+        
+        // Headers (process from most specific to least to avoid partial matches)
+        html = html.replace(/^###### (.+)$/gm, '<h6>$1</h6>');
+        html = html.replace(/^##### (.+)$/gm, '<h5>$1</h5>');
+        html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
         html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
         html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
         html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+        
+        // Horizontal rules (---, ***, ___)
+        html = html.replace(/^[-*_]{3,}$/gm, '<hr>');
+        
+        // Images: ![alt](src) - handle before links, convert paths to webview URIs
+        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
+            const webviewSrc = this._convertImagePath(src, notebookDir);
+            return `<img src="${webviewSrc}" alt="${alt}" style="max-width: 100%;">`;
+        });
+        
+        // Links: [text](url)
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
         
         // Bold and italic
         html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
         
-        // Code
+        // Code blocks (triple backticks)
+        html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+        
+        // Inline code
         html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
         
-        // Line breaks
-        html = html.replace(/\n/g, '<br>');
+        // Tables
+        html = this._renderMarkdownTables(html);
+        
+        // Line breaks (but not inside pre/code blocks or after block elements)
+        // First, protect content inside <pre> tags
+        const preBlocks: { placeholder: string; content: string }[] = [];
+        let preIndex = 0;
+        html = html.replace(/<pre>[\s\S]*?<\/pre>/g, (match) => {
+            const placeholder = `__PRE_BLOCK_${preIndex}__`;
+            preBlocks.push({ placeholder, content: match });
+            preIndex++;
+            return placeholder;
+        });
+        
+        // Convert newlines to <br> (except after block elements)
+        html = html.replace(/\n/g, '<br>\n');
+        
+        // Clean up extra <br> after block elements
+        html = html.replace(/(<\/h[1-6]>)<br>/g, '$1');
+        html = html.replace(/(<hr>)<br>/g, '$1');
+        html = html.replace(/(<\/table>)<br>/g, '$1');
+        html = html.replace(/(<\/pre>)<br>/g, '$1');
+        
+        // Restore pre blocks
+        for (const { placeholder, content } of preBlocks) {
+            html = html.replace(placeholder, content);
+        }
         
         return `<div class="markdown-content">${html}</div>`;
+    }
+
+    private _renderMarkdownTables(html: string): string {
+        // Simple table rendering: detect lines that look like table rows
+        const lines = html.split('\n');
+        let inTable = false;
+        let tableHtml = '';
+        const result: string[] = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            // Check if this is a table row (starts and ends with |, or has | in the middle)
+            const isTableRow = line.startsWith('|') && line.endsWith('|');
+            const isSeparatorRow = /^\|[-:\s|]+\|$/.test(line);
+            
+            if (isTableRow || isSeparatorRow) {
+                if (!inTable) {
+                    inTable = true;
+                    tableHtml = '<table class="markdown-table">';
+                }
+                
+                if (isSeparatorRow) {
+                    // Skip separator row (it's just for alignment)
+                    continue;
+                }
+                
+                // Parse table cells
+                const cells = line.slice(1, -1).split('|').map(c => c.trim());
+                const isHeader = i === 0 || (i > 0 && /^\|[-:\s|]+\|$/.test(lines[i - 1]?.trim() || ''));
+                const cellTag = inTable && result.length === 0 ? 'th' : 'td';
+                
+                // Check if this is the header row (first row of a table)
+                const nextLine = lines[i + 1]?.trim() || '';
+                const isHeaderRow = /^\|[-:\s|]+\|$/.test(nextLine);
+                
+                tableHtml += '<tr>';
+                for (const cell of cells) {
+                    tableHtml += isHeaderRow ? `<th>${cell}</th>` : `<td>${cell}</td>`;
+                }
+                tableHtml += '</tr>';
+            } else {
+                if (inTable) {
+                    tableHtml += '</table>';
+                    result.push(tableHtml);
+                    tableHtml = '';
+                    inTable = false;
+                }
+                result.push(lines[i]);
+            }
+        }
+        
+        if (inTable) {
+            tableHtml += '</table>';
+            result.push(tableHtml);
+        }
+        
+        return result.join('\n');
+    }
+
+    /**
+     * Convert an image src attribute in an HTML img tag to a webview URI
+     */
+    private _convertImageSrc(imgTag: string, notebookDir: string): string {
+        // Extract the src attribute
+        const srcMatch = imgTag.match(/src=["']([^"']+)["']/i);
+        if (!srcMatch) {
+            return imgTag;
+        }
+        
+        const originalSrc = srcMatch[1];
+        const webviewSrc = this._convertImagePath(originalSrc, notebookDir);
+        
+        // Replace the src in the tag
+        return imgTag.replace(srcMatch[0], `src="${webviewSrc}"`);
+    }
+
+    /**
+     * Convert an image path to a webview URI if it's a relative path
+     */
+    private _convertImagePath(src: string, notebookDir: string): string {
+        // Skip if it's already an absolute URL (http, https, data:)
+        if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
+            return src;
+        }
+        
+        // Skip if it's already a vscode-webview-resource URI
+        if (src.includes('vscode-webview-resource')) {
+            return src;
+        }
+        
+        // For relative paths, resolve against notebook directory
+        if (notebookDir) {
+            const absolutePath = src.startsWith('/') 
+                ? src 
+                : `${notebookDir}/${src}`;
+            const fileUri = vscode.Uri.file(absolutePath);
+            return this._panel.webview.asWebviewUri(fileUri).toString();
+        }
+        
+        return src;
     }
 
     private _renderOutputs(outputs: any[]): string {
@@ -814,8 +990,66 @@ export class UnifiedConflictPanel {
             line-height: 1.6;
         }
         
-        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+        .markdown-content h1, .markdown-content h2, .markdown-content h3,
+        .markdown-content h4, .markdown-content h5, .markdown-content h6 {
             margin: 0.5em 0;
+        }
+        
+        .markdown-content h4 { font-size: 1.1em; }
+        .markdown-content h5 { font-size: 1em; }
+        .markdown-content h6 { font-size: 0.9em; color: var(--vscode-descriptionForeground); }
+        
+        .markdown-content hr {
+            border: none;
+            border-top: 1px solid var(--vscode-panel-border);
+            margin: 1em 0;
+        }
+        
+        .markdown-content img {
+            max-width: 100%;
+            height: auto;
+        }
+        
+        .markdown-content a {
+            color: var(--vscode-textLink-foreground);
+        }
+        
+        .markdown-content a:hover {
+            color: var(--vscode-textLink-activeForeground);
+        }
+        
+        .markdown-table {
+            border-collapse: collapse;
+            margin: 1em 0;
+            width: auto;
+        }
+        
+        .markdown-table th,
+        .markdown-table td {
+            border: 1px solid var(--vscode-panel-border);
+            padding: 8px 12px;
+            text-align: left;
+        }
+        
+        .markdown-table th {
+            background: var(--vscode-editor-selectionBackground);
+            font-weight: bold;
+        }
+        
+        .markdown-table tr:nth-child(even) {
+            background: rgba(128, 128, 128, 0.05);
+        }
+        
+        .markdown-content pre {
+            background: var(--vscode-textCodeBlock-background);
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        
+        .markdown-content pre code {
+            background: none;
+            padding: 0;
         }
         
         .markdown-content code {
