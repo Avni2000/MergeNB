@@ -582,13 +582,13 @@ export class UnifiedConflictPanel {
         fullConflict: NotebookSemanticConflict
     ): string {
         const typeLabels: Record<string, string> = {
-            'cell-added': '➕ Cell Added',
-            'cell-deleted': '➖ Cell Deleted',
-            'cell-modified': '✏️ Cell Modified',
-            'cell-reordered': '🔀 Cells Reordered',
-            'metadata-changed': '📋 Metadata Changed',
-            'outputs-changed': '📊 Outputs Changed',
-            'execution-count-changed': '🔢 Execution Count Changed'
+            'cell-added': 'Cell Added',
+            'cell-deleted': 'Cell Deleted',
+            'cell-modified': 'Cell Modified',
+            'cell-reordered': 'Cells Reordered',
+            'metadata-changed': 'Metadata Changed',
+            'outputs-changed': 'Outputs Changed',
+            'execution-count-changed': 'Execution Count Changed'
         };
 
         const typeLabel = typeLabels[conflict.type] || conflict.type;
