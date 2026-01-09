@@ -29,8 +29,13 @@ This extension provides a rich UI for notebook-aware conflict resolution. Instea
 - `conflictDetector.ts` - Detection (`hasConflictMarkers`, `analyzeNotebookConflicts`, `detectSemanticConflicts`) and resolution (`resolveAllConflicts`)
 - `gitIntegration.ts` - Git operations (retrieve base/local/remote versions from staging areas, detect `UU` status)
 - `cellMatcher.ts` - Content-based cell matching algorithm for 3-way merge
-- `resolver.ts` - VSCode commands, `quickResolveAll()` for batch resolution, semantic conflict resolution
-- `webview/ConflictResolverPanel.ts` - UI for manual conflict resolution
+- `resolver.ts` - VSCode commands and unified conflict resolution flow
+- `webview/ConflictResolverPanel.ts` - Unified UI for both textual and semantic conflict resolution (3-way diff view)
+
+## Commands
+
+Single unified command:
+- `merge-nb.findConflicts` - Find notebooks with merge conflicts (both textual and semantic), brings up the conflict resolution panel
 
 ## Testing
 

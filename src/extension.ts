@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { NotebookConflictResolver, quickResolveAll } from './resolver';
+import { NotebookConflictResolver, ConflictedNotebook } from './resolver';
 import { hasConflictMarkers } from './conflictDetector';
 import * as gitIntegration from './gitIntegration';
 
@@ -30,63 +30,45 @@ export function activate(context: vscode.ExtensionContext) {
 
 	resolver = new NotebookConflictResolver(context.extensionUri);
 
-	// Command: Resolve conflicts in current notebook
-	context.subscriptions.push(
-		vscode.commands.registerCommand('merge-nb.resolveConflicts', async () => {
-			const uri = getActiveNotebookFileUri();
-			if (uri) {
-				await resolver.resolveConflicts(uri);
-			} else {
-				// Let user pick a notebook file
-				const files = await resolver.findNotebooksWithConflicts();
-				if (files.length === 0) {
-					vscode.window.showInformationMessage('No notebooks with merge conflicts found.');
-					return;
-				}
-				const picked = await vscode.window.showQuickPick(
-					files.map(f => ({ label: vscode.workspace.asRelativePath(f), uri: f })),
-					{ placeHolder: 'Select a notebook with conflicts' }
-				);
-				if (picked) {
-					await resolver.resolveConflicts(picked.uri);
-				}
-			}
-		})
-	);
-
-	// Command: Quick resolve all - accept local
-	context.subscriptions.push(
-		vscode.commands.registerCommand('merge-nb.acceptAllLocal', async () => {
-			const uri = await getNotebookUri();
-			if (uri) {
-				await quickResolveAll(uri, 'local');
-			}
-		})
-	);
-
-	// Command: Quick resolve all - accept remote
-	context.subscriptions.push(
-		vscode.commands.registerCommand('merge-nb.acceptAllRemote', async () => {
-			const uri = await getNotebookUri();
-			if (uri) {
-				await quickResolveAll(uri, 'remote');
-			}
-		})
-	);
-
-	// Command: Find all notebooks with conflicts
+	// Command: Find all notebooks with conflicts (both textual and semantic)
 	context.subscriptions.push(
 		vscode.commands.registerCommand('merge-nb.findConflicts', async () => {
+			// First check if current notebook has conflicts
+			const activeUri = getActiveNotebookFileUri();
+			if (activeUri) {
+				const conflict = await resolver.hasAnyConflicts(activeUri);
+				if (conflict) {
+					await resolver.resolveConflicts(activeUri);
+					return;
+				}
+			}
+
+			// Find all notebooks with conflicts
 			const files = await resolver.findNotebooksWithConflicts();
 			if (files.length === 0) {
 				vscode.window.showInformationMessage('No notebooks with merge conflicts found in workspace.');
 				return;
 			}
 			
-			const items = files.map(f => ({
-				label: '$(notebook) ' + vscode.workspace.asRelativePath(f),
-				uri: f
-			}));
+			// Create descriptive labels showing conflict type
+			const items = files.map((f: ConflictedNotebook) => {
+				let icon = '$(notebook)';
+				let detail = '';
+				
+				if (f.hasTextualConflicts) {
+					icon = '$(warning)';
+					detail = 'Textual conflicts (<<<<<<< markers)';
+				} else if (f.hasSemanticConflicts) {
+					icon = '$(git-compare)';
+					detail = 'Semantic conflicts (Git UU status)';
+				}
+				
+				return {
+					label: `${icon} ${vscode.workspace.asRelativePath(f.uri)}`,
+					detail,
+					uri: f.uri
+				};
+			});
 			
 			const picked = await vscode.window.showQuickPick(items, {
 				placeHolder: `Found ${files.length} notebook(s) with conflicts`,
@@ -95,18 +77,6 @@ export function activate(context: vscode.ExtensionContext) {
 			
 			if (picked) {
 				await resolver.resolveConflicts(picked.uri);
-			}
-		})
-	);
-
-	// Command: Resolve semantic conflicts
-	context.subscriptions.push(
-		vscode.commands.registerCommand('merge-nb.resolveSemanticConflicts', async () => {
-			const uri = getActiveNotebookFileUri();
-			if (uri) {
-				await resolver.resolveSemanticConflicts(uri);
-			} else {
-				vscode.window.showWarningMessage('Please open a notebook file first.');
 			}
 		})
 	);
@@ -125,7 +95,7 @@ export function activate(context: vscode.ExtensionContext) {
 					if (hasConflictMarkers(content)) {
 						return {
 							badge: '⚠',
-							tooltip: 'Notebook has merge conflicts',
+							tooltip: 'Notebook has merge conflicts (textual markers)',
 							color: new vscode.ThemeColor('gitDecoration.conflictingResourceForeground')
 						};
 					}
@@ -148,26 +118,5 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 }
 
-async function getNotebookUri(): Promise<vscode.Uri | undefined> {
-	// First try to get the active notebook
-	const activeUri = getActiveNotebookFileUri();
-	if (activeUri) {
-		return activeUri;
-	}
-	
-	// Fall back to file picker
-	const files = await vscode.workspace.findFiles('**/*.ipynb', '**/node_modules/**');
-	if (files.length === 0) {
-		vscode.window.showInformationMessage('No notebook files found.');
-		return undefined;
-	}
-	
-	const picked = await vscode.window.showQuickPick(
-		files.map(f => ({ label: vscode.workspace.asRelativePath(f), uri: f })),
-		{ placeHolder: 'Select a notebook' }
-	);
-	
-	return picked?.uri;
-}
-
 export function deactivate() {}
+

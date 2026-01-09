@@ -1,9 +1,18 @@
 import * as vscode from 'vscode';
 import { analyzeNotebookConflicts, hasConflictMarkers, resolveAllConflicts, detectSemanticConflicts } from './conflictDetector';
 import { parseNotebook, serializeNotebook, renumberExecutionCounts } from './notebookParser';
-import { ConflictResolverPanel } from './webview/ConflictResolverPanel';
-import { ResolutionChoice, NotebookSemanticConflict } from './types';
+import { UnifiedConflictPanel, UnifiedConflict, UnifiedResolution } from './webview/ConflictResolverPanel';
+import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
 import * as gitIntegration from './gitIntegration';
+
+/**
+ * Represents a notebook with any type of conflict (textual or semantic)
+ */
+export interface ConflictedNotebook {
+    uri: vscode.Uri;
+    hasTextualConflicts: boolean;
+    hasSemanticConflicts: boolean;
+}
 
 /**
  * Main service for handling notebook merge conflict resolution.
@@ -12,9 +21,9 @@ export class NotebookConflictResolver {
     constructor(private readonly extensionUri: vscode.Uri) {}
 
     /**
-     * Check if a file has merge conflicts.
+     * Check if a file has textual merge conflicts.
      */
-    async hasConflicts(uri: vscode.Uri): Promise<boolean> {
+    async hasTextualConflicts(uri: vscode.Uri): Promise<boolean> {
         try {
             const content = await this.readFile(uri);
             return hasConflictMarkers(content);
@@ -39,15 +48,58 @@ export class NotebookConflictResolver {
     }
 
     /**
-     * Find all notebook files with conflicts in the workspace.
+     * Check if a file has any type of conflict.
      */
-    async findNotebooksWithConflicts(): Promise<vscode.Uri[]> {
+    async hasAnyConflicts(uri: vscode.Uri): Promise<ConflictedNotebook | null> {
+        try {
+            const content = await this.readFile(uri);
+            const hasTextual = hasConflictMarkers(content);
+            
+            // Check for semantic conflicts only if no textual markers
+            let hasSemantic = false;
+            if (!hasTextual) {
+                const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
+                hasSemantic = isUnmerged;
+            }
+
+            if (hasTextual || hasSemantic) {
+                return {
+                    uri,
+                    hasTextualConflicts: hasTextual,
+                    hasSemanticConflicts: hasSemantic
+                };
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Find all notebook files with any type of conflict in the workspace.
+     * Checks both textual conflicts and Git unmerged status.
+     */
+    async findNotebooksWithConflicts(): Promise<ConflictedNotebook[]> {
+        const withConflicts: ConflictedNotebook[] = [];
+        
+        // Get all notebooks in workspace
         const notebooks = await vscode.workspace.findFiles('**/*.ipynb', '**/node_modules/**');
-        const withConflicts: vscode.Uri[] = [];
+        
+        // Get unmerged files from Git
+        const unmergedFiles = await gitIntegration.getUnmergedFiles();
+        const unmergedPaths = new Set(unmergedFiles.map(f => f.path));
         
         for (const uri of notebooks) {
-            if (await this.hasConflicts(uri)) {
-                withConflicts.push(uri);
+            const conflict = await this.hasAnyConflicts(uri);
+            if (conflict) {
+                withConflicts.push(conflict);
+            } else if (unmergedPaths.has(uri.fsPath)) {
+                // File is unmerged according to Git but might not have parsed yet
+                withConflicts.push({
+                    uri,
+                    hasTextualConflicts: false,
+                    hasSemanticConflicts: true
+                });
             }
         }
         
@@ -55,28 +107,48 @@ export class NotebookConflictResolver {
     }
 
     /**
-     * Open the conflict resolver UI for a specific notebook.
+     * Resolve conflicts in a notebook - handles both textual and semantic.
      */
     async resolveConflicts(uri: vscode.Uri): Promise<void> {
         const content = await this.readFile(uri);
+        const hasTextual = hasConflictMarkers(content);
         
-        if (!hasConflictMarkers(content)) {
-            vscode.window.showInformationMessage('No merge conflicts found in this notebook.');
-            return;
+        if (hasTextual) {
+            // Handle textual conflicts
+            await this.resolveTextualConflicts(uri, content);
+        } else {
+            // Check for semantic conflicts
+            const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
+            if (isUnmerged) {
+                await this.resolveSemanticConflicts(uri);
+            } else {
+                vscode.window.showInformationMessage('No merge conflicts found in this notebook.');
+            }
         }
+    }
 
+    /**
+     * Resolve textual conflicts (<<<<<<< markers).
+     */
+    private async resolveTextualConflicts(uri: vscode.Uri, content: string): Promise<void> {
         const conflict = analyzeNotebookConflicts(uri.fsPath, content);
-        
+
         if (conflict.conflicts.length === 0 && conflict.metadataConflicts.length === 0) {
             vscode.window.showWarningMessage('Conflict markers found but could not be parsed. The notebook may be corrupted.');
             return;
         }
 
-        ConflictResolverPanel.createOrShow(
+        const unifiedConflict: UnifiedConflict = {
+            filePath: uri.fsPath,
+            type: 'textual',
+            textualConflict: conflict
+        };
+
+        UnifiedConflictPanel.createOrShow(
             this.extensionUri,
-            conflict,
-            async (resolutions) => {
-                await this.applyResolutions(uri, content, conflict, resolutions);
+            unifiedConflict,
+            async (resolution) => {
+                await this.applyTextualResolutions(uri, content, conflict, resolution);
             }
         );
     }
@@ -97,81 +169,36 @@ export class NotebookConflictResolver {
             return;
         }
 
-        // For now, show a summary of conflicts
-        await this.showSemanticConflictSummary(semanticConflict);
-    }
+        const unifiedConflict: UnifiedConflict = {
+            filePath: uri.fsPath,
+            type: 'semantic',
+            semanticConflict: semanticConflict
+        };
 
-    /**
-     * Show a summary of semantic conflicts to the user.
-     */
-    private async showSemanticConflictSummary(conflict: NotebookSemanticConflict): Promise<void> {
-        const summary = this.generateConflictSummary(conflict);
-        
-        const action = await vscode.window.showInformationMessage(
-            `Found ${conflict.semanticConflicts.length} semantic conflict(s) in notebook`,
-            { modal: true, detail: summary },
-            'Accept Local',
-            'Accept Remote',
-            'Cancel'
+        UnifiedConflictPanel.createOrShow(
+            this.extensionUri,
+            unifiedConflict,
+            async (resolution) => {
+                await this.applySemanticResolutions(uri, semanticConflict, resolution);
+            }
         );
-
-        if (action === 'Accept Local' && conflict.local) {
-            await this.saveResolvedNotebook(vscode.Uri.file(conflict.filePath), conflict.local);
-            vscode.window.showInformationMessage('Accepted local version.');
-        } else if (action === 'Accept Remote' && conflict.remote) {
-            await this.saveResolvedNotebook(vscode.Uri.file(conflict.filePath), conflict.remote);
-            vscode.window.showInformationMessage('Accepted remote version.');
-        }
     }
 
     /**
-     * Generate a human-readable summary of semantic conflicts.
+     * Apply textual conflict resolutions.
      */
-    private generateConflictSummary(conflict: NotebookSemanticConflict): string {
-        const lines: string[] = [];
-        
-        if (conflict.localBranch && conflict.remoteBranch) {
-            lines.push(`Merging: ${conflict.localBranch} ← ${conflict.remoteBranch}\n`);
-        }
-
-        const cellCounts = [
-            `Base: ${conflict.base?.cells.length || 0} cells`,
-            `Local: ${conflict.local?.cells.length || 0} cells`,
-            `Remote: ${conflict.remote?.cells.length || 0} cells`
-        ];
-        lines.push(cellCounts.join(', ') + '\n');
-
-        const conflictTypes = new Map<string, number>();
-        for (const c of conflict.semanticConflicts) {
-            conflictTypes.set(c.type, (conflictTypes.get(c.type) || 0) + 1);
-        }
-
-        lines.push('Conflicts detected:');
-        for (const [type, count] of conflictTypes) {
-            lines.push(`  • ${count}× ${type.replace(/-/g, ' ')}`);
-        }
-
-        return lines.join('\n');
-    }
-
-    /**
-     * Save a resolved notebook to disk.
-     */
-    private async saveResolvedNotebook(uri: vscode.Uri, notebook: any): Promise<void> {
-        const content = serializeNotebook(notebook);
-        const encoder = new TextEncoder();
-        await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
-    }
-
-    /**
-     * Apply user's conflict resolutions and save the file.
-     */
-    private async applyResolutions(
+    private async applyTextualResolutions(
         uri: vscode.Uri,
         originalContent: string,
         conflict: ReturnType<typeof analyzeNotebookConflicts>,
-        resolutions: Map<number, { choice: ResolutionChoice; customContent?: string }>
+        resolution: UnifiedResolution
     ): Promise<void> {
+        if (resolution.type !== 'textual' || !resolution.textualResolutions) {
+            return;
+        }
+
+        const resolutions = resolution.textualResolutions;
+
         // Build resolution array with markers
         const allConflicts = [
             ...conflict.conflicts.map((c, i) => ({ marker: c.marker, index: i })),
@@ -179,11 +206,11 @@ export class NotebookConflictResolver {
         ];
 
         const resolutionArray = allConflicts.map(({ marker, index }) => {
-            const resolution = resolutions.get(index) || { choice: 'local' as ResolutionChoice };
+            const res = resolutions.get(index) || { choice: 'local' as ResolutionChoice };
             return {
                 marker,
-                choice: resolution.choice === 'custom' ? 'local' : resolution.choice as 'local' | 'remote' | 'both',
-                customContent: resolution.customContent
+                choice: res.choice === 'custom' ? 'local' : res.choice as 'local' | 'remote' | 'both',
+                customContent: res.customContent
             };
         });
 
@@ -192,20 +219,20 @@ export class NotebookConflictResolver {
         // Try to parse and validate the resolved notebook
         try {
             let notebook = parseNotebook(resolvedContent);
-            
+
             // Ask user if they want to renumber execution counts
             const renumber = await vscode.window.showQuickPick(
                 ['Yes', 'No'],
-                { 
+                {
                     placeHolder: 'Renumber execution counts sequentially?',
                     title: 'Execution Counts'
                 }
             );
-            
+
             if (renumber === 'Yes') {
                 notebook = renumberExecutionCounts(notebook);
             }
-            
+
             resolvedContent = serializeNotebook(notebook);
         } catch (err) {
             const proceed = await vscode.window.showWarningMessage(
@@ -220,55 +247,127 @@ export class NotebookConflictResolver {
         // Write the resolved content
         const encoder = new TextEncoder();
         await vscode.workspace.fs.writeFile(uri, encoder.encode(resolvedContent));
-        
+
         vscode.window.showInformationMessage(`Resolved ${resolutions.size} conflict(s) in ${uri.fsPath}`);
+    }
+
+    /**
+     * Apply semantic conflict resolutions.
+     */
+    private async applySemanticResolutions(
+        uri: vscode.Uri,
+        semanticConflict: NotebookSemanticConflict,
+        resolution: UnifiedResolution
+    ): Promise<void> {
+        if (resolution.type !== 'semantic') {
+            return;
+        }
+
+        const resolutions = resolution.semanticResolutions;
+        if (!resolutions || resolutions.size === 0) {
+            return;
+        }
+
+        // Build the resolved notebook by applying each resolution
+        const localNotebook = semanticConflict.local;
+        const remoteNotebook = semanticConflict.remote;
+
+        if (!localNotebook && !remoteNotebook) {
+            vscode.window.showErrorMessage('Cannot apply resolutions: no notebook versions available.');
+            return;
+        }
+
+        // Start with local notebook as base for resolution
+        let resolvedNotebook: Notebook = localNotebook 
+            ? JSON.parse(JSON.stringify(localNotebook)) 
+            : JSON.parse(JSON.stringify(remoteNotebook!));
+
+        // Track which cells we've processed
+        const cellsToRemove = new Set<number>();
+
+        // Apply resolutions to each conflict
+        for (const [index, res] of resolutions) {
+            const conflict = semanticConflict.semanticConflicts[index];
+            if (!conflict) continue;
+
+            const choice = res.choice;
+
+            // Get the cell to use based on choice
+            let cellToUse: NotebookCell | undefined;
+
+            switch (choice) {
+                case 'base':
+                    cellToUse = conflict.baseContent;
+                    break;
+                case 'local':
+                    cellToUse = conflict.localContent;
+                    break;
+                case 'remote':
+                    cellToUse = conflict.remoteContent;
+                    break;
+            }
+
+            // Apply the resolution based on conflict type
+            if (conflict.type === 'cell-modified' || conflict.type === 'outputs-changed' || 
+                conflict.type === 'execution-count-changed' || conflict.type === 'metadata-changed') {
+                // Replace the cell at the local index with the chosen version
+                if (cellToUse && conflict.localCellIndex !== undefined) {
+                    resolvedNotebook.cells[conflict.localCellIndex] = JSON.parse(JSON.stringify(cellToUse));
+                }
+            } else if (conflict.type === 'cell-added') {
+                // For added cells, we might need to insert or skip
+                if (choice === 'remote' && conflict.remoteContent && !conflict.localContent) {
+                    // Add remote cell that doesn't exist locally
+                    const insertIndex = conflict.remoteCellIndex ?? resolvedNotebook.cells.length;
+                    resolvedNotebook.cells.splice(insertIndex, 0, JSON.parse(JSON.stringify(conflict.remoteContent)));
+                }
+            } else if (conflict.type === 'cell-deleted') {
+                if (choice === 'remote' && conflict.localCellIndex !== undefined) {
+                    // Accept remote deletion - mark for removal
+                    cellsToRemove.add(conflict.localCellIndex);
+                } else if (choice === 'base' && conflict.baseContent) {
+                    // Restore base cell
+                    const insertIndex = conflict.localCellIndex ?? conflict.remoteCellIndex ?? resolvedNotebook.cells.length;
+                    resolvedNotebook.cells.splice(insertIndex, 0, JSON.parse(JSON.stringify(conflict.baseContent)));
+                }
+            }
+        }
+
+        // Remove any cells marked for deletion (in reverse order to preserve indices)
+        const sortedIndices = Array.from(cellsToRemove).sort((a, b) => b - a);
+        for (const idx of sortedIndices) {
+            resolvedNotebook.cells.splice(idx, 1);
+        }
+
+        // Ask user if they want to renumber execution counts
+        const renumber = await vscode.window.showQuickPick(
+            ['Yes', 'No'],
+            {
+                placeHolder: 'Renumber execution counts sequentially?',
+                title: 'Execution Counts'
+            }
+        );
+
+        if (renumber === 'Yes') {
+            resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
+        }
+
+        // Save the resolved notebook
+        await this.saveResolvedNotebook(uri, resolvedNotebook);
+        vscode.window.showInformationMessage(`Resolved ${resolutions.size} semantic conflict(s) in ${uri.fsPath}`);
+    }
+
+    /**
+     * Save a resolved notebook to disk.
+     */
+    private async saveResolvedNotebook(uri: vscode.Uri, notebook: Notebook): Promise<void> {
+        const content = serializeNotebook(notebook);
+        const encoder = new TextEncoder();
+        await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
     }
 
     private async readFile(uri: vscode.Uri): Promise<string> {
         const data = await vscode.workspace.fs.readFile(uri);
         return new TextDecoder().decode(data);
     }
-}
-
-/**
- * Quick resolve all conflicts in a notebook using a single strategy.
- */
-export async function quickResolveAll(
-    uri: vscode.Uri, 
-    strategy: 'local' | 'remote'
-): Promise<void> {
-    const data = await vscode.workspace.fs.readFile(uri);
-    const content = new TextDecoder().decode(data);
-    
-    if (!hasConflictMarkers(content)) {
-        vscode.window.showInformationMessage('No merge conflicts found.');
-        return;
-    }
-
-    const conflict = analyzeNotebookConflicts(uri.fsPath, content);
-    const allMarkers = [
-        ...conflict.conflicts.map(c => c.marker),
-        ...conflict.metadataConflicts.map(c => c.marker)
-    ];
-
-    const resolutions = allMarkers.map(marker => ({
-        marker,
-        choice: strategy as 'local' | 'remote' | 'both'
-    }));
-
-    let resolvedContent = resolveAllConflicts(content, resolutions);
-    
-    try {
-        const notebook = parseNotebook(resolvedContent);
-        resolvedContent = serializeNotebook(notebook);
-    } catch {
-        // Keep as-is if parsing fails
-    }
-
-    const encoder = new TextEncoder();
-    await vscode.workspace.fs.writeFile(uri, encoder.encode(resolvedContent));
-    
-    vscode.window.showInformationMessage(
-        `Resolved all conflicts using ${strategy.toUpperCase()} version.`
-    );
 }
