@@ -1,6 +1,12 @@
 /**
- * Diff utilities for highlighting differences between text content.
- * Implements a simple LCS-based diff for line-by-line comparison.
+ * @file diffUtils.ts
+ * @description Text diffing utilities for visual conflict comparison.
+ * 
+ * Implements LCS (Longest Common Subsequence) based diff algorithm:
+ * - Line-by-line comparison between two text versions
+ * - Inline word/character-level change detection within modified lines
+ * - Produces aligned left/right diff results for side-by-side display
+ * - Used by the webview panel to render diff highlighting
  */
 
 export interface DiffLine {

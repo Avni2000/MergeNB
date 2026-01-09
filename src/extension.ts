@@ -1,3 +1,14 @@
+/**
+ * @file extension.ts
+ * @description VS Code extension entry point for MergeNB.
+ * 
+ * Registers the `merge-nb.findConflicts` command which:
+ * 1. Checks the active notebook for conflicts (textual or semantic)
+ * 2. If none active, scans workspace for all conflicted notebooks
+ * 3. Presents a quick-pick menu to select which notebook to resolve
+ * 4. Opens the conflict resolution webview panel
+ */
+
 import * as vscode from 'vscode';
 import { NotebookConflictResolver, ConflictedNotebook } from './resolver';
 import { hasConflictMarkers } from './conflictDetector';

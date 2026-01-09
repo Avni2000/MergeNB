@@ -1,3 +1,16 @@
+/**
+ * @file resolver.ts
+ * @description Main conflict resolution orchestrator for MergeNB.
+ * 
+ * The NotebookConflictResolver class coordinates the entire resolution workflow:
+ * 1. Scans workspace for notebooks with conflicts (textual markers or Git UU status)
+ * 2. Detects conflict type and retrieves base/local/remote versions from Git
+ * 3. Applies auto-resolutions for trivial conflicts (execution counts, outputs)
+ * 4. Opens the webview panel for manual resolution of remaining conflicts
+ * 5. Applies user choices and writes the resolved notebook back to disk
+ * 6. Stages the resolved file in Git
+ */
+
 import * as vscode from 'vscode';
 import { analyzeNotebookConflicts, hasConflictMarkers, resolveAllConflicts, detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
 import { parseNotebook, serializeNotebook, renumberExecutionCounts } from './notebookParser';

@@ -1,13 +1,23 @@
+/**
+ * @file gitIntegration.ts
+ * @description Git command-line integration for retrieving merge conflict data.
+ * 
+ * Provides:
+ * - Detection of unmerged files (Git UU status)
+ * - Retrieval of three-way merge versions from Git staging areas:
+ *   - Stage 1 (:1:file) = base (common ancestor)
+ *   - Stage 2 (:2:file) = local (ours/HEAD)
+ *   - Stage 3 (:3:file) = remote (theirs/MERGE_HEAD)
+ * - Branch name detection for UI display
+ * - Git staging operations after resolution
+ */
+
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
-
-/**
- * Git integration utilities for detecting and resolving semantic conflicts
- */
 
 export interface GitFileStatus {
     path: string;

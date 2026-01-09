@@ -1,3 +1,15 @@
+/**
+ * @file notebookParser.ts
+ * @description Jupyter notebook JSON parsing and serialization utilities.
+ * 
+ * Handles:
+ * - Parsing .ipynb JSON into typed Notebook objects
+ * - Serializing notebooks back to JSON with consistent formatting
+ * - Normalizing cell source (string vs string[] formats)
+ * - Renumbering execution counts after merge resolution
+ * - Generating cell content previews for UI display
+ */
+
 import { Notebook, NotebookCell } from './types';
 
 /**

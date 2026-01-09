@@ -1,5 +1,12 @@
 /**
- * Types for Jupyter Notebook structure (nbformat v4)
+ * @file types.ts
+ * @description Core TypeScript type definitions for MergeNB.
+ * 
+ * Contains:
+ * - Jupyter notebook structure types (nbformat v4): Notebook, NotebookCell, CellOutput
+ * - Conflict marker types: ConflictMarker, CellConflict, NotebookConflict
+ * - Semantic conflict types: SemanticConflict, SemanticConflictType, CellMapping
+ * - Resolution types: ResolutionChoice, ConflictResolution, SemanticConflictResolution
  */
 
 export interface NotebookCell {

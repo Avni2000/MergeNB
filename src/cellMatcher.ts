@@ -1,10 +1,19 @@
+/**
+ * @file cellMatcher.ts
+ * @description Cell matching algorithm for three-way notebook merge.
+ * 
+ * Matches cells across base/local/remote versions using:
+ * - Content hashing for exact matches
+ * - Levenshtein distance for similarity scoring
+ * - Hungarian algorithm for optimal bipartite matching
+ * - Position-based fallback for ambiguous cases
+ * 
+ * Also detects cell reordering conflicts where the same cells
+ * appear in different orders between branches.
+ */
+
 import { NotebookCell, Notebook, CellMapping } from './types';
 import * as crypto from 'crypto';
-
-/**
- * Cell matching algorithm for 3-way merge
- * Matches cells between base, local, and remote versions using content similarity
- */
 
 /**
  * Compute a hash of cell content for similarity matching

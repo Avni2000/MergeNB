@@ -1,3 +1,18 @@
+/**
+ * @file ConflictResolverPanel.ts
+ * @description Webview panel UI for interactive conflict resolution.
+ * 
+ * Renders a rich HTML interface showing:
+ * - Side-by-side or three-way diff view (base/local/remote)
+ * - Line-by-line and word-level diff highlighting
+ * - Per-conflict resolution buttons (Accept Local/Remote/Base/Both)
+ * - Auto-resolution summary for conflicts resolved automatically
+ * - Cell type badges, branch names, and conflict2 descriptions
+ * 
+ * Handles both textual conflicts (from markers) and semantic conflicts
+ * (from Git staging areas) with a unified interface.
+ */
+
 import * as vscode from 'vscode';
 import { 
     NotebookConflict, 

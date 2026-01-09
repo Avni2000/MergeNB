@@ -1,3 +1,25 @@
+/**
+ * @file conflictDetector.ts
+ * @description Conflict detection and analysis engine for MergeNB.
+ * 
+ * Handles two types of conflicts:
+ * 
+ * 1. TEXTUAL CONFLICTS - Git inserted <<<<<<</=======/>>>>>>> markers
+ *    - Raw markers: Break JSON parsing, require raw text analysis
+ *    - HTML-styled markers: Valid JSON with markers in cell content
+ *    - Cell-level markers: Entire cells marked as local/remote
+ *    - Inline markers: Conflict markers within a single cell's source
+ * 
+ * 2. SEMANTIC CONFLICTS - Git UU status without textual markers
+ *    - Cell added/deleted/modified in both branches
+ *    - Cell reordering conflicts
+ *    - Output and execution count differences
+ *    - Metadata changes
+ * 
+ * Also provides auto-resolution for trivial conflicts (execution counts,
+ * outputs, kernel versions) based on user settings.
+ */
+
 import { CellConflict, NotebookConflict, NotebookSemanticConflict, SemanticConflict, CellMapping } from './types';
 import { Notebook, NotebookCell, NotebookMetadata } from './types';
 import * as gitIntegration from './gitIntegration';
