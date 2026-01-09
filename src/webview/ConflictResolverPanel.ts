@@ -32,6 +32,8 @@ export interface UnifiedConflict {
     semanticConflict?: NotebookSemanticConflict;
     /** Result of auto-resolution, if any conflicts were auto-resolved */
     autoResolveResult?: AutoResolveResult;
+    /** Whether to hide outputs for non-conflicted cells */
+    hideNonConflictOutputs?: boolean;
 }
 
 /**
@@ -341,10 +343,14 @@ export class UnifiedConflictPanel {
             contentHtml = `<pre class="code-content">${escapeHtml(source)}</pre>`;
         }
 
-        // Render outputs for code cells
+        // Render outputs for code cells (conditionally hide for non-conflicted cells)
         let outputsHtml = '';
+        const hideNonConflict = this._conflict?.hideNonConflictOutputs ?? true;
         if (cellType === 'code' && cell.outputs && cell.outputs.length > 0) {
-            outputsHtml = this._renderOutputs(cell.outputs);
+            const shouldShowOutputs = row.type === 'conflict' || !hideNonConflict;
+            if (shouldShowOutputs) {
+                outputsHtml = this._renderOutputs(cell.outputs);
+            }
         }
 
         const executionCount = cell.execution_count !== null && cell.execution_count !== undefined
@@ -1235,7 +1241,13 @@ export class UnifiedConflictPanel {
             const firstRow = document.querySelector('.merge-row');
             if (!firstRow) return;
             
+            // Set initial pixel widths based on rendered layout
             const cols = firstRow.querySelectorAll('.cell-column');
+            colWidths = Array.from(cols).map(c => c.offsetWidth);
+            document.documentElement.style.setProperty('--col-base', colWidths[0] + 'px');
+            document.documentElement.style.setProperty('--col-local', colWidths[1] + 'px');
+            document.documentElement.style.setProperty('--col-remote', colWidths[2] + 'px');
+            
             cols.forEach((col, i) => {
                 if (i < 2) { // Only first two columns get resize handles
                     const handle = document.createElement('div');

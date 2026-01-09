@@ -6,6 +6,7 @@
  * - autoResolveExecutionCount: Set execution_count to null (default: true)
  * - autoResolveKernelVersion: Use local kernel/Python version (default: true)  
  * - stripOutputs: Clear cell outputs during merge (default: true)
+ * - hideNonConflictOutputs: Hide outputs for non-conflicted cells in UI (default: true)
  * 
  * These reduce manual conflict resolution for common non-semantic differences.
  */
@@ -16,6 +17,7 @@ export interface MergeNBSettings {
     autoResolveExecutionCount: boolean;
     autoResolveKernelVersion: boolean;
     stripOutputs: boolean;
+    hideNonConflictOutputs: boolean;
 }
 
 /**
@@ -27,7 +29,8 @@ export function getSettings(): MergeNBSettings {
     return {
         autoResolveExecutionCount: config.get<boolean>('autoResolve.executionCount', true),
         autoResolveKernelVersion: config.get<boolean>('autoResolve.kernelVersion', true),
-        stripOutputs: config.get<boolean>('autoResolve.stripOutputs', true)
+        stripOutputs: config.get<boolean>('autoResolve.stripOutputs', true),
+        hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', true)
     };
 }
 

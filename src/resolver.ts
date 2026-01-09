@@ -158,10 +158,13 @@ export class NotebookConflictResolver {
             return;
         }
 
+        const settings = getSettings();
+
         const unifiedConflict: UnifiedConflict = {
             filePath: uri.fsPath,
             type: 'textual',
-            textualConflict: conflict
+            textualConflict: conflict,
+            hideNonConflictOutputs: settings.hideNonConflictOutputs
         };
 
         UnifiedConflictPanel.createOrShow(
@@ -233,7 +236,8 @@ export class NotebookConflictResolver {
             filePath: uri.fsPath,
             type: 'semantic',
             semanticConflict: filteredSemanticConflict,
-            autoResolveResult: autoResolveResult
+            autoResolveResult: autoResolveResult,
+            hideNonConflictOutputs: settings.hideNonConflictOutputs
         };
 
         UnifiedConflictPanel.createOrShow(
