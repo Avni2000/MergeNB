@@ -1,8 +1,25 @@
 import { CellConflict, NotebookConflict, NotebookSemanticConflict, SemanticConflict, CellMapping } from './types';
-import { Notebook, NotebookCell } from './types';
+import { Notebook, NotebookCell, NotebookMetadata } from './types';
 import * as gitIntegration from './gitIntegration';
 import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
+import { getSettings, MergeNBSettings } from './settings';
+
+/**
+ * Result of auto-resolution preprocessing
+ */
+export interface AutoResolveResult {
+    /** Filtered conflicts that still need manual resolution */
+    remainingConflicts: SemanticConflict[];
+    /** Number of conflicts auto-resolved */
+    autoResolvedCount: number;
+    /** Description of what was auto-resolved */
+    autoResolvedDescriptions: string[];
+    /** The notebook with auto-resolutions applied */
+    resolvedNotebook: Notebook;
+    /** Whether kernel metadata was auto-resolved */
+    kernelAutoResolved: boolean;
+}
 
 /**
  * Pattern for raw Git conflict markers (breaks JSON)
@@ -283,15 +300,10 @@ function findCellLevelConflicts(notebook: Notebook): CellLevelConflict[] {
 }
 
 /**
- * Convert cells to a display string for the conflict UI
+ * Get display content for a single cell
  */
-function cellsToDisplayString(notebook: Notebook, cellIndices: number[]): string {
-    return cellIndices.map(idx => {
-        const cell = notebook.cells[idx];
-        const source = sourceToString(cell.source);
-        const typeLabel = cell.cell_type === 'code' ? '[Code]' : '[Markdown]';
-        return `--- Cell ${idx + 1} ${typeLabel} ---\n${source}`;
-    }).join('\n\n');
+function cellToDisplayContent(cell: NotebookCell): string {
+    return sourceToString(cell.source);
 }
 
 /**
@@ -313,22 +325,44 @@ export function analyzeNotebookConflicts(filePath: string, content: string): Not
     const cellLevelConflicts = findCellLevelConflicts(notebook);
     
     for (const cellConflict of cellLevelConflicts) {
-        const localContent = cellsToDisplayString(notebook, cellConflict.localCellIndices);
-        const remoteContent = cellsToDisplayString(notebook, cellConflict.remoteCellIndices);
+        // Create individual conflict entries for each cell pair
+        // Match cells by position: local[0] vs remote[0], local[1] vs remote[1], etc.
+        const maxCells = Math.max(
+            cellConflict.localCellIndices.length,
+            cellConflict.remoteCellIndices.length
+        );
         
-        conflicts.push({
-            cellIndex: cellConflict.startMarkerCellIndex,
-            field: 'source',
-            localContent: localContent || '(no local cells)',
-            remoteContent: remoteContent || '(no remote cells)',
-            marker: {
-                start: cellConflict.startMarkerCellIndex,
-                middle: cellConflict.separatorCellIndex,
-                end: cellConflict.endMarkerCellIndex,
-                localBranch: cellConflict.localBranch,
-                remoteBranch: cellConflict.remoteBranch
-            }
-        });
+        for (let i = 0; i < maxCells; i++) {
+            const localIdx = cellConflict.localCellIndices[i];
+            const remoteIdx = cellConflict.remoteCellIndices[i];
+            
+            const localCell = localIdx !== undefined ? notebook.cells[localIdx] : undefined;
+            const remoteCell = remoteIdx !== undefined ? notebook.cells[remoteIdx] : undefined;
+            
+            const localContent = localCell ? cellToDisplayContent(localCell) : '';
+            const remoteContent = remoteCell ? cellToDisplayContent(remoteCell) : '';
+            
+            // Determine cell type for display
+            const cellType = localCell?.cell_type || remoteCell?.cell_type || 'code';
+            
+            conflicts.push({
+                cellIndex: localIdx ?? remoteIdx ?? cellConflict.startMarkerCellIndex,
+                field: 'source',
+                localContent,
+                remoteContent,
+                marker: {
+                    start: cellConflict.startMarkerCellIndex,
+                    middle: cellConflict.separatorCellIndex,
+                    end: cellConflict.endMarkerCellIndex,
+                    localBranch: cellConflict.localBranch,
+                    remoteBranch: cellConflict.remoteBranch
+                },
+                // Store cell type info for UI display
+                cellType: cellType as 'code' | 'markdown' | 'raw',
+                localCellIndex: localIdx,
+                remoteCellIndex: remoteIdx
+            });
+        }
     }
     
     // Then check for inline conflicts within individual cells
@@ -819,4 +853,157 @@ function compareCells(
     }
 
     return conflicts;
+}
+
+/**
+ * Apply auto-resolutions to semantic conflicts based on user settings.
+ * Returns filtered conflicts that still need manual resolution.
+ */
+export function applyAutoResolutions(
+    semanticConflict: NotebookSemanticConflict,
+    settings?: MergeNBSettings
+): AutoResolveResult {
+    const effectiveSettings = settings || getSettings();
+    const remainingConflicts: SemanticConflict[] = [];
+    const autoResolvedDescriptions: string[] = [];
+    let autoResolvedCount = 0;
+    let kernelAutoResolved = false;
+
+    // Start with a deep copy of the local notebook as our resolved version
+    const resolvedNotebook: Notebook = semanticConflict.local 
+        ? JSON.parse(JSON.stringify(semanticConflict.local))
+        : JSON.parse(JSON.stringify(semanticConflict.remote!));
+
+    // Track cell indices that had auto-resolutions applied
+    const autoResolvedCellIndices = new Set<number>();
+
+    for (const conflict of semanticConflict.semanticConflicts) {
+        let autoResolved = false;
+
+        // Auto-resolve execution count differences
+        if (conflict.type === 'execution-count-changed' && effectiveSettings.autoResolveExecutionCount) {
+            // Set execution_count to null on the resolved cell
+            if (conflict.localCellIndex !== undefined && resolvedNotebook.cells[conflict.localCellIndex]) {
+                resolvedNotebook.cells[conflict.localCellIndex].execution_count = null;
+                autoResolvedCellIndices.add(conflict.localCellIndex);
+            }
+            autoResolved = true;
+            autoResolvedCount++;
+            autoResolvedDescriptions.push(`Execution count set to null (cell ${(conflict.localCellIndex ?? 0) + 1})`);
+        }
+
+        // Auto-resolve outputs-changed conflicts when stripOutputs is enabled
+        // Only if the source code is identical (pure output difference)
+        if (conflict.type === 'outputs-changed' && effectiveSettings.stripOutputs) {
+            const localSource = conflict.localContent?.source;
+            const remoteSource = conflict.remoteContent?.source;
+            
+            const localSourceStr = Array.isArray(localSource) ? localSource.join('') : (localSource || '');
+            const remoteSourceStr = Array.isArray(remoteSource) ? remoteSource.join('') : (remoteSource || '');
+            
+            // If source is identical, this is purely an output difference - auto-resolve
+            if (localSourceStr === remoteSourceStr) {
+                if (conflict.localCellIndex !== undefined && resolvedNotebook.cells[conflict.localCellIndex]) {
+                    resolvedNotebook.cells[conflict.localCellIndex].outputs = [];
+                    resolvedNotebook.cells[conflict.localCellIndex].execution_count = null;
+                    autoResolvedCellIndices.add(conflict.localCellIndex);
+                }
+                autoResolved = true;
+                autoResolvedCount++;
+                autoResolvedDescriptions.push(`Outputs cleared (cell ${(conflict.localCellIndex ?? 0) + 1})`);
+            }
+        }
+
+        if (!autoResolved) {
+            remainingConflicts.push(conflict);
+        }
+    }
+
+    // Auto-resolve kernel version differences (notebook-level metadata)
+    if (effectiveSettings.autoResolveKernelVersion) {
+        const localKernel = semanticConflict.local?.metadata?.kernelspec;
+        const remoteKernel = semanticConflict.remote?.metadata?.kernelspec;
+        const baseKernel = semanticConflict.base?.metadata?.kernelspec;
+
+        // Check if kernel versions differ between local and remote
+        if (localKernel && remoteKernel) {
+            const localKernelStr = JSON.stringify(localKernel);
+            const remoteKernelStr = JSON.stringify(remoteKernel);
+            const baseKernelStr = baseKernel ? JSON.stringify(baseKernel) : '';
+
+            if (localKernelStr !== remoteKernelStr && 
+                (localKernelStr !== baseKernelStr || remoteKernelStr !== baseKernelStr)) {
+                // Use local kernel (already in resolvedNotebook)
+                kernelAutoResolved = true;
+                autoResolvedCount++;
+                autoResolvedDescriptions.push('Kernel version: using local version');
+            }
+        }
+
+        // Also check language_info version
+        const localLangInfo = semanticConflict.local?.metadata?.language_info;
+        const remoteLangInfo = semanticConflict.remote?.metadata?.language_info;
+        const baseLangInfo = semanticConflict.base?.metadata?.language_info;
+
+        if (localLangInfo && remoteLangInfo) {
+            const localLangStr = JSON.stringify(localLangInfo);
+            const remoteLangStr = JSON.stringify(remoteLangInfo);
+            const baseLangStr = baseLangInfo ? JSON.stringify(baseLangInfo) : '';
+
+            if (localLangStr !== remoteLangStr && 
+                (localLangStr !== baseLangStr || remoteLangStr !== baseLangStr)) {
+                // Use local language_info (already in resolvedNotebook)
+                if (!kernelAutoResolved) {
+                    autoResolvedCount++;
+                    autoResolvedDescriptions.push('Python version: using local version');
+                }
+                kernelAutoResolved = true;
+            }
+        }
+    }
+
+    // Strip outputs from any remaining conflicted cells if enabled
+    if (effectiveSettings.stripOutputs) {
+        // For remaining conflicts that weren't auto-resolved, still strip outputs
+        for (const conflict of remainingConflicts) {
+            if (conflict.localCellIndex !== undefined && !autoResolvedCellIndices.has(conflict.localCellIndex)) {
+                const cell = resolvedNotebook.cells[conflict.localCellIndex];
+                if (cell && cell.cell_type === 'code' && cell.outputs && cell.outputs.length > 0) {
+                    cell.outputs = [];
+                    autoResolvedDescriptions.push(`Outputs stripped (cell ${conflict.localCellIndex + 1})`);
+                }
+            }
+        }
+    }
+
+    return {
+        remainingConflicts,
+        autoResolvedCount,
+        autoResolvedDescriptions,
+        resolvedNotebook,
+        kernelAutoResolved
+    };
+}
+
+/**
+ * Check if a notebook has kernel version differences between local and remote
+ */
+export function hasKernelVersionConflict(
+    local?: Notebook,
+    remote?: Notebook,
+    base?: Notebook
+): boolean {
+    if (!local || !remote) return false;
+
+    const localKernel = local.metadata?.kernelspec;
+    const remoteKernel = remote.metadata?.kernelspec;
+    const baseKernel = base?.metadata?.kernelspec;
+
+    if (!localKernel || !remoteKernel) return false;
+
+    const localStr = JSON.stringify(localKernel);
+    const remoteStr = JSON.stringify(remoteKernel);
+    const baseStr = baseKernel ? JSON.stringify(baseKernel) : '';
+
+    return localStr !== remoteStr && (localStr !== baseStr || remoteStr !== baseStr);
 }

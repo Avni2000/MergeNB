@@ -5,8 +5,11 @@ import {
     ResolutionChoice,
     NotebookSemanticConflict,
     SemanticConflict,
-    NotebookCell
+    NotebookCell,
+    ConflictMarker
 } from '../types';
+import { AutoResolveResult } from '../conflictDetector';
+import { computeLineDiff, DiffLine } from '../diffUtils';
 
 /**
  * Unified type for conflicts from both textual and semantic sources
@@ -16,6 +19,8 @@ export interface UnifiedConflict {
     type: 'textual' | 'semantic';
     textualConflict?: NotebookConflict;
     semanticConflict?: NotebookSemanticConflict;
+    /** Result of auto-resolution, if any conflicts were auto-resolved */
+    autoResolveResult?: AutoResolveResult;
 }
 
 /**
@@ -205,6 +210,17 @@ export class UnifiedConflictPanel {
             </div>`;
         }
 
+        // Auto-resolution info
+        let autoResolveInfo = '';
+        const autoResult = this._conflict?.autoResolveResult;
+        if (autoResult && autoResult.autoResolvedCount > 0) {
+            const items = autoResult.autoResolvedDescriptions.map(d => `<li>${escapeHtml(d)}</li>`).join('');
+            autoResolveInfo = `<div class="auto-resolve-info">
+                <strong>✓ Auto-resolved (${autoResult.autoResolvedCount}):</strong>
+                <ul>${items}</ul>
+            </div>`;
+        }
+
         // Cell counts summary
         const cellCountsHtml = `<div class="cell-counts">
             <span>Base: ${conflict.base?.cells.length || 0} cells</span>
@@ -221,10 +237,14 @@ export class UnifiedConflictPanel {
         }
 
         const totalConflicts = conflict.semanticConflicts.length;
+        const remainingText = totalConflicts > 0 
+            ? `<p>Found <strong>${totalConflicts}</strong> remaining conflict(s) requiring manual resolution:</p>`
+            : `<p>All conflicts have been auto-resolved. Click "Apply Resolutions" to save.</p>`;
+        
         return this._wrapInHtml(
             'Semantic Merge Conflicts',
             conflict.filePath,
-            branchInfo + cellCountsHtml + `<p>Found <strong>${totalConflicts}</strong> semantic conflict(s). These are differences in execution state, outputs, or cell structure:</p>`,
+            branchInfo + autoResolveInfo + cellCountsHtml + remainingText,
             conflictsHtml,
             'semantic',
             totalConflicts
@@ -295,6 +315,24 @@ export class UnifiedConflictPanel {
             font-size: 0.9em;
             color: var(--vscode-descriptionForeground);
         }
+        .auto-resolve-info {
+            background: rgba(40, 167, 69, 0.15);
+            border: 1px solid #28a745;
+            border-radius: 6px;
+            padding: 12px 15px;
+            margin-bottom: 15px;
+        }
+        .auto-resolve-info strong {
+            color: #28a745;
+        }
+        .auto-resolve-info ul {
+            margin: 8px 0 0 0;
+            padding-left: 20px;
+        }
+        .auto-resolve-info li {
+            margin: 4px 0;
+            font-size: 0.9em;
+        }
         .conflict {
             border: 1px solid var(--vscode-panel-border);
             border-radius: 6px;
@@ -343,7 +381,7 @@ export class UnifiedConflictPanel {
         .base-label { color: var(--base-border); }
         pre {
             background: var(--vscode-textCodeBlock-background);
-            padding: 10px;
+            padding: 0;
             border-radius: 4px;
             overflow-x: auto;
             font-size: 0.85em;
@@ -352,6 +390,54 @@ export class UnifiedConflictPanel {
             word-break: break-word;
             max-height: 300px;
             overflow-y: auto;
+        }
+        .diff-container {
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 0.85em;
+            line-height: 1.4;
+            background: var(--vscode-textCodeBlock-background);
+            border-radius: 4px;
+            overflow: auto;
+            max-height: 300px;
+        }
+        .diff-line {
+            padding: 1px 8px;
+            min-height: 1.4em;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .diff-line-unchanged {
+            background: transparent;
+        }
+        .diff-line-empty {
+            background: var(--vscode-diffEditor-diagonalFill, rgba(128, 128, 128, 0.1));
+            min-height: 1.4em;
+        }
+        /* Removed lines - red background */
+        .diff-line-removed {
+            background: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.2));
+        }
+        /* Added lines - green background */
+        .diff-line-added {
+            background: var(--vscode-diffEditor-insertedLineBackground, rgba(0, 255, 0, 0.2));
+        }
+        /* Modified lines - lighter background with inline highlights */
+        .diff-line-modified-old {
+            background: var(--vscode-diffEditor-removedLineBackground, rgba(255, 0, 0, 0.15));
+        }
+        .diff-line-modified-new {
+            background: var(--vscode-diffEditor-insertedLineBackground, rgba(0, 255, 0, 0.15));
+        }
+        /* Inline change highlights - brighter colors for specific changed text */
+        .diff-inline-unchanged {
+            /* No special styling */
+        }
+        .diff-inline-removed {
+            background: var(--vscode-diffEditor-removedTextBackground, rgba(255, 0, 0, 0.4));
+            text-decoration: none;
+        }
+        .diff-inline-added {
+            background: var(--vscode-diffEditor-insertedTextBackground, rgba(0, 255, 0, 0.4));
         }
         .empty-content {
             color: var(--vscode-descriptionForeground);
@@ -507,42 +593,82 @@ export class UnifiedConflictPanel {
 
     private _renderTextualConflict(conflict: CellConflict, index: number): string {
         const isOutputConflict = conflict.field === 'outputs';
-        const isCellLevelConflict = conflict.marker.start > 0 || (conflict.marker.middle > 0);
+        const isCellLevelConflict = conflict.localCellIndex !== undefined || conflict.remoteCellIndex !== undefined;
 
-        const outputNote = isOutputConflict
-            ? '<p style="color: var(--vscode-editorWarning-foreground); font-size: 0.85em; margin-top: 10px;">⚠️ Output conflicts will clear the cell outputs. Re-run the cell after resolving.</p>'
+        // Get cell type from conflict or default to field
+        const cellType = conflict.cellType || 'code';
+        const cellTypeBadge = `<span class="cell-type-badge">${cellType}</span>`;
+        
+        // Build cell index info for header
+        const cellIndices: string[] = [];
+        if (conflict.localCellIndex !== undefined) {
+            cellIndices.push(`Local: ${conflict.localCellIndex + 1}`);
+        }
+        if (conflict.remoteCellIndex !== undefined) {
+            cellIndices.push(`Remote: ${conflict.remoteCellIndex + 1}`);
+        }
+        if (cellIndices.length === 0) {
+            cellIndices.push(`Cell ${conflict.cellIndex + 1}`);
+        }
+        const cellIndexStr = ` (${cellIndices.join(', ')})`;
+
+        // Determine conflict type label
+        const hasLocal = conflict.localContent.trim().length > 0;
+        const hasRemote = conflict.remoteContent.trim().length > 0;
+        
+        let typeLabel = 'Cell Modified';
+        let description = '';
+        
+        if (isCellLevelConflict) {
+            if (!hasLocal && hasRemote) {
+                typeLabel = 'Cell Added';
+                description = 'This cell exists only in the remote branch';
+            } else if (hasLocal && !hasRemote) {
+                typeLabel = 'Cell Deleted';
+                description = 'This cell exists only in the local branch';
+            } else {
+                typeLabel = 'Cell Modified';
+                description = 'Cell content differs between branches';
+            }
+        } else if (isOutputConflict) {
+            typeLabel = 'Outputs Changed';
+            description = 'Cell outputs differ - will be cleared on resolution (re-run cell after)';
+        } else if (conflict.field === 'source') {
+            description = 'Cell source code differs between branches';
+        } else if (conflict.field === 'metadata') {
+            typeLabel = 'Metadata Changed';
+            description = 'Cell metadata differs between branches';
+        }
+
+        // Compute diff for textual conflicts
+        const localDiffHtml = hasLocal 
+            ? this._renderDiffContent(conflict.localContent, conflict.remoteContent, 'local')
             : '';
-
-        const cellLevelNote = isCellLevelConflict
-            ? '<p style="color: var(--vscode-textLink-foreground); font-size: 0.85em; margin-top: 5px; margin-bottom: 10px;">📝 Cell-level conflict: entire cells differ between branches.</p>'
+        const remoteDiffHtml = hasRemote
+            ? this._renderDiffContent(conflict.remoteContent, conflict.localContent, 'remote')
             : '';
-
-        const headerLabel = isCellLevelConflict
-            ? `Cell Block (${conflict.marker.start + 1} → ${conflict.marker.end + 1})`
-            : `Cell ${conflict.cellIndex + 1}`;
 
         return `
 <div class="conflict conflict-${index}">
     <div class="conflict-header">
-        <span>${headerLabel} - <span class="badge">${isCellLevelConflict ? 'cell-level' : conflict.field}</span></span>
+        <span>${typeLabel}${cellIndexStr} ${cellTypeBadge} <span class="badge badge-type">${conflict.field}</span></span>
     </div>
-    ${cellLevelNote}
+    ${description ? `<div class="conflict-description">${escapeHtml(description)}</div>` : ''}
     <div class="conflict-body">
         <div class="conflict-side conflict-local">
             <div class="side-label local-label">⬅ Local (${escapeHtml(conflict.marker.localBranch || 'Current')})</div>
-            <pre>${escapeHtml(conflict.localContent)}</pre>
+            ${hasLocal ? `<div class="diff-container">${localDiffHtml}</div>` : '<div class="empty-content">(not present)</div>'}
         </div>
         <div class="conflict-side conflict-remote">
             <div class="side-label remote-label">➡ Remote (${escapeHtml(conflict.marker.remoteBranch || 'Incoming')})</div>
-            <pre>${escapeHtml(conflict.remoteContent)}</pre>
+            ${hasRemote ? `<div class="diff-container">${remoteDiffHtml}</div>` : '<div class="empty-content">(not present)</div>'}
         </div>
     </div>
-    ${outputNote}
     <div class="resolution-buttons">
         ${isOutputConflict
-            ? '<button class="btn-local btn-selected" onclick="selectResolution(' + index + ', \'local\')">Clear Outputs</button>'
-            : `<button class="btn-local" onclick="selectResolution(${index}, 'local')">Accept Local</button>
-        <button class="btn-remote" onclick="selectResolution(${index}, 'remote')">Accept Remote</button>
+            ? `<button class="btn-local" onclick="selectResolution(${index}, 'local')">Clear Outputs</button>`
+            : `${hasLocal ? `<button class="btn-local" onclick="selectResolution(${index}, 'local')">Accept Local</button>` : ''}
+        ${hasRemote ? `<button class="btn-remote" onclick="selectResolution(${index}, 'remote')">Accept Remote</button>` : ''}
         <button class="btn-both" onclick="selectResolution(${index}, 'both')">Accept Both</button>`
         }
     </div>
@@ -550,27 +676,42 @@ export class UnifiedConflictPanel {
     }
 
     private _renderMetadataConflict(
-        conflict: { field: string; localContent: string; remoteContent: string },
+        conflict: { field: string; localContent: string; remoteContent: string; marker: ConflictMarker },
         index: number
     ): string {
+        // Check for empty content
+        const hasLocal = conflict.localContent.trim().length > 0;
+        const hasRemote = conflict.remoteContent.trim().length > 0;
+
+        // Compute diff for metadata
+        const localDiffHtml = hasLocal 
+            ? this._renderDiffContent(conflict.localContent, conflict.remoteContent, 'local')
+            : '';
+        const remoteDiffHtml = hasRemote
+            ? this._renderDiffContent(conflict.remoteContent, conflict.localContent, 'remote')
+            : '';
+
+        const description = `Notebook-level metadata field "${conflict.field}" differs between branches`;
+
         return `
 <div class="conflict conflict-${index}">
     <div class="conflict-header">
-        <span>Notebook Metadata - <span class="badge">${escapeHtml(conflict.field)}</span></span>
+        <span>Metadata Changed <span class="cell-type-badge">notebook</span> <span class="badge badge-type">${escapeHtml(conflict.field)}</span></span>
     </div>
+    <div class="conflict-description">${escapeHtml(description)}</div>
     <div class="conflict-body">
         <div class="conflict-side conflict-local">
-            <div class="side-label local-label">⬅ Local (Current)</div>
-            <pre>${escapeHtml(conflict.localContent)}</pre>
+            <div class="side-label local-label">⬅ Local (${escapeHtml(conflict.marker?.localBranch || 'Current')})</div>
+            ${hasLocal ? `<div class="diff-container">${localDiffHtml}</div>` : '<div class="empty-content">(empty)</div>'}
         </div>
         <div class="conflict-side conflict-remote">
-            <div class="side-label remote-label">➡ Remote (Incoming)</div>
-            <pre>${escapeHtml(conflict.remoteContent)}</pre>
+            <div class="side-label remote-label">➡ Remote (${escapeHtml(conflict.marker?.remoteBranch || 'Incoming')})</div>
+            ${hasRemote ? `<div class="diff-container">${remoteDiffHtml}</div>` : '<div class="empty-content">(empty)</div>'}
         </div>
     </div>
     <div class="resolution-buttons">
-        <button class="btn-local" onclick="selectResolution(${index}, 'local')">Accept Local</button>
-        <button class="btn-remote" onclick="selectResolution(${index}, 'remote')">Accept Remote</button>
+        ${hasLocal ? `<button class="btn-local" onclick="selectResolution(${index}, 'local')">Accept Local</button>` : ''}
+        ${hasRemote ? `<button class="btn-remote" onclick="selectResolution(${index}, 'remote')">Accept Remote</button>` : ''}
         <button class="btn-both" onclick="selectResolution(${index}, 'both')">Accept Both</button>
     </div>
 </div>`;
@@ -610,6 +751,10 @@ export class UnifiedConflictPanel {
         const localOutputs = hasLocal ? this._getCellOutputSummary(conflict.localContent!) : '';
         const remoteOutputs = hasRemote ? this._getCellOutputSummary(conflict.remoteContent!) : '';
 
+        // Check if local or remote is identical to base (to avoid redundant display)
+        const localSameAsBase = hasBase && hasLocal && baseSource === localSource;
+        const remoteSameAsBase = hasBase && hasRemote && baseSource === remoteSource;
+
         // Cell indices for header
         const cellIndices: string[] = [];
         if (conflict.baseCellIndex !== undefined) cellIndices.push(`Base: ${conflict.baseCellIndex + 1}`);
@@ -620,6 +765,29 @@ export class UnifiedConflictPanel {
         // Get cell type badge
         const cellType = conflict.localContent?.cell_type || conflict.remoteContent?.cell_type || conflict.baseContent?.cell_type || 'code';
         const cellTypeBadge = `<span class="cell-type-badge">${cellType}</span>`;
+
+        // Compute diffs for highlighting
+        // For base: show "(same as local/remote)" text if identical, otherwise show diff
+        // For local/remote: always show content with diff highlighting
+        const baseDiffHtml = hasBase && !localSameAsBase && !remoteSameAsBase 
+            ? this._renderDiffContent(baseSource, hasLocal ? localSource : remoteSource, 'base') 
+            : '';
+        const localDiffHtml = hasLocal ? this._renderDiffContent(localSource, hasBase ? baseSource : remoteSource, 'local') : '';
+        const remoteDiffHtml = hasRemote ? this._renderDiffContent(remoteSource, hasBase ? baseSource : localSource, 'remote') : '';
+
+        // Determine what to show in base column
+        let baseColumnContent: string;
+        if (!hasBase) {
+            baseColumnContent = '<div class="empty-content">(not present)</div>';
+        } else if (localSameAsBase && remoteSameAsBase) {
+            baseColumnContent = '<div class="empty-content">(same as local and remote)</div>';
+        } else if (localSameAsBase) {
+            baseColumnContent = '<div class="empty-content">(same as local)</div>';
+        } else if (remoteSameAsBase) {
+            baseColumnContent = '<div class="empty-content">(same as remote)</div>';
+        } else {
+            baseColumnContent = `<div class="diff-container">${baseDiffHtml}</div>`;
+        }
 
         if (isThreeWay) {
             // Three-way diff view
@@ -632,17 +800,17 @@ export class UnifiedConflictPanel {
     <div class="conflict-body three-way">
         <div class="conflict-side conflict-base">
             <div class="side-label base-label">📄 Base (Ancestor)</div>
-            ${hasBase ? `<pre>${escapeHtml(baseSource)}</pre>` : '<div class="empty-content">(not present)</div>'}
-            ${baseOutputs ? `<div class="output-section"><div class="output-label">Outputs:</div><pre>${escapeHtml(baseOutputs)}</pre></div>` : ''}
+            ${baseColumnContent}
+            ${baseOutputs && !localSameAsBase && !remoteSameAsBase ? `<div class="output-section"><div class="output-label">Outputs:</div><pre>${escapeHtml(baseOutputs)}</pre></div>` : ''}
         </div>
         <div class="conflict-side conflict-local">
             <div class="side-label local-label">⬅ Local (${escapeHtml(fullConflict.localBranch || 'Current')})</div>
-            ${hasLocal ? `<pre>${escapeHtml(localSource)}</pre>` : '<div class="empty-content">(not present)</div>'}
+            ${hasLocal ? `<div class="diff-container">${localDiffHtml}</div>` : '<div class="empty-content">(not present)</div>'}
             ${localOutputs ? `<div class="output-section"><div class="output-label">Outputs:</div><pre>${escapeHtml(localOutputs)}</pre></div>` : ''}
         </div>
         <div class="conflict-side conflict-remote">
             <div class="side-label remote-label">➡ Remote (${escapeHtml(fullConflict.remoteBranch || 'Incoming')})</div>
-            ${hasRemote ? `<pre>${escapeHtml(remoteSource)}</pre>` : '<div class="empty-content">(not present)</div>'}
+            ${hasRemote ? `<div class="diff-container">${remoteDiffHtml}</div>` : '<div class="empty-content">(not present)</div>'}
             ${remoteOutputs ? `<div class="output-section"><div class="output-label">Outputs:</div><pre>${escapeHtml(remoteOutputs)}</pre></div>` : ''}
         </div>
     </div>
@@ -663,12 +831,12 @@ export class UnifiedConflictPanel {
     <div class="conflict-body">
         <div class="conflict-side conflict-local">
             <div class="side-label local-label">⬅ Local (${escapeHtml(fullConflict.localBranch || 'Current')})</div>
-            ${hasLocal ? `<pre>${escapeHtml(localSource)}</pre>` : '<div class="empty-content">(not present)</div>'}
+            ${hasLocal ? `<div class="diff-container">${localDiffHtml}</div>` : '<div class="empty-content">(not present)</div>'}
             ${localOutputs ? `<div class="output-section"><div class="output-label">Outputs:</div><pre>${escapeHtml(localOutputs)}</pre></div>` : ''}
         </div>
         <div class="conflict-side conflict-remote">
             <div class="side-label remote-label">➡ Remote (${escapeHtml(fullConflict.remoteBranch || 'Incoming')})</div>
-            ${hasRemote ? `<pre>${escapeHtml(remoteSource)}</pre>` : '<div class="empty-content">(not present)</div>'}
+            ${hasRemote ? `<div class="diff-container">${remoteDiffHtml}</div>` : '<div class="empty-content">(not present)</div>'}
             ${remoteOutputs ? `<div class="output-section"><div class="output-label">Outputs:</div><pre>${escapeHtml(remoteOutputs)}</pre></div>` : ''}
         </div>
     </div>
@@ -677,6 +845,69 @@ export class UnifiedConflictPanel {
         ${hasRemote ? `<button class="btn-remote" onclick="selectResolution(${index}, 'remote')">Accept Remote</button>` : ''}
     </div>
 </div>`;
+        }
+    }
+
+    /**
+     * Render diff content with line-by-line highlighting.
+     * Compares the source text against a reference text and highlights differences.
+     */
+    private _renderDiffContent(sourceText: string, compareText: string, side: 'base' | 'local' | 'remote'): string {
+        if (!compareText || sourceText === compareText) {
+            // No comparison needed or identical - just render plain
+            return sourceText.split('\n').map(line => 
+                `<div class="diff-line diff-line-unchanged">${escapeHtml(line) || '&nbsp;'}</div>`
+            ).join('');
+        }
+
+        const diff = computeLineDiff(compareText, sourceText);
+        // We use 'right' side because we're showing the current version (sourceText is the "new" version)
+        const lines = diff.right;
+        
+        return lines.map(line => {
+            const cssClass = this._getDiffLineClass(line, side);
+            
+            if (line.content === '' && line.type === 'unchanged') {
+                return `<div class="diff-line diff-line-empty">&nbsp;</div>`;
+            }
+            
+            if (line.inlineChanges && line.inlineChanges.length > 0) {
+                const content = line.inlineChanges.map(change => {
+                    const cls = this._getInlineChangeClass(change.type, side);
+                    return `<span class="${cls}">${escapeHtml(change.text)}</span>`;
+                }).join('');
+                return `<div class="diff-line ${cssClass}">${content || '&nbsp;'}</div>`;
+            }
+            
+            return `<div class="diff-line ${cssClass}">${escapeHtml(line.content) || '&nbsp;'}</div>`;
+        }).join('');
+    }
+
+    private _getDiffLineClass(line: DiffLine, side: 'base' | 'local' | 'remote'): string {
+        switch (line.type) {
+            case 'unchanged':
+                return 'diff-line-unchanged';
+            case 'added':
+                return 'diff-line-added';
+            case 'removed':
+                return 'diff-line-removed';
+            case 'modified':
+                return side === 'local' || side === 'remote' ? 'diff-line-modified-new' : 'diff-line-modified-old';
+            default:
+                return '';
+        }
+    }
+
+    private _getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'base' | 'local' | 'remote'): string {
+        switch (type) {
+            case 'unchanged':
+                return 'diff-inline-unchanged';
+            case 'added':
+                return 'diff-inline-added';
+            case 'removed':
+                return 'diff-inline-removed';
+            default:
+                return '';
         }
     }
 

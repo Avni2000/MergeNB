@@ -59,6 +59,12 @@ export interface CellConflict {
     localContent: string;
     remoteContent: string;
     marker: ConflictMarker;
+    /** Cell type for display purposes */
+    cellType?: 'code' | 'markdown' | 'raw';
+    /** Index of the local cell (for cell-level conflicts) */
+    localCellIndex?: number;
+    /** Index of the remote cell (for cell-level conflicts) */
+    remoteCellIndex?: number;
 }
 
 export interface NotebookConflict {

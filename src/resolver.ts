@@ -1,9 +1,10 @@
 import * as vscode from 'vscode';
-import { analyzeNotebookConflicts, hasConflictMarkers, resolveAllConflicts, detectSemanticConflicts } from './conflictDetector';
+import { analyzeNotebookConflicts, hasConflictMarkers, resolveAllConflicts, detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
 import { parseNotebook, serializeNotebook, renumberExecutionCounts } from './notebookParser';
 import { UnifiedConflictPanel, UnifiedConflict, UnifiedResolution } from './webview/ConflictResolverPanel';
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
 import * as gitIntegration from './gitIntegration';
+import { getSettings } from './settings';
 
 /**
  * Represents a notebook with any type of conflict (textual or semantic)
@@ -155,6 +156,7 @@ export class NotebookConflictResolver {
 
     /**
      * Resolve semantic conflicts (Git UU status without textual markers).
+     * Auto-resolves execution count and kernel version differences based on settings.
      */
     async resolveSemanticConflicts(uri: vscode.Uri): Promise<void> {
         const semanticConflict = await detectSemanticConflicts(uri.fsPath);
@@ -169,17 +171,57 @@ export class NotebookConflictResolver {
             return;
         }
 
+        // Apply auto-resolutions based on settings
+        const settings = getSettings();
+        const autoResolveResult = applyAutoResolutions(semanticConflict, settings);
+
+        // Show what was auto-resolved
+        if (autoResolveResult.autoResolvedCount > 0) {
+            const autoResolved = autoResolveResult.autoResolvedDescriptions.join(', ');
+            vscode.window.showInformationMessage(`Auto-resolved: ${autoResolved}`);
+        }
+
+        // If all conflicts were auto-resolved, save and return
+        if (autoResolveResult.remainingConflicts.length === 0) {
+            // Ask user if they want to renumber execution counts
+            const renumber = await vscode.window.showQuickPick(
+                ['Yes', 'No'],
+                {
+                    placeHolder: 'Renumber execution counts sequentially?',
+                    title: 'Execution Counts'
+                }
+            );
+
+            let finalNotebook = autoResolveResult.resolvedNotebook;
+            if (renumber === 'Yes') {
+                finalNotebook = renumberExecutionCounts(finalNotebook);
+            }
+
+            await this.saveResolvedNotebook(uri, finalNotebook);
+            vscode.window.showInformationMessage(
+                `All ${semanticConflict.semanticConflicts.length} conflicts were auto-resolved.`
+            );
+            return;
+        }
+
+        // Create a modified semantic conflict with only remaining conflicts
+        const filteredSemanticConflict: NotebookSemanticConflict = {
+            ...semanticConflict,
+            semanticConflicts: autoResolveResult.remainingConflicts
+        };
+
         const unifiedConflict: UnifiedConflict = {
             filePath: uri.fsPath,
             type: 'semantic',
-            semanticConflict: semanticConflict
+            semanticConflict: filteredSemanticConflict,
+            autoResolveResult: autoResolveResult
         };
 
         UnifiedConflictPanel.createOrShow(
             this.extensionUri,
             unifiedConflict,
             async (resolution) => {
-                await this.applySemanticResolutions(uri, semanticConflict, resolution);
+                await this.applySemanticResolutions(uri, filteredSemanticConflict, resolution, autoResolveResult);
             }
         );
     }
@@ -257,7 +299,8 @@ export class NotebookConflictResolver {
     private async applySemanticResolutions(
         uri: vscode.Uri,
         semanticConflict: NotebookSemanticConflict,
-        resolution: UnifiedResolution
+        resolution: UnifiedResolution,
+        autoResolveResult?: AutoResolveResult
     ): Promise<void> {
         if (resolution.type !== 'semantic') {
             return;
@@ -265,6 +308,26 @@ export class NotebookConflictResolver {
 
         const resolutions = resolution.semanticResolutions;
         if (!resolutions || resolutions.size === 0) {
+            // If no manual resolutions but we have auto-resolutions, use those
+            if (autoResolveResult) {
+                let resolvedNotebook = autoResolveResult.resolvedNotebook;
+                
+                const renumber = await vscode.window.showQuickPick(
+                    ['Yes', 'No'],
+                    {
+                        placeHolder: 'Renumber execution counts sequentially?',
+                        title: 'Execution Counts'
+                    }
+                );
+
+                if (renumber === 'Yes') {
+                    resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
+                }
+
+                await this.saveResolvedNotebook(uri, resolvedNotebook);
+                vscode.window.showInformationMessage(`Resolved conflicts in ${uri.fsPath}`);
+                return;
+            }
             return;
         }
 
@@ -277,10 +340,12 @@ export class NotebookConflictResolver {
             return;
         }
 
-        // Start with local notebook as base for resolution
-        let resolvedNotebook: Notebook = localNotebook 
-            ? JSON.parse(JSON.stringify(localNotebook)) 
-            : JSON.parse(JSON.stringify(remoteNotebook!));
+        // Start with auto-resolved notebook if available, otherwise local
+        let resolvedNotebook: Notebook = autoResolveResult 
+            ? JSON.parse(JSON.stringify(autoResolveResult.resolvedNotebook))
+            : (localNotebook 
+                ? JSON.parse(JSON.stringify(localNotebook)) 
+                : JSON.parse(JSON.stringify(remoteNotebook!)));
 
         // Track which cells we've processed
         const cellsToRemove = new Set<number>();

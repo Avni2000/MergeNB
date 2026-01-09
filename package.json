@@ -52,7 +52,27 @@
         "mac": "cmd+shift+m",
         "when": "resourceExtname == .ipynb"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "MergeNB",
+      "properties": {
+        "mergeNB.autoResolve.executionCount": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically resolve execution count differences by setting to null"
+        },
+        "mergeNB.autoResolve.kernelVersion": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically resolve kernel version differences by using local version"
+        },
+        "mergeNB.autoResolve.stripOutputs": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically strip outputs from cells with conflicts"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
