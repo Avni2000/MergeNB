@@ -91,30 +91,36 @@ export class NotebookConflictResolver {
 
     /**
      * Find all notebook files with any type of conflict in the workspace.
-     * Checks both textual conflicts and Git unmerged status.
+     * Fast path: Only queries Git for unmerged files, no file scanning.
      */
     async findNotebooksWithConflicts(): Promise<ConflictedNotebook[]> {
         const withConflicts: ConflictedNotebook[] = [];
         
-        // Get all notebooks in workspace
-        const notebooks = await vscode.workspace.findFiles('**/*.ipynb', '**/node_modules/**');
-        
-        // Get unmerged files from Git
+        // Fast path: Only get unmerged files from Git status
         const unmergedFiles = await gitIntegration.getUnmergedFiles();
-        const unmergedPaths = new Set(unmergedFiles.map(f => f.path));
         
-        for (const uri of notebooks) {
-            const conflict = await this.hasAnyConflicts(uri);
-            if (conflict) {
-                withConflicts.push(conflict);
-            } else if (unmergedPaths.has(uri.fsPath)) {
-                // File is unmerged according to Git but might not have parsed yet
-                withConflicts.push({
-                    uri,
-                    hasTextualConflicts: false,
-                    hasSemanticConflicts: true
-                });
+        for (const file of unmergedFiles) {
+            // Only process .ipynb files
+            if (!file.path.endsWith('.ipynb')) {
+                continue;
             }
+            
+            const uri = vscode.Uri.file(file.path);
+            
+            // Quick check if file has textual markers
+            let hasTextual = false;
+            try {
+                const content = await this.readFile(uri);
+                hasTextual = hasConflictMarkers(content);
+            } catch {
+                // File might not be readable, treat as semantic conflict
+            }
+            
+            withConflicts.push({
+                uri,
+                hasTextualConflicts: hasTextual,
+                hasSemanticConflicts: !hasTextual
+            });
         }
         
         return withConflicts;

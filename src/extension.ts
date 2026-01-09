@@ -7,6 +7,10 @@
  * 2. If none active, scans workspace for all conflicted notebooks
  * 3. Presents a quick-pick menu to select which notebook to resolve
  * 4. Opens the conflict resolution webview panel
+ * 
+ * Also provides:
+ * - Status bar button for quick access when viewing conflicted files
+ * - File decorations for notebooks with conflicts
  */
 
 import * as vscode from 'vscode';
@@ -15,6 +19,8 @@ import { hasConflictMarkers } from './conflictDetector';
 import * as gitIntegration from './gitIntegration';
 
 let resolver: NotebookConflictResolver;
+let statusBarItem: vscode.StatusBarItem;
+let currentFileHasConflicts = false;
 
 /**
  * Get the file URI for the currently active notebook.
@@ -36,10 +42,51 @@ function getActiveNotebookFileUri(): vscode.Uri | undefined {
 	return undefined;
 }
 
+/**
+ * Update the status bar based on the current active file.
+ */
+async function updateStatusBar(): Promise<void> {
+	const activeUri = getActiveNotebookFileUri();
+	
+	if (!activeUri) {
+		statusBarItem.hide();
+		currentFileHasConflicts = false;
+		return;
+	}
+
+	// Quick check: is this file unmerged according to Git?
+	const isUnmerged = await gitIntegration.isUnmergedFile(activeUri.fsPath);
+	
+	if (isUnmerged) {
+		statusBarItem.text = '$(git-merge) MergeNB: Resolve Conflicts';
+		statusBarItem.tooltip = 'Click to resolve merge conflicts in this notebook';
+		statusBarItem.command = 'merge-nb.findConflicts';
+		statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+		statusBarItem.show();
+		currentFileHasConflicts = true;
+	} else {
+		statusBarItem.hide();
+		currentFileHasConflicts = false;
+	}
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	console.log('MergeNB extension is now active');
 
 	resolver = new NotebookConflictResolver(context.extensionUri);
+
+	// Create status bar item (right side, high priority to be visible)
+	statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+	context.subscriptions.push(statusBarItem);
+
+	// Update status bar when active editor changes
+	context.subscriptions.push(
+		vscode.window.onDidChangeActiveTextEditor(() => updateStatusBar()),
+		vscode.window.onDidChangeActiveNotebookEditor(() => updateStatusBar())
+	);
+
+	// Initial status bar update
+	updateStatusBar();
 
 	// Command: Find all notebooks with conflicts (both textual and semantic)
 	context.subscriptions.push(
@@ -47,17 +94,23 @@ export function activate(context: vscode.ExtensionContext) {
 			// First check if current notebook has conflicts
 			const activeUri = getActiveNotebookFileUri();
 			if (activeUri) {
-				const conflict = await resolver.hasAnyConflicts(activeUri);
-				if (conflict) {
+				const isUnmerged = await gitIntegration.isUnmergedFile(activeUri.fsPath);
+				if (isUnmerged) {
 					await resolver.resolveConflicts(activeUri);
 					return;
 				}
 			}
 
-			// Find all notebooks with conflicts
+			// Find all notebooks with conflicts (fast - only queries git status)
 			const files = await resolver.findNotebooksWithConflicts();
 			if (files.length === 0) {
 				vscode.window.showInformationMessage('No notebooks with merge conflicts found in workspace.');
+				return;
+			}
+			
+			// If only one conflicted notebook, open it directly
+			if (files.length === 1) {
+				await resolver.resolveConflicts(files[0].uri);
 				return;
 			}
 			
@@ -92,7 +145,7 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	// Register file decoration for notebooks with conflicts
+	// Register file decoration for notebooks with conflicts (simplified - just check git status)
 	context.subscriptions.push(
 		vscode.window.registerFileDecorationProvider({
 			provideFileDecoration: async (uri) => {
@@ -100,23 +153,12 @@ export function activate(context: vscode.ExtensionContext) {
 					return undefined;
 				}
 				try {
-					// Check for textual conflicts first
-					const data = await vscode.workspace.fs.readFile(uri);
-					const content = new TextDecoder().decode(data);
-					if (hasConflictMarkers(content)) {
-						return {
-							badge: '⚠',
-							tooltip: 'Notebook has merge conflicts (textual markers)',
-							color: new vscode.ThemeColor('gitDecoration.conflictingResourceForeground')
-						};
-					}
-
-					// Check for semantic conflicts (Git UU status without markers)
+					// Fast check: is this file unmerged according to Git?
 					const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
 					if (isUnmerged) {
 						return {
-							badge: '◐',
-							tooltip: 'Notebook has semantic conflicts (execution state differs)',
+							badge: '⚠',
+							tooltip: 'Notebook has merge conflicts',
 							color: new vscode.ThemeColor('gitDecoration.conflictingResourceForeground')
 						};
 					}
