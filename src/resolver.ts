@@ -379,6 +379,7 @@ export class NotebookConflictResolver {
             if (!conflict) continue;
 
             const choice = res.choice;
+            const customContent = res.customContent;
 
             // Get the cell to use based on choice
             let cellToUse: NotebookCell | undefined;
@@ -395,28 +396,65 @@ export class NotebookConflictResolver {
                     break;
             }
 
+            // If custom content was provided (user edited the result), apply it to the cell
+            if (customContent !== undefined && cellToUse) {
+                const editedCell: NotebookCell = JSON.parse(JSON.stringify(cellToUse));
+                // Convert source to the same format (string or string[]) as original
+                if (Array.isArray(editedCell.source)) {
+                    // Split by newlines, preserving them at the end of each line
+                    if (customContent === '') {
+                        editedCell.source = [];
+                    } else {
+                        editedCell.source = customContent.split(/(?<=\n)/);
+                    }
+                } else {
+                    editedCell.source = customContent;
+                }
+                cellToUse = editedCell;
+            }
+
             // Apply the resolution based on conflict type
             if (conflict.type === 'cell-modified' || conflict.type === 'outputs-changed' || 
                 conflict.type === 'execution-count-changed' || conflict.type === 'metadata-changed') {
                 // Replace the cell at the local index with the chosen version
-                if (cellToUse && conflict.localCellIndex !== undefined) {
-                    resolvedNotebook.cells[conflict.localCellIndex] = JSON.parse(JSON.stringify(cellToUse));
+                if (conflict.localCellIndex !== undefined) {
+                    if (cellToUse) {
+                        // Replace with the chosen cell
+                        resolvedNotebook.cells[conflict.localCellIndex] = JSON.parse(JSON.stringify(cellToUse));
+                    } else {
+                        // Chosen side has no cell - mark for deletion
+                        cellsToRemove.add(conflict.localCellIndex);
+                    }
                 }
             } else if (conflict.type === 'cell-added') {
-                // For added cells, we might need to insert or skip
-                if (choice === 'remote' && conflict.remoteContent && !conflict.localContent) {
-                    // Add remote cell that doesn't exist locally
+                // For added cells, handle all three choices
+                if (choice === 'local' && conflict.localContent) {
+                    // Keep local addition - already in resolvedNotebook
+                    // No action needed
+                } else if (choice === 'remote' && conflict.remoteContent) {
+                    // Add remote cell
                     const insertIndex = conflict.remoteCellIndex ?? resolvedNotebook.cells.length;
                     resolvedNotebook.cells.splice(insertIndex, 0, JSON.parse(JSON.stringify(conflict.remoteContent)));
+                } else if (choice === 'base') {
+                    // Use base (which doesn't have this cell) - remove if exists locally
+                    if (conflict.localCellIndex !== undefined) {
+                        cellsToRemove.add(conflict.localCellIndex);
+                    }
                 }
             } else if (conflict.type === 'cell-deleted') {
-                if (choice === 'remote' && conflict.localCellIndex !== undefined) {
+                if (choice === 'local' && conflict.localContent) {
+                    // Keep local version (reject deletion) - already in resolvedNotebook
+                    // No action needed
+                } else if (choice === 'remote' && conflict.localCellIndex !== undefined) {
                     // Accept remote deletion - mark for removal
                     cellsToRemove.add(conflict.localCellIndex);
                 } else if (choice === 'base' && conflict.baseContent) {
                     // Restore base cell
                     const insertIndex = conflict.localCellIndex ?? conflict.remoteCellIndex ?? resolvedNotebook.cells.length;
                     resolvedNotebook.cells.splice(insertIndex, 0, JSON.parse(JSON.stringify(conflict.baseContent)));
+                } else if (choice === 'base' && !conflict.baseContent && conflict.localCellIndex !== undefined) {
+                    // Base has no cell either - delete it
+                    cellsToRemove.add(conflict.localCellIndex);
                 }
             }
         }

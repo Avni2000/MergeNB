@@ -45,7 +45,7 @@ export interface UnifiedResolution {
     textualResolutions?: Map<number, { choice: ResolutionChoice; customContent?: string }>;
     // For semantic conflicts
     semanticChoice?: 'local' | 'remote';
-    semanticResolutions?: Map<number, { choice: 'base' | 'local' | 'remote' }>;
+    semanticResolutions?: Map<number, { choice: 'base' | 'local' | 'remote'; customContent?: string }>;
 }
 
 /**
@@ -160,9 +160,12 @@ export class UnifiedConflictPanel {
                 });
             }
         } else if (this._conflict?.type === 'semantic') {
-            const semanticResolutionMap = new Map<number, { choice: 'base' | 'local' | 'remote' }>();
+            const semanticResolutionMap = new Map<number, { choice: 'base' | 'local' | 'remote'; customContent?: string }>();
             for (const r of (message.resolutions || [])) {
-                semanticResolutionMap.set(r.index, { choice: r.choice as 'base' | 'local' | 'remote' });
+                semanticResolutionMap.set(r.index, { 
+                    choice: r.choice as 'base' | 'local' | 'remote',
+                    customContent: r.customContent 
+                });
             }
             if (this._onResolutionComplete) {
                 this._onResolutionComplete({
@@ -218,6 +221,13 @@ export class UnifiedConflictPanel {
             conflictMap.set(key, { conflict: c, index: i });
         });
 
+        // Debug: Log notebook version info
+        console.log('[MergeNB] Building merge rows');
+        console.log('[MergeNB] base cells:', semanticConflict.base?.cells?.length);
+        console.log('[MergeNB] local cells:', semanticConflict.local?.cells?.length);
+        console.log('[MergeNB] remote cells:', semanticConflict.remote?.cells?.length);
+        console.log('[MergeNB] mappings count:', semanticConflict.cellMappings.length);
+
         // Use cell mappings to build rows
         for (const mapping of semanticConflict.cellMappings) {
             const baseCell = mapping.baseIndex !== undefined && semanticConflict.base 
@@ -226,6 +236,22 @@ export class UnifiedConflictPanel {
                 ? semanticConflict.local.cells[mapping.localIndex] : undefined;
             const remoteCell = mapping.remoteIndex !== undefined && semanticConflict.remote 
                 ? semanticConflict.remote.cells[mapping.remoteIndex] : undefined;
+            
+            // Debug: Log Lego cell specifically
+            const baseSource = baseCell ? (Array.isArray(baseCell.source) ? baseCell.source.join('') : baseCell.source) : '';
+            const localSource = localCell ? (Array.isArray(localCell.source) ? localCell.source.join('') : localCell.source) : '';
+            const remoteSource = remoteCell ? (Array.isArray(remoteCell.source) ? remoteCell.source.join('') : remoteCell.source) : '';
+            
+            if (baseSource.includes('2.3 The Lego Analogy')) {
+                console.log('[MergeNB] LEGO CELL FOUND:');
+                console.log('[MergeNB] - mapping:', JSON.stringify({baseIndex: mapping.baseIndex, localIndex: mapping.localIndex, remoteIndex: mapping.remoteIndex}));
+                console.log('[MergeNB] - base has "Key insight":', baseSource.includes('Key insight'));
+                console.log('[MergeNB] - local has "Key insight":', localSource.includes('Key insight'));
+                console.log('[MergeNB] - remote has "Key insight":', remoteSource.includes('Key insight'));
+                console.log('[MergeNB] - base === local:', baseSource === localSource);
+                console.log('[MergeNB] - base === remote:', baseSource === remoteSource);
+                console.log('[MergeNB] - local === remote:', localSource === remoteSource);
+            }
 
             const key = `${mapping.baseIndex ?? 'x'}-${mapping.localIndex ?? 'x'}-${mapping.remoteIndex ?? 'x'}`;
             const conflictInfo = conflictMap.get(key);
@@ -291,8 +317,38 @@ export class UnifiedConflictPanel {
         const conflictClass = isConflict ? 'conflict-row' : '';
         const conflictAttr = row.conflictIndex !== undefined ? `data-conflict="${row.conflictIndex}"` : '';
         
+        // Encode cell sources for JavaScript access (for editing)
+        const baseSource = row.baseCell ? 
+            (Array.isArray(row.baseCell.source) ? row.baseCell.source.join('') : row.baseCell.source) : '';
+        const localSource = row.localCell ? 
+            (Array.isArray(row.localCell.source) ? row.localCell.source.join('') : row.localCell.source) : '';
+        const remoteSource = row.remoteCell ? 
+            (Array.isArray(row.remoteCell.source) ? row.remoteCell.source.join('') : row.remoteCell.source) : '';
+        
+        // Store cell metadata for JS access
+        const cellDataAttrs = isConflict ? `
+            data-base-source="${encodeURIComponent(baseSource)}"
+            data-local-source="${encodeURIComponent(localSource)}"
+            data-remote-source="${encodeURIComponent(remoteSource)}"
+            data-cell-type="${row.localCell?.cell_type || row.remoteCell?.cell_type || row.baseCell?.cell_type || 'code'}"
+            data-has-base="${row.baseCell ? 'true' : 'false'}"
+            data-has-local="${row.localCell ? 'true' : 'false'}"
+            data-has-remote="${row.remoteCell ? 'true' : 'false'}"
+        ` : '';
+        
+        // Encode outputs for editing view
+        const baseOutputs = row.baseCell?.outputs ? encodeURIComponent(JSON.stringify(row.baseCell.outputs)) : '';
+        const localOutputs = row.localCell?.outputs ? encodeURIComponent(JSON.stringify(row.localCell.outputs)) : '';
+        const remoteOutputs = row.remoteCell?.outputs ? encodeURIComponent(JSON.stringify(row.remoteCell.outputs)) : '';
+        
+        const outputDataAttrs = isConflict ? `
+            data-base-outputs="${baseOutputs}"
+            data-local-outputs="${localOutputs}"
+            data-remote-outputs="${remoteOutputs}"
+        ` : '';
+        
         return `
-<div class="merge-row ${conflictClass}" ${conflictAttr}>
+<div class="merge-row ${conflictClass}" ${conflictAttr} ${cellDataAttrs} ${outputDataAttrs}>
     <div class="cell-column base-column">
         ${this._renderCellContent(row.baseCell, row.baseCellIndex, 'base', row, conflict)}
     </div>
@@ -608,9 +664,9 @@ export class UnifiedConflictPanel {
         
         return `
 <div class="resolution-bar" data-conflict="${conflictIndex}">
-    ${hasBase ? `<button class="btn-resolve btn-base" onclick="selectResolution(${conflictIndex}, 'base')">Use Base</button>` : ''}
-    ${hasLocal ? `<button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Local</button>` : ''}
-    ${hasRemote ? `<button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Remote</button>` : ''}
+    <button class="btn-resolve btn-base" onclick="selectResolution(${conflictIndex}, 'base')">Use Base</button>
+    <button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Local</button>
+    <button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Remote</button>
 </div>`;
     }
 
@@ -650,8 +706,8 @@ export class UnifiedConflictPanel {
         </div>` : `<div class="cell-placeholder"><span class="placeholder-text">(not present)</span></div>`}
     </div>
     <div class="resolution-bar" data-conflict="${index}">
-        ${hasLocal ? `<button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Local</button>` : ''}
-        ${hasRemote ? `<button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Remote</button>` : ''}
+        <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Local</button>
+        <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Remote</button>
         <button class="btn-resolve btn-both" onclick="selectResolution(${index}, 'both')">Use Both</button>
     </div>
 </div>`;
@@ -1205,6 +1261,143 @@ export class UnifiedConflictPanel {
         .metadata-conflict .cell-placeholder {
             font-weight: 500;
         }
+        
+        /* Editor view for resolved conflicts */
+        .merge-row.resolved-editing {
+            background: rgba(40, 167, 69, 0.06);
+        }
+        
+        .merge-row.resolved-editing .cell-column {
+            background: transparent;
+        }
+        
+        .result-editor-container {
+            grid-column: 1 / -1;
+            padding: 16px;
+            border-top: 2px solid var(--vscode-focusBorder);
+            background: var(--vscode-editor-background);
+        }
+        
+        .result-editor-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .result-editor-header .badge {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .result-editor-header .badge.base {
+            background: var(--base-accent);
+            color: white;
+        }
+        
+        .result-editor-header .badge.local {
+            background: var(--local-accent);
+            color: white;
+        }
+        
+        .result-editor-header .badge.remote {
+            background: var(--remote-accent);
+            color: white;
+        }
+        
+        .result-editor-header .edit-hint {
+            color: var(--vscode-descriptionForeground);
+            font-size: 12px;
+            font-style: italic;
+        }
+        
+        .result-editor-wrapper {
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .result-editor {
+            width: 100%;
+            min-height: 120px;
+            padding: 12px;
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 13px;
+            line-height: 1.5;
+            background: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: none;
+            resize: vertical;
+            outline: none;
+        }
+        
+        .result-editor:focus {
+            box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+        }
+        
+        .result-outputs {
+            padding: 12px;
+            background: var(--vscode-textCodeBlock-background);
+            border-top: 1px dashed var(--border-color);
+        }
+        
+        .result-outputs-label {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .result-outputs .output-stream,
+        .result-outputs .output-text {
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 12px;
+            padding: 8px;
+            background: var(--vscode-textCodeBlock-background);
+            border-radius: 4px;
+            margin: 4px 0;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        /* Hide original columns when in editing mode */
+        .merge-row.resolved-editing .cell-column {
+            display: none;
+        }
+        
+        .merge-row.resolved-editing .resolution-bar {
+            position: relative;
+            background: transparent;
+            padding: 12px 16px;
+            justify-content: flex-start;
+        }
+        
+        /* Markdown preview in editor */
+        .result-markdown-preview {
+            padding: 12px;
+            background: var(--vscode-editor-background);
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .preview-toggle {
+            padding: 4px 8px;
+            font-size: 11px;
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            margin-left: auto;
+        }
+        
+        .preview-toggle:hover {
+            opacity: 0.9;
+        }
     </style>
 </head>
 <body>
@@ -1298,8 +1491,76 @@ export class UnifiedConflictPanel {
         // Initialize resize handles after DOM loads
         initResizeHandles();
         
+        // Render outputs from JSON data
+        function renderOutputsFromData(outputsJson) {
+            if (!outputsJson) return '';
+            
+            try {
+                const outputs = JSON.parse(decodeURIComponent(outputsJson));
+                if (!outputs || outputs.length === 0) return '';
+                
+                let html = '<div class="result-outputs"><div class="result-outputs-label">Output (read-only)</div>';
+                
+                for (const output of outputs) {
+                    if (output.output_type === 'stream') {
+                        const text = Array.isArray(output.text) ? output.text.join('') : (output.text || '');
+                        const streamClass = output.name === 'stderr' ? 'stderr' : '';
+                        html += \`<div class="output-stream \${streamClass}">\${escapeHtmlInJs(text)}</div>\`;
+                    } else if (output.output_type === 'execute_result' || output.output_type === 'display_data') {
+                        if (output.data) {
+                            if (output.data['image/png']) {
+                                html += \`<img class="output-image" src="data:image/png;base64,\${output.data['image/png']}" />\`;
+                            } else if (output.data['text/html']) {
+                                const textHtml = Array.isArray(output.data['text/html']) 
+                                    ? output.data['text/html'].join('') 
+                                    : output.data['text/html'];
+                                html += \`<div class="output-html">\${textHtml}</div>\`;
+                            } else if (output.data['text/plain']) {
+                                const text = Array.isArray(output.data['text/plain']) 
+                                    ? output.data['text/plain'].join('') 
+                                    : output.data['text/plain'];
+                                html += \`<div class="output-text">\${escapeHtmlInJs(text)}</div>\`;
+                            }
+                        }
+                    } else if (output.output_type === 'error') {
+                        const traceback = output.traceback ? output.traceback.join('\\n') : \`\${output.ename}: \${output.evalue}\`;
+                        html += \`<div class="output-error">\${escapeHtmlInJs(traceback)}</div>\`;
+                    }
+                }
+                
+                html += '</div>';
+                return html;
+            } catch (e) {
+                console.error('Error parsing outputs:', e);
+                return '';
+            }
+        }
+        
+        function escapeHtmlInJs(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
         function selectResolution(index, choice) {
-            resolutions[index] = { choice };
+            const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
+            if (!row) return;
+            
+            // Get source content based on choice
+            const sourceAttr = \`data-\${choice}-source\`;
+            const source = decodeURIComponent(row.getAttribute(sourceAttr) || '');
+            const cellType = row.getAttribute('data-cell-type') || 'code';
+            
+            // Get outputs for the chosen side
+            const outputsAttr = \`data-\${choice}-outputs\`;
+            const outputsJson = row.getAttribute(outputsAttr);
+            
+            // Store the initial choice and content
+            resolutions[index] = { 
+                choice, 
+                customContent: source,
+                originalChoice: choice
+            };
             
             // Update button states
             document.querySelectorAll(\`[data-conflict="\${index}"] .btn-resolve\`).forEach(btn => {
@@ -1310,10 +1571,52 @@ export class UnifiedConflictPanel {
                 selectedBtn.classList.add('selected');
             }
             
-            // Mark row as resolved
-            const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
-            if (row) {
-                row.style.background = 'rgba(40, 167, 69, 0.08)';
+            // Check if editor already exists
+            let editorContainer = row.querySelector('.result-editor-container');
+            
+            if (!editorContainer) {
+                // Create the editor container
+                editorContainer = document.createElement('div');
+                editorContainer.className = 'result-editor-container';
+                row.appendChild(editorContainer);
+                row.classList.add('resolved-editing');
+            }
+            
+            // Build editor HTML
+            const outputsHtml = renderOutputsFromData(outputsJson);
+            const editorId = \`editor-\${index}\`;
+            
+            editorContainer.innerHTML = \`
+                <div class="result-editor-header">
+                    <span class="badge \${choice}">Using \${choice.toUpperCase()}</span>
+                    <span class="edit-hint">Edit the result below (source only, outputs are preserved)</span>
+                </div>
+                <div class="result-editor-wrapper">
+                    <textarea 
+                        id="\${editorId}" 
+                        class="result-editor" 
+                        data-conflict="\${index}"
+                        spellcheck="false"
+                    >\${escapeHtmlInJs(source)}</textarea>
+                </div>
+                \${outputsHtml}
+            \`;
+            
+            // Set up editor change listener
+            const editor = document.getElementById(editorId);
+            if (editor) {
+                // Auto-resize textarea
+                editor.style.height = 'auto';
+                editor.style.height = Math.max(120, editor.scrollHeight) + 'px';
+                
+                editor.addEventListener('input', (e) => {
+                    // Update custom content
+                    resolutions[index].customContent = e.target.value;
+                    
+                    // Auto-resize
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.max(120, e.target.scrollHeight) + 'px';
+                });
             }
         }
 
@@ -1325,14 +1628,18 @@ export class UnifiedConflictPanel {
                 }
                 for (let i = 0; i < totalConflicts; i++) {
                     if (!resolutions[i]) {
-                        resolutions[i] = { choice: 'local' };
+                        // Default to local, get the source
+                        const row = document.querySelector(\`.merge-row[data-conflict="\${i}"]\`);
+                        const localSource = row ? decodeURIComponent(row.getAttribute('data-local-source') || '') : '';
+                        resolutions[i] = { choice: 'local', customContent: localSource };
                     }
                 }
             }
             
             const resolutionArray = Object.entries(resolutions).map(([index, data]) => ({
                 index: parseInt(index),
-                choice: data.choice
+                choice: data.choice,
+                customContent: data.customContent
             }));
             
             vscode.postMessage({ 
@@ -1348,7 +1655,8 @@ export class UnifiedConflictPanel {
         
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            // Only trigger save if not focused on textarea
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.tagName !== 'TEXTAREA') {
                 applyResolutions();
             } else if (e.key === 'Escape') {
                 cancel();

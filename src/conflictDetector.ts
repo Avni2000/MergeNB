@@ -611,6 +611,15 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
 
         const { base, local, remote } = versions;
 
+        // Debug: Check if we're getting different versions
+        console.log('[MergeNB] detectSemanticConflicts for:', filePath);
+        console.log('[MergeNB] base length:', base?.length ?? 0);
+        console.log('[MergeNB] local length:', local?.length ?? 0);
+        console.log('[MergeNB] remote length:', remote?.length ?? 0);
+        console.log('[MergeNB] base === local:', base === local);
+        console.log('[MergeNB] base === remote:', base === remote);
+        console.log('[MergeNB] local === remote:', local === remote);
+
         // Parse each version as a notebook
         let baseNotebook: Notebook | undefined;
         let localNotebook: Notebook | undefined;
@@ -632,6 +641,33 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
             if (remote) remoteNotebook = parseNotebook(remote);
         } catch (error) {
             console.warn('Failed to parse remote notebook:', error);
+        }
+
+        // Debug: Check parsed notebooks
+        if (baseNotebook && localNotebook && remoteNotebook) {
+            const baseLegoCell = baseNotebook.cells.find(c => {
+                const src = Array.isArray(c.source) ? c.source.join('') : c.source;
+                return src.includes('2.3 The Lego Analogy');
+            });
+            const localLegoCell = localNotebook.cells.find(c => {
+                const src = Array.isArray(c.source) ? c.source.join('') : c.source;
+                return src.includes('2.3 The Lego Analogy');
+            });
+            const remoteLegoCell = remoteNotebook.cells.find(c => {
+                const src = Array.isArray(c.source) ? c.source.join('') : c.source;
+                return src.includes('2.3 The Lego Analogy');
+            });
+            
+            if (baseLegoCell) {
+                const baseSrc = Array.isArray(baseLegoCell.source) ? baseLegoCell.source.join('') : baseLegoCell.source;
+                const localSrc = localLegoCell ? (Array.isArray(localLegoCell.source) ? localLegoCell.source.join('') : localLegoCell.source) : '';
+                const remoteSrc = remoteLegoCell ? (Array.isArray(remoteLegoCell.source) ? remoteLegoCell.source.join('') : remoteLegoCell.source) : '';
+                
+                console.log('[MergeNB] LEGO CELL PARSED:');
+                console.log('[MergeNB] - base has "Key insight":', baseSrc.includes('Key insight'));
+                console.log('[MergeNB] - local has "Key insight":', localSrc.includes('Key insight'));
+                console.log('[MergeNB] - remote has "Key insight":', remoteSrc.includes('Key insight'));
+            }
         }
 
         // If we couldn't parse at least local and remote, can't detect semantic conflicts
