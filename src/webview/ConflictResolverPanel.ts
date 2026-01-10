@@ -1262,15 +1262,7 @@ export class UnifiedConflictPanel {
             font-weight: 500;
         }
         
-        /* Editor view for resolved conflicts */
-        .merge-row.resolved-editing {
-            background: rgba(40, 167, 69, 0.06);
-        }
-        
-        .merge-row.resolved-editing .cell-column {
-            background: transparent;
-        }
-        
+        /* Editor view below conflict row */
         .result-editor-container {
             grid-column: 1 / -1;
             padding: 16px;
@@ -1365,38 +1357,144 @@ export class UnifiedConflictPanel {
             overflow-y: auto;
         }
         
-        /* Hide original columns when in editing mode */
-        .merge-row.resolved-editing .cell-column {
+        /* Editor footer with apply button */
+        .result-editor-footer {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 12px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border-color);
+            background: var(--vscode-editor-background);
+            position: relative;
+            z-index: 1;
+        }
+        
+        .apply-single {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: inherit;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            box-shadow: none !important;
+        }
+        
+
+        .apply-single:hover {
+            opacity: 0.9;
+        }
+        
+        .clear-single {
+            padding: 6px 12px;
+            background: transparent;
+            color: var(--vscode-descriptionForeground);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .clear-single:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--vscode-foreground);
+        }
+        
+        /* Resolved state styling */
+        .merge-row.is-resolved {
+            background: rgba(40, 167, 69, 0.06);
+            position: relative;
+        }
+        
+        .merge-row.is-resolved .cell-column {
             display: none;
         }
         
-        .merge-row.resolved-editing .resolution-bar {
-            position: relative;
-            background: transparent;
-            padding: 12px 16px;
-            justify-content: flex-start;
+        .merge-row.is-resolved .resolution-bar {
+            display: none;
         }
         
-        /* Markdown preview in editor */
-        .result-markdown-preview {
-            padding: 12px;
-            background: var(--vscode-editor-background);
-            border-top: 1px solid var(--border-color);
+        .resolved-result-container {
+            grid-column: 1 / -1;
+            padding: 16px;
+            background: rgba(40, 167, 69, 0.08);
+            border-left: 4px solid #28a745;
         }
         
-        .preview-toggle {
-            padding: 4px 8px;
+        .resolved-result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        
+        .resolved-result-header .resolved-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #28a745;
+        }
+        
+        .resolved-result-header .resolved-badge .checkmark {
+            width: 18px;
+            height: 18px;
+            background: #28a745;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             font-size: 11px;
-            background: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
-            margin-left: auto;
         }
         
-        .preview-toggle:hover {
-            opacity: 0.9;
+        .resolved-result-header .btn-change {
+            padding: 4px 10px;
+            background: transparent;
+            color: var(--vscode-textLink-foreground);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .resolved-result-header .btn-change:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .resolved-result-content {
+            background: var(--vscode-editor-background);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .resolved-result-content pre {
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 13px;
+            line-height: 1.5;
+            padding: 12px;
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        .resolved-result-outputs {
+            margin-top: 8px;
+            border-top: 1px dashed var(--border-color);
+            padding-top: 8px;
+        }
+        
+        .resolved-result-outputs .outputs-label {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
     </style>
 </head>
@@ -1546,6 +1644,11 @@ export class UnifiedConflictPanel {
             const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
             if (!row) return;
             
+            // If already resolved, need to unresolve first
+            if (row.classList.contains('is-resolved')) {
+                unresolveConflict(index);
+            }
+            
             // Get source content based on choice
             const sourceAttr = \`data-\${choice}-source\`;
             const source = decodeURIComponent(row.getAttribute(sourceAttr) || '');
@@ -1555,11 +1658,13 @@ export class UnifiedConflictPanel {
             const outputsAttr = \`data-\${choice}-outputs\`;
             const outputsJson = row.getAttribute(outputsAttr);
             
-            // Store the initial choice and content
+            // Store the choice and content (not yet applied)
             resolutions[index] = { 
                 choice, 
                 customContent: source,
-                originalChoice: choice
+                originalContent: source,
+                originalChoice: choice,
+                applied: false
             };
             
             // Update button states
@@ -1579,17 +1684,16 @@ export class UnifiedConflictPanel {
                 editorContainer = document.createElement('div');
                 editorContainer.className = 'result-editor-container';
                 row.appendChild(editorContainer);
-                row.classList.add('resolved-editing');
             }
             
-            // Build editor HTML
+            // Build editor HTML with Apply button
             const outputsHtml = renderOutputsFromData(outputsJson);
             const editorId = \`editor-\${index}\`;
             
             editorContainer.innerHTML = \`
                 <div class="result-editor-header">
                     <span class="badge \${choice}">Using \${choice.toUpperCase()}</span>
-                    <span class="edit-hint">Edit the result below (source only, outputs are preserved)</span>
+                    <span class="edit-hint">Edit the result below, then click Apply to confirm</span>
                 </div>
                 <div class="result-editor-wrapper">
                     <textarea 
@@ -1600,6 +1704,10 @@ export class UnifiedConflictPanel {
                     >\${escapeHtmlInJs(source)}</textarea>
                 </div>
                 \${outputsHtml}
+                <div class="result-editor-footer">
+                    <button class="btn clear-single" onclick="clearSelection(\${index})">Cancel</button>
+                    <button class="btn apply-single" onclick="applySingleResolution(\${index})">Apply This Resolution</button>
+                </div>
             \`;
             
             // Set up editor change listener
@@ -1619,19 +1727,168 @@ export class UnifiedConflictPanel {
                 });
             }
         }
+        
+        function applySingleResolution(index) {
+            const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
+            if (!row || !resolutions[index]) return;
+            
+            // Mark as applied
+            resolutions[index].applied = true;
+            
+            // Update UI to show resolved state
+            row.classList.add('is-resolved');
+            
+            // Remove the editor container
+            const editorContainer = row.querySelector('.result-editor-container');
+            if (editorContainer) {
+                editorContainer.remove();
+            }
+            
+            // Get the resolved content and outputs
+            const resolvedContent = resolutions[index].customContent;
+            const choice = resolutions[index].choice;
+            const outputsAttr = \`data-\${choice}-outputs\`;
+            const outputsJson = row.getAttribute(outputsAttr);
+            const outputsHtml = renderOutputsFromData(outputsJson);
+            
+            // Create resolved result container showing just the final result
+            const resultContainer = document.createElement('div');
+            resultContainer.className = 'resolved-result-container';
+            
+            // Build outputs HTML for resolved view
+            let resolvedOutputsHtml = '';
+            if (outputsJson) {
+                try {
+                    const outputs = JSON.parse(decodeURIComponent(outputsJson));
+                    if (outputs && outputs.length > 0) {
+                        resolvedOutputsHtml = '<div class="resolved-result-outputs"><div class="outputs-label">Output</div>';
+                        for (const output of outputs) {
+                            if (output.output_type === 'stream') {
+                                const text = Array.isArray(output.text) ? output.text.join('') : (output.text || '');
+                                const streamClass = output.name === 'stderr' ? 'stderr' : '';
+                                resolvedOutputsHtml += \`<div class="output-stream \${streamClass}">\${escapeHtmlInJs(text)}</div>\`;
+                            } else if (output.output_type === 'execute_result' || output.output_type === 'display_data') {
+                                if (output.data) {
+                                    if (output.data['image/png']) {
+                                        resolvedOutputsHtml += \`<img class="output-image" src="data:image/png;base64,\${output.data['image/png']}" />\`;
+                                    } else if (output.data['text/html']) {
+                                        const textHtml = Array.isArray(output.data['text/html']) 
+                                            ? output.data['text/html'].join('') 
+                                            : output.data['text/html'];
+                                        resolvedOutputsHtml += \`<div class="output-html">\${textHtml}</div>\`;
+                                    } else if (output.data['text/plain']) {
+                                        const text = Array.isArray(output.data['text/plain']) 
+                                            ? output.data['text/plain'].join('') 
+                                            : output.data['text/plain'];
+                                        resolvedOutputsHtml += \`<div class="output-text">\${escapeHtmlInJs(text)}</div>\`;
+                                    }
+                                }
+                            } else if (output.output_type === 'error') {
+                                const traceback = output.traceback ? output.traceback.join('\\n') : \`\${output.ename}: \${output.evalue}\`;
+                                resolvedOutputsHtml += \`<div class="output-error">\${escapeHtmlInJs(traceback)}</div>\`;
+                            }
+                        }
+                        resolvedOutputsHtml += '</div>';
+                    }
+                } catch (e) {
+                    console.error('Error parsing outputs:', e);
+                }
+            }
+            
+            resultContainer.innerHTML = \`
+                <div class="resolved-result-header">
+                    <div class="resolved-badge">
+                        <span class="checkmark">✓</span>
+                        <span>Resolved</span>
+                    </div>
+                    <button class="btn-change" onclick="unresolveConflict(\${index})">Change</button>
+                </div>
+                <div class="resolved-result-content">
+                    <pre>\${escapeHtmlInJs(resolvedContent)}</pre>
+                </div>
+                \${resolvedOutputsHtml}
+            \`;
+            row.appendChild(resultContainer);
+            
+            // Update progress indicator
+            updateProgressIndicator();
+        }
+        
+        function unresolveConflict(index) {
+            const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
+            if (!row) return;
+            
+            // Remove resolved state
+            row.classList.remove('is-resolved');
+            
+            // Remove resolved result container
+            const resultContainer = row.querySelector('.resolved-result-container');
+            if (resultContainer) {
+                resultContainer.remove();
+            }
+            
+            // Clear button selection
+            document.querySelectorAll(\`[data-conflict="\${index}"] .btn-resolve\`).forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            
+            // Mark as not applied (but keep the data in case they want to re-apply)
+            if (resolutions[index]) {
+                resolutions[index].applied = false;
+            }
+            
+            // Update progress indicator
+            updateProgressIndicator();
+        }
+        
+        function clearSelection(index) {
+            const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
+            if (!row) return;
+            
+            // Remove editor container
+            const editorContainer = row.querySelector('.result-editor-container');
+            if (editorContainer) {
+                editorContainer.remove();
+            }
+            
+            // Clear button selection
+            document.querySelectorAll(\`[data-conflict="\${index}"] .btn-resolve\`).forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            
+            // Remove from resolutions
+            delete resolutions[index];
+        }
+        
+        function updateProgressIndicator() {
+            const appliedCount = Object.values(resolutions).filter(r => r.applied).length;
+            // Could add a progress bar here if desired
+            console.log(\`Progress: \${appliedCount}/\${totalConflicts} resolved\`);
+        }
 
         function applyResolutions() {
-            const resolved = Object.keys(resolutions).length;
-            if (resolved < totalConflicts) {
-                if (!confirm(\`You have resolved \${resolved} of \${totalConflicts} conflicts. Unresolved conflicts will use LOCAL. Continue?\`)) {
+            const appliedCount = Object.values(resolutions).filter(r => r.applied).length;
+            
+            if (appliedCount < totalConflicts) {
+                // Check if there are any unapplied selections
+                const unappliedSelections = Object.entries(resolutions).filter(([_, r]) => !r.applied).length;
+                
+                let message = \`You have applied \${appliedCount} of \${totalConflicts} resolutions.\`;
+                if (unappliedSelections > 0) {
+                    message += \` \${unappliedSelections} selection(s) not yet applied.\`;
+                }
+                message += ' Unresolved conflicts will use LOCAL. Continue?';
+                
+                if (!confirm(message)) {
                     return;
                 }
+                
+                // Apply defaults for unresolved conflicts
                 for (let i = 0; i < totalConflicts; i++) {
-                    if (!resolutions[i]) {
-                        // Default to local, get the source
+                    if (!resolutions[i] || !resolutions[i].applied) {
                         const row = document.querySelector(\`.merge-row[data-conflict="\${i}"]\`);
                         const localSource = row ? decodeURIComponent(row.getAttribute('data-local-source') || '') : '';
-                        resolutions[i] = { choice: 'local', customContent: localSource };
+                        resolutions[i] = { choice: 'local', customContent: localSource, applied: true };
                     }
                 }
             }
