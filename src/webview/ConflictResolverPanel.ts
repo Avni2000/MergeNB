@@ -198,20 +198,6 @@ export class UnifiedConflictPanel {
         return config.get<boolean>('ui.showCellHeaders', false);
     }
 
-    private _formatColumnLabel(column: 'base' | 'local' | 'remote', localBranch?: string, remoteBranch?: string): string {
-        const maxBranchLength = 30;
-        const truncate = (s: string) => s.length > maxBranchLength ? s.substring(0, maxBranchLength - 3) + '...' : s;
-        
-        switch (column) {
-            case 'base':
-                return 'Base (Most recent common ancestor)';
-            case 'local':
-                return localBranch ? `Local (${truncate(localBranch)})` : 'Local';
-            case 'remote':
-                return remoteBranch ? `Remote (${truncate(remoteBranch)})` : 'Remote';
-        }
-    }
-
     private _getHtmlForWebview(): string {
         const conflict = this._conflict;
         if (!conflict) {
@@ -518,15 +504,15 @@ export class UnifiedConflictPanel {
 <div class="merge-row ${conflictClass}" data-conflict="${effectiveConflictIndex}" ${cellDataAttrs} ${outputDataAttrs}>
     <div class="cell-columns-container">
         <div class="cell-column base-column">
-            <div class="column-label">${this._formatColumnLabel('base', conflict.localBranch, conflict.remoteBranch)}</div>
+            <div class="column-label">Base</div>
             ${this._renderCellContentForTextual(row.baseCell, row.baseCellIndex, 'base', row, conflict, this._shouldShowCellHeaders())}
         </div>
         <div class="cell-column local-column">
-            <div class="column-label">${this._formatColumnLabel('local', conflict.localBranch, conflict.remoteBranch)}</div>
+            <div class="column-label">Local</div>
             ${this._renderCellContentForTextual(row.localCell, row.localCellIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
         </div>
         <div class="cell-column remote-column">
-            <div class="column-label">${this._formatColumnLabel('remote', conflict.localBranch, conflict.remoteBranch)}</div>
+            <div class="column-label">Remote</div>
             ${this._renderCellContentForTextual(row.remoteCell, row.remoteCellIndex, 'remote', row, conflict, this._shouldShowCellHeaders())}
         </div>
     </div>
@@ -683,15 +669,15 @@ export class UnifiedConflictPanel {
 <div class="merge-row ${conflictClass}" ${conflictAttr} ${cellDataAttrs} ${outputDataAttrs}>
     <div class="cell-columns-container">
         <div class="cell-column base-column">
-            <div class="column-label">${this._formatColumnLabel('base', conflict.localBranch, conflict.remoteBranch)}</div>
+            <div class="column-label">Base</div>
             ${this._renderCellContent(row.baseCell, row.baseCellIndex, 'base', row, conflict, this._shouldShowCellHeaders())}
         </div>
         <div class="cell-column local-column">
-            <div class="column-label">${this._formatColumnLabel('local', conflict.localBranch, conflict.remoteBranch)}</div>
+            <div class="column-label">Local</div>
             ${this._renderCellContent(row.localCell, row.localCellIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
         </div>
         <div class="cell-column remote-column">
-            <div class="column-label">${this._formatColumnLabel('remote', conflict.localBranch, conflict.remoteBranch)}</div>
+            <div class="column-label">Remote</div>
             ${this._renderCellContent(row.remoteCell, row.remoteCellIndex, 'remote', row, conflict, this._shouldShowCellHeaders())}
         </div>
     </div>
@@ -1033,13 +1019,13 @@ export class UnifiedConflictPanel {
 <div class="merge-row conflict-row" data-conflict="${index}" ${cellDataAttrs}>
     <div class="cell-columns-container">
         <div class="cell-column base-column">
-            <div class="column-label">${this._formatColumnLabel('base')}</div>
+            <div class="column-label">Base</div>
             <div class="cell-placeholder">
                 <span class="placeholder-text">(no base version)</span>
             </div>
         </div>
         <div class="cell-column local-column">
-            <div class="column-label">${this._formatColumnLabel('local')}</div>
+            <div class="column-label">Local</div>
             ${hasLocal ? `
             <div class="notebook-cell code-cell has-conflict">
                 <div class="cell-content">
@@ -1048,7 +1034,7 @@ export class UnifiedConflictPanel {
             </div>` : `<div class="cell-placeholder"><span class="placeholder-text">(not present)</span></div>`}
         </div>
         <div class="cell-column remote-column">
-            <div class="column-label">${this._formatColumnLabel('remote')}</div>
+            <div class="column-label">Remote</div>
             ${hasRemote ? `
             <div class="notebook-cell code-cell has-conflict">
                 <div class="cell-content">
@@ -1086,19 +1072,19 @@ export class UnifiedConflictPanel {
 <div class="merge-row conflict-row metadata-conflict" data-conflict="${index}" ${cellDataAttrs}>
     <div class="cell-columns-container">
         <div class="cell-column base-column">
-            <div class="column-label">${this._formatColumnLabel('base')}</div>
+            <div class="column-label">Base</div>
             <div class="cell-placeholder">
                 <span class="placeholder-text">Metadata: ${escapeHtml(conflict.field)}</span>
             </div>
         </div>
         <div class="cell-column local-column">
-            <div class="column-label">${this._formatColumnLabel('local')}</div>
+            <div class="column-label">Local</div>
             <div class="metadata-cell">
                 <pre class="code-content">${escapeHtml(conflict.localContent)}</pre>
             </div>
         </div>
         <div class="cell-column remote-column">
-            <div class="column-label">${this._formatColumnLabel('remote')}</div>
+            <div class="column-label">Remote</div>
             <div class="metadata-cell">
                 <pre class="code-content">${escapeHtml(conflict.remoteContent)}</pre>
             </div>
