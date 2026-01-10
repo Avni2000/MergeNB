@@ -99,6 +99,7 @@ export class UnifiedConflictPanel {
             column || vscode.ViewColumn.One,
             {
                 enableScripts: true,
+                enableFindWidget: true,
                 localResourceRoots: [extensionUri, notebookDir],
                 retainContextWhenHidden: true
             }
