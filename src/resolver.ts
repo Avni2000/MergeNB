@@ -12,7 +12,7 @@
  */
 
 import * as vscode from 'vscode';
-import { analyzeNotebookConflicts, hasConflictMarkers, resolveAllConflicts, detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
+import { analyzeNotebookConflicts, hasConflictMarkers, resolveAllConflicts, detectSemanticConflicts, applyAutoResolutions, AutoResolveResult, enrichTextualConflictsWithContext } from './conflictDetector';
 import { parseNotebook, serializeNotebook, renumberExecutionCounts } from './notebookParser';
 import { UnifiedConflictPanel, UnifiedConflict, UnifiedResolution } from './webview/ConflictResolverPanel';
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
@@ -151,12 +151,15 @@ export class NotebookConflictResolver {
      * Resolve textual conflicts (<<<<<<< markers).
      */
     private async resolveTextualConflicts(uri: vscode.Uri, content: string): Promise<void> {
-        const conflict = analyzeNotebookConflicts(uri.fsPath, content);
+        let conflict = analyzeNotebookConflicts(uri.fsPath, content);
 
         if (conflict.conflicts.length === 0 && conflict.metadataConflicts.length === 0) {
             vscode.window.showWarningMessage('Conflict markers found but could not be parsed. The notebook may be corrupted.');
             return;
         }
+
+        // Enrich with base/local/remote versions from Git to show full notebook context
+        conflict = await enrichTextualConflictsWithContext(conflict);
 
         const settings = getSettings();
 

@@ -85,6 +85,18 @@ export interface NotebookConflict {
         remoteContent: string;
         marker: ConflictMarker;
     }>;
+    
+    // Full notebook versions from Git staging areas (for showing non-conflicted context)
+    base?: Notebook;
+    local?: Notebook;
+    remote?: Notebook;
+    
+    // Cell mappings between versions (like semantic conflicts)
+    cellMappings?: CellMapping[];
+    
+    // Branch information
+    localBranch?: string;
+    remoteBranch?: string;
 }
 
 export type ResolutionChoice = 'local' | 'remote' | 'both' | 'custom';

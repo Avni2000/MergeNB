@@ -598,6 +598,85 @@ export function extractConflictContent(_content: string, _marker: { start: numbe
 }
 
 /**
+ * Enrich textual conflicts with base/local/remote versions from Git staging areas.
+ * This allows showing non-conflicted cells alongside conflicted ones in the UI.
+ */
+export async function enrichTextualConflictsWithContext(
+    conflict: NotebookConflict
+): Promise<NotebookConflict> {
+    try {
+        // Get the three-way versions from Git staging areas
+        const versions = await gitIntegration.getThreeWayVersions(conflict.filePath);
+        if (!versions) {
+            console.log('[MergeNB] Could not get Git versions for textual conflict');
+            return conflict; // Return original conflict without enrichment
+        }
+
+        const { base, local, remote } = versions;
+        console.log('[MergeNB] Got Git versions for textual conflict:');
+        console.log('[MergeNB] - base:', base ? `${base.length} chars` : 'null');
+        console.log('[MergeNB] - local:', local ? `${local.length} chars` : 'null');
+        console.log('[MergeNB] - remote:', remote ? `${remote.length} chars` : 'null');
+
+        // Parse each version as a notebook
+        let baseNotebook: Notebook | undefined;
+        let localNotebook: Notebook | undefined;
+        let remoteNotebook: Notebook | undefined;
+
+        try {
+            if (base) baseNotebook = parseNotebook(base);
+        } catch (error) {
+            console.warn('[MergeNB] Failed to parse base notebook:', error);
+        }
+
+        try {
+            if (local) localNotebook = parseNotebook(local);
+        } catch (error) {
+            console.warn('[MergeNB] Failed to parse local notebook:', error);
+        }
+
+        try {
+            if (remote) remoteNotebook = parseNotebook(remote);
+        } catch (error) {
+            console.warn('[MergeNB] Failed to parse remote notebook:', error);
+        }
+
+        // If we couldn't parse at least local and remote, return original
+        if (!localNotebook && !remoteNotebook) {
+            console.log('[MergeNB] Could not parse local or remote notebooks');
+            return conflict;
+        }
+
+        // Match cells across versions
+        const cellMappings = matchCells(baseNotebook, localNotebook, remoteNotebook);
+
+        // Get branch information
+        const [localBranch, remoteBranch] = await Promise.all([
+            gitIntegration.getCurrentBranch(conflict.filePath),
+            gitIntegration.getMergeBranch(conflict.filePath)
+        ]);
+
+        console.log('[MergeNB] Enriched textual conflict with context:');
+        console.log('[MergeNB] - cellMappings:', cellMappings.length);
+        console.log('[MergeNB] - localBranch:', localBranch);
+        console.log('[MergeNB] - remoteBranch:', remoteBranch);
+
+        return {
+            ...conflict,
+            base: baseNotebook,
+            local: localNotebook,
+            remote: remoteNotebook,
+            cellMappings,
+            localBranch: localBranch || undefined,
+            remoteBranch: remoteBranch || undefined
+        };
+    } catch (error) {
+        console.error('[MergeNB] Error enriching textual conflict:', error);
+        return conflict;
+    }
+}
+
+/**
  * Detect semantic conflicts (Git UU status without textual markers)
  * Compares base/local/remote versions from Git staging areas
  */

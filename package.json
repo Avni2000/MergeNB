@@ -80,6 +80,11 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically strip outputs from cells with conflicts"
+        },
+        "mergeNB.ui.showCellHeaders": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show cell type, execution count, and cell index in the conflict resolution view"
         }
       }
     }

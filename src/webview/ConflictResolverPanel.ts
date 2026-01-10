@@ -193,6 +193,25 @@ export class UnifiedConflictPanel {
         this._panel.webview.html = this._getHtmlForWebview();
     }
 
+    private _shouldShowCellHeaders(): boolean {
+        const config = vscode.workspace.getConfiguration('mergeNB');
+        return config.get<boolean>('ui.showCellHeaders', false);
+    }
+
+    private _formatColumnLabel(column: 'base' | 'local' | 'remote', localBranch?: string, remoteBranch?: string): string {
+        const maxBranchLength = 30;
+        const truncate = (s: string) => s.length > maxBranchLength ? s.substring(0, maxBranchLength - 3) + '...' : s;
+        
+        switch (column) {
+            case 'base':
+                return 'Base (Most recent common ancestor)';
+            case 'local':
+                return localBranch ? `Local (${truncate(localBranch)})` : 'Local';
+            case 'remote':
+                return remoteBranch ? `Remote (${truncate(remoteBranch)})` : 'Remote';
+        }
+    }
+
     private _getHtmlForWebview(): string {
         const conflict = this._conflict;
         if (!conflict) {
@@ -294,8 +313,13 @@ export class UnifiedConflictPanel {
     }
 
     private _getTextualConflictHtml(conflict: NotebookConflict): string {
-        // For textual conflicts, we don't have the full notebook structure
-        // Render conflicts as standalone items
+        // If we have cell mappings from Git, render like semantic conflicts with full context
+        if (conflict.cellMappings && conflict.cellMappings.length > 0 && 
+            (conflict.local || conflict.remote)) {
+            return this._getTextualConflictWithContextHtml(conflict);
+        }
+        
+        // Fall back to simple conflict-only rendering (when Git versions unavailable)
         const conflictsHtml = conflict.conflicts.map((c, i) => 
             this._renderTextualConflictRow(c, i)
         ).join('');
@@ -310,6 +334,301 @@ export class UnifiedConflictPanel {
             'textual',
             conflict.conflicts.length + conflict.metadataConflicts.length
         );
+    }
+
+    /**
+     * Render textual conflicts with full notebook context from Git versions.
+     * Shows non-conflicted cells as unified rows and conflicts in 3-column view.
+     */
+    private _getTextualConflictWithContextHtml(conflict: NotebookConflict): string {
+        const rows = this._buildMergeRowsForTextual(conflict);
+        
+        // Count conflicts from the rows (detected by comparing Git versions)
+        const cellConflictCount = rows.filter(r => r.type === 'conflict').length;
+        const totalConflicts = cellConflictCount + conflict.metadataConflicts.length;
+        
+        // Build the notebook view with all cells
+        let notebookHtml = '';
+        for (const row of rows) {
+            notebookHtml += this._renderMergeRowForTextual(row, conflict);
+        }
+        
+        // Add metadata conflicts at the end (their indices come after cell conflicts)
+        const metadataConflictsHtml = conflict.metadataConflicts.map((c, i) =>
+            this._renderMetadataConflictRow(c, cellConflictCount + i)
+        ).join('');
+
+        return this._wrapInFullHtml(
+            conflict.filePath,
+            notebookHtml + metadataConflictsHtml,
+            'textual',
+            totalConflicts,
+            conflict.localBranch,
+            conflict.remoteBranch
+        );
+    }
+
+    /**
+     * Build merge rows from cell mappings for textual conflicts with Git context.
+     * Since textual conflicts are in the working copy (with markers), but Git staging
+     * has clean local/remote versions, we detect conflicts by comparing local vs remote.
+     */
+    private _buildMergeRowsForTextual(conflict: NotebookConflict): MergeRow[] {
+        const rows: MergeRow[] = [];
+        
+        if (!conflict.cellMappings) {
+            return rows;
+        }
+
+        console.log('[MergeNB] Building merge rows for textual conflict');
+        console.log('[MergeNB] base cells:', conflict.base?.cells?.length);
+        console.log('[MergeNB] local cells:', conflict.local?.cells?.length);
+        console.log('[MergeNB] remote cells:', conflict.remote?.cells?.length);
+        console.log('[MergeNB] mappings count:', conflict.cellMappings.length);
+        console.log('[MergeNB] original textual conflicts:', conflict.conflicts.length);
+
+        // For textual conflicts, we detect conflicts by comparing local vs remote
+        // from the Git staging areas (not from the working copy markers)
+        let conflictIndex = 0;
+        
+        for (const mapping of conflict.cellMappings) {
+            const baseCell = mapping.baseIndex !== undefined && conflict.base 
+                ? conflict.base.cells[mapping.baseIndex] : undefined;
+            const localCell = mapping.localIndex !== undefined && conflict.local 
+                ? conflict.local.cells[mapping.localIndex] : undefined;
+            const remoteCell = mapping.remoteIndex !== undefined && conflict.remote 
+                ? conflict.remote.cells[mapping.remoteIndex] : undefined;
+
+            // Determine if this is a conflict by comparing cells
+            let isConflict = false;
+            
+            // Case 1: Cell exists in local only (added in local)
+            if (localCell && !remoteCell && !baseCell) {
+                isConflict = true;
+            }
+            // Case 2: Cell exists in remote only (added in remote)
+            else if (remoteCell && !localCell && !baseCell) {
+                isConflict = true;
+            }
+            // Case 3: Cell exists in both local and remote - check if they differ
+            else if (localCell && remoteCell) {
+                const localSource = Array.isArray(localCell.source) ? localCell.source.join('') : localCell.source;
+                const remoteSource = Array.isArray(remoteCell.source) ? remoteCell.source.join('') : remoteCell.source;
+                
+                // Check source content
+                if (localSource !== remoteSource) {
+                    isConflict = true;
+                }
+                // Also check outputs for code cells
+                else if (localCell.cell_type === 'code') {
+                    const localOutputs = JSON.stringify(localCell.outputs || []);
+                    const remoteOutputs = JSON.stringify(remoteCell.outputs || []);
+                    if (localOutputs !== remoteOutputs) {
+                        // Output difference - could be a conflict or just execution difference
+                        // For now, mark as conflict only if source also differs slightly
+                        // or execution_count differs
+                        if (localCell.execution_count !== remoteCell.execution_count) {
+                            // Minor difference - not a real conflict for textual resolution
+                            isConflict = false;
+                        }
+                    }
+                }
+            }
+            // Case 4: Cell deleted in one branch (exists in base but not local or remote)
+            else if (baseCell && (!localCell || !remoteCell) && (localCell || remoteCell)) {
+                isConflict = true;
+            }
+
+            const currentConflictIndex = isConflict ? conflictIndex++ : undefined;
+            
+            rows.push({
+                type: isConflict ? 'conflict' : 'identical',
+                baseCell,
+                localCell,
+                remoteCell,
+                baseCellIndex: mapping.baseIndex,
+                localCellIndex: mapping.localIndex,
+                remoteCellIndex: mapping.remoteIndex,
+                conflictIndex: currentConflictIndex,
+                conflictType: isConflict ? 'textual' : undefined
+            });
+        }
+        
+        console.log('[MergeNB] Detected conflicts from Git comparison:', conflictIndex);
+
+        return rows;
+    }
+
+    /**
+     * Render a merge row for textual conflicts with context.
+     * Similar to _renderMergeRow but adapted for textual conflict data.
+     */
+    private _renderMergeRowForTextual(row: MergeRow, conflict: NotebookConflict): string {
+        const isConflict = row.type === 'conflict';
+        const conflictClass = isConflict ? 'conflict-row' : '';
+        const conflictAttr = row.conflictIndex !== undefined ? `data-conflict="${row.conflictIndex}"` : '';
+        
+        // Encode cell sources for JavaScript access (for editing)
+        const baseSource = row.baseCell ? 
+            (Array.isArray(row.baseCell.source) ? row.baseCell.source.join('') : row.baseCell.source) : '';
+        const localSource = row.localCell ? 
+            (Array.isArray(row.localCell.source) ? row.localCell.source.join('') : row.localCell.source) : '';
+        const remoteSource = row.remoteCell ? 
+            (Array.isArray(row.remoteCell.source) ? row.remoteCell.source.join('') : row.remoteCell.source) : '';
+        
+        // Store cell metadata for JS access
+        const cellDataAttrs = isConflict ? `
+            data-base-source="${encodeURIComponent(baseSource)}"
+            data-local-source="${encodeURIComponent(localSource)}"
+            data-remote-source="${encodeURIComponent(remoteSource)}"
+            data-cell-type="${row.localCell?.cell_type || row.remoteCell?.cell_type || row.baseCell?.cell_type || 'code'}"
+            data-has-base="${row.baseCell ? 'true' : 'false'}"
+            data-has-local="${row.localCell ? 'true' : 'false'}"
+            data-has-remote="${row.remoteCell ? 'true' : 'false'}"
+        ` : '';
+        
+        // Encode outputs for editing view
+        const baseOutputs = row.baseCell?.outputs ? encodeURIComponent(JSON.stringify(row.baseCell.outputs)) : '';
+        const localOutputs = row.localCell?.outputs ? encodeURIComponent(JSON.stringify(row.localCell.outputs)) : '';
+        const remoteOutputs = row.remoteCell?.outputs ? encodeURIComponent(JSON.stringify(row.remoteCell.outputs)) : '';
+        
+        const outputDataAttrs = isConflict ? `
+            data-base-outputs="${baseOutputs}"
+            data-local-outputs="${localOutputs}"
+            data-remote-outputs="${remoteOutputs}"
+        ` : '';
+        
+        // For identical rows (non-conflicts), render as a single unified cell
+        if (!isConflict) {
+            const displayCell = row.localCell || row.remoteCell || row.baseCell;
+            const displayIndex = row.localCellIndex ?? row.remoteCellIndex ?? row.baseCellIndex;
+            return `
+<div class="merge-row unified-row">
+    <div class="unified-cell-container">
+        ${this._renderCellContentForTextual(displayCell, displayIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
+    </div>
+</div>`;
+        }
+        
+        // For conflicts, show all 3 columns
+        // Determine conflict index - use existing or generate one for detected conflicts
+        const effectiveConflictIndex = row.conflictIndex ?? -1;
+        
+        return `
+<div class="merge-row ${conflictClass}" data-conflict="${effectiveConflictIndex}" ${cellDataAttrs} ${outputDataAttrs}>
+    <div class="cell-columns-container">
+        <div class="cell-column base-column">
+            <div class="column-label">${this._formatColumnLabel('base', conflict.localBranch, conflict.remoteBranch)}</div>
+            ${this._renderCellContentForTextual(row.baseCell, row.baseCellIndex, 'base', row, conflict, this._shouldShowCellHeaders())}
+        </div>
+        <div class="cell-column local-column">
+            <div class="column-label">${this._formatColumnLabel('local', conflict.localBranch, conflict.remoteBranch)}</div>
+            ${this._renderCellContentForTextual(row.localCell, row.localCellIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
+        </div>
+        <div class="cell-column remote-column">
+            <div class="column-label">${this._formatColumnLabel('remote', conflict.localBranch, conflict.remoteBranch)}</div>
+            ${this._renderCellContentForTextual(row.remoteCell, row.remoteCellIndex, 'remote', row, conflict, this._shouldShowCellHeaders())}
+        </div>
+    </div>
+    ${effectiveConflictIndex >= 0 ? this._renderResolutionBarForTextual(effectiveConflictIndex, row) : this._renderResolutionBarForDetectedConflict(row)}
+</div>`;
+    }
+
+    /**
+     * Render cell content for textual conflict with context view.
+     */
+    private _renderCellContentForTextual(
+        cell: NotebookCell | undefined, 
+        cellIndex: number | undefined,
+        side: 'base' | 'local' | 'remote',
+        row: MergeRow,
+        conflict: NotebookConflict,
+        showHeaders: boolean = false
+    ): string {
+        if (!cell) {
+            return `<div class="cell-placeholder">
+                <span class="placeholder-text">(not present)</span>
+            </div>`;
+        }
+
+        const cellType = cell.cell_type;
+        const source = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
+        
+        // Determine if we should show diff highlighting
+        let contentHtml: string;
+        if (row.type === 'conflict' && cellType !== 'markdown') {
+            // Show diff for conflicts
+            const compareSource = side === 'local' 
+                ? (row.remoteCell ? (Array.isArray(row.remoteCell.source) ? row.remoteCell.source.join('') : row.remoteCell.source) : '')
+                : side === 'remote'
+                    ? (row.localCell ? (Array.isArray(row.localCell.source) ? row.localCell.source.join('') : row.localCell.source) : '')
+                    : (row.localCell ? (Array.isArray(row.localCell.source) ? row.localCell.source.join('') : row.localCell.source) : '');
+            contentHtml = this._renderDiffContent(source, compareSource, side);
+        } else if (cellType === 'markdown') {
+            contentHtml = this._renderMarkdown(source);
+        } else {
+            contentHtml = `<pre class="code-content">${escapeHtml(source)}</pre>`;
+        }
+
+        // Render outputs for code cells (conditionally hide for non-conflicted cells)
+        let outputsHtml = '';
+        const hideNonConflict = this._conflict?.hideNonConflictOutputs ?? true;
+        if (cellType === 'code' && cell.outputs && cell.outputs.length > 0) {
+            if (row.type === 'conflict' || !hideNonConflict) {
+                outputsHtml = this._renderOutputs(cell.outputs);
+            }
+        }
+
+        const executionCount = cell.execution_count !== null && cell.execution_count !== undefined
+            ? `[${cell.execution_count}]` : '[ ]';
+
+        const headerHtml = showHeaders ? `
+    <div class="cell-header">
+        <span class="cell-type-badge ${cellType}">${cellType}</span>
+        ${cellType === 'code' ? `<span class="execution-count">${executionCount}</span>` : ''}
+        <span class="cell-index">${cellIndex !== undefined ? `Cell ${cellIndex + 1}` : ''}</span>
+    </div>` : '';
+
+        return `
+<div class="notebook-cell ${cellType}-cell ${row.type === 'conflict' ? 'has-conflict' : ''}">
+    ${headerHtml}
+    <div class="cell-content">
+        ${contentHtml}
+    </div>
+    ${outputsHtml}
+</div>`;
+    }
+
+    /**
+     * Resolution bar for known textual conflicts (from conflict list)
+     */
+    private _renderResolutionBarForTextual(conflictIndex: number, row: MergeRow): string {
+        return `
+<div class="resolution-bar-row" data-conflict="${conflictIndex}">
+    <div class="resolution-buttons">
+        ${row.baseCell ? '<button class="btn-resolve btn-base" onclick="selectResolution(' + conflictIndex + ', \'base\')">Use Base</button>' : ''}
+        <button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Local</button>
+        <button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Remote</button>
+        <button class="btn-resolve btn-both" onclick="selectResolution(${conflictIndex}, 'both')">Use Both</button>
+    </div>
+</div>`;
+    }
+
+    /**
+     * Resolution bar for detected conflicts (differences not in original conflict list)
+     */
+    private _renderResolutionBarForDetectedConflict(row: MergeRow): string {
+        // These are conflicts detected by cell comparison but not in the original textual conflict list
+        // Generate a unique identifier based on cell indices
+        const conflictId = `detected-${row.localCellIndex ?? 'x'}-${row.remoteCellIndex ?? 'x'}`;
+        return `
+<div class="resolution-bar-row" data-conflict="${conflictId}">
+    <div class="resolution-buttons">
+        ${row.baseCell ? '<button class="btn-resolve btn-base" onclick="selectResolution(\'' + conflictId + '\', \'base\')">Use Base</button>' : ''}
+        <button class="btn-resolve btn-local" onclick="selectResolution('${conflictId}', 'local')">Use Local</button>
+        <button class="btn-resolve btn-remote" onclick="selectResolution('${conflictId}', 'remote')">Use Remote</button>
+    </div>
+</div>`;
     }
 
     private _renderMergeRow(row: MergeRow, conflict: NotebookSemanticConflict): string {
@@ -347,18 +666,36 @@ export class UnifiedConflictPanel {
             data-remote-outputs="${remoteOutputs}"
         ` : '';
         
+        // For identical rows (non-conflicts), render as a single unified cell
+        if (!isConflict) {
+            const cell = row.localCell || row.baseCell || row.remoteCell;
+            const cellIndex = row.localCellIndex ?? row.baseCellIndex ?? row.remoteCellIndex;
+            return `
+<div class="merge-row unified-row">
+    <div class="unified-cell-container">
+        ${this._renderCellContent(cell, cellIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
+    </div>
+</div>`;
+        }
+        
+        // For conflicts, show all 3 columns
         return `
 <div class="merge-row ${conflictClass}" ${conflictAttr} ${cellDataAttrs} ${outputDataAttrs}>
-    <div class="cell-column base-column">
-        ${this._renderCellContent(row.baseCell, row.baseCellIndex, 'base', row, conflict)}
+    <div class="cell-columns-container">
+        <div class="cell-column base-column">
+            <div class="column-label">${this._formatColumnLabel('base', conflict.localBranch, conflict.remoteBranch)}</div>
+            ${this._renderCellContent(row.baseCell, row.baseCellIndex, 'base', row, conflict, this._shouldShowCellHeaders())}
+        </div>
+        <div class="cell-column local-column">
+            <div class="column-label">${this._formatColumnLabel('local', conflict.localBranch, conflict.remoteBranch)}</div>
+            ${this._renderCellContent(row.localCell, row.localCellIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
+        </div>
+        <div class="cell-column remote-column">
+            <div class="column-label">${this._formatColumnLabel('remote', conflict.localBranch, conflict.remoteBranch)}</div>
+            ${this._renderCellContent(row.remoteCell, row.remoteCellIndex, 'remote', row, conflict, this._shouldShowCellHeaders())}
+        </div>
     </div>
-    <div class="cell-column local-column">
-        ${this._renderCellContent(row.localCell, row.localCellIndex, 'local', row, conflict)}
-    </div>
-    <div class="cell-column remote-column">
-        ${this._renderCellContent(row.remoteCell, row.remoteCellIndex, 'remote', row, conflict)}
-    </div>
-    ${isConflict && row.conflictIndex !== undefined ? this._renderResolutionBar(row.conflictIndex, row) : ''}
+    ${row.conflictIndex !== undefined ? this._renderResolutionBar(row.conflictIndex, row) : ''}
 </div>`;
     }
 
@@ -367,7 +704,8 @@ export class UnifiedConflictPanel {
         cellIndex: number | undefined,
         side: 'base' | 'local' | 'remote',
         row: MergeRow,
-        conflict: NotebookSemanticConflict
+        conflict: NotebookSemanticConflict,
+        showHeaders: boolean = false
     ): string {
         if (!cell) {
             // Check if this is a conflict where the cell doesn't exist on this side
@@ -412,13 +750,16 @@ export class UnifiedConflictPanel {
         const executionCount = cell.execution_count !== null && cell.execution_count !== undefined
             ? `[${cell.execution_count}]` : '[ ]';
 
-        return `
-<div class="notebook-cell ${cellType}-cell ${row.type === 'conflict' ? 'has-conflict' : ''}">
+        const headerHtml = showHeaders ? `
     <div class="cell-header">
         <span class="cell-type-badge ${cellType}">${cellType}</span>
         ${cellType === 'code' ? `<span class="execution-count">${executionCount}</span>` : ''}
         <span class="cell-index">${cellIndex !== undefined ? `Cell ${cellIndex + 1}` : ''}</span>
-    </div>
+    </div>` : '';
+
+        return `
+<div class="notebook-cell ${cellType}-cell ${row.type === 'conflict' ? 'has-conflict' : ''}">
+    ${headerHtml}
     <div class="cell-content">
         ${contentHtml}
     </div>
@@ -663,52 +1004,65 @@ export class UnifiedConflictPanel {
         const hasRemote = !!row.remoteCell;
         
         return `
-<div class="resolution-bar" data-conflict="${conflictIndex}">
-    <button class="btn-resolve btn-base" onclick="selectResolution(${conflictIndex}, 'base')">Use Base</button>
-    <button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Local</button>
-    <button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Remote</button>
+<div class="resolution-bar-row" data-conflict="${conflictIndex}">
+    <div class="resolution-buttons">
+        <button class="btn-resolve btn-base" onclick="selectResolution(${conflictIndex}, 'base')">Use Base</button>
+        <button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Local</button>
+        <button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Remote</button>
+    </div>
 </div>`;
     }
+
 
     private _renderTextualConflictRow(conflict: CellConflict, index: number): string {
         const hasLocal = conflict.localContent.trim().length > 0;
         const hasRemote = conflict.remoteContent.trim().length > 0;
         
+        // Store data attributes for JS access
+        const cellDataAttrs = `
+            data-base-source=""
+            data-local-source="${encodeURIComponent(conflict.localContent)}"
+            data-remote-source="${encodeURIComponent(conflict.remoteContent)}"
+            data-cell-type="${conflict.cellType || 'code'}"
+            data-has-base="false"
+            data-has-local="${hasLocal}"
+            data-has-remote="${hasRemote}"
+        `;
+        
         return `
-<div class="merge-row conflict-row" data-conflict="${index}">
-    <div class="cell-column base-column">
-        <div class="cell-placeholder">
-            <span class="placeholder-text">(textual conflict)</span>
+<div class="merge-row conflict-row" data-conflict="${index}" ${cellDataAttrs}>
+    <div class="cell-columns-container">
+        <div class="cell-column base-column">
+            <div class="column-label">${this._formatColumnLabel('base')}</div>
+            <div class="cell-placeholder">
+                <span class="placeholder-text">(no base version)</span>
+            </div>
+        </div>
+        <div class="cell-column local-column">
+            <div class="column-label">${this._formatColumnLabel('local')}</div>
+            ${hasLocal ? `
+            <div class="notebook-cell code-cell has-conflict">
+                <div class="cell-content">
+                    ${this._renderDiffContent(conflict.localContent, conflict.remoteContent, 'local')}
+                </div>
+            </div>` : `<div class="cell-placeholder"><span class="placeholder-text">(not present)</span></div>`}
+        </div>
+        <div class="cell-column remote-column">
+            <div class="column-label">${this._formatColumnLabel('remote')}</div>
+            ${hasRemote ? `
+            <div class="notebook-cell code-cell has-conflict">
+                <div class="cell-content">
+                    ${this._renderDiffContent(conflict.remoteContent, conflict.localContent, 'remote')}
+                </div>
+            </div>` : `<div class="cell-placeholder"><span class="placeholder-text">(not present)</span></div>`}
         </div>
     </div>
-    <div class="cell-column local-column">
-        ${hasLocal ? `
-        <div class="notebook-cell code-cell has-conflict">
-            <div class="cell-header">
-                <span class="cell-type-badge code">${conflict.cellType || 'code'}</span>
-                <span class="cell-index">Cell ${(conflict.localCellIndex ?? conflict.cellIndex) + 1}</span>
-            </div>
-            <div class="cell-content">
-                ${this._renderDiffContent(conflict.localContent, conflict.remoteContent, 'local')}
-            </div>
-        </div>` : `<div class="cell-placeholder"><span class="placeholder-text">(not present)</span></div>`}
-    </div>
-    <div class="cell-column remote-column">
-        ${hasRemote ? `
-        <div class="notebook-cell code-cell has-conflict">
-            <div class="cell-header">
-                <span class="cell-type-badge code">${conflict.cellType || 'code'}</span>
-                <span class="cell-index">Cell ${(conflict.remoteCellIndex ?? conflict.cellIndex) + 1}</span>
-            </div>
-            <div class="cell-content">
-                ${this._renderDiffContent(conflict.remoteContent, conflict.localContent, 'remote')}
-            </div>
-        </div>` : `<div class="cell-placeholder"><span class="placeholder-text">(not present)</span></div>`}
-    </div>
-    <div class="resolution-bar" data-conflict="${index}">
-        <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Local</button>
-        <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Remote</button>
-        <button class="btn-resolve btn-both" onclick="selectResolution(${index}, 'both')">Use Both</button>
+    <div class="resolution-bar-row" data-conflict="${index}">
+        <div class="resolution-buttons">
+            <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Local</button>
+            <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Remote</button>
+            <button class="btn-resolve btn-both" onclick="selectResolution(${index}, 'both')">Use Both</button>
+        </div>
     </div>
 </div>`;
     }
@@ -717,26 +1071,44 @@ export class UnifiedConflictPanel {
         conflict: { field: string; localContent: string; remoteContent: string },
         index: number
     ): string {
+        // Store data attributes for JS access
+        const cellDataAttrs = `
+            data-base-source=""
+            data-local-source="${encodeURIComponent(conflict.localContent)}"
+            data-remote-source="${encodeURIComponent(conflict.remoteContent)}"
+            data-cell-type="metadata"
+            data-has-base="false"
+            data-has-local="true"
+            data-has-remote="true"
+        `;
+        
         return `
-<div class="merge-row conflict-row metadata-conflict" data-conflict="${index}">
-    <div class="cell-column base-column">
-        <div class="cell-placeholder">
-            <span class="placeholder-text">Metadata: ${escapeHtml(conflict.field)}</span>
+<div class="merge-row conflict-row metadata-conflict" data-conflict="${index}" ${cellDataAttrs}>
+    <div class="cell-columns-container">
+        <div class="cell-column base-column">
+            <div class="column-label">${this._formatColumnLabel('base')}</div>
+            <div class="cell-placeholder">
+                <span class="placeholder-text">Metadata: ${escapeHtml(conflict.field)}</span>
+            </div>
+        </div>
+        <div class="cell-column local-column">
+            <div class="column-label">${this._formatColumnLabel('local')}</div>
+            <div class="metadata-cell">
+                <pre class="code-content">${escapeHtml(conflict.localContent)}</pre>
+            </div>
+        </div>
+        <div class="cell-column remote-column">
+            <div class="column-label">${this._formatColumnLabel('remote')}</div>
+            <div class="metadata-cell">
+                <pre class="code-content">${escapeHtml(conflict.remoteContent)}</pre>
+            </div>
         </div>
     </div>
-    <div class="cell-column local-column">
-        <div class="metadata-cell">
-            <pre class="code-content">${escapeHtml(conflict.localContent)}</pre>
+    <div class="resolution-bar-row" data-conflict="${index}">
+        <div class="resolution-buttons">
+            <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Local</button>
+            <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Remote</button>
         </div>
-    </div>
-    <div class="cell-column remote-column">
-        <div class="metadata-cell">
-            <pre class="code-content">${escapeHtml(conflict.remoteContent)}</pre>
-        </div>
-    </div>
-    <div class="resolution-bar" data-conflict="${index}">
-        <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Local</button>
-        <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Remote</button>
     </div>
 </div>`;
     }
@@ -828,7 +1200,7 @@ export class UnifiedConflictPanel {
             --local-accent: #22863a;
             --remote-accent: #0366d6;
             --base-accent: #6a737d;
-            --conflict-bg: rgba(255, 200, 0, 0.08);
+            --conflict-bg: rgba(255, 0, 0, 0.05);
         }
         
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -844,24 +1216,71 @@ export class UnifiedConflictPanel {
             position: relative;
         }
         
-        /* Floating action buttons */
-        .floating-actions {
-            position: fixed;
-            top: 12px;
-            right: 16px;
+        /* Bottom action bar */
+        .bottom-actions {
+            position: sticky;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--vscode-editor-background);
+            border-top: 1px solid var(--border-color);
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            z-index: 1000;
+            box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .action-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+        
+        .action-right {
             display: flex;
             gap: 8px;
-            z-index: 1000;
+        }
+        
+        .progress-info {
+            font-size: 13px;
+            color: var(--vscode-descriptionForeground);
+        }
+        
+        .progress-count {
+            font-weight: 600;
+            color: var(--vscode-foreground);
+        }
+        
+        .error-message {
+            color: var(--vscode-errorForeground);
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .error-icon {
+            font-size: 16px;
         }
         
         .btn {
-            padding: 6px 14px;
+            padding: 8px 16px;
             border: none;
-            border-radius: 4px;
+            border-radius: 2px;
             cursor: pointer;
             font-size: 13px;
             font-family: inherit;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            font-weight: 500;
+            transition: background-color 0.1s;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
         
         .btn-primary {
@@ -869,8 +1288,8 @@ export class UnifiedConflictPanel {
             color: var(--vscode-button-foreground);
         }
         
-        .btn-primary:hover {
-            opacity: 0.9;
+        .btn-primary:hover:not(:disabled) {
+            background: var(--vscode-button-hoverBackground);
         }
         
         .btn-secondary {
@@ -878,8 +1297,8 @@ export class UnifiedConflictPanel {
             color: var(--vscode-button-secondaryForeground);
         }
         
-        .btn-secondary:hover {
-            opacity: 0.9;
+        .btn-secondary:hover:not(:disabled) {
+            background: var(--vscode-button-secondaryHoverBackground);
         }
         
         // /* Auto-resolve banner */
@@ -901,53 +1320,48 @@ export class UnifiedConflictPanel {
         //     margin-left: 8px;
         // }
         
-        /* Column headers */
-        .column-headers {
-            display: grid;
-            grid-template-columns: var(--col-base, 1fr) var(--col-local, 1fr) var(--col-remote, 1fr);
-            border-bottom: 1px solid var(--border-color);
-            flex-shrink: 0;
-        }
-        
-        .column-header {
-            padding: 10px 16px;
-            font-weight: 600;
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            overflow: hidden;
-        }
-        
-        .column-header.base { 
-            color: var(--base-accent); 
-            background: rgba(106, 115, 125, 0.1); 
-        }
-        .column-header.local { 
-            color: var(--local-accent); 
-            background: rgba(34, 134, 58, 0.1); 
-        }
-        .column-header.remote { 
-            color: var(--remote-accent); 
-            background: rgba(3, 102, 214, 0.1); 
-        }
-        
         /* Main content area */
         .merge-container {
             flex: 1;
             overflow-y: auto;
             overflow-x: hidden;
+            padding-bottom: 16px;
         }
         
         /* Merge rows */
         .merge-row {
-            display: grid;
-            grid-template-columns: var(--col-base, 1fr) var(--col-local, 1fr) var(--col-remote, 1fr);
+            display: flex;
+            flex-direction: column;
             border-bottom: 1px solid var(--border-color);
             position: relative;
         }
         
         .merge-row.conflict-row {
             background: var(--conflict-bg);
+            border-left: 4px solid #e74c3c;
+            margin: 8px 0;
+            border-radius: 4px;
+        }
+        
+        /* Unified row for identical cells */
+        .merge-row.unified-row {
+            background: transparent;
+            border-bottom: none;
+        }
+        
+        .unified-cell-container {
+            padding: 4px 16px;
+        }
+        
+        .unified-cell-container .notebook-cell {
+            background: transparent;
+            border: none;
+        }
+        
+        /* Container for the three columns (only for conflicts) */
+        .cell-columns-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
         }
         
         /* Cell columns */
@@ -969,30 +1383,37 @@ export class UnifiedConflictPanel {
             background: rgba(3, 102, 214, 0.03); 
         }
         
-        /* Resize handles between columns */
-        .col-resize-handle {
-            position: absolute;
-            right: -3px;
-            top: 0;
-            bottom: 0;
-            width: 6px;
-            cursor: col-resize;
-            background: transparent;
-            z-index: 100;
+        /* Column labels for conflict rows */
+        .column-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 4px 8px;
+            color: var(--vscode-descriptionForeground);
+            border-bottom: 1px solid var(--border-color);
+            background: var(--vscode-editorWidget-background);
         }
         
-        .col-resize-handle:hover,
-        .col-resize-handle.active {
-            background: var(--vscode-focusBorder);
+        .base-column .column-label {
+            color: var(--base-accent);
+        }
+        
+        .local-column .column-label {
+            color: var(--local-accent);
+        }
+        
+        .remote-column .column-label {
+            color: var(--remote-accent);
         }
         
         /* Notebook cells */
         .notebook-cell {
-            padding: 12px;
+            padding: 8px;
         }
         
         .notebook-cell.has-conflict {
-            border-left: 3px solid #f0ad4e;
+            border-left: 3px solid #e74c3c;
         }
         
         .cell-header {
@@ -1034,6 +1455,7 @@ export class UnifiedConflictPanel {
             background: var(--vscode-textCodeBlock-background);
             border-radius: 4px;
             overflow: hidden;
+            padding: 8px;
         }
         
         .code-content, .diff-content {
@@ -1199,28 +1621,31 @@ export class UnifiedConflictPanel {
             font-size: 13px;
         }
         
-        /* Resolution bar */
-        .resolution-bar {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
+        /* Resolution bar - full width row */
+        .resolution-bar-row {
             display: flex;
             justify-content: center;
-            gap: 8px;
             padding: 8px;
-            background: linear-gradient(transparent, var(--vscode-editor-background));
+            background: var(--vscode-editor-background);
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .resolution-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
         }
         
         .btn-resolve {
-            padding: 4px 12px;
+            padding: 6px 16px;
             border: none;
-            border-radius: 4px;
+            border-radius: 2px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 500;
             opacity: 0.9;
             transition: opacity 0.2s, transform 0.1s;
+            min-width: 100px;
         }
         
         .btn-resolve:hover {
@@ -1499,21 +1924,23 @@ export class UnifiedConflictPanel {
     </style>
 </head>
 <body>
-    <div class="floating-actions">
-        <button class="btn btn-secondary" onclick="cancel()">Cancel</button>
-        <button class="btn btn-primary" onclick="applyResolutions()">Apply & Save</button>
-    </div>
-    
     ${autoResolveInfo}
-    
-    <div class="column-headers">
-        <div class="column-header base">Base (Ancestor)</div>
-        <div class="column-header local">Local${localBranch ? ` (${escapeHtml(localBranch)})` : ''}</div>
-        <div class="column-header remote">Remote${remoteBranch ? ` (${escapeHtml(remoteBranch)})` : ''}</div>
-    </div>
     
     <div class="merge-container">
         ${contentHtml}
+    </div>
+    
+    <div class="bottom-actions">
+        <div class="action-left">
+            <div class="progress-info">
+                <span class="progress-count" id="progress-count">0 / ${totalConflicts}</span> conflicts resolved
+            </div>
+            <div class="error-message" id="error-message" style="display: none;"></div>
+        </div>
+        <div class="action-right">
+            <button class="btn btn-secondary" onclick="cancel()">Cancel</button>
+            <button class="btn btn-primary" id="apply-btn" onclick="applyResolutions()">Apply & Save</button>
+        </div>
     </div>
 
     <script>
@@ -1521,73 +1948,6 @@ export class UnifiedConflictPanel {
         const resolutions = {};
         const totalConflicts = ${totalConflicts};
         const conflictType = '${conflictType}';
-        
-        // Column resizing - attach handles to first row's columns
-        let isResizing = false;
-        let currentColumn = null;
-        let startX = 0;
-        let colWidths = [0, 0, 0];
-        
-        function initResizeHandles() {
-            const firstRow = document.querySelector('.merge-row');
-            if (!firstRow) return;
-            
-            // Set initial pixel widths based on rendered layout
-            const cols = firstRow.querySelectorAll('.cell-column');
-            colWidths = Array.from(cols).map(c => c.offsetWidth);
-            document.documentElement.style.setProperty('--col-base', colWidths[0] + 'px');
-            document.documentElement.style.setProperty('--col-local', colWidths[1] + 'px');
-            document.documentElement.style.setProperty('--col-remote', colWidths[2] + 'px');
-            
-            cols.forEach((col, i) => {
-                if (i < 2) { // Only first two columns get resize handles
-                    const handle = document.createElement('div');
-                    handle.className = 'col-resize-handle';
-                    handle.dataset.col = i;
-                    col.appendChild(handle);
-                    
-                    handle.addEventListener('mousedown', (e) => {
-                        isResizing = true;
-                        currentColumn = i;
-                        startX = e.clientX;
-                        handle.classList.add('active');
-                        
-                        // Get current widths
-                        const allCols = firstRow.querySelectorAll('.cell-column');
-                        colWidths = Array.from(allCols).map(c => c.offsetWidth);
-                        
-                        e.preventDefault();
-                        e.stopPropagation();
-                    });
-                }
-            });
-        }
-        
-        document.addEventListener('mousemove', (e) => {
-            if (!isResizing) return;
-            
-            const delta = e.clientX - startX;
-            const minWidth = 50;
-            
-            let newWidths = [...colWidths];
-            newWidths[currentColumn] = Math.max(minWidth, colWidths[currentColumn] + delta);
-            newWidths[currentColumn + 1] = Math.max(minWidth, colWidths[currentColumn + 1] - delta);
-            
-            document.documentElement.style.setProperty('--col-base', newWidths[0] + 'px');
-            document.documentElement.style.setProperty('--col-local', newWidths[1] + 'px');
-            document.documentElement.style.setProperty('--col-remote', newWidths[2] + 'px');
-        });
-        
-        document.addEventListener('mouseup', () => {
-            if (isResizing) {
-                document.querySelectorAll('.col-resize-handle').forEach(h => h.classList.remove('active'));
-                isResizing = false;
-                currentColumn = null;
-            }
-        });
-        
-        // Initialize resize handles after DOM loads
-        initResizeHandles();
         
         // Render outputs from JSON data
         function renderOutputsFromData(outputsJson) {
@@ -1810,6 +2170,15 @@ export class UnifiedConflictPanel {
             \`;
             row.appendChild(resultContainer);
             
+            // Scroll the resolved cell into view smoothly
+            setTimeout(() => {
+                row.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center',
+                    inline: 'nearest'
+                });
+            }, 100);
+            
             // Update progress indicator
             updateProgressIndicator();
         }
@@ -1862,22 +2231,62 @@ export class UnifiedConflictPanel {
         
         function updateProgressIndicator() {
             const appliedCount = Object.values(resolutions).filter(r => r.applied).length;
-            // Could add a progress bar here if desired
+            const progressCount = document.getElementById('progress-count');
+            const applyBtn = document.getElementById('apply-btn');
+            const errorMessage = document.getElementById('error-message');
+            
+            if (progressCount) {
+                progressCount.textContent = \`\${appliedCount} / \${totalConflicts}\`;
+            }
+            
+            // Enable/disable button based on whether all conflicts are resolved
+            if (applyBtn) {
+                if (appliedCount === 0) {
+                    applyBtn.disabled = true;
+                    if (errorMessage) {
+                        errorMessage.innerHTML = '<span class="error-icon">⚠</span> Please resolve at least one conflict';
+                        errorMessage.style.display = 'flex';
+                    }
+                } else if (appliedCount < totalConflicts) {
+                    applyBtn.disabled = false;
+                    if (errorMessage) {
+                        errorMessage.innerHTML = \`<span class="error-icon">⚠</span> \${totalConflicts - appliedCount} conflict(s) unresolved - will default to LOCAL\`;
+                        errorMessage.style.display = 'flex';
+                    }
+                } else {
+                    applyBtn.disabled = false;
+                    if (errorMessage) {
+                        errorMessage.style.display = 'none';
+                    }
+                }
+            }
+            
             console.log(\`Progress: \${appliedCount}/\${totalConflicts} resolved\`);
         }
 
         function applyResolutions() {
             const appliedCount = Object.values(resolutions).filter(r => r.applied).length;
+            const errorMessage = document.getElementById('error-message');
             
+            // Check if any conflicts are resolved
+            if (appliedCount === 0) {
+                if (errorMessage) {
+                    errorMessage.innerHTML = '<span class="error-icon">✗</span> No conflicts resolved. Please resolve at least one conflict before applying.';
+                    errorMessage.style.display = 'flex';
+                }
+                return;
+            }
+            
+            // Check if all conflicts are resolved
             if (appliedCount < totalConflicts) {
-                // Check if there are any unapplied selections
+                const unresolvedCount = totalConflicts - appliedCount;
                 const unappliedSelections = Object.entries(resolutions).filter(([_, r]) => !r.applied).length;
                 
-                let message = \`You have applied \${appliedCount} of \${totalConflicts} resolutions.\`;
+                let message = \`\${appliedCount} of \${totalConflicts} conflicts resolved.\\n\`;
                 if (unappliedSelections > 0) {
-                    message += \` \${unappliedSelections} selection(s) not yet applied.\`;
+                    message += \`\${unappliedSelections} selection(s) not yet applied.\\n\`;
                 }
-                message += ' Unresolved conflicts will use LOCAL. Continue?';
+                message += \`\\n\${unresolvedCount} unresolved conflict(s) will default to LOCAL version.\\n\\nContinue?\`;
                 
                 if (!confirm(message)) {
                     return;
@@ -1893,17 +2302,25 @@ export class UnifiedConflictPanel {
                 }
             }
             
-            const resolutionArray = Object.entries(resolutions).map(([index, data]) => ({
-                index: parseInt(index),
-                choice: data.choice,
-                customContent: data.customContent
-            }));
-            
-            vscode.postMessage({ 
-                command: 'resolve', 
-                type: conflictType,
-                resolutions: resolutionArray 
-            });
+            try {
+                const resolutionArray = Object.entries(resolutions).map(([index, data]) => ({
+                    index: parseInt(index),
+                    choice: data.choice,
+                    customContent: data.customContent
+                }));
+                
+                vscode.postMessage({ 
+                    command: 'resolve', 
+                    type: conflictType,
+                    resolutions: resolutionArray 
+                });
+            } catch (error) {
+                if (errorMessage) {
+                    errorMessage.innerHTML = \`<span class="error-icon">✗</span> Error applying resolutions: \${error.message}\`;
+                    errorMessage.style.display = 'flex';
+                }
+                console.error('Error applying resolutions:', error);
+            }
         }
 
         function cancel() {
@@ -1919,6 +2336,9 @@ export class UnifiedConflictPanel {
                 cancel();
             }
         });
+        
+        // Initialize progress indicator on page load
+        updateProgressIndicator();
     </script>
 </body>
 </html>`;
