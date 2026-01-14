@@ -11,7 +11,13 @@
  * These reduce manual conflict resolution for common non-semantic differences.
  */
 
-import * as vscode from 'vscode';
+// Optional vscode import for headless testing support
+let vscode: typeof import('vscode') | undefined;
+try {
+    vscode = require('vscode');
+} catch {
+    // Running in headless mode (tests) - vscode not available
+}
 
 export interface MergeNBSettings {
     autoResolveExecutionCount: boolean;
@@ -20,10 +26,23 @@ export interface MergeNBSettings {
     hideNonConflictOutputs: boolean;
 }
 
+/** Default settings used in headless mode */
+const DEFAULT_SETTINGS: MergeNBSettings = {
+    autoResolveExecutionCount: true,
+    autoResolveKernelVersion: true,
+    stripOutputs: true,
+    hideNonConflictOutputs: true
+};
+
 /**
- * Get current extension settings
+ * Get current extension settings.
+ * Returns default settings when running outside VS Code (headless/test mode).
  */
 export function getSettings(): MergeNBSettings {
+    if (!vscode) {
+        return { ...DEFAULT_SETTINGS };
+    }
+    
     const config = vscode.workspace.getConfiguration('mergeNB');
     
     return {
