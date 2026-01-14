@@ -29,6 +29,7 @@ export {
     resolveAllConflicts,
     applyAutoResolutions,
     AutoResolveResult,
+    analyzeSemanticConflictsFromMappings,
 } from '../../conflictDetector';
 
 export {
@@ -46,6 +47,7 @@ import {
     hasConflictMarkers,
     analyzeNotebookConflicts,
     resolveAllConflicts,
+    analyzeSemanticConflictsFromMappings,
 } from '../../conflictDetector';
 import { parseNotebook, serializeNotebook, renumberExecutionCounts } from '../../notebookParser';
 import { matchCells, detectReordering } from '../../cellMatcher';
@@ -269,7 +271,7 @@ export function analyzeConflicts(filePath: string): ConflictAnalysis {
 
     // Perform semantic analysis
     const cellMappings = matchCells(baseNotebook, localNotebook, remoteNotebook);
-    const semanticConflicts = detectSemanticConflictsFromMappings(cellMappings);
+    const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
 
     const semanticAnalysis: NotebookSemanticConflict = {
         filePath,
@@ -290,150 +292,6 @@ export function analyzeConflicts(filePath: string): ConflictAnalysis {
         conflictCount: semanticConflicts.length,
         semanticAnalysis,
     };
-}
-
-/**
- * Detect semantic conflicts from cell mappings (synchronous version).
- */
-function detectSemanticConflictsFromMappings(mappings: CellMapping[]): SemanticConflict[] {
-    const conflicts: SemanticConflict[] = [];
-
-    // Check for cell reordering
-    if (detectReordering(mappings)) {
-        conflicts.push({
-            type: 'cell-reordered',
-            description: 'Cells have been reordered between versions'
-        });
-    }
-
-    for (const mapping of mappings) {
-        const { baseIndex, localIndex, remoteIndex, baseCell, localCell, remoteCell } = mapping;
-
-        // Cell added in local only
-        if (localCell && !baseCell && !remoteCell) {
-            conflicts.push({
-                type: 'cell-added',
-                localCellIndex: localIndex,
-                localContent: localCell,
-                description: 'Cell added in local branch'
-            });
-            continue;
-        }
-
-        // Cell added in remote only
-        if (remoteCell && !baseCell && !localCell) {
-            conflicts.push({
-                type: 'cell-added',
-                remoteCellIndex: remoteIndex,
-                remoteContent: remoteCell,
-                description: 'Cell added in remote branch'
-            });
-            continue;
-        }
-
-        // Cell added in both (potential conflict)
-        if (localCell && remoteCell && !baseCell) {
-            const localSrc = getCellSource(localCell);
-            const remoteSrc = getCellSource(remoteCell);
-            if (localSrc !== remoteSrc) {
-                conflicts.push({
-                    type: 'cell-added',
-                    localCellIndex: localIndex,
-                    remoteCellIndex: remoteIndex,
-                    localContent: localCell,
-                    remoteContent: remoteCell,
-                    description: 'Different cells added in same position'
-                });
-            }
-            continue;
-        }
-
-        // Cell deleted in local
-        if (baseCell && !localCell && remoteCell) {
-            conflicts.push({
-                type: 'cell-deleted',
-                baseCellIndex: baseIndex,
-                remoteCellIndex: remoteIndex,
-                baseContent: baseCell,
-                remoteContent: remoteCell,
-                description: 'Cell deleted in local branch'
-            });
-            continue;
-        }
-
-        // Cell deleted in remote
-        if (baseCell && localCell && !remoteCell) {
-            conflicts.push({
-                type: 'cell-deleted',
-                baseCellIndex: baseIndex,
-                localCellIndex: localIndex,
-                baseContent: baseCell,
-                localContent: localCell,
-                description: 'Cell deleted in remote branch'
-            });
-            continue;
-        }
-
-        // Cell exists in all three - check for modifications
-        if (baseCell && localCell && remoteCell) {
-            const baseSrc = getCellSource(baseCell);
-            const localSrc = getCellSource(localCell);
-            const remoteSrc = getCellSource(remoteCell);
-
-            const localModified = localSrc !== baseSrc;
-            const remoteModified = remoteSrc !== baseSrc;
-
-            // Both modified source differently
-            if (localModified && remoteModified && localSrc !== remoteSrc) {
-                conflicts.push({
-                    type: 'cell-modified',
-                    baseCellIndex: baseIndex,
-                    localCellIndex: localIndex,
-                    remoteCellIndex: remoteIndex,
-                    baseContent: baseCell,
-                    localContent: localCell,
-                    remoteContent: remoteCell,
-                    description: 'Cell source modified differently in both branches'
-                });
-            }
-
-            // Check outputs for code cells
-            if (baseCell.cell_type === 'code') {
-                const baseOutputs = JSON.stringify(baseCell.outputs || []);
-                const localOutputs = JSON.stringify(localCell.outputs || []);
-                const remoteOutputs = JSON.stringify(remoteCell.outputs || []);
-
-                if (localOutputs !== baseOutputs && remoteOutputs !== baseOutputs && localOutputs !== remoteOutputs) {
-                    conflicts.push({
-                        type: 'outputs-changed',
-                        baseCellIndex: baseIndex,
-                        localCellIndex: localIndex,
-                        remoteCellIndex: remoteIndex,
-                        description: 'Cell outputs differ between branches'
-                    });
-                }
-            }
-
-            // Check execution counts
-            if (baseCell.cell_type === 'code') {
-                const baseExec = baseCell.execution_count;
-                const localExec = localCell.execution_count;
-                const remoteExec = remoteCell.execution_count;
-
-                if (localExec !== baseExec && remoteExec !== baseExec && localExec !== remoteExec) {
-                    conflicts.push({
-                        type: 'execution-count-changed',
-                        baseCellIndex: baseIndex,
-                        localCellIndex: localIndex,
-                        remoteCellIndex: remoteIndex,
-                        description: `Execution count: base=${baseExec}, local=${localExec}, remote=${remoteExec}`
-                    });
-                }
-            }
-        }
-    }
-
-    return conflicts;
 }
 
 function getCellSource(cell: NotebookCell): string {

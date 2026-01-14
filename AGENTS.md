@@ -45,6 +45,5 @@ Run CLI tests:
 
 Test files in `src/test/`:
 - `04_Cascadia.ipynb` - cell-level HTML-styled conflicts
-- `real-conflict.ipynb` - raw markers breaking JSON
 - `test-file.ipynb` - inline conflicts with output conflicts
 - `02_base.ipynb`, `02_local.ipynb`, `02_remote.ipynb` - three-way semantic conflict test case

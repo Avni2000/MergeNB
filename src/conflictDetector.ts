@@ -769,7 +769,7 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         const cellMappings = matchCells(baseNotebook, localNotebook, remoteNotebook);
 
         // Analyze mappings to find semantic conflicts
-        const semanticConflicts = analyzeSemanticConflicts(cellMappings);
+        const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
 
         // Get branch information
         const [localBranch, remoteBranch] = await Promise.all([
@@ -795,9 +795,10 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
 }
 
 /**
- * Analyze cell mappings to identify semantic conflicts
+ * Analyze cell mappings to identify semantic conflicts.
+ * Exported for testing purposes.
  */
-function analyzeSemanticConflicts(mappings: CellMapping[]): SemanticConflict[] {
+export function analyzeSemanticConflictsFromMappings(mappings: CellMapping[]): SemanticConflict[] {
     const conflicts: SemanticConflict[] = [];
 
     // Check for cell reordering
