@@ -237,12 +237,12 @@ describe('MergeNB Integration Tests', function () {
     // ========================================================================
     describe('Textual Conflicts', () => {
         
-        it('detects and resolves inline conflict markers (test-file.ipynb)', function () {
-            // test-file.ipynb has hand-crafted inline conflict markers within cell source
+        it('detects and resolves inline conflict markers (simple-textual-conflict.ipynb)', function () {
+            // simple-textual-conflict.ipynb has hand-crafted inline conflict markers within cell source
             // This tests the core conflict detection and resolution workflow
             
             const testDir = path.resolve(__dirname, '..');
-            const testFilePath = path.join(testDir, 'test-file.ipynb');
+            const testFilePath = path.join(testDir, 'simple-textual-conflict.ipynb');
 
             assert(fs.existsSync(testFilePath), `Missing fixture: ${testFilePath}`);
 
