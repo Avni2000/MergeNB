@@ -39,11 +39,9 @@ Single unified command:
 
 ## Testing
 
-Run CLI tests: 
-- Textual conflicts: `npx ts-node src/test/cli-test.ts`
-- Semantic conflicts: `npx ts-node src/test/test-semantic-conflicts.ts`
+`npm run test:integration` 
 
 Test files in `src/test/`:
 - `04_Cascadia.ipynb` - cell-level HTML-styled conflicts
-- `test-file.ipynb` - inline conflicts with output conflicts
+- `simple-textual-conflict.ipynb` - inline conflicts with output conflicts
 - `02_base.ipynb`, `02_local.ipynb`, `02_remote.ipynb` - three-way semantic conflict test case
