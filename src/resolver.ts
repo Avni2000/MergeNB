@@ -254,6 +254,10 @@ export class NotebookConflictResolver {
 
     /**
      * Apply textual conflict resolutions.
+     * 
+     * When conflicts are enriched with Git context (cellMappings), we build the
+     * resolved notebook from the Git versions. Otherwise, we use textual marker
+     * replacement on the original content.
      */
     private async applyTextualResolutions(
         uri: vscode.Uri,
@@ -266,28 +270,16 @@ export class NotebookConflictResolver {
         }
 
         const resolutions = resolution.textualResolutions;
+        let resolvedContent: string;
 
-        // Build resolution array with markers
-        const allConflicts = [
-            ...conflict.conflicts.map((c, i) => ({ marker: c.marker, index: i })),
-            ...conflict.metadataConflicts.map((c, i) => ({ marker: c.marker, index: i + conflict.conflicts.length }))
-        ];
-
-        const resolutionArray = allConflicts.map(({ marker, index }) => {
-            const res = resolutions.get(index) || { choice: 'local' as ResolutionChoice };
-            return {
-                marker,
-                choice: res.choice === 'custom' ? 'local' : res.choice as 'local' | 'remote' | 'both',
-                customContent: res.customContent
-            };
-        });
-
-        let resolvedContent = resolveAllConflicts(originalContent, resolutionArray);
-
-        // Try to parse and validate the resolved notebook
-        try {
-            let notebook = parseNotebook(resolvedContent);
-
+        // If we have Git context (cellMappings), build notebook from chosen cells
+        // This matches how the webview displays conflicts when enriched with context
+        if (conflict.cellMappings && conflict.cellMappings.length > 0 && conflict.local) {
+            const resolvedNotebook = this.buildResolvedNotebookFromChoices(
+                conflict,
+                resolutions
+            );
+            
             // Ask user if they want to renumber execution counts
             const renumber = await vscode.window.showQuickPick(
                 ['Yes', 'No'],
@@ -297,18 +289,55 @@ export class NotebookConflictResolver {
                 }
             );
 
-            if (renumber === 'Yes') {
-                notebook = renumberExecutionCounts(notebook);
-            }
+            const finalNotebook = renumber === 'Yes' 
+                ? renumberExecutionCounts(resolvedNotebook) 
+                : resolvedNotebook;
 
-            resolvedContent = serializeNotebook(notebook);
-        } catch (err) {
-            const proceed = await vscode.window.showWarningMessage(
-                'The resolved notebook has JSON errors. Save anyway?',
-                'Save', 'Cancel'
-            );
-            if (proceed !== 'Save') {
-                return;
+            resolvedContent = serializeNotebook(finalNotebook);
+        } else {
+            // Fall back to textual marker replacement when no Git context
+            const allConflicts = [
+                ...conflict.conflicts.map((c, i) => ({ marker: c.marker, index: i })),
+                ...conflict.metadataConflicts.map((c, i) => ({ marker: c.marker, index: i + conflict.conflicts.length }))
+            ];
+
+            const resolutionArray = allConflicts.map(({ marker, index }) => {
+                const res = resolutions.get(index) || { choice: 'local' as ResolutionChoice };
+                return {
+                    marker,
+                    choice: res.choice === 'custom' ? 'local' : res.choice as 'local' | 'remote' | 'both',
+                    customContent: res.customContent
+                };
+            });
+
+            resolvedContent = resolveAllConflicts(originalContent, resolutionArray);
+
+            // Try to parse and validate the resolved notebook
+            try {
+                let notebook = parseNotebook(resolvedContent);
+
+                // Ask user if they want to renumber execution counts
+                const renumber = await vscode.window.showQuickPick(
+                    ['Yes', 'No'],
+                    {
+                        placeHolder: 'Renumber execution counts sequentially?',
+                        title: 'Execution Counts'
+                    }
+                );
+
+                if (renumber === 'Yes') {
+                    notebook = renumberExecutionCounts(notebook);
+                }
+
+                resolvedContent = serializeNotebook(notebook);
+            } catch (err) {
+                const proceed = await vscode.window.showWarningMessage(
+                    'The resolved notebook has JSON errors. Save anyway?',
+                    'Save', 'Cancel'
+                );
+                if (proceed !== 'Save') {
+                    return;
+                }
             }
         }
 
@@ -317,6 +346,105 @@ export class NotebookConflictResolver {
         await vscode.workspace.fs.writeFile(uri, encoder.encode(resolvedContent));
 
         vscode.window.showInformationMessage(`Resolved ${resolutions.size} conflict(s) in ${uri.fsPath}`);
+    }
+
+    /**
+     * Build a resolved notebook from user choices when we have Git context.
+     * This walks through cellMappings and picks cells based on user resolutions.
+     */
+    private buildResolvedNotebookFromChoices(
+        conflict: ReturnType<typeof analyzeNotebookConflicts>,
+        resolutions: Map<number, { choice: ResolutionChoice; customContent?: string }>
+    ): Notebook {
+        // Start with the local notebook as base (it has the structure we want)
+        const localNotebook = conflict.local!;
+        const remoteNotebook = conflict.remote;
+        const baseNotebook = conflict.base;
+        
+        // Create a new notebook with the same metadata
+        const resolvedNotebook: Notebook = {
+            cells: [],
+            metadata: JSON.parse(JSON.stringify(localNotebook.metadata)),
+            nbformat: localNotebook.nbformat,
+            nbformat_minor: localNotebook.nbformat_minor
+        };
+
+        // Track conflict index as we iterate through mappings
+        let conflictIndex = 0;
+        
+        for (const mapping of conflict.cellMappings!) {
+            const baseCell = mapping.baseIndex !== undefined && baseNotebook 
+                ? baseNotebook.cells[mapping.baseIndex] : undefined;
+            const localCell = mapping.localIndex !== undefined 
+                ? localNotebook.cells[mapping.localIndex] : undefined;
+            const remoteCell = mapping.remoteIndex !== undefined && remoteNotebook 
+                ? remoteNotebook.cells[mapping.remoteIndex] : undefined;
+
+            // Determine if this mapping represents a conflict (same logic as webview)
+            let isConflict = false;
+            
+            if (localCell && !remoteCell && !baseCell) {
+                isConflict = true; // Added in local only
+            } else if (remoteCell && !localCell && !baseCell) {
+                isConflict = true; // Added in remote only
+            } else if (localCell && remoteCell) {
+                const localSource = Array.isArray(localCell.source) ? localCell.source.join('') : localCell.source;
+                const remoteSource = Array.isArray(remoteCell.source) ? remoteCell.source.join('') : remoteCell.source;
+                if (localSource !== remoteSource) {
+                    isConflict = true; // Content differs
+                }
+            } else if (baseCell && (!localCell || !remoteCell) && (localCell || remoteCell)) {
+                isConflict = true; // Deleted in one branch
+            }
+
+            let cellToAdd: NotebookCell | undefined;
+
+            if (isConflict) {
+                // Get resolution for this conflict
+                const res = resolutions.get(conflictIndex);
+                // Choice could be 'local', 'remote', 'both', 'custom', or 'base' (from 3-way view)
+                const choice = (res?.choice || 'local') as string;
+                const customContent = res?.customContent;
+                
+                // Pick the cell based on choice
+                if (choice === 'local' || choice === 'both') {
+                    cellToAdd = localCell ? JSON.parse(JSON.stringify(localCell)) : undefined;
+                } else if (choice === 'remote') {
+                    cellToAdd = remoteCell ? JSON.parse(JSON.stringify(remoteCell)) : undefined;
+                } else if (choice === 'base') {
+                    cellToAdd = baseCell ? JSON.parse(JSON.stringify(baseCell)) : undefined;
+                }
+
+                // Apply custom content if provided (user edited the cell)
+                if (customContent !== undefined && cellToAdd) {
+                    if (Array.isArray(cellToAdd.source)) {
+                        cellToAdd.source = customContent === '' ? [] : customContent.split(/(?<=\n)/);
+                    } else {
+                        cellToAdd.source = customContent;
+                    }
+                }
+
+                // For 'both', also add remote cell after local
+                if (choice === 'both' && remoteCell && cellToAdd) {
+                    resolvedNotebook.cells.push(cellToAdd);
+                    cellToAdd = JSON.parse(JSON.stringify(remoteCell));
+                }
+
+                conflictIndex++;
+            } else {
+                // Not a conflict - use the available cell
+                cellToAdd = localCell || remoteCell || baseCell;
+                if (cellToAdd) {
+                    cellToAdd = JSON.parse(JSON.stringify(cellToAdd));
+                }
+            }
+
+            if (cellToAdd) {
+                resolvedNotebook.cells.push(cellToAdd);
+            }
+        }
+
+        return resolvedNotebook;
     }
 
     /**
