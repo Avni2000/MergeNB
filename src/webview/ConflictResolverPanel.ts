@@ -1,12 +1,15 @@
 /**
  * @file ConflictResolverPanel.ts
  * @description 3-way split webview panel for notebook conflict resolution.
+ * @import markdown-it for markdown rendering (VSCode native).
+ * @import markdown-it-texmath for LaTeX support in markdown cells.
  * 
  * Displays the entire notebook in three synchronized columns (Base, Local, Remote)
  * with cells rendered properly (markdown/code/outputs). Conflicts are highlighted
  * inline within the notebook view, making it feel like viewing the file split into
  * three windows with differences highlighted.
  */
+
 
 import * as vscode from 'vscode';
 import { 
@@ -46,6 +49,8 @@ export interface UnifiedResolution {
     // For semantic conflicts
     semanticChoice?: 'local' | 'remote';
     semanticResolutions?: Map<number, { choice: 'base' | 'local' | 'remote'; customContent?: string }>;
+    // Whether to mark file as resolved with git add
+    markAsResolved: boolean;
 }
 
 /**
@@ -148,7 +153,7 @@ export class UnifiedConflictPanel {
         this._update();
     }
 
-    private _handleResolution(message: { type: string; resolutions?: Array<{ index: number; choice: string; customContent?: string }>; semanticChoice?: string }) {
+    private _handleResolution(message: { type: string; resolutions?: Array<{ index: number; choice: string; customContent?: string }>; semanticChoice?: string; markAsResolved?: boolean }) {
         if (this._conflict?.type === 'textual') {
             const resolutionMap = new Map<number, { choice: ResolutionChoice; customContent?: string }>();
             for (const r of (message.resolutions || [])) {
@@ -157,7 +162,8 @@ export class UnifiedConflictPanel {
             if (this._onResolutionComplete) {
                 this._onResolutionComplete({
                     type: 'textual',
-                    textualResolutions: resolutionMap
+                    textualResolutions: resolutionMap,
+                    markAsResolved: message.markAsResolved ?? false
                 });
             }
         } else if (this._conflict?.type === 'semantic') {
@@ -172,7 +178,8 @@ export class UnifiedConflictPanel {
                 this._onResolutionComplete({
                     type: 'semantic',
                     semanticChoice: message.semanticChoice as 'local' | 'remote' | undefined,
-                    semanticResolutions: semanticResolutionMap
+                    semanticResolutions: semanticResolutionMap,
+                    markAsResolved: message.markAsResolved ?? false
                 });
             }
         }
@@ -776,7 +783,7 @@ export class UnifiedConflictPanel {
             return `<img${before}src="${webviewSrc}"${after}>`;
         });
         
-        // Encode content for the marked renderer (will be parsed client-side)
+        // Encode content for markdown-it renderer (will be parsed client-side)
         const encodedSource = encodeURIComponent(processed);
         
         return `<div class="markdown-content" data-markdown="${encodedSource}"></div>`;
@@ -1035,7 +1042,10 @@ export class UnifiedConflictPanel {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Merge: ${escapeHtml(fileName)}</title>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-texmath@1.0.0/texmath.min.js"></script>
     <style>
         :root {
             --vscode-bg: var(--vscode-editor-background);
@@ -1258,10 +1268,6 @@ export class UnifiedConflictPanel {
             padding: 8px;
         }
         
-        .notebook-cell.has-conflict {
-            border-left: 3px solid #e74c3c;
-        }
-        
         .cell-header {
             display: flex;
             align-items: center;
@@ -1316,7 +1322,7 @@ export class UnifiedConflictPanel {
         }
         
         .markdown-content {
-            padding: 12px;
+            padding: 12px 12px 12px 20px;
             line-height: 1.6;
         }
         
@@ -2186,13 +2192,24 @@ export class UnifiedConflictPanel {
         // Initialize progress indicator on page load
         updateProgressIndicator();
         
-        // Render markdown content using marked library
+        // Render markdown content using markdown-it library (VSCode native)
+        const md = window.markdownit({
+            html: true,
+            breaks: true,
+            linkify: true,
+            typographer: true
+        }).use(texmath, {
+            engine: katex,
+            delimiters: 'dollars',
+            katexOptions: { macros: { "\\RR": "\\mathbb{R}" } }
+        });
+        
         document.querySelectorAll('.markdown-content[data-markdown]').forEach(el => {
             const encodedMarkdown = el.getAttribute('data-markdown');
             if (encodedMarkdown) {
                 try {
                     const markdown = decodeURIComponent(encodedMarkdown);
-                    el.innerHTML = marked.parse(markdown, { breaks: true, gfm: true });
+                    el.innerHTML = md.render(markdown);
                 } catch (e) {
                     console.error('Error rendering markdown:', e);
                     el.textContent = decodeURIComponent(encodedMarkdown);

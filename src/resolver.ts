@@ -18,6 +18,10 @@ import { UnifiedConflictPanel, UnifiedConflict, UnifiedResolution } from './webv
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
+import { promisify } from 'util';
+import { exec as execCallback } from 'child_process';
+
+const exec = promisify(execCallback);
 
 /**
  * Represents a notebook with any type of conflict (textual or semantic)
@@ -345,6 +349,11 @@ export class NotebookConflictResolver {
         const encoder = new TextEncoder();
         await vscode.workspace.fs.writeFile(uri, encoder.encode(resolvedContent));
 
+        // Mark as resolved with git add if requested
+        if (resolution.markAsResolved) {
+            await this.markFileAsResolved(uri);
+        }
+
         vscode.window.showInformationMessage(`Resolved ${resolutions.size} conflict(s) in ${uri.fsPath}`);
     }
 
@@ -610,21 +619,45 @@ export class NotebookConflictResolver {
         }
 
         // Save the resolved notebook
-        await this.saveResolvedNotebook(uri, resolvedNotebook);
+        await this.saveResolvedNotebook(uri, resolvedNotebook, resolution.markAsResolved);
         vscode.window.showInformationMessage(`Resolved ${resolutions.size} semantic conflict(s) in ${uri.fsPath}`);
     }
 
     /**
      * Save a resolved notebook to disk.
      */
-    private async saveResolvedNotebook(uri: vscode.Uri, notebook: Notebook): Promise<void> {
+    private async saveResolvedNotebook(uri: vscode.Uri, notebook: Notebook, markAsResolved: boolean = false): Promise<void> {
         const content = serializeNotebook(notebook);
         const encoder = new TextEncoder();
         await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
+        
+        // Mark as resolved with git add if requested
+        if (markAsResolved) {
+            await this.markFileAsResolved(uri);
+        }
     }
 
     private async readFile(uri: vscode.Uri): Promise<string> {
         const data = await vscode.workspace.fs.readFile(uri);
         return new TextDecoder().decode(data);
+    }
+
+    /**
+     * Mark a file as resolved by staging it with git add.
+     */
+    private async markFileAsResolved(uri: vscode.Uri): Promise<void> {
+        try {
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+            if (!workspaceFolder) {
+                vscode.window.showWarningMessage('Cannot mark file as resolved: not in a workspace');
+                return;
+            }
+            
+            const relativePath = vscode.workspace.asRelativePath(uri, false);
+            await exec(`git add "${relativePath}"`, { cwd: workspaceFolder.uri.fsPath });
+            vscode.window.showInformationMessage(`Marked ${relativePath} as resolved`);
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to mark file as resolved: ${error}`);
+        }
     }
 }
