@@ -516,11 +516,11 @@ export class UnifiedConflictPanel {
             ${this._renderCellContentForTextual(row.baseCell, row.baseCellIndex, 'base', row, conflict, this._shouldShowCellHeaders())}
         </div>
         <div class="cell-column local-column">
-            <div class="column-label">Local</div>
+            <div class="column-label">Current</div>
             ${this._renderCellContentForTextual(row.localCell, row.localCellIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
         </div>
         <div class="cell-column remote-column">
-            <div class="column-label">Remote</div>
+            <div class="column-label">Incoming</div>
             ${this._renderCellContentForTextual(row.remoteCell, row.remoteCellIndex, 'remote', row, conflict, this._shouldShowCellHeaders())}
         </div>
     </div>
@@ -601,8 +601,8 @@ export class UnifiedConflictPanel {
 <div class="resolution-bar-row" data-conflict="${conflictIndex}">
     <div class="resolution-buttons">
         ${row.baseCell ? '<button class="btn-resolve btn-base" onclick="selectResolution(' + conflictIndex + ', \'base\')">Use Base</button>' : ''}
-        <button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Local</button>
-        <button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Remote</button>
+        <button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Current</button>
+        <button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Incoming</button>
         <button class="btn-resolve btn-both" onclick="selectResolution(${conflictIndex}, 'both')">Use Both</button>
     </div>
 </div>`;
@@ -619,8 +619,8 @@ export class UnifiedConflictPanel {
 <div class="resolution-bar-row" data-conflict="${conflictId}">
     <div class="resolution-buttons">
         ${row.baseCell ? '<button class="btn-resolve btn-base" onclick="selectResolution(\'' + conflictId + '\', \'base\')">Use Base</button>' : ''}
-        <button class="btn-resolve btn-local" onclick="selectResolution('${conflictId}', 'local')">Use Local</button>
-        <button class="btn-resolve btn-remote" onclick="selectResolution('${conflictId}', 'remote')">Use Remote</button>
+        <button class="btn-resolve btn-local" onclick="selectResolution('${conflictId}', 'local')">Use Current</button>
+        <button class="btn-resolve btn-remote" onclick="selectResolution('${conflictId}', 'remote')">Use Incoming</button>
     </div>
 </div>`;
     }
@@ -681,11 +681,11 @@ export class UnifiedConflictPanel {
             ${this._renderCellContent(row.baseCell, row.baseCellIndex, 'base', row, conflict, this._shouldShowCellHeaders())}
         </div>
         <div class="cell-column local-column">
-            <div class="column-label">Local</div>
+            <div class="column-label">Current</div>
             ${this._renderCellContent(row.localCell, row.localCellIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
         </div>
         <div class="cell-column remote-column">
-            <div class="column-label">Remote</div>
+            <div class="column-label">Incoming</div>
             ${this._renderCellContent(row.remoteCell, row.remoteCellIndex, 'remote', row, conflict, this._shouldShowCellHeaders())}
         </div>
     </div>
@@ -859,8 +859,8 @@ export class UnifiedConflictPanel {
 <div class="resolution-bar-row" data-conflict="${conflictIndex}">
     <div class="resolution-buttons">
         <button class="btn-resolve btn-base" onclick="selectResolution(${conflictIndex}, 'base')">Use Base</button>
-        <button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Local</button>
-        <button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Remote</button>
+        <button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Current</button>
+        <button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Incoming</button>
     </div>
 </div>`;
     }
@@ -891,7 +891,7 @@ export class UnifiedConflictPanel {
             </div>
         </div>
         <div class="cell-column local-column">
-            <div class="column-label">Local</div>
+            <div class="column-label">Current</div>
             ${hasLocal ? `
             <div class="notebook-cell code-cell has-conflict">
                 <div class="cell-content">
@@ -900,7 +900,7 @@ export class UnifiedConflictPanel {
             </div>` : `<div class="cell-placeholder"><span class="placeholder-text">(not present)</span></div>`}
         </div>
         <div class="cell-column remote-column">
-            <div class="column-label">Remote</div>
+            <div class="column-label">Incoming</div>
             ${hasRemote ? `
             <div class="notebook-cell code-cell has-conflict">
                 <div class="cell-content">
@@ -911,8 +911,8 @@ export class UnifiedConflictPanel {
     </div>
     <div class="resolution-bar-row" data-conflict="${index}">
         <div class="resolution-buttons">
-            <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Local</button>
-            <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Remote</button>
+            <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Current</button>
+            <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Incoming</button>
             <button class="btn-resolve btn-both" onclick="selectResolution(${index}, 'both')">Use Both</button>
         </div>
     </div>
@@ -944,13 +944,13 @@ export class UnifiedConflictPanel {
             </div>
         </div>
         <div class="cell-column local-column">
-            <div class="column-label">Local</div>
+            <div class="column-label">Current</div>
             <div class="metadata-cell">
                 <pre class="code-content">${escapeHtml(conflict.localContent)}</pre>
             </div>
         </div>
         <div class="cell-column remote-column">
-            <div class="column-label">Remote</div>
+            <div class="column-label">Incoming</div>
             <div class="metadata-cell">
                 <pre class="code-content">${escapeHtml(conflict.remoteContent)}</pre>
             </div>
@@ -958,8 +958,8 @@ export class UnifiedConflictPanel {
     </div>
     <div class="resolution-bar-row" data-conflict="${index}">
         <div class="resolution-buttons">
-            <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Local</button>
-            <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Remote</button>
+            <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Current</button>
+            <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Incoming</button>
         </div>
     </div>
 </div>`;
@@ -1096,9 +1096,28 @@ export class UnifiedConflictPanel {
             flex: 1;
         }
         
+        .action-center {
+            display: flex;
+            gap: 8px;
+        }
+        
         .action-right {
             display: flex;
             gap: 8px;
+        }
+        
+        .btn-accept-all {
+            padding: 6px 12px;
+            font-size: 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: 1px solid var(--vscode-button-border, transparent);
+            background: var(--vscode-button-secondaryBackground);
+            color: var(--vscode-button-secondaryForeground);
+        }
+        
+        .btn-accept-all:hover {
+            background: var(--vscode-button-secondaryHoverBackground);
         }
         
         .progress-info {
@@ -1789,6 +1808,10 @@ export class UnifiedConflictPanel {
             </div>
             <div class="error-message" id="error-message" style="display: none;"></div>
         </div>
+        <div class="action-center">
+            <button class="btn btn-accept-all" onclick="acceptAllCurrent()">Accept All Current</button>
+            <button class="btn btn-accept-all" onclick="acceptAllIncoming()">Accept All Incoming</button>
+        </div>
         <div class="action-right">
             <button class="btn btn-secondary" onclick="cancel()">Cancel</button>
             <button class="btn btn-primary" id="apply-btn" onclick="applyResolutions()">Apply & Save</button>
@@ -1904,7 +1927,7 @@ export class UnifiedConflictPanel {
             
             editorContainer.innerHTML = \`
                 <div class="result-editor-header">
-                    <span class="badge \${choice}">Using \${choice.toUpperCase()}</span>
+                    <span class="badge \${choice}">Using \${choice === 'local' ? 'CURRENT' : choice === 'remote' ? 'INCOMING' : choice.toUpperCase()}</span>
                     <span class="edit-hint">Edit the result below, then click Apply to confirm</span>
                 </div>
                 <div class="result-editor-wrapper">
@@ -2081,6 +2104,20 @@ export class UnifiedConflictPanel {
             delete resolutions[index];
         }
         
+        function acceptAllCurrent() {
+            // Select 'local' (current) for all conflicts without applying
+            for (let i = 0; i < totalConflicts; i++) {
+                selectResolution(i, 'local');
+            }
+        }
+        
+        function acceptAllIncoming() {
+            // Select 'remote' (incoming) for all conflicts without applying
+            for (let i = 0; i < totalConflicts; i++) {
+                selectResolution(i, 'remote');
+            }
+        }
+        
         function updateProgressIndicator() {
             const appliedCount = Object.values(resolutions).filter(r => r.applied).length;
             const progressCount = document.getElementById('progress-count');
@@ -2102,7 +2139,7 @@ export class UnifiedConflictPanel {
                 } else if (appliedCount < totalConflicts) {
                     applyBtn.disabled = false;
                     if (errorMessage) {
-                        errorMessage.innerHTML = \`<span class="error-icon">⚠</span> \${totalConflicts - appliedCount} conflict(s) unresolved - will default to LOCAL\`;
+                        errorMessage.innerHTML = \`<span class="error-icon">⚠</span> \${totalConflicts - appliedCount} conflict(s) unresolved - will default to CURRENT\`;
                         errorMessage.style.display = 'flex';
                     }
                 } else {
@@ -2138,7 +2175,7 @@ export class UnifiedConflictPanel {
                 if (unappliedSelections > 0) {
                     message += \`\${unappliedSelections} selection(s) not yet applied.\\n\`;
                 }
-                message += \`\\n\${unresolvedCount} unresolved conflict(s) will default to LOCAL version.\\n\\nContinue?\`;
+                message += \`\\n\${unresolvedCount} unresolved conflict(s) will default to CURRENT version.\\n\\nContinue?\`;
                 
                 if (!confirm(message)) {
                     return;
