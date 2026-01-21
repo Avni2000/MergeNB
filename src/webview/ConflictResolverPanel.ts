@@ -1972,7 +1972,7 @@ export class UnifiedConflictPanel {
                     resolutions[index].customContent = e.target.value;
                     
                     // Update deleted state based on content (regardless of original state)
-                    const hasContent = e.target.value.trim().length > 0;
+                    const hasContent = e.target.value.length > 0;
                     resolutions[index].isDeleted = !hasContent;
                     
                     // Update the hint text dynamically

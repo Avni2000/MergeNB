@@ -441,7 +441,7 @@ export class NotebookConflictResolver {
                     } else {
                         cellToAdd.source = customContent;
                     }
-                } else if (customContent !== undefined && !cellToAdd && customContent.trim().length > 0) {
+                } else if (customContent !== undefined && !cellToAdd && customContent.length > 0) {
                     // User added content to a deleted cell - create a new cell
                     // Use the cell type from the non-deleted side, or default to 'code'
                     const referenceCell = localCell || remoteCell || baseCell;

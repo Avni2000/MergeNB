@@ -1,10 +1,8 @@
 /**
  * @file logger.ts
- * @description Simple debug logging utility that respects VSCode's debug settings.
+ * @description Simple debug logging utility.
  * 
- * Logs only appear when:
- * - Running in development (NODE_ENV !== 'production')
- * - Or when mergeNB.debug setting is enabled
+ * Logs only appear when: running in development (automatically detected).
  */
 
 let vscode: typeof import('vscode') | undefined;
@@ -24,7 +22,7 @@ function isDebugEnabled(): boolean {
 
 /**
  * Log a debug message.
- * Only appears in development or when mergeNB.debug is enabled.
+ * Only appears in development.
  */
 export function debug(...args: any[]): void {
     if (isDebugEnabled()) {
