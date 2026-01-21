@@ -234,13 +234,6 @@ export class UnifiedConflictPanel {
             conflictMap.set(key, { conflict: c, index: i });
         });
 
-        // Debug: Log notebook version info
-        console.log('[MergeNB] Building merge rows');
-        console.log('[MergeNB] base cells:', semanticConflict.base?.cells?.length);
-        console.log('[MergeNB] local cells:', semanticConflict.local?.cells?.length);
-        console.log('[MergeNB] remote cells:', semanticConflict.remote?.cells?.length);
-        console.log('[MergeNB] mappings count:', semanticConflict.cellMappings.length);
-
         // Use cell mappings to build rows
         for (const mapping of semanticConflict.cellMappings) {
             const baseCell = mapping.baseIndex !== undefined && semanticConflict.base 
@@ -250,22 +243,6 @@ export class UnifiedConflictPanel {
             const remoteCell = mapping.remoteIndex !== undefined && semanticConflict.remote 
                 ? semanticConflict.remote.cells[mapping.remoteIndex] : undefined;
             
-            // Debug: Log Lego cell specifically
-            const baseSource = baseCell ? (Array.isArray(baseCell.source) ? baseCell.source.join('') : baseCell.source) : '';
-            const localSource = localCell ? (Array.isArray(localCell.source) ? localCell.source.join('') : localCell.source) : '';
-            const remoteSource = remoteCell ? (Array.isArray(remoteCell.source) ? remoteCell.source.join('') : remoteCell.source) : '';
-            
-            if (baseSource.includes('2.3 The Lego Analogy')) {
-                console.log('[MergeNB] LEGO CELL FOUND:');
-                console.log('[MergeNB] - mapping:', JSON.stringify({baseIndex: mapping.baseIndex, localIndex: mapping.localIndex, remoteIndex: mapping.remoteIndex}));
-                console.log('[MergeNB] - base has "Key insight":', baseSource.includes('Key insight'));
-                console.log('[MergeNB] - local has "Key insight":', localSource.includes('Key insight'));
-                console.log('[MergeNB] - remote has "Key insight":', remoteSource.includes('Key insight'));
-                console.log('[MergeNB] - base === local:', baseSource === localSource);
-                console.log('[MergeNB] - base === remote:', baseSource === remoteSource);
-                console.log('[MergeNB] - local === remote:', localSource === remoteSource);
-            }
-
             const key = `${mapping.baseIndex ?? 'x'}-${mapping.localIndex ?? 'x'}-${mapping.remoteIndex ?? 'x'}`;
             const conflictInfo = conflictMap.get(key);
 
