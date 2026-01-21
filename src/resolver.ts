@@ -431,6 +431,22 @@ export class NotebookConflictResolver {
                     } else {
                         cellToAdd.source = customContent;
                     }
+                } else if (customContent !== undefined && !cellToAdd && customContent.trim().length > 0) {
+                    // User added content to a deleted cell - create a new cell
+                    // Use the cell type from the non-deleted side, or default to 'code'
+                    const referenceCell = localCell || remoteCell || baseCell;
+                    const cellType = referenceCell?.cell_type || 'code';
+                    cellToAdd = {
+                        cell_type: cellType,
+                        metadata: referenceCell?.metadata || {},
+                        source: customContent.split(/(?<=\n)/)
+                    } as NotebookCell;
+                    
+                    // Add execution_count and outputs for code cells
+                    if (cellType === 'code') {
+                        (cellToAdd as any).execution_count = null;
+                        (cellToAdd as any).outputs = [];
+                    }
                 }
 
                 // For 'both', also add remote cell after local

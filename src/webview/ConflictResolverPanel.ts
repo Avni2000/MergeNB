@@ -1608,6 +1608,11 @@ export class UnifiedConflictPanel {
             overflow: hidden;
         }
         
+        .result-editor-wrapper.deleted-cell-editor {
+            background: var(--vscode-input-background);
+            opacity: 0.8;
+        }
+        
         .result-editor {
             width: 100%;
             min-height: 120px;
@@ -1620,6 +1625,12 @@ export class UnifiedConflictPanel {
             border: none;
             resize: vertical;
             outline: none;
+        }
+        
+        .result-editor::placeholder {
+            color: var(--vscode-input-placeholderForeground);
+            opacity: 0.6;
+            font-style: italic;
         }
         
         .result-editor:focus {
@@ -1769,6 +1780,14 @@ export class UnifiedConflictPanel {
             overflow: hidden;
         }
         
+        .resolved-result-content.deleted-cell pre {
+            color: var(--vscode-descriptionForeground);
+            font-style: italic;
+            text-align: center;
+            padding: 30px 12px;
+            opacity: 0.8;
+        }
+        
         .resolved-result-content pre {
             font-family: var(--vscode-editor-font-family, monospace);
             font-size: 13px;
@@ -1884,6 +1903,10 @@ export class UnifiedConflictPanel {
                 unresolveConflict(index);
             }
             
+            // Check if the chosen side exists (detect deleted cells)
+            const hasAttr = \`data-has-\${choice}\`;
+            const hasCell = row.getAttribute(hasAttr) === 'true';
+            
             // Get source content based on choice
             const sourceAttr = \`data-\${choice}-source\`;
             const source = decodeURIComponent(row.getAttribute(sourceAttr) || '');
@@ -1899,7 +1922,8 @@ export class UnifiedConflictPanel {
                 customContent: source,
                 originalContent: source,
                 originalChoice: choice,
-                applied: false
+                applied: false,
+                isDeleted: !hasCell
             };
             
             // Update button states
@@ -1921,24 +1945,29 @@ export class UnifiedConflictPanel {
                 row.appendChild(editorContainer);
             }
             
+            // Check if this is a deleted cell
+            const isDeleted = !hasCell;
+            
             // Build editor HTML with Apply button
             const outputsHtml = renderOutputsFromData(outputsJson);
             const editorId = \`editor-\${index}\`;
             
+            // Always show editable textarea, but with different hints for deleted cells
             editorContainer.innerHTML = \`
                 <div class="result-editor-header">
                     <span class="badge \${choice}">Using \${choice === 'local' ? 'CURRENT' : choice === 'remote' ? 'INCOMING' : choice.toUpperCase()}</span>
-                    <span class="edit-hint">Edit the result below, then click Apply to confirm</span>
+                    <span class="edit-hint">\${isDeleted ? 'Cell will be deleted (or add content to restore)' : 'Edit the result below, then click Apply to confirm'}</span>
                 </div>
-                <div class="result-editor-wrapper">
+                <div class="result-editor-wrapper \${isDeleted ? 'deleted-cell-editor' : ''}">
                     <textarea 
                         id="\${editorId}" 
                         class="result-editor" 
                         data-conflict="\${index}"
                         spellcheck="false"
+                        placeholder="\${isDeleted ? '(cell deleted - add content here to restore it)' : ''}"
                     >\${escapeHtmlInJs(source)}</textarea>
                 </div>
-                \${outputsHtml}
+                \${isDeleted ? '' : outputsHtml}
                 <div class="result-editor-footer">
                     <button class="btn clear-single" onclick="clearSelection(\${index})">Cancel</button>
                     <button class="btn apply-single" onclick="applySingleResolution(\${index})">Apply This Resolution</button>
@@ -1955,6 +1984,25 @@ export class UnifiedConflictPanel {
                 editor.addEventListener('input', (e) => {
                     // Update custom content
                     resolutions[index].customContent = e.target.value;
+                    
+                    // Update deleted state based on content (regardless of original state)
+                    const hasContent = e.target.value.trim().length > 0;
+                    resolutions[index].isDeleted = !hasContent;
+                    
+                    // Update the hint text dynamically
+                    const hintElement = editorContainer.querySelector('.edit-hint');
+                    const wrapperElement = editorContainer.querySelector('.result-editor-wrapper');
+                    if (hintElement && wrapperElement) {
+                        if (!hasContent) {
+                            hintElement.textContent = 'Cell will be deleted (or add content to restore)';
+                            wrapperElement.classList.add('deleted-cell-editor');
+                            e.target.placeholder = '(cell deleted - add content here to restore it)';
+                        } else {
+                            hintElement.textContent = 'Edit the result below, then click Apply to confirm';
+                            wrapperElement.classList.remove('deleted-cell-editor');
+                            e.target.placeholder = '';
+                        }
+                    }
                     
                     // Auto-resize
                     e.target.style.height = 'auto';
@@ -2038,10 +2086,10 @@ export class UnifiedConflictPanel {
                     </div>
                     <button class="btn-change" onclick="unresolveConflict(\${index})">Change</button>
                 </div>
-                <div class="resolved-result-content">
-                    <pre>\${escapeHtmlInJs(resolvedContent)}</pre>
+                <div class="resolved-result-content \${resolutions[index].isDeleted ? 'deleted-cell' : ''}">
+                    <pre>\${resolutions[index].isDeleted ? '(cell deleted)' : escapeHtmlInJs(resolvedContent)}</pre>
                 </div>
-                \${resolvedOutputsHtml}
+                \${resolutions[index].isDeleted ? '' : resolvedOutputsHtml}
             \`;
             row.appendChild(resultContainer);
             
@@ -2186,7 +2234,8 @@ export class UnifiedConflictPanel {
                     if (!resolutions[i] || !resolutions[i].applied) {
                         const row = document.querySelector(\`.merge-row[data-conflict="\${i}"]\`);
                         const localSource = row ? decodeURIComponent(row.getAttribute('data-local-source') || '') : '';
-                        resolutions[i] = { choice: 'local', customContent: localSource, applied: true };
+                        const hasLocal = row ? row.getAttribute('data-has-local') === 'true' : false;
+                        resolutions[i] = { choice: 'local', customContent: localSource, applied: true, isDeleted: !hasLocal };
                     }
                 }
             }
