@@ -18,6 +18,7 @@ import { UnifiedConflictPanel, UnifiedConflict, UnifiedResolution } from './webv
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell, SemanticConflict } from './types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
+import * as logger from './logger';
 import { promisify } from 'util';
 import { exec as execCallback } from 'child_process';
 
@@ -273,8 +274,8 @@ export class NotebookConflictResolver {
             return;
         }
 
-        console.log('[MergeNB] Applying textual resolutions for:', uri.fsPath);
-        console.log('[MergeNB] Resolutions received:', Array.from(resolution.textualResolutions.entries()).map(([idx, res]) => ({
+        logger.debug('Applying textual resolutions for:', uri.fsPath);
+        logger.debug('Resolutions received:', Array.from(resolution.textualResolutions.entries()).map(([idx, res]) => ({
             index: idx,
             choice: res.choice,
             hasCustomContent: res.customContent !== undefined,
@@ -586,14 +587,14 @@ export class NotebookConflictResolver {
                     }
 
                     // Check if this is a deletion (empty custom content or no cell for chosen side)
-                    if (customContent !== undefined && customContent.trim() === '') {
+                    if (customContent !== undefined && customContent === '') {
                         isDeleted = true;
                     } else if (!cellToUse) {
                         isDeleted = true;
                     }
 
                     // If custom content was provided and not deleted, apply it to the cell
-                    if (customContent !== undefined && customContent.trim() !== '' && cellToUse) {
+                    if (customContent !== undefined && customContent !== '' && cellToUse) {
                         const editedCell: NotebookCell = JSON.parse(JSON.stringify(cellToUse));
                         // Convert source to the same format (string or string[]) as original
                         if (Array.isArray(editedCell.source)) {
@@ -602,7 +603,7 @@ export class NotebookConflictResolver {
                             editedCell.source = customContent;
                         }
                         cellToUse = editedCell;
-                    } else if (customContent !== undefined && customContent.trim() !== '' && !cellToUse) {
+                    } else if (customContent !== undefined && customContent !== '' && !cellToUse) {
                         // User added content to a deleted cell - create a new cell
                         // Use the first available cell as a template for metadata/type
                         const templateCell = localCell || remoteCell || baseCell;

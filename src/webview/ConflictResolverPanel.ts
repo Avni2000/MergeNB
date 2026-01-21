@@ -12,6 +12,7 @@
 
 
 import * as vscode from 'vscode';
+import * as logger from '../logger';
 import { 
     NotebookConflict, 
     CellConflict, 
@@ -351,12 +352,12 @@ export class UnifiedConflictPanel {
             return rows;
         }
 
-        console.log('[MergeNB] Building merge rows for textual conflict');
-        console.log('[MergeNB] base cells:', conflict.base?.cells?.length);
-        console.log('[MergeNB] local cells:', conflict.local?.cells?.length);
-        console.log('[MergeNB] remote cells:', conflict.remote?.cells?.length);
-        console.log('[MergeNB] mappings count:', conflict.cellMappings.length);
-        console.log('[MergeNB] original textual conflicts:', conflict.conflicts.length);
+        logger.debug('Building merge rows for textual conflict');
+        logger.debug('base cells:', conflict.base?.cells?.length);
+        logger.debug('local cells:', conflict.local?.cells?.length);
+        logger.debug('remote cells:', conflict.remote?.cells?.length);
+        logger.debug('mappings count:', conflict.cellMappings.length);
+        logger.debug('original textual conflicts:', conflict.conflicts.length);
 
         // For textual conflicts, we detect conflicts by comparing local vs remote
         // from the Git staging areas (not from the working copy markers)
@@ -425,7 +426,7 @@ export class UnifiedConflictPanel {
             });
         }
         
-        console.log('[MergeNB] Detected conflicts from Git comparison:', conflictIndex);
+        logger.debug('Detected conflicts from Git comparison:', conflictIndex);
 
         return rows;
     }
@@ -1819,6 +1820,14 @@ export class UnifiedConflictPanel {
         const resolutions = {};
         const totalConflicts = ${totalConflicts};
         const conflictType = '${conflictType}';
+        const isDebugMode = ${process.env.__VSCODE_EXTENSION_DEVELOPMENT__ === 'true'};
+        
+        // Debug logger - only logs in development mode
+        function debugLog(...args) {
+            if (isDebugMode) {
+                console.log('[MergeNB]', ...args);
+            }
+        }
         
         // Render outputs from JSON data
         function renderOutputsFromData(outputsJson) {
@@ -1992,7 +2001,7 @@ export class UnifiedConflictPanel {
             const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
             if (!row || !resolutions[index]) return;
             
-            console.log('[MergeNB] Applying resolution for conflict', index, ':', {
+            debugLog('Applying resolution for conflict', index, ':', {
                 choice: resolutions[index].choice,
                 isDeleted: resolutions[index].isDeleted,
                 contentLength: resolutions[index].customContent?.length ?? 0,
@@ -2193,7 +2202,7 @@ export class UnifiedConflictPanel {
                 }
             }
             
-            console.log(\`Progress: \${appliedCount}/\${totalConflicts} resolved\`);
+            debugLog(\`Progress: \${appliedCount}/\${totalConflicts} resolved\`);
         }
 
         function applyResolutions() {
@@ -2242,7 +2251,7 @@ export class UnifiedConflictPanel {
                     customContent: data.customContent
                 }));
                 
-                console.log('[MergeNB] Sending resolutions to backend:', resolutionArray.map(r => ({
+                debugLog('Sending resolutions to backend:', resolutionArray.map(r => ({
                     index: r.index,
                     choice: r.choice,
                     contentLength: r.customContent?.length ?? 0,
