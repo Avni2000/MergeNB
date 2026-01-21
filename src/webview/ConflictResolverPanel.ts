@@ -1992,6 +1992,13 @@ export class UnifiedConflictPanel {
             const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
             if (!row || !resolutions[index]) return;
             
+            console.log('[MergeNB] Applying resolution for conflict', index, ':', {
+                choice: resolutions[index].choice,
+                isDeleted: resolutions[index].isDeleted,
+                contentLength: resolutions[index].customContent?.length ?? 0,
+                contentPreview: resolutions[index].customContent ?? ''
+            });
+            
             // Mark as applied
             resolutions[index].applied = true;
             
@@ -2005,7 +2012,8 @@ export class UnifiedConflictPanel {
             }
             
             // Get the resolved content and outputs
-            const resolvedContent = resolutions[index].customContent;
+            const resolvedContent = resolutions[index].customContent ?? '';
+            const isDeleted = resolutions[index].isDeleted ?? false;
             const choice = resolutions[index].choice;
             const outputsAttr = \`data-\${choice}-outputs\`;
             const outputsJson = row.getAttribute(outputsAttr);
@@ -2017,7 +2025,7 @@ export class UnifiedConflictPanel {
             
             // Build outputs HTML for resolved view
             let resolvedOutputsHtml = '';
-            if (outputsJson) {
+            if (outputsJson && !isDeleted) {
                 try {
                     const outputs = JSON.parse(decodeURIComponent(outputsJson));
                     if (outputs && outputs.length > 0) {
@@ -2063,10 +2071,10 @@ export class UnifiedConflictPanel {
                     </div>
                     <button class="btn-change" onclick="unresolveConflict(\${index})">Change</button>
                 </div>
-                <div class="resolved-result-content \${resolutions[index].isDeleted ? 'deleted-cell' : ''}">
-                    <pre>\${resolutions[index].isDeleted ? '(cell deleted)' : escapeHtmlInJs(resolvedContent)}</pre>
+                <div class="resolved-result-content \${isDeleted ? 'deleted-cell' : ''}">
+                    <pre>\${isDeleted ? '(cell deleted)' : escapeHtmlInJs(resolvedContent)}</pre>
                 </div>
-                \${resolutions[index].isDeleted ? '' : resolvedOutputsHtml}
+                \${isDeleted ? '' : resolvedOutputsHtml}
             \`;
             row.appendChild(resultContainer);
             
@@ -2130,16 +2138,26 @@ export class UnifiedConflictPanel {
         }
         
         function acceptAllCurrent() {
-            // Select 'local' (current) for all conflicts without applying
+            // Select and apply 'local' (current) for all unresolved conflicts
             for (let i = 0; i < totalConflicts; i++) {
+                // Skip if already resolved
+                if (resolutions[i]?.applied) {
+                    continue;
+                }
                 selectResolution(i, 'local');
+                applySingleResolution(i);
             }
         }
         
         function acceptAllIncoming() {
-            // Select 'remote' (incoming) for all conflicts without applying
+            // Select and apply 'remote' (incoming) for all unresolved conflicts
             for (let i = 0; i < totalConflicts; i++) {
+                // Skip if already resolved
+                if (resolutions[i]?.applied) {
+                    continue;
+                }
                 selectResolution(i, 'remote');
+                applySingleResolution(i);
             }
         }
         
@@ -2223,6 +2241,13 @@ export class UnifiedConflictPanel {
                     choice: data.choice,
                     customContent: data.customContent
                 }));
+                
+                console.log('[MergeNB] Sending resolutions to backend:', resolutionArray.map(r => ({
+                    index: r.index,
+                    choice: r.choice,
+                    contentLength: r.customContent?.length ?? 0,
+                    contentPreview: r.customContent ?? ''
+                })));
                 
                 vscode.postMessage({ 
                     command: 'resolve', 
