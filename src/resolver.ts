@@ -15,9 +15,10 @@ import * as vscode from 'vscode';
 import { analyzeNotebookConflicts, hasConflictMarkers, resolveAllConflicts, detectSemanticConflicts, applyAutoResolutions, AutoResolveResult, enrichTextualConflictsWithContext } from './conflictDetector';
 import { parseNotebook, serializeNotebook, renumberExecutionCounts } from './notebookParser';
 import { UnifiedConflictPanel, UnifiedConflict, UnifiedResolution } from './webview/ConflictResolverPanel';
-import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
+import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell, SemanticConflict } from './types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
+import * as logger from './logger';
 import { promisify } from 'util';
 import { exec as execCallback } from 'child_process';
 
@@ -273,6 +274,15 @@ export class NotebookConflictResolver {
             return;
         }
 
+        logger.debug('Applying textual resolutions for:', uri.fsPath);
+        logger.debug('Resolutions received:', Array.from(resolution.textualResolutions.entries()).map(([idx, res]) => ({
+            index: idx,
+            choice: res.choice,
+            hasCustomContent: res.customContent !== undefined,
+            contentLength: res.customContent?.length ?? 0,
+            contentPreview: res.customContent ?? ""
+        })));
+
         const resolutions = resolution.textualResolutions;
         let resolvedContent: string;
 
@@ -431,7 +441,7 @@ export class NotebookConflictResolver {
                     } else {
                         cellToAdd.source = customContent;
                     }
-                } else if (customContent !== undefined && !cellToAdd && customContent.trim().length > 0) {
+                } else if (customContent !== undefined && !cellToAdd && customContent.length > 0) {
                     // User added content to a deleted cell - create a new cell
                     // Use the cell type from the non-deleted side, or default to 'code'
                     const referenceCell = localCell || remoteCell || baseCell;
@@ -474,6 +484,10 @@ export class NotebookConflictResolver {
 
     /**
      * Apply semantic conflict resolutions.
+     * 
+     * IMPORTANT: This method builds a new notebook from scratch using cellMappings,
+     * rather than trying to patch an existing notebook. This avoids index corruption
+     * when cells are added, deleted, or reordered.
      */
     private async applySemanticResolutions(
         uri: vscode.Uri,
@@ -510,116 +524,132 @@ export class NotebookConflictResolver {
             return;
         }
 
-        // Build the resolved notebook by applying each resolution
+        const baseNotebook = semanticConflict.base;
         const localNotebook = semanticConflict.local;
         const remoteNotebook = semanticConflict.remote;
+        // Auto-resolved notebook contains cells with auto-resolutions applied (e.g., outputs cleared)
+        const autoResolvedNotebook = autoResolveResult?.resolvedNotebook;
 
         if (!localNotebook && !remoteNotebook) {
             vscode.window.showErrorMessage('Cannot apply resolutions: no notebook versions available.');
             return;
         }
 
-        // Start with auto-resolved notebook if available, otherwise local
-        let resolvedNotebook: Notebook = autoResolveResult 
-            ? JSON.parse(JSON.stringify(autoResolveResult.resolvedNotebook))
-            : (localNotebook 
-                ? JSON.parse(JSON.stringify(localNotebook)) 
-                : JSON.parse(JSON.stringify(remoteNotebook!)));
+        // Build a conflict lookup map: key = "baseIdx-localIdx-remoteIdx" -> {conflict, index}
+        // Note: semanticConflict.semanticConflicts is the FILTERED list (only user-resolvable conflicts)
+        const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();
+        semanticConflict.semanticConflicts.forEach((c, i) => {
+            const key = `${c.baseCellIndex ?? 'x'}-${c.localCellIndex ?? 'x'}-${c.remoteCellIndex ?? 'x'}`;
+            conflictMap.set(key, { conflict: c, index: i });
+        });
 
-        // Track which cells we've processed
-        const cellsToRemove = new Set<number>();
+        // Build the resolved notebook cells from scratch by iterating cellMappings in order
+        const resolvedCells: NotebookCell[] = [];
 
-        // Apply resolutions to each conflict
-        for (const [index, res] of resolutions) {
-            const conflict = semanticConflict.semanticConflicts[index];
-            if (!conflict) continue;
+        for (const mapping of semanticConflict.cellMappings) {
+            const key = `${mapping.baseIndex ?? 'x'}-${mapping.localIndex ?? 'x'}-${mapping.remoteIndex ?? 'x'}`;
+            const conflictInfo = conflictMap.get(key);
 
-            const choice = res.choice;
-            const customContent = res.customContent;
+            // Get cells from each version
+            const baseCell = mapping.baseIndex !== undefined && baseNotebook 
+                ? baseNotebook.cells[mapping.baseIndex] : undefined;
+            const localCell = mapping.localIndex !== undefined && localNotebook 
+                ? localNotebook.cells[mapping.localIndex] : undefined;
+            const remoteCell = mapping.remoteIndex !== undefined && remoteNotebook 
+                ? remoteNotebook.cells[mapping.remoteIndex] : undefined;
+            // Get the auto-resolved version of this cell (if auto-resolutions were applied)
+            const autoResolvedCell = mapping.localIndex !== undefined && autoResolvedNotebook
+                ? autoResolvedNotebook.cells[mapping.localIndex] : undefined;
 
-            // Get the cell to use based on choice
             let cellToUse: NotebookCell | undefined;
+            let isDeleted = false;
 
-            switch (choice) {
-                case 'base':
-                    cellToUse = conflict.baseContent;
-                    break;
-                case 'local':
-                    cellToUse = conflict.localContent;
-                    break;
-                case 'remote':
-                    cellToUse = conflict.remoteContent;
-                    break;
-            }
+            if (conflictInfo) {
+                // This mapping corresponds to a conflict - check if user resolved it
+                const res = resolutions.get(conflictInfo.index);
+                
+                if (res) {
+                    // User provided a resolution
+                    const choice = res.choice;
+                    const customContent = res.customContent;
 
-            // If custom content was provided (user edited the result), apply it to the cell
-            if (customContent !== undefined && cellToUse) {
-                const editedCell: NotebookCell = JSON.parse(JSON.stringify(cellToUse));
-                // Convert source to the same format (string or string[]) as original
-                if (Array.isArray(editedCell.source)) {
-                    // Split by newlines, preserving them at the end of each line
-                    if (customContent === '') {
-                        editedCell.source = [];
-                    } else {
-                        editedCell.source = customContent.split(/(?<=\n)/);
+                    // Get the cell based on choice
+                    switch (choice) {
+                        case 'base':
+                            cellToUse = baseCell;
+                            break;
+                        case 'local':
+                            cellToUse = localCell;
+                            break;
+                        case 'remote':
+                            cellToUse = remoteCell;
+                            break;
+                    }
+
+                    // Check if this is a deletion (empty custom content or no cell for chosen side)
+                    if (customContent !== undefined && customContent === '') {
+                        isDeleted = true;
+                    } else if (!cellToUse) {
+                        isDeleted = true;
+                    }
+
+                    // If custom content was provided and not deleted, apply it to the cell
+                    if (customContent !== undefined && customContent !== '' && cellToUse) {
+                        const editedCell: NotebookCell = JSON.parse(JSON.stringify(cellToUse));
+                        // Convert source to the same format (string or string[]) as original
+                        if (Array.isArray(editedCell.source)) {
+                            editedCell.source = customContent.split(/(?<=\n)/);
+                        } else {
+                            editedCell.source = customContent;
+                        }
+                        cellToUse = editedCell;
+                    } else if (customContent !== undefined && customContent !== '' && !cellToUse) {
+                        // User added content to a deleted cell - create a new cell
+                        // Use the first available cell as a template for metadata/type
+                        const templateCell = localCell || remoteCell || baseCell;
+                        if (templateCell) {
+                            const newCell: NotebookCell = JSON.parse(JSON.stringify(templateCell));
+                            if (Array.isArray(newCell.source)) {
+                                newCell.source = customContent.split(/(?<=\n)/);
+                            } else {
+                                newCell.source = customContent;
+                            }
+                            cellToUse = newCell;
+                        }
                     }
                 } else {
-                    editedCell.source = customContent;
+                    // No resolution provided - default to local
+                    cellToUse = localCell;
+                    if (!cellToUse) {
+                        isDeleted = true;
+                    }
                 }
-                cellToUse = editedCell;
+            } else {
+                // No conflict in the filtered list - this is either:
+                // 1. An identical cell across versions, or
+                // 2. A cell that was auto-resolved
+                // 
+                // Use auto-resolved version if available (preserves auto-resolutions like cleared outputs),
+                // otherwise use local, fallback to remote, fallback to base
+                cellToUse = autoResolvedCell || localCell || remoteCell || baseCell;
             }
 
-            // Apply the resolution based on conflict type
-            if (conflict.type === 'cell-modified' || conflict.type === 'outputs-changed' || 
-                conflict.type === 'execution-count-changed' || conflict.type === 'metadata-changed') {
-                // Replace the cell at the local index with the chosen version
-                if (conflict.localCellIndex !== undefined) {
-                    if (cellToUse) {
-                        // Replace with the chosen cell
-                        resolvedNotebook.cells[conflict.localCellIndex] = JSON.parse(JSON.stringify(cellToUse));
-                    } else {
-                        // Chosen side has no cell - mark for deletion
-                        cellsToRemove.add(conflict.localCellIndex);
-                    }
-                }
-            } else if (conflict.type === 'cell-added') {
-                // For added cells, handle all three choices
-                if (choice === 'local' && conflict.localContent) {
-                    // Keep local addition - already in resolvedNotebook
-                    // No action needed
-                } else if (choice === 'remote' && conflict.remoteContent) {
-                    // Add remote cell
-                    const insertIndex = conflict.remoteCellIndex ?? resolvedNotebook.cells.length;
-                    resolvedNotebook.cells.splice(insertIndex, 0, JSON.parse(JSON.stringify(conflict.remoteContent)));
-                } else if (choice === 'base') {
-                    // Use base (which doesn't have this cell) - remove if exists locally
-                    if (conflict.localCellIndex !== undefined) {
-                        cellsToRemove.add(conflict.localCellIndex);
-                    }
-                }
-            } else if (conflict.type === 'cell-deleted') {
-                if (choice === 'local' && conflict.localContent) {
-                    // Keep local version (reject deletion) - already in resolvedNotebook
-                    // No action needed
-                } else if (choice === 'remote' && conflict.localCellIndex !== undefined) {
-                    // Accept remote deletion - mark for removal
-                    cellsToRemove.add(conflict.localCellIndex);
-                } else if (choice === 'base' && conflict.baseContent) {
-                    // Restore base cell
-                    const insertIndex = conflict.localCellIndex ?? conflict.remoteCellIndex ?? resolvedNotebook.cells.length;
-                    resolvedNotebook.cells.splice(insertIndex, 0, JSON.parse(JSON.stringify(conflict.baseContent)));
-                } else if (choice === 'base' && !conflict.baseContent && conflict.localCellIndex !== undefined) {
-                    // Base has no cell either - delete it
-                    cellsToRemove.add(conflict.localCellIndex);
-                }
+            // Add the cell to resolved cells if not deleted
+            if (!isDeleted && cellToUse) {
+                resolvedCells.push(JSON.parse(JSON.stringify(cellToUse)));
             }
         }
 
-        // Remove any cells marked for deletion (in reverse order to preserve indices)
-        const sortedIndices = Array.from(cellsToRemove).sort((a, b) => b - a);
-        for (const idx of sortedIndices) {
-            resolvedNotebook.cells.splice(idx, 1);
-        }
+        // Build the final notebook
+        // Use auto-resolved notebook metadata if available (preserves kernel auto-resolution)
+        const metadataSource = autoResolvedNotebook || localNotebook || remoteNotebook || baseNotebook;
+        const templateNotebook = localNotebook || remoteNotebook || baseNotebook;
+        let resolvedNotebook: Notebook = {
+            nbformat: templateNotebook!.nbformat,
+            nbformat_minor: templateNotebook!.nbformat_minor,
+            metadata: JSON.parse(JSON.stringify(metadataSource!.metadata)),
+            cells: resolvedCells
+        };
 
         // Ask user if they want to renumber execution counts
         const renumber = await vscode.window.showQuickPick(

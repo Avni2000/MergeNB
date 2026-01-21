@@ -12,6 +12,7 @@
 
 
 import * as vscode from 'vscode';
+import * as logger from '../logger';
 import { 
     NotebookConflict, 
     CellConflict, 
@@ -351,12 +352,12 @@ export class UnifiedConflictPanel {
             return rows;
         }
 
-        console.log('[MergeNB] Building merge rows for textual conflict');
-        console.log('[MergeNB] base cells:', conflict.base?.cells?.length);
-        console.log('[MergeNB] local cells:', conflict.local?.cells?.length);
-        console.log('[MergeNB] remote cells:', conflict.remote?.cells?.length);
-        console.log('[MergeNB] mappings count:', conflict.cellMappings.length);
-        console.log('[MergeNB] original textual conflicts:', conflict.conflicts.length);
+        logger.debug('Building merge rows for textual conflict');
+        logger.debug('base cells:', conflict.base?.cells?.length);
+        logger.debug('local cells:', conflict.local?.cells?.length);
+        logger.debug('remote cells:', conflict.remote?.cells?.length);
+        logger.debug('mappings count:', conflict.cellMappings.length);
+        logger.debug('original textual conflicts:', conflict.conflicts.length);
 
         // For textual conflicts, we detect conflicts by comparing local vs remote
         // from the Git staging areas (not from the working copy markers)
@@ -425,7 +426,7 @@ export class UnifiedConflictPanel {
             });
         }
         
-        console.log('[MergeNB] Detected conflicts from Git comparison:', conflictIndex);
+        logger.debug('Detected conflicts from Git comparison:', conflictIndex);
 
         return rows;
     }
@@ -1819,6 +1820,14 @@ export class UnifiedConflictPanel {
         const resolutions = {};
         const totalConflicts = ${totalConflicts};
         const conflictType = '${conflictType}';
+        const isDebugMode = ${process.env.__VSCODE_EXTENSION_DEVELOPMENT__ === 'true'};
+        
+        // Debug logger - only logs in development mode
+        function debugLog(...args) {
+            if (isDebugMode) {
+                console.log('[MergeNB]', ...args);
+            }
+        }
         
         // Render outputs from JSON data
         function renderOutputsFromData(outputsJson) {
@@ -1963,7 +1972,7 @@ export class UnifiedConflictPanel {
                     resolutions[index].customContent = e.target.value;
                     
                     // Update deleted state based on content (regardless of original state)
-                    const hasContent = e.target.value.trim().length > 0;
+                    const hasContent = e.target.value.length > 0;
                     resolutions[index].isDeleted = !hasContent;
                     
                     // Update the hint text dynamically
@@ -1992,6 +2001,13 @@ export class UnifiedConflictPanel {
             const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
             if (!row || !resolutions[index]) return;
             
+            debugLog('Applying resolution for conflict', index, ':', {
+                choice: resolutions[index].choice,
+                isDeleted: resolutions[index].isDeleted,
+                contentLength: resolutions[index].customContent?.length ?? 0,
+                contentPreview: resolutions[index].customContent ?? ''
+            });
+            
             // Mark as applied
             resolutions[index].applied = true;
             
@@ -2005,7 +2021,8 @@ export class UnifiedConflictPanel {
             }
             
             // Get the resolved content and outputs
-            const resolvedContent = resolutions[index].customContent;
+            const resolvedContent = resolutions[index].customContent ?? '';
+            const isDeleted = resolutions[index].isDeleted ?? false;
             const choice = resolutions[index].choice;
             const outputsAttr = \`data-\${choice}-outputs\`;
             const outputsJson = row.getAttribute(outputsAttr);
@@ -2017,7 +2034,7 @@ export class UnifiedConflictPanel {
             
             // Build outputs HTML for resolved view
             let resolvedOutputsHtml = '';
-            if (outputsJson) {
+            if (outputsJson && !isDeleted) {
                 try {
                     const outputs = JSON.parse(decodeURIComponent(outputsJson));
                     if (outputs && outputs.length > 0) {
@@ -2063,10 +2080,10 @@ export class UnifiedConflictPanel {
                     </div>
                     <button class="btn-change" onclick="unresolveConflict(\${index})">Change</button>
                 </div>
-                <div class="resolved-result-content \${resolutions[index].isDeleted ? 'deleted-cell' : ''}">
-                    <pre>\${resolutions[index].isDeleted ? '(cell deleted)' : escapeHtmlInJs(resolvedContent)}</pre>
+                <div class="resolved-result-content \${isDeleted ? 'deleted-cell' : ''}">
+                    <pre>\${isDeleted ? '(cell deleted)' : escapeHtmlInJs(resolvedContent)}</pre>
                 </div>
-                \${resolutions[index].isDeleted ? '' : resolvedOutputsHtml}
+                \${isDeleted ? '' : resolvedOutputsHtml}
             \`;
             row.appendChild(resultContainer);
             
@@ -2130,16 +2147,26 @@ export class UnifiedConflictPanel {
         }
         
         function acceptAllCurrent() {
-            // Select 'local' (current) for all conflicts without applying
+            // Select and apply 'local' (current) for all unresolved conflicts
             for (let i = 0; i < totalConflicts; i++) {
+                // Skip if already resolved
+                if (resolutions[i]?.applied) {
+                    continue;
+                }
                 selectResolution(i, 'local');
+                applySingleResolution(i);
             }
         }
         
         function acceptAllIncoming() {
-            // Select 'remote' (incoming) for all conflicts without applying
+            // Select and apply 'remote' (incoming) for all unresolved conflicts
             for (let i = 0; i < totalConflicts; i++) {
+                // Skip if already resolved
+                if (resolutions[i]?.applied) {
+                    continue;
+                }
                 selectResolution(i, 'remote');
+                applySingleResolution(i);
             }
         }
         
@@ -2175,7 +2202,7 @@ export class UnifiedConflictPanel {
                 }
             }
             
-            console.log(\`Progress: \${appliedCount}/\${totalConflicts} resolved\`);
+            debugLog(\`Progress: \${appliedCount}/\${totalConflicts} resolved\`);
         }
 
         function applyResolutions() {
@@ -2223,6 +2250,13 @@ export class UnifiedConflictPanel {
                     choice: data.choice,
                     customContent: data.customContent
                 }));
+                
+                debugLog('Sending resolutions to backend:', resolutionArray.map(r => ({
+                    index: r.index,
+                    choice: r.choice,
+                    contentLength: r.customContent?.length ?? 0,
+                    contentPreview: r.customContent ?? ''
+                })));
                 
                 vscode.postMessage({ 
                     command: 'resolve', 
