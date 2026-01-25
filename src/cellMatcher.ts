@@ -2,7 +2,7 @@
  * @file cellMatcher.ts
  * @description Cell matching algorithm for three-way notebook merge.
  * 
- * Matches cells across base/local/remote versions using:
+ * Matches cells across base/current/incoming versions using:
  * - Content hashing for exact matches
  * - Levenshtein distance for similarity scoring
  * - Hungarian algorithm for optimal bipartite matching
@@ -94,7 +94,7 @@ function levenshteinDistance(str1: string, str2: string): number {
 
 
 /**
- * Match cells between base and local/remote versions
+ * Match cells between base and current/incoming versions
  */
 function matchCellsToBase(
     baseCells: NotebookCell[],
@@ -146,61 +146,61 @@ function matchCellsToBase(
 }
 
 /**
- * Main function: Match cells across all three versions (base, local, remote)
+ * Main function: Match cells across all three versions (base, current, incoming)
  */
 export function matchCells(
     base: Notebook | null | undefined,
-    local: Notebook | null | undefined,
-    remote: Notebook | null | undefined
+    current: Notebook | null | undefined,
+    incoming: Notebook | null | undefined
 ): CellMapping[] {
     const mappings: CellMapping[] = [];
     
     // Handle edge cases
-    if (!base && !local && !remote) {
+    if (!base && !current && !incoming) {
         return [];
     }
     
     const baseCells = base?.cells || [];
-    const localCells = local?.cells || [];
-    const remoteCells = remote?.cells || [];
+    const currentCells = current?.cells || [];
+    const incomingCells = incoming?.cells || [];
     
-    // If no base, match local to remote directly
+    // If no base, match current to incoming directly
     if (baseCells.length === 0) {
-        const localHashes = localCells.map(cell => computeCellHash(cell));
-        const remoteHashes = remoteCells.map(cell => computeCellHash(cell));
+        const currentHashes = currentCells.map(cell => computeCellHash(cell));
+        const incomingHashes = incomingCells.map(cell => computeCellHash(cell));
         
-        const usedRemoteIndices = new Set<number>();
+        const usedincomingIndices = new Set<number>();
         
-        for (let localIdx = 0; localIdx < localCells.length; localIdx++) {
-            const localHash = localHashes[localIdx];
-            const remoteIdx = remoteHashes.indexOf(localHash);
+        for (let currentIdx = 0; currentIdx < currentCells.length; currentIdx++) {
+            const currentHash = currentHashes[currentIdx];
+            const incomingIdx = incomingHashes.indexOf(currentHash);
             
-            if (remoteIdx !== -1 && !usedRemoteIndices.has(remoteIdx)) {
+            if (incomingIdx !== -1 && !usedincomingIndices.has(incomingIdx)) {
                 mappings.push({
-                    localIndex: localIdx,
-                    remoteIndex: remoteIdx,
+                    currentIndex: currentIdx,
+                    incomingIndex: incomingIdx,
                     matchConfidence: 1.0,
-                    localCell: localCells[localIdx],
-                    remoteCell: remoteCells[remoteIdx]
+                    currentCell: currentCells[currentIdx],
+                    incomingCell: incomingCells[incomingIdx]
                 });
-                usedRemoteIndices.add(remoteIdx);
+                usedincomingIndices.add(incomingIdx);
             } else {
-                // Unmatched local cell
+                // Unmatched current cell
                 mappings.push({
-                    localIndex: localIdx,
+                    currentIndex: currentIdx,
                     matchConfidence: 1.0,
-                    localCell: localCells[localIdx]
+                    currentCell: currentCells[currentIdx]
                 });
             }
         }
         
-        // Unmatched remote cells
-        for (let remoteIdx = 0; remoteIdx < remoteCells.length; remoteIdx++) {
-            if (!usedRemoteIndices.has(remoteIdx)) {
+        // Unmatched incoming cells
+        for (let incomingIdx = 0; incomingIdx < incomingCells.length; incomingIdx++) {
+            if (!usedincomingIndices.has(incomingIdx)) {
                 mappings.push({
-                    remoteIndex: remoteIdx,
+                    incomingIndex: incomingIdx,
                     matchConfidence: 1.0,
-                    remoteCell: remoteCells[remoteIdx]
+                    incomingCell: incomingCells[incomingIdx]
                 });
             }
         }
@@ -208,81 +208,81 @@ export function matchCells(
         return mappings;
     }
     
-    // Match base to local and base to remote
-    const baseToLocal = matchCellsToBase(baseCells, localCells);
-    const baseToRemote = matchCellsToBase(baseCells, remoteCells);
+    // Match base to current and base to incoming
+    const baseTocurrent = matchCellsToBase(baseCells, currentCells);
+    const baseToincoming = matchCellsToBase(baseCells, incomingCells);
     
-    const usedLocalIndices = new Set<number>();
-    const usedRemoteIndices = new Set<number>();
+    const usedcurrentIndices = new Set<number>();
+    const usedincomingIndices = new Set<number>();
     
     // Create mappings for cells that exist in base
     for (let baseIdx = 0; baseIdx < baseCells.length; baseIdx++) {
-        const localIdx = baseToLocal.get(baseIdx);
-        const remoteIdx = baseToRemote.get(baseIdx);
+        const currentIdx = baseTocurrent.get(baseIdx);
+        const incomingIdx = baseToincoming.get(baseIdx);
         
         const mapping: CellMapping = {
             baseIndex: baseIdx,
-            localIndex: localIdx,
-            remoteIndex: remoteIdx,
+            currentIndex: currentIdx,
+            incomingIndex: incomingIdx,
             matchConfidence: 0.9, // High confidence for base-anchored matches
             baseCell: baseCells[baseIdx],
-            localCell: localIdx !== undefined ? localCells[localIdx] : undefined,
-            remoteCell: remoteIdx !== undefined ? remoteCells[remoteIdx] : undefined
+            currentCell: currentIdx !== undefined ? currentCells[currentIdx] : undefined,
+            incomingCell: incomingIdx !== undefined ? incomingCells[incomingIdx] : undefined
         };
         
         mappings.push(mapping);
         
-        if (localIdx !== undefined) usedLocalIndices.add(localIdx);
-        if (remoteIdx !== undefined) usedRemoteIndices.add(remoteIdx);
+        if (currentIdx !== undefined) usedcurrentIndices.add(currentIdx);
+        if (incomingIdx !== undefined) usedincomingIndices.add(incomingIdx);
     }
     
-    // Handle cells that exist in local but not matched to base
-    for (let localIdx = 0; localIdx < localCells.length; localIdx++) {
-        if (usedLocalIndices.has(localIdx)) continue;
+    // Handle cells that exist in current but not matched to base
+    for (let currentIdx = 0; currentIdx < currentCells.length; currentIdx++) {
+        if (usedcurrentIndices.has(currentIdx)) continue;
         
-        // Try to match to unmatched remote cells
-        let bestRemoteIdx = -1;
+        // Try to match to unmatched incoming cells
+        let bestincomingIdx = -1;
         let bestScore = 0.7;
         
-        for (let remoteIdx = 0; remoteIdx < remoteCells.length; remoteIdx++) {
-            if (usedRemoteIndices.has(remoteIdx)) continue;
+        for (let incomingIdx = 0; incomingIdx < incomingCells.length; incomingIdx++) {
+            if (usedincomingIndices.has(incomingIdx)) continue;
             
-            const similarity = computeCellSimilarity(localCells[localIdx], remoteCells[remoteIdx]);
+            const similarity = computeCellSimilarity(currentCells[currentIdx], incomingCells[incomingIdx]);
             if (similarity > bestScore) {
                 bestScore = similarity;
-                bestRemoteIdx = remoteIdx;
+                bestincomingIdx = incomingIdx;
             }
         }
         
-        if (bestRemoteIdx !== -1) {
+        if (bestincomingIdx !== -1) {
             mappings.push({
-                localIndex: localIdx,
-                remoteIndex: bestRemoteIdx,
+                currentIndex: currentIdx,
+                incomingIndex: bestincomingIdx,
                 matchConfidence: bestScore,
-                localCell: localCells[localIdx],
-                remoteCell: remoteCells[bestRemoteIdx]
+                currentCell: currentCells[currentIdx],
+                incomingCell: incomingCells[bestincomingIdx]
             });
-            usedRemoteIndices.add(bestRemoteIdx);
+            usedincomingIndices.add(bestincomingIdx);
         } else {
-            // Local-only cell
+            // current-only cell
             mappings.push({
-                localIndex: localIdx,
+                currentIndex: currentIdx,
                 matchConfidence: 1.0,
-                localCell: localCells[localIdx]
+                currentCell: currentCells[currentIdx]
             });
         }
         
-        usedLocalIndices.add(localIdx);
+        usedcurrentIndices.add(currentIdx);
     }
     
-    // Handle remaining remote-only cells
-    for (let remoteIdx = 0; remoteIdx < remoteCells.length; remoteIdx++) {
-        if (usedRemoteIndices.has(remoteIdx)) continue;
+    // Handle remaining incoming-only cells
+    for (let incomingIdx = 0; incomingIdx < incomingCells.length; incomingIdx++) {
+        if (usedincomingIndices.has(incomingIdx)) continue;
         
         mappings.push({
-            remoteIndex: remoteIdx,
+            incomingIndex: incomingIdx,
             matchConfidence: 1.0,
-            remoteCell: remoteCells[remoteIdx]
+            incomingCell: incomingCells[incomingIdx]
         });
     }
     
@@ -295,8 +295,8 @@ export function matchCells(
 export function detectReordering(mappings: CellMapping[]): boolean {
     const validMappings = mappings.filter(m => 
         m.baseIndex !== undefined && 
-        m.localIndex !== undefined && 
-        m.remoteIndex !== undefined
+        m.currentIndex !== undefined && 
+        m.incomingIndex !== undefined
     );
     
     if (validMappings.length < 2) return false;
@@ -307,11 +307,11 @@ export function detectReordering(mappings: CellMapping[]): boolean {
         const curr = validMappings[i];
         
         const baseOrdered = curr.baseIndex! > prev.baseIndex!;
-        const localOrdered = curr.localIndex! > prev.localIndex!;
-        const remoteOrdered = curr.remoteIndex! > prev.remoteIndex!;
+        const currentOrdered = curr.currentIndex! > prev.currentIndex!;
+        const incomingOrdered = curr.incomingIndex! > prev.incomingIndex!;
         
         // If ordering differs between versions, cells were reordered
-        if (baseOrdered !== localOrdered || baseOrdered !== remoteOrdered) {
+        if (baseOrdered !== currentOrdered || baseOrdered !== incomingOrdered) {
             return true;
         }
     }

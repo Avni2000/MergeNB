@@ -80,7 +80,7 @@ class TestRepo {
 
     init(): void {
         this.exec('git init');
-        this.exec('git config user.email "test@test.local"');
+        this.exec('git config user.email "test@test.current"');
         this.exec('git config user.name "Test"');
         this.exec('git checkout -b main');
     }
@@ -175,10 +175,10 @@ function createNotebook(cells: Array<{
 
 function analyzeSemanticConflicts(
     base: Notebook | undefined,
-    local: Notebook | undefined,
-    remote: Notebook | undefined
+    current: Notebook | undefined,
+    incoming: Notebook | undefined
 ): { mappings: CellMapping[]; conflicts: SemanticConflict[] } {
-    const mappings = matchCells(base, local, remote);
+    const mappings = matchCells(base, current, incoming);
     const conflicts: SemanticConflict[] = [];
 
     if (detectReordering(mappings)) {
@@ -186,35 +186,35 @@ function analyzeSemanticConflicts(
     }
 
     for (const m of mappings) {
-        const { baseIndex, localIndex, remoteIndex, baseCell, localCell, remoteCell } = m;
+        const { baseIndex, currentIndex, incomingIndex, baseCell, currentCell, incomingCell } = m;
 
         // Cell added in one branch only
-        if (localCell && !baseCell && !remoteCell) {
-            conflicts.push({ type: 'cell-added', localCellIndex: localIndex, description: 'Added in local' });
-        } else if (remoteCell && !baseCell && !localCell) {
-            conflicts.push({ type: 'cell-added', remoteCellIndex: remoteIndex, description: 'Added in remote' });
+        if (currentCell && !baseCell && !incomingCell) {
+            conflicts.push({ type: 'cell-added', currentCellIndex: currentIndex, description: 'Added in current' });
+        } else if (incomingCell && !baseCell && !currentCell) {
+            conflicts.push({ type: 'cell-added', incomingCellIndex: incomingIndex, description: 'Added in incoming' });
         }
         // Cell deleted
-        else if (baseCell && !localCell && remoteCell) {
-            conflicts.push({ type: 'cell-deleted', baseCellIndex: baseIndex, description: 'Deleted in local' });
-        } else if (baseCell && localCell && !remoteCell) {
-            conflicts.push({ type: 'cell-deleted', baseCellIndex: baseIndex, description: 'Deleted in remote' });
+        else if (baseCell && !currentCell && incomingCell) {
+            conflicts.push({ type: 'cell-deleted', baseCellIndex: baseIndex, description: 'Deleted in current' });
+        } else if (baseCell && currentCell && !incomingCell) {
+            conflicts.push({ type: 'cell-deleted', baseCellIndex: baseIndex, description: 'Deleted in incoming' });
         }
         // Cell modified in both
-        else if (baseCell && localCell && remoteCell) {
+        else if (baseCell && currentCell && incomingCell) {
             const baseSrc = getCellSource(baseCell);
-            const localSrc = getCellSource(localCell);
-            const remoteSrc = getCellSource(remoteCell);
+            const currentSrc = getCellSource(currentCell);
+            const incomingSrc = getCellSource(incomingCell);
 
-            if (localSrc !== baseSrc && remoteSrc !== baseSrc && localSrc !== remoteSrc) {
+            if (currentSrc !== baseSrc && incomingSrc !== baseSrc && currentSrc !== incomingSrc) {
                 conflicts.push({ type: 'cell-modified', baseCellIndex: baseIndex, description: 'Modified in both' });
             }
 
             // Execution count conflicts
             if (baseCell.cell_type === 'code') {
                 const bExec = baseCell.execution_count;
-                const lExec = localCell.execution_count;
-                const rExec = remoteCell.execution_count;
+                const lExec = currentCell.execution_count;
+                const rExec = incomingCell.execution_count;
                 if (lExec !== bExec && rExec !== bExec && lExec !== rExec) {
                     conflicts.push({ type: 'execution-count-changed', baseCellIndex: baseIndex, description: 'Exec count differs' });
                 }
@@ -260,10 +260,10 @@ describe('MergeNB Integration Tests', function () {
             assertGreater(analysis.conflicts.length, 0, 'Should detect at least one conflict');
 
             const conflict = analysis.conflicts[0];
-            assert(conflict.localContent !== conflict.remoteContent, 'Local and remote should differ');
+            assert(conflict.currentContent !== conflict.incomingContent, 'current and incoming should differ');
 
             // Resolution should produce valid marker-free JSON
-            const resolved = resolveAllConflicts(content, [{ marker: conflict.marker, choice: 'local' }]);
+            const resolved = resolveAllConflicts(content, [{ marker: conflict.marker, choice: 'current' }]);
             assert(!hasConflictMarkers(resolved) || analysis.conflicts.length > 1, 
                    'Should remove at least one conflict marker');
 
@@ -296,7 +296,7 @@ describe('MergeNB Integration Tests', function () {
             console.log(`     Found ${analysis.conflicts.length} conflicts`);
 
             // Resolution should produce valid notebook without markers
-            const resolutions = analysis.conflicts.map(c => ({ marker: c.marker, choice: 'local' as const }));
+            const resolutions = analysis.conflicts.map(c => ({ marker: c.marker, choice: 'current' as const }));
             const resolved = resolveAllConflicts(content, resolutions);
             
             assert(!hasConflictMarkers(resolved), 'Resolved should have no markers');
@@ -317,14 +317,14 @@ describe('MergeNB Integration Tests', function () {
                     { type: 'code', source: 'x = 1' },
                     { type: 'markdown', source: '# Footer' },
                 ]);
-                const local = createNotebook([
+                const current = createNotebook([
                     { type: 'markdown', source: '# Header' },
-                    { type: 'code', source: 'x = LOCAL' },
+                    { type: 'code', source: 'x = current' },
                     { type: 'markdown', source: '# Footer' },
                 ]);
-                const remote = createNotebook([
+                const incoming = createNotebook([
                     { type: 'markdown', source: '# Header' },
-                    { type: 'code', source: 'x = REMOTE' },
+                    { type: 'code', source: 'x = incoming' },
                     { type: 'markdown', source: '# Footer' },
                 ]);
 
@@ -332,19 +332,19 @@ describe('MergeNB Integration Tests', function () {
                 repo.commit('base');
 
                 repo.branch('feature');
-                repo.write('nb.ipynb', JSON.stringify(remote, null, 2));
-                repo.commit('remote');
+                repo.write('nb.ipynb', JSON.stringify(incoming, null, 2));
+                repo.commit('incoming');
 
                 repo.checkout('main');
-                repo.write('nb.ipynb', JSON.stringify(local, null, 2));
-                repo.commit('local');
+                repo.write('nb.ipynb', JSON.stringify(current, null, 2));
+                repo.commit('current');
 
                 repo.merge('feature');
                 const content = repo.read('nb.ipynb');
 
                 if (hasConflictMarkers(content)) {
                     const analysis = analyzeNotebookConflicts(path.join(repo.path, 'nb.ipynb'), content);
-                    const resolutions = analysis.conflicts.map(c => ({ marker: c.marker, choice: 'local' as const }));
+                    const resolutions = analysis.conflicts.map(c => ({ marker: c.marker, choice: 'current' as const }));
                     const resolved = resolveAllConflicts(content, resolutions);
 
                     // Must be valid JSON
@@ -372,20 +372,20 @@ describe('MergeNB Integration Tests', function () {
     describe('Semantic Conflicts', () => {
 
         it('detects cell additions in three-way merge', function () {
-            // When remote adds a cell that base doesn't have, we should detect it
+            // When incoming adds a cell that base doesn't have, we should detect it
             
             const base = createNotebook([
                 { type: 'markdown', source: '# Title' },
             ]);
-            const local = createNotebook([
+            const current = createNotebook([
                 { type: 'markdown', source: '# Title' },
             ]);
-            const remote = createNotebook([
+            const incoming = createNotebook([
                 { type: 'markdown', source: '# Title' },
                 { type: 'code', source: 'new_cell = True' },
             ]);
 
-            const { conflicts } = analyzeSemanticConflicts(base, local, remote);
+            const { conflicts } = analyzeSemanticConflicts(base, current, incoming);
             
             const addConflicts = conflicts.filter(c => c.type === 'cell-added');
             assertGreater(addConflicts.length, 0, 'Should detect cell-added');
@@ -398,16 +398,16 @@ describe('MergeNB Integration Tests', function () {
                 { type: 'markdown', source: '# Title' },
                 { type: 'code', source: 'will_be_deleted = True' },
             ]);
-            const local = createNotebook([
+            const current = createNotebook([
                 { type: 'markdown', source: '# Title' },
                 // Cell deleted
             ]);
-            const remote = createNotebook([
+            const incoming = createNotebook([
                 { type: 'markdown', source: '# Title' },
                 { type: 'code', source: 'will_be_deleted = True' },
             ]);
 
-            const { conflicts } = analyzeSemanticConflicts(base, local, remote);
+            const { conflicts } = analyzeSemanticConflicts(base, current, incoming);
             
             const deleteConflicts = conflicts.filter(c => c.type === 'cell-deleted');
             assertGreater(deleteConflicts.length, 0, 'Should detect cell-deleted');
@@ -417,10 +417,10 @@ describe('MergeNB Integration Tests', function () {
             // Different execution counts between branches should be flagged
             
             const base = createNotebook([{ type: 'code', source: 'x = 1', execution_count: 1 }]);
-            const local = createNotebook([{ type: 'code', source: 'x = 1', execution_count: 5 }]);
-            const remote = createNotebook([{ type: 'code', source: 'x = 1', execution_count: 10 }]);
+            const current = createNotebook([{ type: 'code', source: 'x = 1', execution_count: 5 }]);
+            const incoming = createNotebook([{ type: 'code', source: 'x = 1', execution_count: 10 }]);
 
-            const { conflicts } = analyzeSemanticConflicts(base, local, remote);
+            const { conflicts } = analyzeSemanticConflicts(base, current, incoming);
             
             const execConflicts = conflicts.filter(c => c.type === 'execution-count-changed');
             assertGreater(execConflicts.length, 0, 'Should detect execution count conflict');
@@ -432,33 +432,33 @@ describe('MergeNB Integration Tests', function () {
             
             const testDir = path.resolve(__dirname, '..');
             const basePath = path.join(testDir, '02_base.ipynb');
-            const localPath = path.join(testDir, '02_local.ipynb');
-            const remotePath = path.join(testDir, '02_remote.ipynb');
+            const currentPath = path.join(testDir, '02_current.ipynb');
+            const incomingPath = path.join(testDir, '02_incoming.ipynb');
 
             assert(fs.existsSync(basePath), 'Missing 02_base.ipynb');
-            assert(fs.existsSync(localPath), 'Missing 02_local.ipynb');
-            assert(fs.existsSync(remotePath), 'Missing 02_remote.ipynb');
+            assert(fs.existsSync(currentPath), 'Missing 02_current.ipynb');
+            assert(fs.existsSync(incomingPath), 'Missing 02_incoming.ipynb');
 
             const base = parseNotebook(fs.readFileSync(basePath, 'utf8'));
-            const local = parseNotebook(fs.readFileSync(localPath, 'utf8'));
-            const remote = parseNotebook(fs.readFileSync(remotePath, 'utf8'));
+            const current = parseNotebook(fs.readFileSync(currentPath, 'utf8'));
+            const incoming = parseNotebook(fs.readFileSync(incomingPath, 'utf8'));
 
             // Known cell counts
             assertEqual(base.cells.length, 64, 'Base should have 64 cells');
-            assertEqual(local.cells.length, 64, 'Local should have 64 cells');
-            assertEqual(remote.cells.length, 65, 'Remote should have 65 cells');
+            assertEqual(current.cells.length, 64, 'current should have 64 cells');
+            assertEqual(incoming.cells.length, 65, 'incoming should have 65 cells');
 
-            const mappings = matchCells(base, local, remote);
+            const mappings = matchCells(base, current, incoming);
             assertGreater(mappings.length, 0, 'Should produce mappings');
 
             // Count mapped cells
             const baseMapped = mappings.filter(m => m.baseCell).length;
-            const localMapped = mappings.filter(m => m.localCell).length;
-            const remoteMapped = mappings.filter(m => m.remoteCell).length;
+            const currentMapped = mappings.filter(m => m.currentCell).length;
+            const incomingMapped = mappings.filter(m => m.incomingCell).length;
 
             assertEqual(baseMapped, 64, 'All base cells should be mapped');
-            assertEqual(localMapped, 64, 'All local cells should be mapped');
-            assertEqual(remoteMapped, 65, 'All remote cells should be mapped');
+            assertEqual(currentMapped, 64, 'All current cells should be mapped');
+            assertEqual(incomingMapped, 65, 'All incoming cells should be mapped');
 
             // Most should be high confidence (similar notebooks)
             const highConf = mappings.filter(m => m.matchConfidence >= 0.9).length;
@@ -468,7 +468,7 @@ describe('MergeNB Integration Tests', function () {
         });
 
         it('retrieves staged versions from Git during merge (if unmerged)', function () {
-            // During a merge conflict, Git stages base/local/remote as :1/:2/:3
+            // During a merge conflict, Git stages base/current/incoming as :1/:2/:3
             // We need to retrieve and parse these for semantic analysis
             // NOTE: Git may auto-merge large notebook differences, so we check both paths
             
@@ -477,20 +477,20 @@ describe('MergeNB Integration Tests', function () {
 
             try {
                 const baseContent = fs.readFileSync(path.join(testDir, '02_base.ipynb'), 'utf8');
-                const localContent = fs.readFileSync(path.join(testDir, '02_local.ipynb'), 'utf8');
-                const remoteContent = fs.readFileSync(path.join(testDir, '02_remote.ipynb'), 'utf8');
+                const currentContent = fs.readFileSync(path.join(testDir, '02_current.ipynb'), 'utf8');
+                const incomingContent = fs.readFileSync(path.join(testDir, '02_incoming.ipynb'), 'utf8');
 
                 repo.init();
                 repo.write('nb.ipynb', baseContent);
                 repo.commit('base');
 
                 repo.branch('feature');
-                repo.write('nb.ipynb', remoteContent);
-                repo.commit('remote');
+                repo.write('nb.ipynb', incomingContent);
+                repo.commit('incoming');
 
                 repo.checkout('main');
-                repo.write('nb.ipynb', localContent);
-                repo.commit('local');
+                repo.write('nb.ipynb', currentContent);
+                repo.commit('current');
 
                 repo.merge('feature');
 
@@ -501,21 +501,21 @@ describe('MergeNB Integration Tests', function () {
                 if (isUnmerged) {
                     // Git created a semantic conflict - test staging area retrieval
                     const stagedBase = repo.getStaged(1, 'nb.ipynb');
-                    const stagedLocal = repo.getStaged(2, 'nb.ipynb');
-                    const stagedRemote = repo.getStaged(3, 'nb.ipynb');
+                    const stagedcurrent = repo.getStaged(2, 'nb.ipynb');
+                    const stagedincoming = repo.getStaged(3, 'nb.ipynb');
 
                     assert(stagedBase !== null, 'Should retrieve stage 1 (base)');
-                    assert(stagedLocal !== null, 'Should retrieve stage 2 (local)');
-                    assert(stagedRemote !== null, 'Should retrieve stage 3 (remote)');
+                    assert(stagedcurrent !== null, 'Should retrieve stage 2 (current)');
+                    assert(stagedincoming !== null, 'Should retrieve stage 3 (incoming)');
 
                     // Each should be valid notebooks
                     const base = parseNotebook(stagedBase!);
-                    const local = parseNotebook(stagedLocal!);
-                    const remote = parseNotebook(stagedRemote!);
+                    const current = parseNotebook(stagedcurrent!);
+                    const incoming = parseNotebook(stagedincoming!);
 
                     assert(base.cells.length > 0, 'Staged base should have cells');
-                    assert(local.cells.length > 0, 'Staged local should have cells');
-                    assert(remote.cells.length > 0, 'Staged remote should have cells');
+                    assert(current.cells.length > 0, 'Staged current should have cells');
+                    assert(incoming.cells.length > 0, 'Staged incoming should have cells');
                 } else if (hasMarkers) {
                     // Git created textual conflict markers
                     console.log('     Git produced textual markers, staging test skipped');

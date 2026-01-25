@@ -56,22 +56,22 @@ export interface ConflictMarker {
     start: number;  // Line index of <<<<<<<
     middle: number; // Line index of =======
     end: number;    // Line index of >>>>>>>
-    localBranch?: string;
-    remoteBranch?: string;
+    currentBranch?: string;
+    incomingBranch?: string;
 }
 
 export interface CellConflict {
     cellIndex: number;
     field: 'source' | 'outputs' | 'metadata' | 'execution_count';
-    localContent: string;
-    remoteContent: string;
+    currentContent: string;
+    incomingContent: string;
     marker: ConflictMarker;
     /** Cell type for display purposes */
     cellType?: 'code' | 'markdown' | 'raw';
-    /** Index of the local cell (for cell-level conflicts) */
-    localCellIndex?: number;
-    /** Index of the remote cell (for cell-level conflicts) */
-    remoteCellIndex?: number;
+    /** Index of the current cell (for cell-level conflicts) */
+    currentCellIndex?: number;
+    /** Index of the incoming cell (for cell-level conflicts) */
+    incomingCellIndex?: number;
 }
 
 export interface NotebookConflict {
@@ -81,25 +81,25 @@ export interface NotebookConflict {
     // If conflict is in top-level metadata
     metadataConflicts: Array<{
         field: string;
-        localContent: string;
-        remoteContent: string;
+        currentContent: string;
+        incomingContent: string;
         marker: ConflictMarker;
     }>;
     
     // Full notebook versions from Git staging areas (for showing non-conflicted context)
     base?: Notebook;
-    local?: Notebook;
-    remote?: Notebook;
+    current?: Notebook;
+    incoming?: Notebook;
     
     // Cell mappings between versions (like semantic conflicts)
     cellMappings?: CellMapping[];
     
     // Branch information
-    localBranch?: string;
-    remoteBranch?: string;
+    currentBranch?: string;
+    incomingBranch?: string;
 }
 
-export type ResolutionChoice = 'local' | 'remote' | 'both' | 'custom';
+export type ResolutionChoice = 'current' | 'incoming' | 'both' | 'custom';
 
 export interface ConflictResolution {
     conflict: CellConflict;
@@ -112,8 +112,8 @@ export interface ConflictResolution {
  */
 
 export type SemanticConflictType = 
-    | 'cell-added'           // Cell exists in local or remote but not base
-    | 'cell-deleted'         // Cell removed in local or remote
+    | 'cell-added'           // Cell exists in current or incoming but not base
+    | 'cell-deleted'         // Cell removed in current or incoming
     | 'cell-modified'        // Cell content changed in both branches
     | 'cell-reordered'       // Cells appear in different order
     | 'metadata-changed'     // Cell metadata differs
@@ -125,13 +125,13 @@ export interface SemanticConflict {
     
     // Cell indices in each version (undefined if cell doesn't exist in that version)
     baseCellIndex?: number;
-    localCellIndex?: number;
-    remoteCellIndex?: number;
+    currentCellIndex?: number;
+    incomingCellIndex?: number;
     
     // Cell content from each version
     baseContent?: NotebookCell;
-    localContent?: NotebookCell;
-    remoteContent?: NotebookCell;
+    currentContent?: NotebookCell;
+    incomingContent?: NotebookCell;
     
     // Additional context
     description?: string;
@@ -139,12 +139,12 @@ export interface SemanticConflict {
 
 export interface CellMapping {
     baseIndex?: number;
-    localIndex?: number;
-    remoteIndex?: number;
+    currentIndex?: number;
+    incomingIndex?: number;
     matchConfidence: number; // 0-1, how confident we are in this mapping
     baseCell?: NotebookCell;
-    localCell?: NotebookCell;
-    remoteCell?: NotebookCell;
+    currentCell?: NotebookCell;
+    incomingCell?: NotebookCell;
 }
 
 export interface NotebookSemanticConflict {
@@ -161,16 +161,16 @@ export interface NotebookSemanticConflict {
     
     // Full notebook versions
     base?: Notebook;
-    local?: Notebook;
-    remote?: Notebook;
+    current?: Notebook;
+    incoming?: Notebook;
     
     // Branch information
-    localBranch?: string;
-    remoteBranch?: string;
+    currentBranch?: string;
+    incomingBranch?: string;
 }
 
 export interface SemanticConflictResolution {
     conflict: SemanticConflict;
-    choice: 'base' | 'local' | 'remote' | 'custom';
+    choice: 'base' | 'current' | 'incoming' | 'custom';
     customContent?: NotebookCell;
 }

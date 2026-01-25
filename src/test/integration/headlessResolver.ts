@@ -113,7 +113,7 @@ export const GitHeadless = {
         }
     },
 
-    getLocal(filePath: string): string | null {
+    getcurrent(filePath: string): string | null {
         try {
             const gitRoot = this.getGitRoot(filePath);
             if (!gitRoot) return null;
@@ -128,7 +128,7 @@ export const GitHeadless = {
         }
     },
 
-    getRemote(filePath: string): string | null {
+    getincoming(filePath: string): string | null {
         try {
             const gitRoot = this.getGitRoot(filePath);
             if (!gitRoot) return null;
@@ -143,14 +143,14 @@ export const GitHeadless = {
         }
     },
 
-    getThreeWayVersions(filePath: string): { base: string | null; local: string | null; remote: string | null } | null {
+    getThreeWayVersions(filePath: string): { base: string | null; current: string | null; incoming: string | null } | null {
         if (!this.isUnmerged(filePath)) {
             return null;
         }
         return {
             base: this.getBase(filePath),
-            local: this.getLocal(filePath),
-            remote: this.getRemote(filePath),
+            current: this.getcurrent(filePath),
+            incoming: this.getincoming(filePath),
         };
     },
 
@@ -234,7 +234,7 @@ export function analyzeConflicts(filePath: string): ConflictAnalysis {
 
     // Get three-way versions and perform semantic analysis
     const versions = GitHeadless.getThreeWayVersions(filePath);
-    if (!versions || !versions.local || !versions.remote) {
+    if (!versions || !versions.current || !versions.incoming) {
         return {
             hasConflicts: true,
             hasTextualConflicts: false,
@@ -245,22 +245,22 @@ export function analyzeConflicts(filePath: string): ConflictAnalysis {
 
     // Parse notebooks
     let baseNotebook: Notebook | undefined;
-    let localNotebook: Notebook | undefined;
-    let remoteNotebook: Notebook | undefined;
+    let currentNotebook: Notebook | undefined;
+    let incomingNotebook: Notebook | undefined;
 
     try {
         if (versions.base) baseNotebook = parseNotebook(versions.base);
     } catch { /* Base may not exist */ }
 
     try {
-        localNotebook = parseNotebook(versions.local);
+        currentNotebook = parseNotebook(versions.current);
     } catch { /* Parse error */ }
 
     try {
-        remoteNotebook = parseNotebook(versions.remote);
+        incomingNotebook = parseNotebook(versions.incoming);
     } catch { /* Parse error */ }
 
-    if (!localNotebook || !remoteNotebook) {
+    if (!currentNotebook || !incomingNotebook) {
         return {
             hasConflicts: true,
             hasTextualConflicts: false,
@@ -270,7 +270,7 @@ export function analyzeConflicts(filePath: string): ConflictAnalysis {
     }
 
     // Perform semantic analysis
-    const cellMappings = matchCells(baseNotebook, localNotebook, remoteNotebook);
+    const cellMappings = matchCells(baseNotebook, currentNotebook, incomingNotebook);
     const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
 
     const semanticAnalysis: NotebookSemanticConflict = {
@@ -279,10 +279,10 @@ export function analyzeConflicts(filePath: string): ConflictAnalysis {
         semanticConflicts,
         cellMappings,
         base: baseNotebook,
-        local: localNotebook,
-        remote: remoteNotebook,
-        localBranch: GitHeadless.getCurrentBranch(filePath) || undefined,
-        remoteBranch: GitHeadless.getMergeBranch(filePath) || undefined,
+        current: currentNotebook,
+        incoming: incomingNotebook,
+        currentBranch: GitHeadless.getCurrentBranch(filePath) || undefined,
+        incomingBranch: GitHeadless.getMergeBranch(filePath) || undefined,
     };
 
     return {
@@ -306,7 +306,7 @@ function getCellSource(cell: NotebookCell): string {
  * Resolution specification for a set of conflicts
  */
 export interface ResolutionSpec {
-    choices: Map<number, 'local' | 'remote' | 'both' | 'base'>;
+    choices: Map<number, 'current' | 'incoming' | 'both' | 'base'>;
     renumberExecutionCounts?: boolean;
 }
 
@@ -328,10 +328,10 @@ export function resolveTextualConflicts(
     ];
 
     const resolutions = allConflicts.map(({ marker, index }) => {
-        const choice = resolutionSpec.choices.get(index) || 'local';
+        const choice = resolutionSpec.choices.get(index) || 'current';
         return {
             marker,
-            choice: choice === 'base' ? 'local' : choice as 'local' | 'remote' | 'both',
+            choice: choice === 'base' ? 'current' : choice as 'current' | 'incoming' | 'both',
         };
     });
 

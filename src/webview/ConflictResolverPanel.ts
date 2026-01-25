@@ -4,7 +4,7 @@
  * @import markdown-it for markdown rendering (VSCode native).
  * @import markdown-it-texmath for LaTeX support in markdown cells.
  * 
- * Displays the entire notebook in three synchronized columns (Base, Local, Remote)
+ * Displays the entire notebook in three synchronized columns (Base, current, incoming)
  * with cells rendered properly (markdown/code/outputs). Conflicts are highlighted
  * inline within the notebook view, making it feel like viewing the file split into
  * three windows with differences highlighted.
@@ -48,8 +48,8 @@ export interface UnifiedResolution {
     // For textual conflicts
     textualResolutions?: Map<number, { choice: ResolutionChoice; customContent?: string }>;
     // For semantic conflicts
-    semanticChoice?: 'local' | 'remote';
-    semanticResolutions?: Map<number, { choice: 'base' | 'local' | 'remote'; customContent?: string }>;
+    semanticChoice?: 'current' | 'incoming';
+    semanticResolutions?: Map<number, { choice: 'base' | 'current' | 'incoming'; customContent?: string }>;
     // Whether to mark file as resolved with git add
     markAsResolved: boolean;
 }
@@ -60,11 +60,11 @@ export interface UnifiedResolution {
 interface MergeRow {
     type: 'identical' | 'conflict';
     baseCell?: NotebookCell;
-    localCell?: NotebookCell;
-    remoteCell?: NotebookCell;
+    currentCell?: NotebookCell;
+    incomingCell?: NotebookCell;
     baseCellIndex?: number;
-    localCellIndex?: number;
-    remoteCellIndex?: number;
+    currentCellIndex?: number;
+    incomingCellIndex?: number;
     conflictIndex?: number; // Index into the semantic conflicts array
     conflictType?: string;
 }
@@ -168,17 +168,17 @@ export class UnifiedConflictPanel {
                 });
             }
         } else if (this._conflict?.type === 'semantic') {
-            const semanticResolutionMap = new Map<number, { choice: 'base' | 'local' | 'remote'; customContent?: string }>();
+            const semanticResolutionMap = new Map<number, { choice: 'base' | 'current' | 'incoming'; customContent?: string }>();
             for (const r of (message.resolutions || [])) {
                 semanticResolutionMap.set(r.index, { 
-                    choice: r.choice as 'base' | 'local' | 'remote',
+                    choice: r.choice as 'base' | 'current' | 'incoming',
                     customContent: r.customContent 
                 });
             }
             if (this._onResolutionComplete) {
                 this._onResolutionComplete({
                     type: 'semantic',
-                    semanticChoice: message.semanticChoice as 'local' | 'remote' | undefined,
+                    semanticChoice: message.semanticChoice as 'current' | 'incoming' | undefined,
                     semanticResolutions: semanticResolutionMap,
                     markAsResolved: message.markAsResolved ?? false
                 });
@@ -231,7 +231,7 @@ export class UnifiedConflictPanel {
         
         // Index conflicts by cell indices for quick lookup
         semanticConflict.semanticConflicts.forEach((c, i) => {
-            const key = `${c.baseCellIndex ?? 'x'}-${c.localCellIndex ?? 'x'}-${c.remoteCellIndex ?? 'x'}`;
+            const key = `${c.baseCellIndex ?? 'x'}-${c.currentCellIndex ?? 'x'}-${c.incomingCellIndex ?? 'x'}`;
             conflictMap.set(key, { conflict: c, index: i });
         });
 
@@ -239,22 +239,22 @@ export class UnifiedConflictPanel {
         for (const mapping of semanticConflict.cellMappings) {
             const baseCell = mapping.baseIndex !== undefined && semanticConflict.base 
                 ? semanticConflict.base.cells[mapping.baseIndex] : undefined;
-            const localCell = mapping.localIndex !== undefined && semanticConflict.local 
-                ? semanticConflict.local.cells[mapping.localIndex] : undefined;
-            const remoteCell = mapping.remoteIndex !== undefined && semanticConflict.remote 
-                ? semanticConflict.remote.cells[mapping.remoteIndex] : undefined;
+            const currentCell = mapping.currentIndex !== undefined && semanticConflict.current 
+                ? semanticConflict.current.cells[mapping.currentIndex] : undefined;
+            const incomingCell = mapping.incomingIndex !== undefined && semanticConflict.incoming 
+                ? semanticConflict.incoming.cells[mapping.incomingIndex] : undefined;
             
-            const key = `${mapping.baseIndex ?? 'x'}-${mapping.localIndex ?? 'x'}-${mapping.remoteIndex ?? 'x'}`;
+            const key = `${mapping.baseIndex ?? 'x'}-${mapping.currentIndex ?? 'x'}-${mapping.incomingIndex ?? 'x'}`;
             const conflictInfo = conflictMap.get(key);
 
             rows.push({
                 type: conflictInfo ? 'conflict' : 'identical',
                 baseCell,
-                localCell,
-                remoteCell,
+                currentCell,
+                incomingCell,
                 baseCellIndex: mapping.baseIndex,
-                localCellIndex: mapping.localIndex,
-                remoteCellIndex: mapping.remoteIndex,
+                currentCellIndex: mapping.currentIndex,
+                incomingCellIndex: mapping.incomingIndex,
                 conflictIndex: conflictInfo?.index,
                 conflictType: conflictInfo?.conflict.type
             });
@@ -278,8 +278,8 @@ export class UnifiedConflictPanel {
             notebookHtml,
             'semantic',
             totalConflicts,
-            conflict.localBranch,
-            conflict.remoteBranch,
+            conflict.currentBranch,
+            conflict.incomingBranch,
             this._conflict?.autoResolveResult
         );
     }
@@ -287,7 +287,7 @@ export class UnifiedConflictPanel {
     private _getTextualConflictHtml(conflict: NotebookConflict): string {
         // If we have cell mappings from Git, render like semantic conflicts with full context
         if (conflict.cellMappings && conflict.cellMappings.length > 0 && 
-            (conflict.local || conflict.remote)) {
+            (conflict.current || conflict.incoming)) {
             return this._getTextualConflictWithContextHtml(conflict);
         }
         
@@ -335,15 +335,15 @@ export class UnifiedConflictPanel {
             notebookHtml + metadataConflictsHtml,
             'textual',
             totalConflicts,
-            conflict.localBranch,
-            conflict.remoteBranch
+            conflict.currentBranch,
+            conflict.incomingBranch
         );
     }
 
     /**
      * Build merge rows from cell mappings for textual conflicts with Git context.
      * Since textual conflicts are in the working copy (with markers), but Git staging
-     * has clean local/remote versions, we detect conflicts by comparing local vs remote.
+     * has clean current/incoming versions, we detect conflicts by comparing current vs incoming.
      */
     private _buildMergeRowsForTextual(conflict: NotebookConflict): MergeRow[] {
         const rows: MergeRow[] = [];
@@ -354,60 +354,60 @@ export class UnifiedConflictPanel {
 
         logger.debug('Building merge rows for textual conflict');
         logger.debug('base cells:', conflict.base?.cells?.length);
-        logger.debug('local cells:', conflict.local?.cells?.length);
-        logger.debug('remote cells:', conflict.remote?.cells?.length);
+        logger.debug('current cells:', conflict.current?.cells?.length);
+        logger.debug('incoming cells:', conflict.incoming?.cells?.length);
         logger.debug('mappings count:', conflict.cellMappings.length);
         logger.debug('original textual conflicts:', conflict.conflicts.length);
 
-        // For textual conflicts, we detect conflicts by comparing local vs remote
+        // For textual conflicts, we detect conflicts by comparing current vs incoming
         // from the Git staging areas (not from the working copy markers)
         let conflictIndex = 0;
         
         for (const mapping of conflict.cellMappings) {
             const baseCell = mapping.baseIndex !== undefined && conflict.base 
                 ? conflict.base.cells[mapping.baseIndex] : undefined;
-            const localCell = mapping.localIndex !== undefined && conflict.local 
-                ? conflict.local.cells[mapping.localIndex] : undefined;
-            const remoteCell = mapping.remoteIndex !== undefined && conflict.remote 
-                ? conflict.remote.cells[mapping.remoteIndex] : undefined;
+            const currentCell = mapping.currentIndex !== undefined && conflict.current 
+                ? conflict.current.cells[mapping.currentIndex] : undefined;
+            const incomingCell = mapping.incomingIndex !== undefined && conflict.incoming 
+                ? conflict.incoming.cells[mapping.incomingIndex] : undefined;
 
             // Determine if this is a conflict by comparing cells
             let isConflict = false;
             
-            // Case 1: Cell exists in local only (added in local)
-            if (localCell && !remoteCell && !baseCell) {
+            // Case 1: Cell exists in current only (added in current)
+            if (currentCell && !incomingCell && !baseCell) {
                 isConflict = true;
             }
-            // Case 2: Cell exists in remote only (added in remote)
-            else if (remoteCell && !localCell && !baseCell) {
+            // Case 2: Cell exists in incoming only (added in incoming)
+            else if (incomingCell && !currentCell && !baseCell) {
                 isConflict = true;
             }
-            // Case 3: Cell exists in both local and remote - check if they differ
-            else if (localCell && remoteCell) {
-                const localSource = Array.isArray(localCell.source) ? localCell.source.join('') : localCell.source;
-                const remoteSource = Array.isArray(remoteCell.source) ? remoteCell.source.join('') : remoteCell.source;
+            // Case 3: Cell exists in both current and incoming - check if they differ
+            else if (currentCell && incomingCell) {
+                const currentSource = Array.isArray(currentCell.source) ? currentCell.source.join('') : currentCell.source;
+                const incomingSource = Array.isArray(incomingCell.source) ? incomingCell.source.join('') : incomingCell.source;
                 
                 // Check source content
-                if (localSource !== remoteSource) {
+                if (currentSource !== incomingSource) {
                     isConflict = true;
                 }
                 // Also check outputs for code cells
-                else if (localCell.cell_type === 'code') {
-                    const localOutputs = JSON.stringify(localCell.outputs || []);
-                    const remoteOutputs = JSON.stringify(remoteCell.outputs || []);
-                    if (localOutputs !== remoteOutputs) {
+                else if (currentCell.cell_type === 'code') {
+                    const currentOutputs = JSON.stringify(currentCell.outputs || []);
+                    const incomingOutputs = JSON.stringify(incomingCell.outputs || []);
+                    if (currentOutputs !== incomingOutputs) {
                         // Output difference - could be a conflict or just execution difference
                         // For now, mark as conflict only if source also differs slightly
                         // or execution_count differs
-                        if (localCell.execution_count !== remoteCell.execution_count) {
+                        if (currentCell.execution_count !== incomingCell.execution_count) {
                             // Minor difference - not a real conflict for textual resolution
                             isConflict = false;
                         }
                     }
                 }
             }
-            // Case 4: Cell deleted in one branch (exists in base but not local or remote)
-            else if (baseCell && (!localCell || !remoteCell) && (localCell || remoteCell)) {
+            // Case 4: Cell deleted in one branch (exists in base but not current or incoming)
+            else if (baseCell && (!currentCell || !incomingCell) && (currentCell || incomingCell)) {
                 isConflict = true;
             }
 
@@ -416,11 +416,11 @@ export class UnifiedConflictPanel {
             rows.push({
                 type: isConflict ? 'conflict' : 'identical',
                 baseCell,
-                localCell,
-                remoteCell,
+                currentCell,
+                incomingCell,
                 baseCellIndex: mapping.baseIndex,
-                localCellIndex: mapping.localIndex,
-                remoteCellIndex: mapping.remoteIndex,
+                currentCellIndex: mapping.currentIndex,
+                incomingCellIndex: mapping.incomingIndex,
                 conflictIndex: currentConflictIndex,
                 conflictType: isConflict ? 'textual' : undefined
             });
@@ -443,41 +443,41 @@ export class UnifiedConflictPanel {
         // Encode cell sources for JavaScript access (for editing)
         const baseSource = row.baseCell ? 
             (Array.isArray(row.baseCell.source) ? row.baseCell.source.join('') : row.baseCell.source) : '';
-        const localSource = row.localCell ? 
-            (Array.isArray(row.localCell.source) ? row.localCell.source.join('') : row.localCell.source) : '';
-        const remoteSource = row.remoteCell ? 
-            (Array.isArray(row.remoteCell.source) ? row.remoteCell.source.join('') : row.remoteCell.source) : '';
+        const currentSource = row.currentCell ? 
+            (Array.isArray(row.currentCell.source) ? row.currentCell.source.join('') : row.currentCell.source) : '';
+        const incomingSource = row.incomingCell ? 
+            (Array.isArray(row.incomingCell.source) ? row.incomingCell.source.join('') : row.incomingCell.source) : '';
         
         // Store cell metadata for JS access
         const cellDataAttrs = isConflict ? `
             data-base-source="${encodeURIComponent(baseSource)}"
-            data-local-source="${encodeURIComponent(localSource)}"
-            data-remote-source="${encodeURIComponent(remoteSource)}"
-            data-cell-type="${row.localCell?.cell_type || row.remoteCell?.cell_type || row.baseCell?.cell_type || 'code'}"
+            data-current-source="${encodeURIComponent(currentSource)}"
+            data-incoming-source="${encodeURIComponent(incomingSource)}"
+            data-cell-type="${row.currentCell?.cell_type || row.incomingCell?.cell_type || row.baseCell?.cell_type || 'code'}"
             data-has-base="${row.baseCell ? 'true' : 'false'}"
-            data-has-local="${row.localCell ? 'true' : 'false'}"
-            data-has-remote="${row.remoteCell ? 'true' : 'false'}"
+            data-has-current="${row.currentCell ? 'true' : 'false'}"
+            data-has-incoming="${row.incomingCell ? 'true' : 'false'}"
         ` : '';
         
         // Encode outputs for editing view
         const baseOutputs = row.baseCell?.outputs ? encodeURIComponent(JSON.stringify(row.baseCell.outputs)) : '';
-        const localOutputs = row.localCell?.outputs ? encodeURIComponent(JSON.stringify(row.localCell.outputs)) : '';
-        const remoteOutputs = row.remoteCell?.outputs ? encodeURIComponent(JSON.stringify(row.remoteCell.outputs)) : '';
+        const currentOutputs = row.currentCell?.outputs ? encodeURIComponent(JSON.stringify(row.currentCell.outputs)) : '';
+        const incomingOutputs = row.incomingCell?.outputs ? encodeURIComponent(JSON.stringify(row.incomingCell.outputs)) : '';
         
         const outputDataAttrs = isConflict ? `
             data-base-outputs="${baseOutputs}"
-            data-local-outputs="${localOutputs}"
-            data-remote-outputs="${remoteOutputs}"
+            data-current-outputs="${currentOutputs}"
+            data-incoming-outputs="${incomingOutputs}"
         ` : '';
         
         // For identical rows (non-conflicts), render as a single unified cell
         if (!isConflict) {
-            const displayCell = row.localCell || row.remoteCell || row.baseCell;
-            const displayIndex = row.localCellIndex ?? row.remoteCellIndex ?? row.baseCellIndex;
+            const displayCell = row.currentCell || row.incomingCell || row.baseCell;
+            const displayIndex = row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex;
             return `
 <div class="merge-row unified-row">
     <div class="unified-cell-container">
-        ${this._renderCellContentForTextual(displayCell, displayIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
+        ${this._renderCellContentForTextual(displayCell, displayIndex, 'current', row, conflict, this._shouldShowCellHeaders())}
     </div>
 </div>`;
         }
@@ -493,13 +493,13 @@ export class UnifiedConflictPanel {
             <div class="column-label">Base</div>
             ${this._renderCellContentForTextual(row.baseCell, row.baseCellIndex, 'base', row, conflict, this._shouldShowCellHeaders())}
         </div>
-        <div class="cell-column local-column">
+        <div class="cell-column current-column">
             <div class="column-label">Current</div>
-            ${this._renderCellContentForTextual(row.localCell, row.localCellIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
+            ${this._renderCellContentForTextual(row.currentCell, row.currentCellIndex, 'current', row, conflict, this._shouldShowCellHeaders())}
         </div>
-        <div class="cell-column remote-column">
+        <div class="cell-column incoming-column">
             <div class="column-label">Incoming</div>
-            ${this._renderCellContentForTextual(row.remoteCell, row.remoteCellIndex, 'remote', row, conflict, this._shouldShowCellHeaders())}
+            ${this._renderCellContentForTextual(row.incomingCell, row.incomingCellIndex, 'incoming', row, conflict, this._shouldShowCellHeaders())}
         </div>
     </div>
     ${effectiveConflictIndex >= 0 ? this._renderResolutionBarForTextual(effectiveConflictIndex, row) : this._renderResolutionBarForDetectedConflict(row)}
@@ -512,7 +512,7 @@ export class UnifiedConflictPanel {
     private _renderCellContentForTextual(
         cell: NotebookCell | undefined, 
         cellIndex: number | undefined,
-        side: 'base' | 'local' | 'remote',
+        side: 'base' | 'current' | 'incoming',
         row: MergeRow,
         conflict: NotebookConflict,
         showHeaders: boolean = false
@@ -530,11 +530,11 @@ export class UnifiedConflictPanel {
         let contentHtml: string;
         if (row.type === 'conflict' && cellType !== 'markdown') {
             // Show diff for conflicts
-            const compareSource = side === 'local' 
-                ? (row.remoteCell ? (Array.isArray(row.remoteCell.source) ? row.remoteCell.source.join('') : row.remoteCell.source) : '')
-                : side === 'remote'
-                    ? (row.localCell ? (Array.isArray(row.localCell.source) ? row.localCell.source.join('') : row.localCell.source) : '')
-                    : (row.localCell ? (Array.isArray(row.localCell.source) ? row.localCell.source.join('') : row.localCell.source) : '');
+            const compareSource = side === 'current' 
+                ? (row.incomingCell ? (Array.isArray(row.incomingCell.source) ? row.incomingCell.source.join('') : row.incomingCell.source) : '')
+                : side === 'incoming'
+                    ? (row.currentCell ? (Array.isArray(row.currentCell.source) ? row.currentCell.source.join('') : row.currentCell.source) : '')
+                    : (row.currentCell ? (Array.isArray(row.currentCell.source) ? row.currentCell.source.join('') : row.currentCell.source) : '');
             contentHtml = this._renderDiffContent(source, compareSource, side);
         } else if (cellType === 'markdown') {
             contentHtml = this._renderMarkdown(source);
@@ -579,8 +579,8 @@ export class UnifiedConflictPanel {
 <div class="resolution-bar-row" data-conflict="${conflictIndex}">
     <div class="resolution-buttons">
         ${row.baseCell ? '<button class="btn-resolve btn-base" onclick="selectResolution(' + conflictIndex + ', \'base\')">Use Base</button>' : ''}
-        <button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Current</button>
-        <button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Incoming</button>
+        <button class="btn-resolve btn-current" onclick="selectResolution(${conflictIndex}, 'current')">Use Current</button>
+        <button class="btn-resolve btn-incoming" onclick="selectResolution(${conflictIndex}, 'incoming')">Use Incoming</button>
         <button class="btn-resolve btn-both" onclick="selectResolution(${conflictIndex}, 'both')">Use Both</button>
     </div>
 </div>`;
@@ -592,13 +592,13 @@ export class UnifiedConflictPanel {
     private _renderResolutionBarForDetectedConflict(row: MergeRow): string {
         // These are conflicts detected by cell comparison but not in the original textual conflict list
         // Generate a unique identifier based on cell indices
-        const conflictId = `detected-${row.localCellIndex ?? 'x'}-${row.remoteCellIndex ?? 'x'}`;
+        const conflictId = `detected-${row.currentCellIndex ?? 'x'}-${row.incomingCellIndex ?? 'x'}`;
         return `
 <div class="resolution-bar-row" data-conflict="${conflictId}">
     <div class="resolution-buttons">
         ${row.baseCell ? '<button class="btn-resolve btn-base" onclick="selectResolution(\'' + conflictId + '\', \'base\')">Use Base</button>' : ''}
-        <button class="btn-resolve btn-local" onclick="selectResolution('${conflictId}', 'local')">Use Current</button>
-        <button class="btn-resolve btn-remote" onclick="selectResolution('${conflictId}', 'remote')">Use Incoming</button>
+        <button class="btn-resolve btn-current" onclick="selectResolution('${conflictId}', 'current')">Use Current</button>
+        <button class="btn-resolve btn-incoming" onclick="selectResolution('${conflictId}', 'incoming')">Use Incoming</button>
     </div>
 </div>`;
     }
@@ -611,41 +611,41 @@ export class UnifiedConflictPanel {
         // Encode cell sources for JavaScript access (for editing)
         const baseSource = row.baseCell ? 
             (Array.isArray(row.baseCell.source) ? row.baseCell.source.join('') : row.baseCell.source) : '';
-        const localSource = row.localCell ? 
-            (Array.isArray(row.localCell.source) ? row.localCell.source.join('') : row.localCell.source) : '';
-        const remoteSource = row.remoteCell ? 
-            (Array.isArray(row.remoteCell.source) ? row.remoteCell.source.join('') : row.remoteCell.source) : '';
+        const currentSource = row.currentCell ? 
+            (Array.isArray(row.currentCell.source) ? row.currentCell.source.join('') : row.currentCell.source) : '';
+        const incomingSource = row.incomingCell ? 
+            (Array.isArray(row.incomingCell.source) ? row.incomingCell.source.join('') : row.incomingCell.source) : '';
         
         // Store cell metadata for JS access
         const cellDataAttrs = isConflict ? `
             data-base-source="${encodeURIComponent(baseSource)}"
-            data-local-source="${encodeURIComponent(localSource)}"
-            data-remote-source="${encodeURIComponent(remoteSource)}"
-            data-cell-type="${row.localCell?.cell_type || row.remoteCell?.cell_type || row.baseCell?.cell_type || 'code'}"
+            data-current-source="${encodeURIComponent(currentSource)}"
+            data-incoming-source="${encodeURIComponent(incomingSource)}"
+            data-cell-type="${row.currentCell?.cell_type || row.incomingCell?.cell_type || row.baseCell?.cell_type || 'code'}"
             data-has-base="${row.baseCell ? 'true' : 'false'}"
-            data-has-local="${row.localCell ? 'true' : 'false'}"
-            data-has-remote="${row.remoteCell ? 'true' : 'false'}"
+            data-has-current="${row.currentCell ? 'true' : 'false'}"
+            data-has-incoming="${row.incomingCell ? 'true' : 'false'}"
         ` : '';
         
         // Encode outputs for editing view
         const baseOutputs = row.baseCell?.outputs ? encodeURIComponent(JSON.stringify(row.baseCell.outputs)) : '';
-        const localOutputs = row.localCell?.outputs ? encodeURIComponent(JSON.stringify(row.localCell.outputs)) : '';
-        const remoteOutputs = row.remoteCell?.outputs ? encodeURIComponent(JSON.stringify(row.remoteCell.outputs)) : '';
+        const currentOutputs = row.currentCell?.outputs ? encodeURIComponent(JSON.stringify(row.currentCell.outputs)) : '';
+        const incomingOutputs = row.incomingCell?.outputs ? encodeURIComponent(JSON.stringify(row.incomingCell.outputs)) : '';
         
         const outputDataAttrs = isConflict ? `
             data-base-outputs="${baseOutputs}"
-            data-local-outputs="${localOutputs}"
-            data-remote-outputs="${remoteOutputs}"
+            data-current-outputs="${currentOutputs}"
+            data-incoming-outputs="${incomingOutputs}"
         ` : '';
         
         // For identical rows (non-conflicts), render as a single unified cell
         if (!isConflict) {
-            const cell = row.localCell || row.baseCell || row.remoteCell;
-            const cellIndex = row.localCellIndex ?? row.baseCellIndex ?? row.remoteCellIndex;
+            const cell = row.currentCell || row.baseCell || row.incomingCell;
+            const cellIndex = row.currentCellIndex ?? row.baseCellIndex ?? row.incomingCellIndex;
             return `
 <div class="merge-row unified-row">
     <div class="unified-cell-container">
-        ${this._renderCellContent(cell, cellIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
+        ${this._renderCellContent(cell, cellIndex, 'current', row, conflict, this._shouldShowCellHeaders())}
     </div>
 </div>`;
         }
@@ -658,13 +658,13 @@ export class UnifiedConflictPanel {
             <div class="column-label">Base</div>
             ${this._renderCellContent(row.baseCell, row.baseCellIndex, 'base', row, conflict, this._shouldShowCellHeaders())}
         </div>
-        <div class="cell-column local-column">
+        <div class="cell-column current-column">
             <div class="column-label">Current</div>
-            ${this._renderCellContent(row.localCell, row.localCellIndex, 'local', row, conflict, this._shouldShowCellHeaders())}
+            ${this._renderCellContent(row.currentCell, row.currentCellIndex, 'current', row, conflict, this._shouldShowCellHeaders())}
         </div>
-        <div class="cell-column remote-column">
+        <div class="cell-column incoming-column">
             <div class="column-label">Incoming</div>
-            ${this._renderCellContent(row.remoteCell, row.remoteCellIndex, 'remote', row, conflict, this._shouldShowCellHeaders())}
+            ${this._renderCellContent(row.incomingCell, row.incomingCellIndex, 'incoming', row, conflict, this._shouldShowCellHeaders())}
         </div>
     </div>
     ${row.conflictIndex !== undefined ? this._renderResolutionBar(row.conflictIndex, row) : ''}
@@ -674,7 +674,7 @@ export class UnifiedConflictPanel {
     private _renderCellContent(
         cell: NotebookCell | undefined, 
         cellIndex: number | undefined,
-        side: 'base' | 'local' | 'remote',
+        side: 'base' | 'current' | 'incoming',
         row: MergeRow,
         conflict: NotebookSemanticConflict,
         showHeaders: boolean = false
@@ -696,9 +696,9 @@ export class UnifiedConflictPanel {
         let contentHtml: string;
         if (row.type === 'conflict' && cellType !== 'markdown') {
             // Get comparison source for diff
-            const compareCell = side === 'local' ? row.remoteCell : 
-                               side === 'remote' ? row.localCell : 
-                               (row.localCell || row.remoteCell);
+            const compareCell = side === 'current' ? row.incomingCell : 
+                               side === 'incoming' ? row.currentCell : 
+                               (row.currentCell || row.incomingCell);
             const compareSource = compareCell ? 
                 (Array.isArray(compareCell.source) ? compareCell.source.join('') : compareCell.source) : '';
             
@@ -830,33 +830,33 @@ export class UnifiedConflictPanel {
 
     private _renderResolutionBar(conflictIndex: number, row: MergeRow): string {
         const hasBase = !!row.baseCell;
-        const hasLocal = !!row.localCell;
-        const hasRemote = !!row.remoteCell;
+        const hascurrent = !!row.currentCell;
+        const hasincoming = !!row.incomingCell;
         
         return `
 <div class="resolution-bar-row" data-conflict="${conflictIndex}">
     <div class="resolution-buttons">
         <button class="btn-resolve btn-base" onclick="selectResolution(${conflictIndex}, 'base')">Use Base</button>
-        <button class="btn-resolve btn-local" onclick="selectResolution(${conflictIndex}, 'local')">Use Current</button>
-        <button class="btn-resolve btn-remote" onclick="selectResolution(${conflictIndex}, 'remote')">Use Incoming</button>
+        <button class="btn-resolve btn-current" onclick="selectResolution(${conflictIndex}, 'current')">Use Current</button>
+        <button class="btn-resolve btn-incoming" onclick="selectResolution(${conflictIndex}, 'incoming')">Use Incoming</button>
     </div>
 </div>`;
     }
 
 
     private _renderTextualConflictRow(conflict: CellConflict, index: number): string {
-        const hasLocal = conflict.localContent.trim().length > 0;
-        const hasRemote = conflict.remoteContent.trim().length > 0;
+        const hascurrent = conflict.currentContent.trim().length > 0;
+        const hasincoming = conflict.incomingContent.trim().length > 0;
         
         // Store data attributes for JS access
         const cellDataAttrs = `
             data-base-source=""
-            data-local-source="${encodeURIComponent(conflict.localContent)}"
-            data-remote-source="${encodeURIComponent(conflict.remoteContent)}"
+            data-current-source="${encodeURIComponent(conflict.currentContent)}"
+            data-incoming-source="${encodeURIComponent(conflict.incomingContent)}"
             data-cell-type="${conflict.cellType || 'code'}"
             data-has-base="false"
-            data-has-local="${hasLocal}"
-            data-has-remote="${hasRemote}"
+            data-has-current="${hascurrent}"
+            data-has-incoming="${hasincoming}"
         `;
         
         return `
@@ -868,29 +868,29 @@ export class UnifiedConflictPanel {
                 <span class="placeholder-text">(no base version)</span>
             </div>
         </div>
-        <div class="cell-column local-column">
+        <div class="cell-column current-column">
             <div class="column-label">Current</div>
-            ${hasLocal ? `
+            ${hascurrent ? `
             <div class="notebook-cell code-cell has-conflict">
                 <div class="cell-content">
-                    ${this._renderDiffContent(conflict.localContent, conflict.remoteContent, 'local')}
+                    ${this._renderDiffContent(conflict.currentContent, conflict.incomingContent, 'current')}
                 </div>
             </div>` : `<div class="cell-placeholder"><span class="placeholder-text">(not present)</span></div>`}
         </div>
-        <div class="cell-column remote-column">
+        <div class="cell-column incoming-column">
             <div class="column-label">Incoming</div>
-            ${hasRemote ? `
+            ${hasincoming ? `
             <div class="notebook-cell code-cell has-conflict">
                 <div class="cell-content">
-                    ${this._renderDiffContent(conflict.remoteContent, conflict.localContent, 'remote')}
+                    ${this._renderDiffContent(conflict.incomingContent, conflict.currentContent, 'incoming')}
                 </div>
             </div>` : `<div class="cell-placeholder"><span class="placeholder-text">(not present)</span></div>`}
         </div>
     </div>
     <div class="resolution-bar-row" data-conflict="${index}">
         <div class="resolution-buttons">
-            <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Current</button>
-            <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Incoming</button>
+            <button class="btn-resolve btn-current" onclick="selectResolution(${index}, 'current')">Use Current</button>
+            <button class="btn-resolve btn-incoming" onclick="selectResolution(${index}, 'incoming')">Use Incoming</button>
             <button class="btn-resolve btn-both" onclick="selectResolution(${index}, 'both')">Use Both</button>
         </div>
     </div>
@@ -898,18 +898,18 @@ export class UnifiedConflictPanel {
     }
 
     private _renderMetadataConflictRow(
-        conflict: { field: string; localContent: string; remoteContent: string },
+        conflict: { field: string; currentContent: string; incomingContent: string },
         index: number
     ): string {
         // Store data attributes for JS access
         const cellDataAttrs = `
             data-base-source=""
-            data-local-source="${encodeURIComponent(conflict.localContent)}"
-            data-remote-source="${encodeURIComponent(conflict.remoteContent)}"
+            data-current-source="${encodeURIComponent(conflict.currentContent)}"
+            data-incoming-source="${encodeURIComponent(conflict.incomingContent)}"
             data-cell-type="metadata"
             data-has-base="false"
-            data-has-local="true"
-            data-has-remote="true"
+            data-has-current="true"
+            data-has-incoming="true"
         `;
         
         return `
@@ -921,29 +921,29 @@ export class UnifiedConflictPanel {
                 <span class="placeholder-text">Metadata: ${escapeHtml(conflict.field)}</span>
             </div>
         </div>
-        <div class="cell-column local-column">
+        <div class="cell-column current-column">
             <div class="column-label">Current</div>
             <div class="metadata-cell">
-                <pre class="code-content">${escapeHtml(conflict.localContent)}</pre>
+                <pre class="code-content">${escapeHtml(conflict.currentContent)}</pre>
             </div>
         </div>
-        <div class="cell-column remote-column">
+        <div class="cell-column incoming-column">
             <div class="column-label">Incoming</div>
             <div class="metadata-cell">
-                <pre class="code-content">${escapeHtml(conflict.remoteContent)}</pre>
+                <pre class="code-content">${escapeHtml(conflict.incomingContent)}</pre>
             </div>
         </div>
     </div>
     <div class="resolution-bar-row" data-conflict="${index}">
         <div class="resolution-buttons">
-            <button class="btn-resolve btn-local" onclick="selectResolution(${index}, 'local')">Use Current</button>
-            <button class="btn-resolve btn-remote" onclick="selectResolution(${index}, 'remote')">Use Incoming</button>
+            <button class="btn-resolve btn-current" onclick="selectResolution(${index}, 'current')">Use Current</button>
+            <button class="btn-resolve btn-incoming" onclick="selectResolution(${index}, 'incoming')">Use Incoming</button>
         </div>
     </div>
 </div>`;
     }
 
-    private _renderDiffContent(sourceText: string, compareText: string, side: 'base' | 'local' | 'remote'): string {
+    private _renderDiffContent(sourceText: string, compareText: string, side: 'base' | 'current' | 'incoming'): string {
         if (!compareText || sourceText === compareText) {
             return `<pre class="code-content">${escapeHtml(sourceText)}</pre>`;
         }
@@ -974,7 +974,7 @@ export class UnifiedConflictPanel {
         return html;
     }
 
-    private _getDiffLineClass(line: DiffLine, side: 'base' | 'local' | 'remote'): string {
+    private _getDiffLineClass(line: DiffLine, side: 'base' | 'current' | 'incoming'): string {
         switch (line.type) {
             case 'unchanged': return 'diff-line-unchanged';
             case 'added': return 'diff-line-added';
@@ -984,7 +984,7 @@ export class UnifiedConflictPanel {
         }
     }
 
-    private _getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'base' | 'local' | 'remote'): string {
+    private _getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'base' | 'current' | 'incoming'): string {
         switch (type) {
             case 'unchanged': return 'diff-inline-unchanged';
             case 'added': return 'diff-inline-added';
@@ -998,8 +998,8 @@ export class UnifiedConflictPanel {
         contentHtml: string,
         conflictType: 'textual' | 'semantic',
         totalConflicts: number,
-        localBranch?: string,
-        remoteBranch?: string,
+        currentBranch?: string,
+        incomingBranch?: string,
         autoResolveResult?: AutoResolveResult
     ): string {
         const fileName = filePath.split('/').pop() || filePath;
@@ -1031,8 +1031,8 @@ export class UnifiedConflictPanel {
             --border-color: var(--vscode-panel-border);
             --cell-bg: var(--vscode-editor-background);
             --header-bg: var(--vscode-titleBar-activeBackground);
-            --local-accent: #22863a;
-            --remote-accent: #0366d6;
+            --current-accent: #22863a;
+            --incoming-accent: #0366d6;
             --base-accent: #6a737d;
             --conflict-bg: rgba(255, 0, 0, 0.05);
         }
@@ -1229,10 +1229,10 @@ export class UnifiedConflictPanel {
         .cell-column.base-column { 
             background: rgba(106, 115, 125, 0.03); 
         }
-        .cell-column.local-column { 
+        .cell-column.current-column { 
             background: rgba(34, 134, 58, 0.03); 
         }
-        .cell-column.remote-column { 
+        .cell-column.incoming-column { 
             background: rgba(3, 102, 214, 0.03); 
         }
         
@@ -1252,12 +1252,12 @@ export class UnifiedConflictPanel {
             color: var(--base-accent);
         }
         
-        .local-column .column-label {
-            color: var(--local-accent);
+        .current-column .column-label {
+            color: var(--current-accent);
         }
         
-        .remote-column .column-label {
-            color: var(--remote-accent);
+        .incoming-column .column-label {
+            color: var(--incoming-accent);
         }
         
         /* Notebook cells */
@@ -1507,13 +1507,13 @@ export class UnifiedConflictPanel {
             color: white;
         }
         
-        .btn-resolve.btn-local {
-            background: var(--local-accent);
+        .btn-resolve.btn-current {
+            background: var(--current-accent);
             color: white;
         }
         
-        .btn-resolve.btn-remote {
-            background: var(--remote-accent);
+        .btn-resolve.btn-incoming {
+            background: var(--incoming-accent);
             color: white;
         }
         
@@ -1564,13 +1564,13 @@ export class UnifiedConflictPanel {
             color: white;
         }
         
-        .result-editor-header .badge.local {
-            background: var(--local-accent);
+        .result-editor-header .badge.current {
+            background: var(--current-accent);
             color: white;
         }
         
-        .result-editor-header .badge.remote {
-            background: var(--remote-accent);
+        .result-editor-header .badge.incoming {
+            background: var(--incoming-accent);
             color: white;
         }
         
@@ -1941,7 +1941,7 @@ export class UnifiedConflictPanel {
             // Always show editable textarea, but with different hints for deleted cells
             editorContainer.innerHTML = \`
                 <div class="result-editor-header">
-                    <span class="badge \${choice}">Using \${choice === 'local' ? 'CURRENT' : choice === 'remote' ? 'INCOMING' : choice.toUpperCase()}</span>
+                    <span class="badge \${choice}">Using \${choice === 'current' ? 'CURRENT' : choice === 'incoming' ? 'INCOMING' : choice.toUpperCase()}</span>
                     <span class="edit-hint">\${isDeleted ? 'Cell will be deleted (or add content to restore)' : 'Edit the result below, then click Apply to confirm'}</span>
                 </div>
                 <div class="result-editor-wrapper \${isDeleted ? 'deleted-cell-editor' : ''}">
@@ -2147,25 +2147,25 @@ export class UnifiedConflictPanel {
         }
         
         function acceptAllCurrent() {
-            // Select and apply 'local' (current) for all unresolved conflicts
+            // Select and apply 'current' (current) for all unresolved conflicts
             for (let i = 0; i < totalConflicts; i++) {
                 // Skip if already resolved
                 if (resolutions[i]?.applied) {
                     continue;
                 }
-                selectResolution(i, 'local');
+                selectResolution(i, 'current');
                 applySingleResolution(i);
             }
         }
         
         function acceptAllIncoming() {
-            // Select and apply 'remote' (incoming) for all unresolved conflicts
+            // Select and apply 'incoming' (incoming) for all unresolved conflicts
             for (let i = 0; i < totalConflicts; i++) {
                 // Skip if already resolved
                 if (resolutions[i]?.applied) {
                     continue;
                 }
-                selectResolution(i, 'remote');
+                selectResolution(i, 'incoming');
                 applySingleResolution(i);
             }
         }
@@ -2237,9 +2237,9 @@ export class UnifiedConflictPanel {
                 for (let i = 0; i < totalConflicts; i++) {
                     if (!resolutions[i] || !resolutions[i].applied) {
                         const row = document.querySelector(\`.merge-row[data-conflict="\${i}"]\`);
-                        const localSource = row ? decodeURIComponent(row.getAttribute('data-local-source') || '') : '';
-                        const hasLocal = row ? row.getAttribute('data-has-local') === 'true' : false;
-                        resolutions[i] = { choice: 'local', customContent: localSource, applied: true, isDeleted: !hasLocal };
+                        const currentSource = row ? decodeURIComponent(row.getAttribute('data-current-source') || '') : '';
+                        const hascurrent = row ? row.getAttribute('data-has-current') === 'true' : false;
+                        resolutions[i] = { choice: 'current', customContent: currentSource, applied: true, isDeleted: !hascurrent };
                     }
                 }
             }

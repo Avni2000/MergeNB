@@ -74,7 +74,7 @@
         "mergeNB.autoResolve.kernelVersion": {
           "type": "boolean",
           "default": true,
-          "description": "Automatically resolve kernel version differences by using local version"
+          "description": "Automatically resolve kernel version differences by using current version"
         },
         "mergeNB.autoResolve.stripOutputs": {
           "type": "boolean",

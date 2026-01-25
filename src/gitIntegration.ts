@@ -6,8 +6,8 @@
  * - Detection of unmerged files (Git UU status)
  * - Retrieval of three-way merge versions from Git staging areas:
  *   - Stage 1 (:1:file) = base (common ancestor)
- *   - Stage 2 (:2:file) = local (ours/HEAD)
- *   - Stage 3 (:3:file) = remote (theirs/MERGE_HEAD)
+ *   - Stage 2 (:2:file) = current (ours/HEAD)
+ *   - Stage 3 (:3:file) = incoming (theirs/MERGE_HEAD)
  * - Branch name detection for UI display
  * - Git staging operations after resolution
  * 
@@ -142,10 +142,10 @@ export async function getBaseVersion(filePath: string): Promise<string | null> {
 }
 
 /**
- * Get the local version of a file from Git staging area (stage :2:)
+ * Get the current version of a file from Git staging area (stage :2:)
  * This is the "ours" version (current branch)
  */
-export async function getLocalVersion(filePath: string): Promise<string | null> {
+export async function getcurrentVersion(filePath: string): Promise<string | null> {
     try {
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
@@ -164,10 +164,10 @@ export async function getLocalVersion(filePath: string): Promise<string | null> 
 }
 
 /**
- * Get the remote version of a file from Git staging area (stage :3:)
+ * Get the incoming version of a file from Git staging area (stage :3:)
  * This is the "theirs" version (incoming branch)
  */
-export async function getRemoteVersion(filePath: string): Promise<string | null> {
+export async function getincomingVersion(filePath: string): Promise<string | null> {
     try {
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
@@ -186,25 +186,25 @@ export async function getRemoteVersion(filePath: string): Promise<string | null>
 }
 
 /**
- * Get all three versions (base, local, remote) of a file
+ * Get all three versions (base, current, incoming) of a file
  */
 export async function getThreeWayVersions(filePath: string): Promise<{
     base: string | null;
-    local: string | null;
-    remote: string | null;
+    current: string | null;
+    incoming: string | null;
 } | null> {
     const isUnmerged = await isUnmergedFile(filePath);
     if (!isUnmerged) {
         return null;
     }
 
-    const [base, local, remote] = await Promise.all([
+    const [base, current, incoming] = await Promise.all([
         getBaseVersion(filePath),
-        getLocalVersion(filePath),
-        getRemoteVersion(filePath)
+        getcurrentVersion(filePath),
+        getincomingVersion(filePath)
     ]);
 
-    return { base, local, remote };
+    return { base, current, incoming };
 }
 
 /**

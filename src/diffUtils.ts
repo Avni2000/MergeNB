@@ -22,8 +22,8 @@ export interface InlineChange {
 }
 
 export interface DiffResult {
-    left: DiffLine[];   // Lines for the "old" / "local" / "base" side
-    right: DiffLine[];  // Lines for the "new" / "remote" side
+    left: DiffLine[];   // Lines for the "old" / "current" / "base" side
+    right: DiffLine[];  // Lines for the "new" / "incoming" side
 }
 
 /**

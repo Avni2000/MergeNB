@@ -7,7 +7,7 @@
  * 1. TEXTUAL CONFLICTS - Git inserted <<<<<<</=======/>>>>>>> markers
  *    - Raw markers: Break JSON parsing, require raw text analysis
  *    - HTML-styled markers: Valid JSON with markers in cell content
- *    - Cell-level markers: Entire cells marked as local/remote
+ *    - Cell-level markers: Entire cells marked as current/incoming
  *    - Inline markers: Conflict markers within a single cell's source
  * 
  * 2. SEMANTIC CONFLICTS - Git UU status without textual markers
@@ -52,7 +52,7 @@ const RAW_CONFLICT_END = />{7}/;
 
 /**
  * Pattern for HTML-styled conflict markers (valid JSON, markers in cell content)
- * Matches patterns like: <span style="color:red"><b><<<<<<< local</b></span>
+ * Matches patterns like: <span style="color:red"><b><<<<<<< current</b></span>
  */
 const HTML_CONFLICT_START_PATTERN = /<[^>]*>[^<]*<{7}[^<]*<\/[^>]*>/i;
 const HTML_CONFLICT_SEP_PATTERN = /<[^>]*>[^<]*={7}[^<]*<\/[^>]*>/i;
@@ -111,10 +111,10 @@ export function hasConflictMarkers(content: string): boolean {
  * Represents a conflict found within a string value
  */
 interface StringConflict {
-    localContent: string;
-    remoteContent: string;
-    localBranch?: string;
-    remoteBranch?: string;
+    currentContent: string;
+    incomingContent: string;
+    currentBranch?: string;
+    incomingBranch?: string;
 }
 
 /**
@@ -133,27 +133,27 @@ function extractConflictFromString(str: string): StringConflict | null {
     
     const endIdx = str.indexOf('>>>>>>>');
     
-    // Extract local content (between <<<<<<< and =======)
+    // Extract current content (between <<<<<<< and =======)
     const afterStart = startIdx + startMatch[0].length;
-    const localContent = str.substring(afterStart, middleIdx);
+    const currentContent = str.substring(afterStart, middleIdx);
     
-    // Extract remote content (between ======= and >>>>>>>)
+    // Extract incoming content (between ======= and >>>>>>>)
     const afterMiddle = middleIdx + 8; // length of "=======\n"
-    const remoteContent = str.substring(afterMiddle, endIdx);
+    const incomingContent = str.substring(afterMiddle, endIdx);
     
     return {
-        localContent: localContent.replace(/\n$/, ''),
-        remoteContent: remoteContent.replace(/\n$/, ''),
-        localBranch: startMatch[1] || undefined,
-        remoteBranch: endMatch[1] || undefined
+        currentContent: currentContent.replace(/\n$/, ''),
+        incomingContent: incomingContent.replace(/\n$/, ''),
+        currentBranch: startMatch[1] || undefined,
+        incomingBranch: endMatch[1] || undefined
     };
 }
 
 /**
- * Resolve a conflict in a string by choosing local or remote content.
+ * Resolve a conflict in a string by choosing current or incoming content.
  * Recursively resolves all conflicts in the string.
  */
-function resolveStringConflict(str: string, choice: 'local' | 'remote' | 'both'): string {
+function resolveStringConflict(str: string, choice: 'current' | 'incoming' | 'both'): string {
     const conflict = extractConflictFromString(str);
     if (!conflict) return str;
     
@@ -170,14 +170,14 @@ function resolveStringConflict(str: string, choice: 'local' | 'remote' | 'both')
     
     let replacement: string;
     switch (choice) {
-        case 'local':
-            replacement = conflict.localContent;
+        case 'current':
+            replacement = conflict.currentContent;
             break;
-        case 'remote':
-            replacement = conflict.remoteContent;
+        case 'incoming':
+            replacement = conflict.incomingContent;
             break;
         case 'both':
-            replacement = conflict.localContent + '\n' + conflict.remoteContent;
+            replacement = conflict.currentContent + '\n' + conflict.incomingContent;
             break;
     }
     
@@ -238,14 +238,14 @@ interface CellLevelConflict {
     startMarkerCellIndex: number;
     separatorCellIndex: number;
     endMarkerCellIndex: number;
-    localCellIndices: number[];
-    remoteCellIndices: number[];
-    localBranch?: string;
-    remoteBranch?: string;
+    currentCellIndices: number[];
+    incomingCellIndices: number[];
+    currentBranch?: string;
+    incomingBranch?: string;
 }
 
 /**
- * Find cell-level conflicts where entire cells are marked as local/remote.
+ * Find cell-level conflicts where entire cells are marked as current/incoming.
  * This handles the case where conflict markers are in separate cells.
  */
 function findCellLevelConflicts(notebook: Notebook): CellLevelConflict[] {
@@ -258,7 +258,7 @@ function findCellLevelConflicts(notebook: Notebook): CellLevelConflict[] {
         if (isCellConflictMarker(cell, 'start')) {
             // Found start of conflict region
             const startIdx = i;
-            const localBranch = extractBranchFromMarkerCell(cell, 'start');
+            const currentBranch = extractBranchFromMarkerCell(cell, 'start');
             
             // Find separator
             let sepIdx = -1;
@@ -288,28 +288,28 @@ function findCellLevelConflicts(notebook: Notebook): CellLevelConflict[] {
                 continue;
             }
             
-            const remoteBranch = extractBranchFromMarkerCell(notebook.cells[endIdx], 'end');
+            const incomingBranch = extractBranchFromMarkerCell(notebook.cells[endIdx], 'end');
             
-            // Cells between start+1 and sep-1 are local
-            const localCellIndices: number[] = [];
+            // Cells between start+1 and sep-1 are current
+            const currentCellIndices: number[] = [];
             for (let j = startIdx + 1; j < sepIdx; j++) {
-                localCellIndices.push(j);
+                currentCellIndices.push(j);
             }
             
-            // Cells between sep+1 and end-1 are remote
-            const remoteCellIndices: number[] = [];
+            // Cells between sep+1 and end-1 are incoming
+            const incomingCellIndices: number[] = [];
             for (let j = sepIdx + 1; j < endIdx; j++) {
-                remoteCellIndices.push(j);
+                incomingCellIndices.push(j);
             }
             
             conflicts.push({
                 startMarkerCellIndex: startIdx,
                 separatorCellIndex: sepIdx,
                 endMarkerCellIndex: endIdx,
-                localCellIndices,
-                remoteCellIndices,
-                localBranch,
-                remoteBranch
+                currentCellIndices,
+                incomingCellIndices,
+                currentBranch,
+                incomingBranch
             });
             
             i = endIdx + 1;
@@ -348,41 +348,41 @@ export function analyzeNotebookConflicts(filePath: string, content: string): Not
     
     for (const cellConflict of cellLevelConflicts) {
         // Create individual conflict entries for each cell pair
-        // Match cells by position: local[0] vs remote[0], local[1] vs remote[1], etc.
+        // Match cells by position: current[0] vs incoming[0], current[1] vs incoming[1], etc.
         const maxCells = Math.max(
-            cellConflict.localCellIndices.length,
-            cellConflict.remoteCellIndices.length
+            cellConflict.currentCellIndices.length,
+            cellConflict.incomingCellIndices.length
         );
         
         for (let i = 0; i < maxCells; i++) {
-            const localIdx = cellConflict.localCellIndices[i];
-            const remoteIdx = cellConflict.remoteCellIndices[i];
+            const currentIdx = cellConflict.currentCellIndices[i];
+            const incomingIdx = cellConflict.incomingCellIndices[i];
             
-            const localCell = localIdx !== undefined ? notebook.cells[localIdx] : undefined;
-            const remoteCell = remoteIdx !== undefined ? notebook.cells[remoteIdx] : undefined;
+            const currentCell = currentIdx !== undefined ? notebook.cells[currentIdx] : undefined;
+            const incomingCell = incomingIdx !== undefined ? notebook.cells[incomingIdx] : undefined;
             
-            const localContent = localCell ? cellToDisplayContent(localCell) : '';
-            const remoteContent = remoteCell ? cellToDisplayContent(remoteCell) : '';
+            const currentContent = currentCell ? cellToDisplayContent(currentCell) : '';
+            const incomingContent = incomingCell ? cellToDisplayContent(incomingCell) : '';
             
             // Determine cell type for display
-            const cellType = localCell?.cell_type || remoteCell?.cell_type || 'code';
+            const cellType = currentCell?.cell_type || incomingCell?.cell_type || 'code';
             
             conflicts.push({
-                cellIndex: localIdx ?? remoteIdx ?? cellConflict.startMarkerCellIndex,
+                cellIndex: currentIdx ?? incomingIdx ?? cellConflict.startMarkerCellIndex,
                 field: 'source',
-                localContent,
-                remoteContent,
+                currentContent,
+                incomingContent,
                 marker: {
                     start: cellConflict.startMarkerCellIndex,
                     middle: cellConflict.separatorCellIndex,
                     end: cellConflict.endMarkerCellIndex,
-                    localBranch: cellConflict.localBranch,
-                    remoteBranch: cellConflict.remoteBranch
+                    currentBranch: cellConflict.currentBranch,
+                    incomingBranch: cellConflict.incomingBranch
                 },
                 // Store cell type info for UI display
                 cellType: cellType as 'code' | 'markdown' | 'raw',
-                localCellIndex: localIdx,
-                remoteCellIndex: remoteIdx
+                currentCellIndex: currentIdx,
+                incomingCellIndex: incomingIdx
             });
         }
     }
@@ -396,8 +396,8 @@ export function analyzeNotebookConflicts(filePath: string, content: string): Not
             cellIndex === c.endMarkerCellIndex
         );
         const isInConflictRegion = cellLevelConflicts.some(c =>
-            c.localCellIndices.includes(cellIndex) ||
-            c.remoteCellIndices.includes(cellIndex)
+            c.currentCellIndices.includes(cellIndex) ||
+            c.incomingCellIndices.includes(cellIndex)
         );
         
         if (isMarkerCell || isInConflictRegion) {
@@ -412,12 +412,12 @@ export function analyzeNotebookConflicts(filePath: string, content: string): Not
                 conflicts.push({
                     cellIndex,
                     field: 'source',
-                    localContent: extracted.localContent,
-                    remoteContent: extracted.remoteContent,
+                    currentContent: extracted.currentContent,
+                    incomingContent: extracted.incomingContent,
                     marker: { 
                         start: 0, middle: 0, end: 0,
-                        localBranch: extracted.localBranch,
-                        remoteBranch: extracted.remoteBranch
+                        currentBranch: extracted.currentBranch,
+                        incomingBranch: extracted.incomingBranch
                     }
                 });
             }
@@ -433,12 +433,12 @@ export function analyzeNotebookConflicts(filePath: string, content: string): Not
                 conflicts.push({
                     cellIndex,
                     field: 'outputs',
-                    localContent: extracted.localContent,
-                    remoteContent: extracted.remoteContent,
+                    currentContent: extracted.currentContent,
+                    incomingContent: extracted.incomingContent,
                     marker: {
                         start: 0, middle: 0, end: 0,
-                        localBranch: extracted.localBranch,
-                        remoteBranch: extracted.remoteBranch
+                        currentBranch: extracted.currentBranch,
+                        incomingBranch: extracted.incomingBranch
                     }
                 });
             }
@@ -465,8 +465,8 @@ function analyzeRawConflicts(filePath: string, content: string): NotebookConflic
             conflicts.push({
                 cellIndex: -1,
                 field: 'source',
-                localContent: extracted.localContent,
-                remoteContent: extracted.remoteContent,
+                currentContent: extracted.currentContent,
+                incomingContent: extracted.incomingContent,
                 marker: { start: 0, middle: 0, end: 0 }
             });
         }
@@ -485,7 +485,7 @@ function analyzeRawConflicts(filePath: string, content: string): NotebookConflic
  */
 export function resolveAllConflicts(
     content: string,
-    resolutions: Array<{ marker: { start: number; middle?: number; end?: number }; choice: 'local' | 'remote' | 'both'; customContent?: string }>
+    resolutions: Array<{ marker: { start: number; middle?: number; end?: number }; choice: 'current' | 'incoming' | 'both'; customContent?: string }>
 ): string {
     let notebook: Notebook;
     try {
@@ -509,8 +509,8 @@ export function resolveAllConflicts(
     // Build a set of cell indices to remove (marker cells and rejected cells)
     const cellsToRemove = new Set<number>();
     
-    // Default resolution choice for all conflicts (use first resolution's choice or 'local')
-    const defaultChoice = resolutions[0]?.choice || 'local';
+    // Default resolution choice for all conflicts (use first resolution's choice or 'current')
+    const defaultChoice = resolutions[0]?.choice || 'current';
     
     // Process each resolution
     conflicts.forEach((conflict, i) => {
@@ -536,12 +536,12 @@ export function resolveAllConflicts(
                 cellsToRemove.add(cellConflict.endMarkerCellIndex);
                 
                 // Remove cells based on choice
-                if (choice === 'local') {
-                    // Keep local cells, remove remote cells
-                    cellConflict.remoteCellIndices.forEach(idx => cellsToRemove.add(idx));
-                } else if (choice === 'remote') {
-                    // Keep remote cells, remove local cells
-                    cellConflict.localCellIndices.forEach(idx => cellsToRemove.add(idx));
+                if (choice === 'current') {
+                    // Keep current cells, remove incoming cells
+                    cellConflict.incomingCellIndices.forEach(idx => cellsToRemove.add(idx));
+                } else if (choice === 'incoming') {
+                    // Keep incoming cells, remove current cells
+                    cellConflict.currentCellIndices.forEach(idx => cellsToRemove.add(idx));
                 }
                 // 'both' keeps all content cells, just removes markers
             }
@@ -594,11 +594,11 @@ export function findConflictMarkers(_content: string) {
 }
 
 export function extractConflictContent(_content: string, _marker: { start: number; middle: number; end: number }) {
-    return { local: '', remote: '' };
+    return { current: '', incoming: '' };
 }
 
 /**
- * Enrich textual conflicts with base/local/remote versions from Git staging areas.
+ * Enrich textual conflicts with base/current/incoming versions from Git staging areas.
  * This allows showing non-conflicted cells alongside conflicted ones in the UI.
  */
 export async function enrichTextualConflictsWithContext(
@@ -612,16 +612,16 @@ export async function enrichTextualConflictsWithContext(
             return conflict; // Return original conflict without enrichment
         }
 
-        const { base, local, remote } = versions;
+        const { base, current, incoming } = versions;
         console.log('[MergeNB] Got Git versions for textual conflict:');
         console.log('[MergeNB] - base:', base ? `${base.length} chars` : 'null');
-        console.log('[MergeNB] - local:', local ? `${local.length} chars` : 'null');
-        console.log('[MergeNB] - remote:', remote ? `${remote.length} chars` : 'null');
+        console.log('[MergeNB] - current:', current ? `${current.length} chars` : 'null');
+        console.log('[MergeNB] - incoming:', incoming ? `${incoming.length} chars` : 'null');
 
         // Parse each version as a notebook
         let baseNotebook: Notebook | undefined;
-        let localNotebook: Notebook | undefined;
-        let remoteNotebook: Notebook | undefined;
+        let currentNotebook: Notebook | undefined;
+        let incomingNotebook: Notebook | undefined;
 
         try {
             if (base) baseNotebook = parseNotebook(base);
@@ -630,45 +630,45 @@ export async function enrichTextualConflictsWithContext(
         }
 
         try {
-            if (local) localNotebook = parseNotebook(local);
+            if (current) currentNotebook = parseNotebook(current);
         } catch (error) {
-            console.warn('[MergeNB] Failed to parse local notebook:', error);
+            console.warn('[MergeNB] Failed to parse current notebook:', error);
         }
 
         try {
-            if (remote) remoteNotebook = parseNotebook(remote);
+            if (incoming) incomingNotebook = parseNotebook(incoming);
         } catch (error) {
-            console.warn('[MergeNB] Failed to parse remote notebook:', error);
+            console.warn('[MergeNB] Failed to parse incoming notebook:', error);
         }
 
-        // If we couldn't parse at least local and remote, return original
-        if (!localNotebook && !remoteNotebook) {
-            console.log('[MergeNB] Could not parse local or remote notebooks');
+        // If we couldn't parse at least current and incoming, return original
+        if (!currentNotebook && !incomingNotebook) {
+            console.log('[MergeNB] Could not parse current or incoming notebooks');
             return conflict;
         }
 
         // Match cells across versions
-        const cellMappings = matchCells(baseNotebook, localNotebook, remoteNotebook);
+        const cellMappings = matchCells(baseNotebook, currentNotebook, incomingNotebook);
 
         // Get branch information
-        const [localBranch, remoteBranch] = await Promise.all([
+        const [currentBranch, incomingBranch] = await Promise.all([
             gitIntegration.getCurrentBranch(conflict.filePath),
             gitIntegration.getMergeBranch(conflict.filePath)
         ]);
 
         console.log('[MergeNB] Enriched textual conflict with context:');
         console.log('[MergeNB] - cellMappings:', cellMappings.length);
-        console.log('[MergeNB] - localBranch:', localBranch);
-        console.log('[MergeNB] - remoteBranch:', remoteBranch);
+        console.log('[MergeNB] - currentBranch:', currentBranch);
+        console.log('[MergeNB] - incomingBranch:', incomingBranch);
 
         return {
             ...conflict,
             base: baseNotebook,
-            local: localNotebook,
-            remote: remoteNotebook,
+            current: currentNotebook,
+            incoming: incomingNotebook,
             cellMappings,
-            localBranch: localBranch || undefined,
-            remoteBranch: remoteBranch || undefined
+            currentBranch: currentBranch || undefined,
+            incomingBranch: incomingBranch || undefined
         };
     } catch (error) {
         console.error('[MergeNB] Error enriching textual conflict:', error);
@@ -678,7 +678,7 @@ export async function enrichTextualConflictsWithContext(
 
 /**
  * Detect semantic conflicts (Git UU status without textual markers)
- * Compares base/local/remote versions from Git staging areas
+ * Compares base/current/incoming versions from Git staging areas
  */
 export async function detectSemanticConflicts(filePath: string): Promise<NotebookSemanticConflict | null> {
     try {
@@ -688,21 +688,21 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
             return null; // Not an unmerged file
         }
 
-        const { base, local, remote } = versions;
+        const { base, current, incoming } = versions;
 
         // Debug: Check if we're getting different versions
         console.log('[MergeNB] detectSemanticConflicts for:', filePath);
         console.log('[MergeNB] base length:', base?.length ?? 0);
-        console.log('[MergeNB] local length:', local?.length ?? 0);
-        console.log('[MergeNB] remote length:', remote?.length ?? 0);
-        console.log('[MergeNB] base === local:', base === local);
-        console.log('[MergeNB] base === remote:', base === remote);
-        console.log('[MergeNB] local === remote:', local === remote);
+        console.log('[MergeNB] current length:', current?.length ?? 0);
+        console.log('[MergeNB] incoming length:', incoming?.length ?? 0);
+        console.log('[MergeNB] base === current:', base === current);
+        console.log('[MergeNB] base === incoming:', base === incoming);
+        console.log('[MergeNB] current === incoming:', current === incoming);
 
         // Parse each version as a notebook
         let baseNotebook: Notebook | undefined;
-        let localNotebook: Notebook | undefined;
-        let remoteNotebook: Notebook | undefined;
+        let currentNotebook: Notebook | undefined;
+        let incomingNotebook: Notebook | undefined;
 
         try {
             if (base) baseNotebook = parseNotebook(base);
@@ -711,46 +711,46 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         }
 
         try {
-            if (local) localNotebook = parseNotebook(local);
+            if (current) currentNotebook = parseNotebook(current);
         } catch (error) {
-            console.warn('Failed to parse local notebook:', error);
+            console.warn('Failed to parse current notebook:', error);
         }
 
         try {
-            if (remote) remoteNotebook = parseNotebook(remote);
+            if (incoming) incomingNotebook = parseNotebook(incoming);
         } catch (error) {
-            console.warn('Failed to parse remote notebook:', error);
+            console.warn('Failed to parse incoming notebook:', error);
         }
 
         // Debug: Check parsed notebooks
-        if (baseNotebook && localNotebook && remoteNotebook) {
+        if (baseNotebook && currentNotebook && incomingNotebook) {
             const baseLegoCell = baseNotebook.cells.find(c => {
                 const src = Array.isArray(c.source) ? c.source.join('') : c.source;
                 return src.includes('2.3 The Lego Analogy');
             });
-            const localLegoCell = localNotebook.cells.find(c => {
+            const currentLegoCell = currentNotebook.cells.find(c => {
                 const src = Array.isArray(c.source) ? c.source.join('') : c.source;
                 return src.includes('2.3 The Lego Analogy');
             });
-            const remoteLegoCell = remoteNotebook.cells.find(c => {
+            const incomingLegoCell = incomingNotebook.cells.find(c => {
                 const src = Array.isArray(c.source) ? c.source.join('') : c.source;
                 return src.includes('2.3 The Lego Analogy');
             });
             
             if (baseLegoCell) {
                 const baseSrc = Array.isArray(baseLegoCell.source) ? baseLegoCell.source.join('') : baseLegoCell.source;
-                const localSrc = localLegoCell ? (Array.isArray(localLegoCell.source) ? localLegoCell.source.join('') : localLegoCell.source) : '';
-                const remoteSrc = remoteLegoCell ? (Array.isArray(remoteLegoCell.source) ? remoteLegoCell.source.join('') : remoteLegoCell.source) : '';
+                const currentSrc = currentLegoCell ? (Array.isArray(currentLegoCell.source) ? currentLegoCell.source.join('') : currentLegoCell.source) : '';
+                const incomingSrc = incomingLegoCell ? (Array.isArray(incomingLegoCell.source) ? incomingLegoCell.source.join('') : incomingLegoCell.source) : '';
                 
                 console.log('[MergeNB] LEGO CELL PARSED:');
                 console.log('[MergeNB] - base has "Key insight":', baseSrc.includes('Key insight'));
-                console.log('[MergeNB] - local has "Key insight":', localSrc.includes('Key insight'));
-                console.log('[MergeNB] - remote has "Key insight":', remoteSrc.includes('Key insight'));
+                console.log('[MergeNB] - current has "Key insight":', currentSrc.includes('Key insight'));
+                console.log('[MergeNB] - incoming has "Key insight":', incomingSrc.includes('Key insight'));
             }
         }
 
-        // If we couldn't parse at least local and remote, can't detect semantic conflicts
-        if (!localNotebook && !remoteNotebook) {
+        // If we couldn't parse at least current and incoming, can't detect semantic conflicts
+        if (!currentNotebook && !incomingNotebook) {
             return null;
         }
 
@@ -766,13 +766,13 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         }
 
         // Match cells across versions
-        const cellMappings = matchCells(baseNotebook, localNotebook, remoteNotebook);
+        const cellMappings = matchCells(baseNotebook, currentNotebook, incomingNotebook);
 
         // Analyze mappings to find semantic conflicts
         const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
 
         // Get branch information
-        const [localBranch, remoteBranch] = await Promise.all([
+        const [currentBranch, incomingBranch] = await Promise.all([
             gitIntegration.getCurrentBranch(filePath),
             gitIntegration.getMergeBranch(filePath)
         ]);
@@ -783,10 +783,10 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
             semanticConflicts,
             cellMappings,
             base: baseNotebook,
-            local: localNotebook,
-            remote: remoteNotebook,
-            localBranch: localBranch || undefined,
-            remoteBranch: remoteBranch || undefined
+            current: currentNotebook,
+            incoming: incomingNotebook,
+            currentBranch: currentBranch || undefined,
+            incomingBranch: incomingBranch || undefined
         };
     } catch (error) {
         console.error('Error detecting semantic conflicts:', error);
@@ -810,83 +810,83 @@ export function analyzeSemanticConflictsFromMappings(mappings: CellMapping[]): S
     }
 
     for (const mapping of mappings) {
-        const { baseIndex, localIndex, remoteIndex, baseCell, localCell, remoteCell } = mapping;
+        const { baseIndex, currentIndex, incomingIndex, baseCell, currentCell, incomingCell } = mapping;
 
-        // Case 1: Cell added in local only
-        if (localCell && !baseCell && !remoteCell) {
+        // Case 1: Cell added in current only
+        if (currentCell && !baseCell && !incomingCell) {
             conflicts.push({
                 type: 'cell-added',
-                localCellIndex: localIndex,
-                localContent: localCell,
-                description: 'Cell added in local branch'
+                currentCellIndex: currentIndex,
+                currentContent: currentCell,
+                description: 'Cell added in current branch'
             });
             continue;
         }
 
-        // Case 2: Cell added in remote only
-        if (remoteCell && !baseCell && !localCell) {
+        // Case 2: Cell added in incoming only
+        if (incomingCell && !baseCell && !currentCell) {
             conflicts.push({
                 type: 'cell-added',
-                remoteCellIndex: remoteIndex,
-                remoteContent: remoteCell,
-                description: 'Cell added in remote branch'
+                incomingCellIndex: incomingIndex,
+                incomingContent: incomingCell,
+                description: 'Cell added in incoming branch'
             });
             continue;
         }
 
         // Case 3: Cell added in both (conflict!)
-        if (localCell && remoteCell && !baseCell) {
-            const localSource = Array.isArray(localCell.source) ? localCell.source.join('') : localCell.source;
-            const remoteSource = Array.isArray(remoteCell.source) ? remoteCell.source.join('') : remoteCell.source;
+        if (currentCell && incomingCell && !baseCell) {
+            const currentSource = Array.isArray(currentCell.source) ? currentCell.source.join('') : currentCell.source;
+            const incomingSource = Array.isArray(incomingCell.source) ? incomingCell.source.join('') : incomingCell.source;
 
-            if (localSource !== remoteSource) {
+            if (currentSource !== incomingSource) {
                 conflicts.push({
                     type: 'cell-added',
-                    localCellIndex: localIndex,
-                    remoteCellIndex: remoteIndex,
-                    localContent: localCell,
-                    remoteContent: remoteCell,
+                    currentCellIndex: currentIndex,
+                    incomingCellIndex: incomingIndex,
+                    currentContent: currentCell,
+                    incomingContent: incomingCell,
                     description: 'Different cells added in same position'
                 });
             }
             continue;
         }
 
-        // Case 4: Cell deleted in local
-        if (baseCell && !localCell && remoteCell) {
+        // Case 4: Cell deleted in current
+        if (baseCell && !currentCell && incomingCell) {
             conflicts.push({
                 type: 'cell-deleted',
                 baseCellIndex: baseIndex,
-                remoteCellIndex: remoteIndex,
+                incomingCellIndex: incomingIndex,
                 baseContent: baseCell,
-                remoteContent: remoteCell,
-                description: 'Cell deleted in local branch'
+                incomingContent: incomingCell,
+                description: 'Cell deleted in current branch'
             });
             continue;
         }
 
-        // Case 5: Cell deleted in remote
-        if (baseCell && localCell && !remoteCell) {
+        // Case 5: Cell deleted in incoming
+        if (baseCell && currentCell && !incomingCell) {
             conflicts.push({
                 type: 'cell-deleted',
                 baseCellIndex: baseIndex,
-                localCellIndex: localIndex,
+                currentCellIndex: currentIndex,
                 baseContent: baseCell,
-                localContent: localCell,
-                description: 'Cell deleted in remote branch'
+                currentContent: currentCell,
+                description: 'Cell deleted in incoming branch'
             });
             continue;
         }
 
         // Case 6: Cell deleted in both (no conflict, just deleted)
-        if (baseCell && !localCell && !remoteCell) {
+        if (baseCell && !currentCell && !incomingCell) {
             // Not a conflict, skip
             continue;
         }
 
         // Case 7: Cell exists in all three - check for modifications
-        if (baseCell && localCell && remoteCell) {
-            const conflicts_found = compareCells(baseCell, localCell, remoteCell, baseIndex, localIndex, remoteIndex);
+        if (baseCell && currentCell && incomingCell) {
+            const conflicts_found = compareCells(baseCell, currentCell, incomingCell, baseIndex, currentIndex, incomingIndex);
             conflicts.push(...conflicts_found);
         }
     }
@@ -899,71 +899,71 @@ export function analyzeSemanticConflictsFromMappings(mappings: CellMapping[]): S
  */
 function compareCells(
     baseCell: NotebookCell,
-    localCell: NotebookCell,
-    remoteCell: NotebookCell,
+    currentCell: NotebookCell,
+    incomingCell: NotebookCell,
     baseIndex?: number,
-    localIndex?: number,
-    remoteIndex?: number
+    currentIndex?: number,
+    incomingIndex?: number
 ): SemanticConflict[] {
     const conflicts: SemanticConflict[] = [];
 
     // Compare source content
     const baseSource = Array.isArray(baseCell.source) ? baseCell.source.join('') : baseCell.source;
-    const localSource = Array.isArray(localCell.source) ? localCell.source.join('') : localCell.source;
-    const remoteSource = Array.isArray(remoteCell.source) ? remoteCell.source.join('') : remoteCell.source;
+    const currentSource = Array.isArray(currentCell.source) ? currentCell.source.join('') : currentCell.source;
+    const incomingSource = Array.isArray(incomingCell.source) ? incomingCell.source.join('') : incomingCell.source;
 
-    const localModified = localSource !== baseSource;
-    const remoteModified = remoteSource !== baseSource;
+    const currentModified = currentSource !== baseSource;
+    const incomingModified = incomingSource !== baseSource;
 
     // Both modified the source differently
-    if (localModified && remoteModified && localSource !== remoteSource) {
+    if (currentModified && incomingModified && currentSource !== incomingSource) {
         conflicts.push({
             type: 'cell-modified',
             baseCellIndex: baseIndex,
-            localCellIndex: localIndex,
-            remoteCellIndex: remoteIndex,
+            currentCellIndex: currentIndex,
+            incomingCellIndex: incomingIndex,
             baseContent: baseCell,
-            localContent: localCell,
-            remoteContent: remoteCell,
+            currentContent: currentCell,
+            incomingContent: incomingCell,
             description: 'Cell source modified in both branches differently'
         });
     }
 
     // Compare execution_count (only for code cells)
-    if (baseCell.cell_type === 'code' && localCell.cell_type === 'code' && remoteCell.cell_type === 'code') {
+    if (baseCell.cell_type === 'code' && currentCell.cell_type === 'code' && incomingCell.cell_type === 'code') {
         const baseExecCount = baseCell.execution_count;
-        const localExecCount = localCell.execution_count;
-        const remoteExecCount = remoteCell.execution_count;
+        const currentExecCount = currentCell.execution_count;
+        const incomingExecCount = incomingCell.execution_count;
 
-        if (localExecCount !== remoteExecCount && 
-            (localExecCount !== baseExecCount || remoteExecCount !== baseExecCount)) {
+        if (currentExecCount !== incomingExecCount && 
+            (currentExecCount !== baseExecCount || incomingExecCount !== baseExecCount)) {
             conflicts.push({
                 type: 'execution-count-changed',
                 baseCellIndex: baseIndex,
-                localCellIndex: localIndex,
-                remoteCellIndex: remoteIndex,
+                currentCellIndex: currentIndex,
+                incomingCellIndex: incomingIndex,
                 baseContent: baseCell,
-                localContent: localCell,
-                remoteContent: remoteCell,
-                description: `Execution count differs: local=${localExecCount}, remote=${remoteExecCount}`
+                currentContent: currentCell,
+                incomingContent: incomingCell,
+                description: `Execution count differs: current=${currentExecCount}, incoming=${incomingExecCount}`
             });
         }
 
         // Compare outputs
         const baseOutputs = JSON.stringify(baseCell.outputs || []);
-        const localOutputs = JSON.stringify(localCell.outputs || []);
-        const remoteOutputs = JSON.stringify(remoteCell.outputs || []);
+        const currentOutputs = JSON.stringify(currentCell.outputs || []);
+        const incomingOutputs = JSON.stringify(incomingCell.outputs || []);
 
-        if (localOutputs !== remoteOutputs && 
-            (localOutputs !== baseOutputs || remoteOutputs !== baseOutputs)) {
+        if (currentOutputs !== incomingOutputs && 
+            (currentOutputs !== baseOutputs || incomingOutputs !== baseOutputs)) {
             conflicts.push({
                 type: 'outputs-changed',
                 baseCellIndex: baseIndex,
-                localCellIndex: localIndex,
-                remoteCellIndex: remoteIndex,
+                currentCellIndex: currentIndex,
+                incomingCellIndex: incomingIndex,
                 baseContent: baseCell,
-                localContent: localCell,
-                remoteContent: remoteCell,
+                currentContent: currentCell,
+                incomingContent: incomingCell,
                 description: 'Cell outputs differ between branches'
             });
         }
@@ -971,21 +971,21 @@ function compareCells(
 
     // Compare metadata
     const baseMetadata = JSON.stringify(baseCell.metadata);
-    const localMetadata = JSON.stringify(localCell.metadata);
-    const remoteMetadata = JSON.stringify(remoteCell.metadata);
+    const currentMetadata = JSON.stringify(currentCell.metadata);
+    const incomingMetadata = JSON.stringify(incomingCell.metadata);
 
-    const localMetadataModified = localMetadata !== baseMetadata;
-    const remoteMetadataModified = remoteMetadata !== baseMetadata;
+    const currentMetadataModified = currentMetadata !== baseMetadata;
+    const incomingMetadataModified = incomingMetadata !== baseMetadata;
 
-    if (localMetadataModified && remoteMetadataModified && localMetadata !== remoteMetadata) {
+    if (currentMetadataModified && incomingMetadataModified && currentMetadata !== incomingMetadata) {
         conflicts.push({
             type: 'metadata-changed',
             baseCellIndex: baseIndex,
-            localCellIndex: localIndex,
-            remoteCellIndex: remoteIndex,
+            currentCellIndex: currentIndex,
+            incomingCellIndex: incomingIndex,
             baseContent: baseCell,
-            localContent: localCell,
-            remoteContent: remoteCell,
+            currentContent: currentCell,
+            incomingContent: incomingCell,
             description: 'Cell metadata modified in both branches differently'
         });
     }
@@ -1007,10 +1007,10 @@ export function applyAutoResolutions(
     let autoResolvedCount = 0;
     let kernelAutoResolved = false;
 
-    // Start with a deep copy of the local notebook as our resolved version
-    const resolvedNotebook: Notebook = semanticConflict.local 
-        ? JSON.parse(JSON.stringify(semanticConflict.local))
-        : JSON.parse(JSON.stringify(semanticConflict.remote!));
+    // Start with a deep copy of the current notebook as our resolved version
+    const resolvedNotebook: Notebook = semanticConflict.current 
+        ? JSON.parse(JSON.stringify(semanticConflict.current))
+        : JSON.parse(JSON.stringify(semanticConflict.incoming!));
 
     // Track cell indices that had auto-resolutions applied
     const autoResolvedCellIndices = new Set<number>();
@@ -1021,34 +1021,34 @@ export function applyAutoResolutions(
         // Auto-resolve execution count differences
         if (conflict.type === 'execution-count-changed' && effectiveSettings.autoResolveExecutionCount) {
             // Set execution_count to null on the resolved cell
-            if (conflict.localCellIndex !== undefined && resolvedNotebook.cells[conflict.localCellIndex]) {
-                resolvedNotebook.cells[conflict.localCellIndex].execution_count = null;
-                autoResolvedCellIndices.add(conflict.localCellIndex);
+            if (conflict.currentCellIndex !== undefined && resolvedNotebook.cells[conflict.currentCellIndex]) {
+                resolvedNotebook.cells[conflict.currentCellIndex].execution_count = null;
+                autoResolvedCellIndices.add(conflict.currentCellIndex);
             }
             autoResolved = true;
             autoResolvedCount++;
-            autoResolvedDescriptions.push(`Execution count set to null (cell ${(conflict.localCellIndex ?? 0) + 1})`);
+            autoResolvedDescriptions.push(`Execution count set to null (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
         }
 
         // Auto-resolve outputs-changed conflicts when stripOutputs is enabled
         // Only if the source code is identical (pure output difference)
         if (conflict.type === 'outputs-changed' && effectiveSettings.stripOutputs) {
-            const localSource = conflict.localContent?.source;
-            const remoteSource = conflict.remoteContent?.source;
+            const currentSource = conflict.currentContent?.source;
+            const incomingSource = conflict.incomingContent?.source;
             
-            const localSourceStr = Array.isArray(localSource) ? localSource.join('') : (localSource || '');
-            const remoteSourceStr = Array.isArray(remoteSource) ? remoteSource.join('') : (remoteSource || '');
+            const currentSourceStr = Array.isArray(currentSource) ? currentSource.join('') : (currentSource || '');
+            const incomingSourceStr = Array.isArray(incomingSource) ? incomingSource.join('') : (incomingSource || '');
             
             // If source is identical, this is purely an output difference - auto-resolve
-            if (localSourceStr === remoteSourceStr) {
-                if (conflict.localCellIndex !== undefined && resolvedNotebook.cells[conflict.localCellIndex]) {
-                    resolvedNotebook.cells[conflict.localCellIndex].outputs = [];
-                    resolvedNotebook.cells[conflict.localCellIndex].execution_count = null;
-                    autoResolvedCellIndices.add(conflict.localCellIndex);
+            if (currentSourceStr === incomingSourceStr) {
+                if (conflict.currentCellIndex !== undefined && resolvedNotebook.cells[conflict.currentCellIndex]) {
+                    resolvedNotebook.cells[conflict.currentCellIndex].outputs = [];
+                    resolvedNotebook.cells[conflict.currentCellIndex].execution_count = null;
+                    autoResolvedCellIndices.add(conflict.currentCellIndex);
                 }
                 autoResolved = true;
                 autoResolvedCount++;
-                autoResolvedDescriptions.push(`Outputs cleared (cell ${(conflict.localCellIndex ?? 0) + 1})`);
+                autoResolvedDescriptions.push(`Outputs cleared (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
             }
         }
 
@@ -1059,41 +1059,41 @@ export function applyAutoResolutions(
 
     // Auto-resolve kernel version differences (notebook-level metadata)
     if (effectiveSettings.autoResolveKernelVersion) {
-        const localKernel = semanticConflict.local?.metadata?.kernelspec;
-        const remoteKernel = semanticConflict.remote?.metadata?.kernelspec;
+        const currentKernel = semanticConflict.current?.metadata?.kernelspec;
+        const incomingKernel = semanticConflict.incoming?.metadata?.kernelspec;
         const baseKernel = semanticConflict.base?.metadata?.kernelspec;
 
-        // Check if kernel versions differ between local and remote
-        if (localKernel && remoteKernel) {
-            const localKernelStr = JSON.stringify(localKernel);
-            const remoteKernelStr = JSON.stringify(remoteKernel);
+        // Check if kernel versions differ between current and incoming
+        if (currentKernel && incomingKernel) {
+            const currentKernelStr = JSON.stringify(currentKernel);
+            const incomingKernelStr = JSON.stringify(incomingKernel);
             const baseKernelStr = baseKernel ? JSON.stringify(baseKernel) : '';
 
-            if (localKernelStr !== remoteKernelStr && 
-                (localKernelStr !== baseKernelStr || remoteKernelStr !== baseKernelStr)) {
-                // Use local kernel (already in resolvedNotebook)
+            if (currentKernelStr !== incomingKernelStr && 
+                (currentKernelStr !== baseKernelStr || incomingKernelStr !== baseKernelStr)) {
+                // Use current kernel (already in resolvedNotebook)
                 kernelAutoResolved = true;
                 autoResolvedCount++;
-                autoResolvedDescriptions.push('Kernel version: using local version');
+                autoResolvedDescriptions.push('Kernel version: using current version');
             }
         }
 
         // Also check language_info version
-        const localLangInfo = semanticConflict.local?.metadata?.language_info;
-        const remoteLangInfo = semanticConflict.remote?.metadata?.language_info;
+        const currentLangInfo = semanticConflict.current?.metadata?.language_info;
+        const incomingLangInfo = semanticConflict.incoming?.metadata?.language_info;
         const baseLangInfo = semanticConflict.base?.metadata?.language_info;
 
-        if (localLangInfo && remoteLangInfo) {
-            const localLangStr = JSON.stringify(localLangInfo);
-            const remoteLangStr = JSON.stringify(remoteLangInfo);
+        if (currentLangInfo && incomingLangInfo) {
+            const currentLangStr = JSON.stringify(currentLangInfo);
+            const incomingLangStr = JSON.stringify(incomingLangInfo);
             const baseLangStr = baseLangInfo ? JSON.stringify(baseLangInfo) : '';
 
-            if (localLangStr !== remoteLangStr && 
-                (localLangStr !== baseLangStr || remoteLangStr !== baseLangStr)) {
-                // Use local language_info (already in resolvedNotebook)
+            if (currentLangStr !== incomingLangStr && 
+                (currentLangStr !== baseLangStr || incomingLangStr !== baseLangStr)) {
+                // Use current language_info (already in resolvedNotebook)
                 if (!kernelAutoResolved) {
                     autoResolvedCount++;
-                    autoResolvedDescriptions.push('Python version: using local version');
+                    autoResolvedDescriptions.push('Python version: using current version');
                 }
                 kernelAutoResolved = true;
             }
@@ -1104,11 +1104,11 @@ export function applyAutoResolutions(
     if (effectiveSettings.stripOutputs) {
         // For remaining conflicts that weren't auto-resolved, still strip outputs
         for (const conflict of remainingConflicts) {
-            if (conflict.localCellIndex !== undefined && !autoResolvedCellIndices.has(conflict.localCellIndex)) {
-                const cell = resolvedNotebook.cells[conflict.localCellIndex];
+            if (conflict.currentCellIndex !== undefined && !autoResolvedCellIndices.has(conflict.currentCellIndex)) {
+                const cell = resolvedNotebook.cells[conflict.currentCellIndex];
                 if (cell && cell.cell_type === 'code' && cell.outputs && cell.outputs.length > 0) {
                     cell.outputs = [];
-                    autoResolvedDescriptions.push(`Outputs stripped (cell ${conflict.localCellIndex + 1})`);
+                    autoResolvedDescriptions.push(`Outputs stripped (cell ${conflict.currentCellIndex + 1})`);
                 }
             }
         }
@@ -1124,24 +1124,24 @@ export function applyAutoResolutions(
 }
 
 /**
- * Check if a notebook has kernel version differences between local and remote
+ * Check if a notebook has kernel version differences between current and incoming
  */
 export function hasKernelVersionConflict(
-    local?: Notebook,
-    remote?: Notebook,
+    current?: Notebook,
+    incoming?: Notebook,
     base?: Notebook
 ): boolean {
-    if (!local || !remote) return false;
+    if (!current || !incoming) return false;
 
-    const localKernel = local.metadata?.kernelspec;
-    const remoteKernel = remote.metadata?.kernelspec;
+    const currentKernel = current.metadata?.kernelspec;
+    const incomingKernel = incoming.metadata?.kernelspec;
     const baseKernel = base?.metadata?.kernelspec;
 
-    if (!localKernel || !remoteKernel) return false;
+    if (!currentKernel || !incomingKernel) return false;
 
-    const localStr = JSON.stringify(localKernel);
-    const remoteStr = JSON.stringify(remoteKernel);
+    const currentStr = JSON.stringify(currentKernel);
+    const incomingStr = JSON.stringify(incomingKernel);
     const baseStr = baseKernel ? JSON.stringify(baseKernel) : '';
 
-    return localStr !== remoteStr && (localStr !== baseStr || remoteStr !== baseStr);
+    return currentStr !== incomingStr && (currentStr !== baseStr || incomingStr !== baseStr);
 }
