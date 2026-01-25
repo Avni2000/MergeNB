@@ -67,6 +67,12 @@ interface MergeRow {
     incomingCellIndex?: number;
     conflictIndex?: number; // Index into the semantic conflicts array
     conflictType?: string;
+    /** Whether this row contains an unmatched cell (cell exists in one/two versions but not matched) */
+    isUnmatched?: boolean;
+    /** Which sides have the cell (for unmatched rows) */
+    unmatchedSides?: ('base' | 'current' | 'incoming')[];
+    /** The "anchor" position for this row (used for sorting/reordering) */
+    anchorPosition?: number;
 }
 
 /**
@@ -223,7 +229,8 @@ export class UnifiedConflictPanel {
     }
 
     /**
-     * Build merge rows from cell mappings for 3-way view
+     * Build merge rows from cell mappings for 3-way view.
+     * Rows are ordered to preserve original cell positions as much as possible.
      */
     private _buildMergeRows(semanticConflict: NotebookSemanticConflict): MergeRow[] {
         const rows: MergeRow[] = [];
@@ -235,7 +242,7 @@ export class UnifiedConflictPanel {
             conflictMap.set(key, { conflict: c, index: i });
         });
 
-        // Use cell mappings to build rows
+        // Use cell mappings to build rows, calculating anchor positions
         for (const mapping of semanticConflict.cellMappings) {
             const baseCell = mapping.baseIndex !== undefined && semanticConflict.base 
                 ? semanticConflict.base.cells[mapping.baseIndex] : undefined;
@@ -247,6 +254,18 @@ export class UnifiedConflictPanel {
             const key = `${mapping.baseIndex ?? 'x'}-${mapping.currentIndex ?? 'x'}-${mapping.incomingIndex ?? 'x'}`;
             const conflictInfo = conflictMap.get(key);
 
+            // Determine if this is an unmatched cell (exists in one/two versions only)
+            const presentSides: ('base' | 'current' | 'incoming')[] = [];
+            if (baseCell) presentSides.push('base');
+            if (currentCell) presentSides.push('current');
+            if (incomingCell) presentSides.push('incoming');
+            
+            const isUnmatched = presentSides.length < 3 && presentSides.length > 0;
+            
+            // Calculate anchor position: use the first available index
+            // Priority: base > current > incoming (base is the common ancestor)
+            const anchorPosition = mapping.baseIndex ?? mapping.currentIndex ?? mapping.incomingIndex ?? 0;
+
             rows.push({
                 type: conflictInfo ? 'conflict' : 'identical',
                 baseCell,
@@ -256,11 +275,38 @@ export class UnifiedConflictPanel {
                 currentCellIndex: mapping.currentIndex,
                 incomingCellIndex: mapping.incomingIndex,
                 conflictIndex: conflictInfo?.index,
-                conflictType: conflictInfo?.conflict.type
+                conflictType: conflictInfo?.conflict.type,
+                isUnmatched,
+                unmatchedSides: isUnmatched ? presentSides : undefined,
+                anchorPosition
             });
         }
 
-        return rows;
+        // Sort rows by anchor position to preserve original ordering
+        // This ensures unmatched cells appear at their original position, not at the bottom
+        return this._sortRowsByPosition(rows);
+    }
+
+    /**
+     * Sort merge rows to preserve original cell ordering.
+     * Uses a weighted position calculation that considers all available indices.
+     */
+    private _sortRowsByPosition(rows: MergeRow[]): MergeRow[] {
+        return rows.sort((a, b) => {
+            // Primary sort: by anchor position
+            const posA = a.anchorPosition ?? 0;
+            const posB = b.anchorPosition ?? 0;
+            
+            if (posA !== posB) {
+                return posA - posB;
+            }
+            
+            // Tiebreaker: prefer rows with more matched sides (fully matched before unmatched)
+            const matchedA = (a.baseCell ? 1 : 0) + (a.currentCell ? 1 : 0) + (a.incomingCell ? 1 : 0);
+            const matchedB = (b.baseCell ? 1 : 0) + (b.currentCell ? 1 : 0) + (b.incomingCell ? 1 : 0);
+            
+            return matchedB - matchedA; // More matched sides first
+        });
     }
 
     private _getSemanticConflictHtml(conflict: NotebookSemanticConflict): string {
@@ -344,6 +390,7 @@ export class UnifiedConflictPanel {
      * Build merge rows from cell mappings for textual conflicts with Git context.
      * Since textual conflicts are in the working copy (with markers), but Git staging
      * has clean current/incoming versions, we detect conflicts by comparing current vs incoming.
+     * Rows are ordered to preserve original cell positions.
      */
     private _buildMergeRowsForTextual(conflict: NotebookConflict): MergeRow[] {
         const rows: MergeRow[] = [];
@@ -413,6 +460,17 @@ export class UnifiedConflictPanel {
 
             const currentConflictIndex = isConflict ? conflictIndex++ : undefined;
             
+            // Determine if this is an unmatched cell
+            const presentSides: ('base' | 'current' | 'incoming')[] = [];
+            if (baseCell) presentSides.push('base');
+            if (currentCell) presentSides.push('current');
+            if (incomingCell) presentSides.push('incoming');
+            
+            const isUnmatched = presentSides.length < 3 && presentSides.length > 0;
+            
+            // Calculate anchor position for sorting
+            const anchorPosition = mapping.baseIndex ?? mapping.currentIndex ?? mapping.incomingIndex ?? 0;
+            
             rows.push({
                 type: isConflict ? 'conflict' : 'identical',
                 baseCell,
@@ -422,13 +480,17 @@ export class UnifiedConflictPanel {
                 currentCellIndex: mapping.currentIndex,
                 incomingCellIndex: mapping.incomingIndex,
                 conflictIndex: currentConflictIndex,
-                conflictType: isConflict ? 'textual' : undefined
+                conflictType: isConflict ? 'textual' : undefined,
+                isUnmatched,
+                unmatchedSides: isUnmatched ? presentSides : undefined,
+                anchorPosition
             });
         }
         
         logger.debug('Detected conflicts from Git comparison:', conflictIndex);
 
-        return rows;
+        // Sort rows by anchor position to preserve original ordering
+        return this._sortRowsByPosition(rows);
     }
 
     /**
@@ -486,8 +548,12 @@ export class UnifiedConflictPanel {
         // Determine conflict index - use existing or generate one for detected conflicts
         const effectiveConflictIndex = row.conflictIndex ?? -1;
         
+        // Determine additional classes for unmatched rows
+        const unmatchedClass = row.isUnmatched ? 'unmatched-row' : '';
+        const rowClasses = `merge-row ${conflictClass} ${unmatchedClass}`.trim();
+        
         return `
-<div class="merge-row ${conflictClass}" data-conflict="${effectiveConflictIndex}" ${cellDataAttrs} ${outputDataAttrs}>
+<div class="${rowClasses}" data-conflict="${effectiveConflictIndex}" ${cellDataAttrs} ${outputDataAttrs} data-is-unmatched="${row.isUnmatched || false}">
     <div class="cell-columns-container">
         <div class="cell-column base-column">
             <div class="column-label">Base</div>
@@ -518,8 +584,16 @@ export class UnifiedConflictPanel {
         showHeaders: boolean = false
     ): string {
         if (!cell) {
-            return `<div class="cell-placeholder">
-                <span class="placeholder-text">(not present)</span>
+            // Determine appropriate placeholder text based on context
+            let placeholderText = '(cell deleted)';
+            
+            // If this side never had the cell (unmatched from another version)
+            if (row.isUnmatched && row.unmatchedSides && !row.unmatchedSides.includes(side)) {
+                placeholderText = '(unmatched cell)';
+            }
+            
+            return `<div class="cell-placeholder cell-deleted">
+                <span class="placeholder-text">${placeholderText}</span>
             </div>`;
         }
 
@@ -650,9 +724,13 @@ export class UnifiedConflictPanel {
 </div>`;
         }
         
+        // Determine additional classes for unmatched rows
+        const unmatchedClass = row.isUnmatched ? 'unmatched-row' : '';
+        const rowClasses = `merge-row ${conflictClass} ${unmatchedClass}`.trim();
+        
         // For conflicts, show all 3 columns
         return `
-<div class="merge-row ${conflictClass}" ${conflictAttr} ${cellDataAttrs} ${outputDataAttrs}>
+<div class="${rowClasses}" ${conflictAttr} ${cellDataAttrs} ${outputDataAttrs} data-is-unmatched="${row.isUnmatched || false}">
     <div class="cell-columns-container">
         <div class="cell-column base-column">
             <div class="column-label">Base</div>
@@ -680,10 +758,18 @@ export class UnifiedConflictPanel {
         showHeaders: boolean = false
     ): string {
         if (!cell) {
-            // Check if this is a conflict where the cell doesn't exist on this side
-            if (row.type === 'conflict') {
-                return `<div class="cell-placeholder">
-                    <span class="placeholder-text">(no cell)</span>
+            // Check if this is a conflict/unmatched where the cell doesn't exist on this side
+            if (row.type === 'conflict' || row.isUnmatched) {
+                // Determine appropriate placeholder text based on context
+                let placeholderText = '(cell deleted)';
+                
+                // If this side never had the cell (unmatched from another version)
+                if (row.isUnmatched && row.unmatchedSides && !row.unmatchedSides.includes(side)) {
+                    placeholderText = '(unmatched cell)';
+                }
+                
+                return `<div class="cell-placeholder cell-deleted">
+                    <span class="placeholder-text">${placeholderText}</span>
                 </div>`;
             }
             return '<div class="cell-placeholder"></div>';
@@ -1196,6 +1282,26 @@ export class UnifiedConflictPanel {
             border-radius: 4px;
         }
         
+        /* Unmatched row styling - cells that couldn't be matched across versions */
+        .merge-row.unmatched-row {
+            background: rgba(255, 193, 7, 0.08);
+            border-left: 4px solid #ffc107;
+            margin: 8px 0;
+            border-radius: 4px;
+        }
+        
+        .merge-row.unmatched-row .column-label::after {
+            content: ' (unmatched)';
+            font-size: 10px;
+            opacity: 0.7;
+        }
+        
+        /* When a row is both conflict and unmatched, use orange-ish color */
+        .merge-row.conflict-row.unmatched-row {
+            border-left-color: #ff9800;
+            background: rgba(255, 152, 0, 0.08);
+        }
+        
         /* Unified row for identical cells */
         .merge-row.unified-row {
             background: transparent;
@@ -1464,10 +1570,21 @@ export class UnifiedConflictPanel {
             padding: 16px;
         }
         
+        .cell-placeholder.cell-deleted {
+            background: rgba(128, 128, 128, 0.08);
+            border: 1px dashed var(--vscode-panel-border);
+            border-radius: 4px;
+            margin: 8px;
+        }
+        
         .placeholder-text {
             color: var(--vscode-descriptionForeground);
             font-style: italic;
             font-size: 13px;
+        }
+        
+        .cell-deleted .placeholder-text {
+            color: var(--vscode-editorWarning-foreground, #cca700);
         }
         
         /* Resolution bar - full width row */
