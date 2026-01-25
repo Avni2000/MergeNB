@@ -17,6 +17,7 @@ import * as vscode from 'vscode';
 import { NotebookConflictResolver, ConflictedNotebook } from './resolver';
 import { hasConflictMarkers } from './conflictDetector';
 import * as gitIntegration from './gitIntegration';
+import { deactivateServer } from './webview/ConflictResolverPanel';
 
 let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
@@ -212,7 +213,8 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 }
 
-export function deactivate() {
+export async function deactivate() {
 	fileDecorationProvider = undefined;
+	await deactivateServer();
 }
 
