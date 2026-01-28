@@ -25,6 +25,7 @@ import {
 } from '../types';
 import { AutoResolveResult } from '../conflictDetector';
 import { computeLineDiff, DiffLine } from '../diffUtils';
+import { sortByPosition } from '../cellMatcher';
 
 /**
  * Unified type for conflicts from both textual and semantic sources
@@ -292,48 +293,12 @@ export class UnifiedConflictPanel {
      * Uses a weighted position calculation that considers all available indices.
      */
     private _sortRowsByPosition(rows: MergeRow[]): MergeRow[] {
-        return rows.sort((a, b) => {
-            // Primary sort: by anchor position
-            const posA = a.anchorPosition ?? 0;
-            const posB = b.anchorPosition ?? 0;
-
-            if (posA !== posB) {
-                return posA - posB;
-            }
-
-            // Tie-breaker: compare indices from all versions to preserve insertion order
-            // Check each version systematically to handle cell insertions/reordering
-            
-            // If both have incoming index, compare them
-            if (a.incomingCellIndex !== undefined && b.incomingCellIndex !== undefined) {
-                if (a.incomingCellIndex !== b.incomingCellIndex) {
-                    return a.incomingCellIndex - b.incomingCellIndex;
-                }
-            }
-            
-            // If both have current index, compare them
-            if (a.currentCellIndex !== undefined && b.currentCellIndex !== undefined) {
-                if (a.currentCellIndex !== b.currentCellIndex) {
-                    return a.currentCellIndex - b.currentCellIndex;
-                }
-            }
-            
-            // If both have base index, compare them
-            if (a.baseCellIndex !== undefined && b.baseCellIndex !== undefined) {
-                if (a.baseCellIndex !== b.baseCellIndex) {
-                    return a.baseCellIndex - b.baseCellIndex;
-                }
-            }
-            
-            // If one has an index and the other doesn't, prefer the one with an index
-            const hasAnyIndexA = (a.incomingCellIndex ?? a.currentCellIndex ?? a.baseCellIndex) !== undefined;
-            const hasAnyIndexB = (b.incomingCellIndex ?? b.currentCellIndex ?? b.baseCellIndex) !== undefined;
-            
-            if (hasAnyIndexA && !hasAnyIndexB) return -1;
-            if (!hasAnyIndexA && hasAnyIndexB) return 1;
-            
-            return 0;
-        });
+        return sortByPosition(rows, (r) => ({
+            anchor: r.anchorPosition ?? 0,
+            incoming: r.incomingCellIndex,
+            current: r.currentCellIndex,
+            base: r.baseCellIndex
+        }));
     }
 
     private _getSemanticConflictHtml(conflict: NotebookSemanticConflict): string {
