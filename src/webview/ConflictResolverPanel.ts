@@ -13,9 +13,9 @@
 
 import * as vscode from 'vscode';
 import * as logger from '../logger';
-import { 
-    NotebookConflict, 
-    CellConflict, 
+import {
+    NotebookConflict,
+    CellConflict,
     ResolutionChoice,
     NotebookSemanticConflict,
     SemanticConflict,
@@ -67,6 +67,12 @@ interface MergeRow {
     incomingCellIndex?: number;
     conflictIndex?: number; // Index into the semantic conflicts array
     conflictType?: string;
+    /** Whether this row contains an unmatched cell (cell exists in one/two versions but not matched) */
+    isUnmatched?: boolean;
+    /** Which sides have the cell (for unmatched rows) */
+    unmatchedSides?: ('base' | 'current' | 'incoming')[];
+    /** The "anchor" position for this row (used for sorting/reordering) */
+    anchorPosition?: number;
 }
 
 /**
@@ -170,9 +176,9 @@ export class UnifiedConflictPanel {
         } else if (this._conflict?.type === 'semantic') {
             const semanticResolutionMap = new Map<number, { choice: 'base' | 'current' | 'incoming'; customContent?: string }>();
             for (const r of (message.resolutions || [])) {
-                semanticResolutionMap.set(r.index, { 
+                semanticResolutionMap.set(r.index, {
                     choice: r.choice as 'base' | 'current' | 'incoming',
-                    customContent: r.customContent 
+                    customContent: r.customContent
                 });
             }
             if (this._onResolutionComplete) {
@@ -223,29 +229,42 @@ export class UnifiedConflictPanel {
     }
 
     /**
-     * Build merge rows from cell mappings for 3-way view
+     * Build merge rows from cell mappings for 3-way view.
+     * Rows are ordered to preserve original cell positions as much as possible.
      */
     private _buildMergeRows(semanticConflict: NotebookSemanticConflict): MergeRow[] {
         const rows: MergeRow[] = [];
         const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();
-        
+
         // Index conflicts by cell indices for quick lookup
         semanticConflict.semanticConflicts.forEach((c, i) => {
             const key = `${c.baseCellIndex ?? 'x'}-${c.currentCellIndex ?? 'x'}-${c.incomingCellIndex ?? 'x'}`;
             conflictMap.set(key, { conflict: c, index: i });
         });
 
-        // Use cell mappings to build rows
+        // Use cell mappings to build rows, calculating anchor positions
         for (const mapping of semanticConflict.cellMappings) {
-            const baseCell = mapping.baseIndex !== undefined && semanticConflict.base 
+            const baseCell = mapping.baseIndex !== undefined && semanticConflict.base
                 ? semanticConflict.base.cells[mapping.baseIndex] : undefined;
-            const currentCell = mapping.currentIndex !== undefined && semanticConflict.current 
+            const currentCell = mapping.currentIndex !== undefined && semanticConflict.current
                 ? semanticConflict.current.cells[mapping.currentIndex] : undefined;
-            const incomingCell = mapping.incomingIndex !== undefined && semanticConflict.incoming 
+            const incomingCell = mapping.incomingIndex !== undefined && semanticConflict.incoming
                 ? semanticConflict.incoming.cells[mapping.incomingIndex] : undefined;
-            
+
             const key = `${mapping.baseIndex ?? 'x'}-${mapping.currentIndex ?? 'x'}-${mapping.incomingIndex ?? 'x'}`;
             const conflictInfo = conflictMap.get(key);
+
+            // Determine if this is an unmatched cell (exists in one/two versions only)
+            const presentSides: ('base' | 'current' | 'incoming')[] = [];
+            if (baseCell) presentSides.push('base');
+            if (currentCell) presentSides.push('current');
+            if (incomingCell) presentSides.push('incoming');
+
+            const isUnmatched = presentSides.length < 3 && presentSides.length > 0;
+
+            // Calculate anchor position: use the first available index
+            // Priority: base > current > incoming (base is the common ancestor)
+            const anchorPosition = mapping.baseIndex ?? mapping.currentIndex ?? mapping.incomingIndex ?? 0;
 
             rows.push({
                 type: conflictInfo ? 'conflict' : 'identical',
@@ -256,17 +275,54 @@ export class UnifiedConflictPanel {
                 currentCellIndex: mapping.currentIndex,
                 incomingCellIndex: mapping.incomingIndex,
                 conflictIndex: conflictInfo?.index,
-                conflictType: conflictInfo?.conflict.type
+                conflictType: conflictInfo?.conflict.type,
+                isUnmatched,
+                unmatchedSides: isUnmatched ? presentSides : undefined,
+                anchorPosition
             });
         }
 
-        return rows;
+        // Sort rows by anchor position to preserve original ordering
+        // This ensures unmatched cells appear at their original position, not at the bottom
+        return this._sortRowsByPosition(rows);
+    }
+
+    /**
+     * Sort merge rows to preserve original cell ordering.
+     * Uses a weighted position calculation that considers all available indices.
+     */
+    private _sortRowsByPosition(rows: MergeRow[]): MergeRow[] {
+        return rows.sort((a, b) => {
+            // Primary sort: by anchor position
+            const posA = a.anchorPosition ?? 0;
+            const posB = b.anchorPosition ?? 0;
+
+            if (posA !== posB) {
+                return posA - posB;
+            }
+
+            // For same anchor position, base-anchored cells should come first
+            // (they represent the "original" cell at that position)
+            const hasBaseA = a.baseCellIndex !== undefined;
+            const hasBaseB = b.baseCellIndex !== undefined;
+            
+            if (hasBaseA !== hasBaseB) {
+                return hasBaseA ? -1 : 1;
+            }
+
+            // Secondary tiebreaker: use the actual cell index on the specific side
+            // This preserves insertion order for cells added in branches
+            const currentPosA = a.currentCellIndex ?? a.incomingCellIndex ?? 0;
+            const currentPosB = b.currentCellIndex ?? b.incomingCellIndex ?? 0;
+
+            return currentPosA - currentPosB;
+        });
     }
 
     private _getSemanticConflictHtml(conflict: NotebookSemanticConflict): string {
         const rows = this._buildMergeRows(conflict);
         const totalConflicts = conflict.semanticConflicts.length;
-        
+
         // Build the notebook view with all cells
         let notebookHtml = '';
         for (const row of rows) {
@@ -286,16 +342,16 @@ export class UnifiedConflictPanel {
 
     private _getTextualConflictHtml(conflict: NotebookConflict): string {
         // If we have cell mappings from Git, render like semantic conflicts with full context
-        if (conflict.cellMappings && conflict.cellMappings.length > 0 && 
+        if (conflict.cellMappings && conflict.cellMappings.length > 0 &&
             (conflict.current || conflict.incoming)) {
             return this._getTextualConflictWithContextHtml(conflict);
         }
-        
+
         // Fall back to simple conflict-only rendering (when Git versions unavailable)
-        const conflictsHtml = conflict.conflicts.map((c, i) => 
+        const conflictsHtml = conflict.conflicts.map((c, i) =>
             this._renderTextualConflictRow(c, i)
         ).join('');
-        
+
         const metadataConflictsHtml = conflict.metadataConflicts.map((c, i) =>
             this._renderMetadataConflictRow(c, i + conflict.conflicts.length)
         ).join('');
@@ -314,17 +370,17 @@ export class UnifiedConflictPanel {
      */
     private _getTextualConflictWithContextHtml(conflict: NotebookConflict): string {
         const rows = this._buildMergeRowsForTextual(conflict);
-        
+
         // Count conflicts from the rows (detected by comparing Git versions)
         const cellConflictCount = rows.filter(r => r.type === 'conflict').length;
         const totalConflicts = cellConflictCount + conflict.metadataConflicts.length;
-        
+
         // Build the notebook view with all cells
         let notebookHtml = '';
         for (const row of rows) {
             notebookHtml += this._renderMergeRowForTextual(row, conflict);
         }
-        
+
         // Add metadata conflicts at the end (their indices come after cell conflicts)
         const metadataConflictsHtml = conflict.metadataConflicts.map((c, i) =>
             this._renderMetadataConflictRow(c, cellConflictCount + i)
@@ -344,10 +400,11 @@ export class UnifiedConflictPanel {
      * Build merge rows from cell mappings for textual conflicts with Git context.
      * Since textual conflicts are in the working copy (with markers), but Git staging
      * has clean current/incoming versions, we detect conflicts by comparing current vs incoming.
+     * Rows are ordered to preserve original cell positions.
      */
     private _buildMergeRowsForTextual(conflict: NotebookConflict): MergeRow[] {
         const rows: MergeRow[] = [];
-        
+
         if (!conflict.cellMappings) {
             return rows;
         }
@@ -362,18 +419,18 @@ export class UnifiedConflictPanel {
         // For textual conflicts, we detect conflicts by comparing current vs incoming
         // from the Git staging areas (not from the working copy markers)
         let conflictIndex = 0;
-        
+
         for (const mapping of conflict.cellMappings) {
-            const baseCell = mapping.baseIndex !== undefined && conflict.base 
+            const baseCell = mapping.baseIndex !== undefined && conflict.base
                 ? conflict.base.cells[mapping.baseIndex] : undefined;
-            const currentCell = mapping.currentIndex !== undefined && conflict.current 
+            const currentCell = mapping.currentIndex !== undefined && conflict.current
                 ? conflict.current.cells[mapping.currentIndex] : undefined;
-            const incomingCell = mapping.incomingIndex !== undefined && conflict.incoming 
+            const incomingCell = mapping.incomingIndex !== undefined && conflict.incoming
                 ? conflict.incoming.cells[mapping.incomingIndex] : undefined;
 
             // Determine if this is a conflict by comparing cells
             let isConflict = false;
-            
+
             // Case 1: Cell exists in current only (added in current)
             if (currentCell && !incomingCell && !baseCell) {
                 isConflict = true;
@@ -386,7 +443,7 @@ export class UnifiedConflictPanel {
             else if (currentCell && incomingCell) {
                 const currentSource = Array.isArray(currentCell.source) ? currentCell.source.join('') : currentCell.source;
                 const incomingSource = Array.isArray(incomingCell.source) ? incomingCell.source.join('') : incomingCell.source;
-                
+
                 // Check source content
                 if (currentSource !== incomingSource) {
                     isConflict = true;
@@ -412,7 +469,18 @@ export class UnifiedConflictPanel {
             }
 
             const currentConflictIndex = isConflict ? conflictIndex++ : undefined;
-            
+
+            // Determine if this is an unmatched cell
+            const presentSides: ('base' | 'current' | 'incoming')[] = [];
+            if (baseCell) presentSides.push('base');
+            if (currentCell) presentSides.push('current');
+            if (incomingCell) presentSides.push('incoming');
+
+            const isUnmatched = presentSides.length < 3 && presentSides.length > 0;
+
+            // Calculate anchor position for sorting
+            const anchorPosition = mapping.baseIndex ?? mapping.currentIndex ?? mapping.incomingIndex ?? 0;
+
             rows.push({
                 type: isConflict ? 'conflict' : 'identical',
                 baseCell,
@@ -422,13 +490,17 @@ export class UnifiedConflictPanel {
                 currentCellIndex: mapping.currentIndex,
                 incomingCellIndex: mapping.incomingIndex,
                 conflictIndex: currentConflictIndex,
-                conflictType: isConflict ? 'textual' : undefined
+                conflictType: isConflict ? 'textual' : undefined,
+                isUnmatched,
+                unmatchedSides: isUnmatched ? presentSides : undefined,
+                anchorPosition
             });
         }
-        
+
         logger.debug('Detected conflicts from Git comparison:', conflictIndex);
 
-        return rows;
+        // Sort rows by anchor position to preserve original ordering
+        return this._sortRowsByPosition(rows);
     }
 
     /**
@@ -439,15 +511,15 @@ export class UnifiedConflictPanel {
         const isConflict = row.type === 'conflict';
         const conflictClass = isConflict ? 'conflict-row' : '';
         const conflictAttr = row.conflictIndex !== undefined ? `data-conflict="${row.conflictIndex}"` : '';
-        
+
         // Encode cell sources for JavaScript access (for editing)
-        const baseSource = row.baseCell ? 
+        const baseSource = row.baseCell ?
             (Array.isArray(row.baseCell.source) ? row.baseCell.source.join('') : row.baseCell.source) : '';
-        const currentSource = row.currentCell ? 
+        const currentSource = row.currentCell ?
             (Array.isArray(row.currentCell.source) ? row.currentCell.source.join('') : row.currentCell.source) : '';
-        const incomingSource = row.incomingCell ? 
+        const incomingSource = row.incomingCell ?
             (Array.isArray(row.incomingCell.source) ? row.incomingCell.source.join('') : row.incomingCell.source) : '';
-        
+
         // Store cell metadata for JS access
         const cellDataAttrs = isConflict ? `
             data-base-source="${encodeURIComponent(baseSource)}"
@@ -458,18 +530,18 @@ export class UnifiedConflictPanel {
             data-has-current="${row.currentCell ? 'true' : 'false'}"
             data-has-incoming="${row.incomingCell ? 'true' : 'false'}"
         ` : '';
-        
+
         // Encode outputs for editing view
         const baseOutputs = row.baseCell?.outputs ? encodeURIComponent(JSON.stringify(row.baseCell.outputs)) : '';
         const currentOutputs = row.currentCell?.outputs ? encodeURIComponent(JSON.stringify(row.currentCell.outputs)) : '';
         const incomingOutputs = row.incomingCell?.outputs ? encodeURIComponent(JSON.stringify(row.incomingCell.outputs)) : '';
-        
+
         const outputDataAttrs = isConflict ? `
             data-base-outputs="${baseOutputs}"
             data-current-outputs="${currentOutputs}"
             data-incoming-outputs="${incomingOutputs}"
         ` : '';
-        
+
         // For identical rows (non-conflicts), render as a single unified cell
         if (!isConflict) {
             const displayCell = row.currentCell || row.incomingCell || row.baseCell;
@@ -481,13 +553,17 @@ export class UnifiedConflictPanel {
     </div>
 </div>`;
         }
-        
+
         // For conflicts, show all 3 columns
         // Determine conflict index - use existing or generate one for detected conflicts
         const effectiveConflictIndex = row.conflictIndex ?? -1;
-        
+
+        // Determine additional classes for unmatched rows
+        const unmatchedClass = row.isUnmatched ? 'unmatched-row' : '';
+        const rowClasses = `merge-row ${conflictClass} ${unmatchedClass}`.trim();
+
         return `
-<div class="merge-row ${conflictClass}" data-conflict="${effectiveConflictIndex}" ${cellDataAttrs} ${outputDataAttrs}>
+<div class="${rowClasses}" data-conflict="${effectiveConflictIndex}" ${cellDataAttrs} ${outputDataAttrs} data-is-unmatched="${row.isUnmatched || false}">
     <div class="cell-columns-container">
         <div class="cell-column base-column">
             <div class="column-label">Base</div>
@@ -510,7 +586,7 @@ export class UnifiedConflictPanel {
      * Render cell content for textual conflict with context view.
      */
     private _renderCellContentForTextual(
-        cell: NotebookCell | undefined, 
+        cell: NotebookCell | undefined,
         cellIndex: number | undefined,
         side: 'base' | 'current' | 'incoming',
         row: MergeRow,
@@ -518,19 +594,27 @@ export class UnifiedConflictPanel {
         showHeaders: boolean = false
     ): string {
         if (!cell) {
-            return `<div class="cell-placeholder">
-                <span class="placeholder-text">(not present)</span>
+            // Determine appropriate placeholder text based on context
+            let placeholderText = '(cell deleted)';
+
+            // If this side never had the cell (unmatched from another version)
+            if (row.isUnmatched && row.unmatchedSides && !row.unmatchedSides.includes(side)) {
+                placeholderText = '(unmatched cell)';
+            }
+
+            return `<div class="cell-placeholder cell-deleted">
+                <span class="placeholder-text">${placeholderText}</span>
             </div>`;
         }
 
         const cellType = cell.cell_type;
         const source = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
-        
+
         // Determine if we should show diff highlighting
         let contentHtml: string;
         if (row.type === 'conflict' && cellType !== 'markdown') {
             // Show diff for conflicts
-            const compareSource = side === 'current' 
+            const compareSource = side === 'current'
                 ? (row.incomingCell ? (Array.isArray(row.incomingCell.source) ? row.incomingCell.source.join('') : row.incomingCell.source) : '')
                 : side === 'incoming'
                     ? (row.currentCell ? (Array.isArray(row.currentCell.source) ? row.currentCell.source.join('') : row.currentCell.source) : '')
@@ -607,15 +691,15 @@ export class UnifiedConflictPanel {
         const isConflict = row.type === 'conflict';
         const conflictClass = isConflict ? 'conflict-row' : '';
         const conflictAttr = row.conflictIndex !== undefined ? `data-conflict="${row.conflictIndex}"` : '';
-        
+
         // Encode cell sources for JavaScript access (for editing)
-        const baseSource = row.baseCell ? 
+        const baseSource = row.baseCell ?
             (Array.isArray(row.baseCell.source) ? row.baseCell.source.join('') : row.baseCell.source) : '';
-        const currentSource = row.currentCell ? 
+        const currentSource = row.currentCell ?
             (Array.isArray(row.currentCell.source) ? row.currentCell.source.join('') : row.currentCell.source) : '';
-        const incomingSource = row.incomingCell ? 
+        const incomingSource = row.incomingCell ?
             (Array.isArray(row.incomingCell.source) ? row.incomingCell.source.join('') : row.incomingCell.source) : '';
-        
+
         // Store cell metadata for JS access
         const cellDataAttrs = isConflict ? `
             data-base-source="${encodeURIComponent(baseSource)}"
@@ -626,18 +710,18 @@ export class UnifiedConflictPanel {
             data-has-current="${row.currentCell ? 'true' : 'false'}"
             data-has-incoming="${row.incomingCell ? 'true' : 'false'}"
         ` : '';
-        
+
         // Encode outputs for editing view
         const baseOutputs = row.baseCell?.outputs ? encodeURIComponent(JSON.stringify(row.baseCell.outputs)) : '';
         const currentOutputs = row.currentCell?.outputs ? encodeURIComponent(JSON.stringify(row.currentCell.outputs)) : '';
         const incomingOutputs = row.incomingCell?.outputs ? encodeURIComponent(JSON.stringify(row.incomingCell.outputs)) : '';
-        
+
         const outputDataAttrs = isConflict ? `
             data-base-outputs="${baseOutputs}"
             data-current-outputs="${currentOutputs}"
             data-incoming-outputs="${incomingOutputs}"
         ` : '';
-        
+
         // For identical rows (non-conflicts), render as a single unified cell
         if (!isConflict) {
             const cell = row.currentCell || row.baseCell || row.incomingCell;
@@ -649,10 +733,14 @@ export class UnifiedConflictPanel {
     </div>
 </div>`;
         }
-        
+
+        // Determine additional classes for unmatched rows
+        const unmatchedClass = row.isUnmatched ? 'unmatched-row' : '';
+        const rowClasses = `merge-row ${conflictClass} ${unmatchedClass}`.trim();
+
         // For conflicts, show all 3 columns
         return `
-<div class="merge-row ${conflictClass}" ${conflictAttr} ${cellDataAttrs} ${outputDataAttrs}>
+<div class="${rowClasses}" ${conflictAttr} ${cellDataAttrs} ${outputDataAttrs} data-is-unmatched="${row.isUnmatched || false}">
     <div class="cell-columns-container">
         <div class="cell-column base-column">
             <div class="column-label">Base</div>
@@ -672,7 +760,7 @@ export class UnifiedConflictPanel {
     }
 
     private _renderCellContent(
-        cell: NotebookCell | undefined, 
+        cell: NotebookCell | undefined,
         cellIndex: number | undefined,
         side: 'base' | 'current' | 'incoming',
         row: MergeRow,
@@ -680,10 +768,18 @@ export class UnifiedConflictPanel {
         showHeaders: boolean = false
     ): string {
         if (!cell) {
-            // Check if this is a conflict where the cell doesn't exist on this side
-            if (row.type === 'conflict') {
-                return `<div class="cell-placeholder">
-                    <span class="placeholder-text">(no cell)</span>
+            // Check if this is a conflict/unmatched where the cell doesn't exist on this side
+            if (row.type === 'conflict' || row.isUnmatched) {
+                // Determine appropriate placeholder text based on context
+                let placeholderText = '(cell deleted)';
+
+                // If this side never had the cell (unmatched from another version)
+                if (row.isUnmatched && row.unmatchedSides && !row.unmatchedSides.includes(side)) {
+                    placeholderText = '(unmatched cell)';
+                }
+
+                return `<div class="cell-placeholder cell-deleted">
+                    <span class="placeholder-text">${placeholderText}</span>
                 </div>`;
             }
             return '<div class="cell-placeholder"></div>';
@@ -691,17 +787,17 @@ export class UnifiedConflictPanel {
 
         const cellType = cell.cell_type;
         const source = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
-        
+
         // Determine if we should show diff highlighting
         let contentHtml: string;
         if (row.type === 'conflict' && cellType !== 'markdown') {
             // Get comparison source for diff
-            const compareCell = side === 'current' ? row.incomingCell : 
-                               side === 'incoming' ? row.currentCell : 
-                               (row.currentCell || row.incomingCell);
-            const compareSource = compareCell ? 
+            const compareCell = side === 'current' ? row.incomingCell :
+                side === 'incoming' ? row.currentCell :
+                    (row.currentCell || row.incomingCell);
+            const compareSource = compareCell ?
                 (Array.isArray(compareCell.source) ? compareCell.source.join('') : compareCell.source) : '';
-            
+
             contentHtml = this._renderDiffContent(source, compareSource, side);
         } else if (cellType === 'markdown') {
             contentHtml = this._renderMarkdown(source);
@@ -741,29 +837,29 @@ export class UnifiedConflictPanel {
 
     private _renderMarkdown(source: string): string {
         // Get notebook directory for resolving relative image paths
-        const notebookDir = this._conflict?.filePath 
+        const notebookDir = this._conflict?.filePath
             ? this._conflict.filePath.substring(0, this._conflict.filePath.lastIndexOf('/'))
             : '';
-        
+
         // Pre-process: convert relative image paths to webview URIs
         // Handle both markdown images ![alt](src) and HTML <img> tags
         let processed = source;
-        
+
         // Convert markdown image syntax
         processed = processed.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
             const webviewSrc = this._convertImagePath(src, notebookDir);
             return `![${alt}](${webviewSrc})`;
         });
-        
+
         // Convert HTML img tags
         processed = processed.replace(/<img([^>]*)src=["']([^"']+)["']([^>]*)>/gi, (match, before, src, after) => {
             const webviewSrc = this._convertImagePath(src, notebookDir);
             return `<img${before}src="${webviewSrc}"${after}>`;
         });
-        
+
         // Encode content for markdown-it renderer (will be parsed client-side)
         const encodedSource = encodeURIComponent(processed);
-        
+
         return `<div class="markdown-content" data-markdown="${encodedSource}"></div>`;
     }
 
@@ -775,27 +871,27 @@ export class UnifiedConflictPanel {
         if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
             return src;
         }
-        
+
         // Skip if it's already a vscode-webview-resource URI
         if (src.includes('vscode-webview-resource')) {
             return src;
         }
-        
+
         // For relative paths, resolve against notebook directory
         if (notebookDir) {
-            const absolutePath = src.startsWith('/') 
-                ? src 
+            const absolutePath = src.startsWith('/')
+                ? src
                 : `${notebookDir}/${src}`;
             const fileUri = vscode.Uri.file(absolutePath);
             return this._panel.webview.asWebviewUri(fileUri).toString();
         }
-        
+
         return src;
     }
 
     private _renderOutputs(outputs: any[]): string {
         let html = '<div class="cell-outputs">';
-        
+
         for (const output of outputs) {
             if (output.output_type === 'stream') {
                 const text = Array.isArray(output.text) ? output.text.join('') : (output.text || '');
@@ -804,16 +900,16 @@ export class UnifiedConflictPanel {
             } else if (output.output_type === 'execute_result' || output.output_type === 'display_data') {
                 if (output.data) {
                     if (output.data['text/html']) {
-                        const htmlContent = Array.isArray(output.data['text/html']) 
-                            ? output.data['text/html'].join('') 
+                        const htmlContent = Array.isArray(output.data['text/html'])
+                            ? output.data['text/html'].join('')
                             : output.data['text/html'];
                         // Sanitize HTML output - for now just show placeholder
                         html += `<div class="output-html">[HTML Output]</div>`;
                     } else if (output.data['image/png']) {
                         html += `<img class="output-image" src="data:image/png;base64,${output.data['image/png']}" />`;
                     } else if (output.data['text/plain']) {
-                        const text = Array.isArray(output.data['text/plain']) 
-                            ? output.data['text/plain'].join('') 
+                        const text = Array.isArray(output.data['text/plain'])
+                            ? output.data['text/plain'].join('')
                             : output.data['text/plain'];
                         html += `<pre class="output-text">${escapeHtml(text)}</pre>`;
                     }
@@ -823,7 +919,7 @@ export class UnifiedConflictPanel {
                 html += `<pre class="output-error">${escapeHtml(traceback)}</pre>`;
             }
         }
-        
+
         html += '</div>';
         return html;
     }
@@ -832,7 +928,7 @@ export class UnifiedConflictPanel {
         const hasBase = !!row.baseCell;
         const hascurrent = !!row.currentCell;
         const hasincoming = !!row.incomingCell;
-        
+
         return `
 <div class="resolution-bar-row" data-conflict="${conflictIndex}">
     <div class="resolution-buttons">
@@ -847,7 +943,7 @@ export class UnifiedConflictPanel {
     private _renderTextualConflictRow(conflict: CellConflict, index: number): string {
         const hascurrent = conflict.currentContent.trim().length > 0;
         const hasincoming = conflict.incomingContent.trim().length > 0;
-        
+
         // Store data attributes for JS access
         const cellDataAttrs = `
             data-base-source=""
@@ -858,7 +954,7 @@ export class UnifiedConflictPanel {
             data-has-current="${hascurrent}"
             data-has-incoming="${hasincoming}"
         `;
-        
+
         return `
 <div class="merge-row conflict-row" data-conflict="${index}" ${cellDataAttrs}>
     <div class="cell-columns-container">
@@ -911,7 +1007,7 @@ export class UnifiedConflictPanel {
             data-has-current="true"
             data-has-incoming="true"
         `;
-        
+
         return `
 <div class="merge-row conflict-row metadata-conflict" data-conflict="${index}" ${cellDataAttrs}>
     <div class="cell-columns-container">
@@ -950,11 +1046,11 @@ export class UnifiedConflictPanel {
 
         const diff = computeLineDiff(compareText, sourceText);
         const lines = diff.right;
-        
+
         let html = '<div class="diff-content">';
         for (const line of lines) {
             const cssClass = this._getDiffLineClass(line, side);
-            
+
             if (line.content === '' && line.type === 'unchanged') {
                 html += `<div class="diff-line diff-line-empty">&nbsp;</div>`;
                 continue;
@@ -1003,7 +1099,7 @@ export class UnifiedConflictPanel {
         autoResolveResult?: AutoResolveResult
     ): string {
         const fileName = filePath.split('/').pop() || filePath;
-        
+
         let autoResolveInfo = '';
         // if (autoResolveResult && autoResolveResult.autoResolvedCount > 0) {
         //     const items = autoResolveResult.autoResolvedDescriptions.map(d => `<li>${escapeHtml(d)}</li>`).join('');
@@ -1194,6 +1290,26 @@ export class UnifiedConflictPanel {
             border-left: 4px solid #e74c3c;
             margin: 8px 0;
             border-radius: 4px;
+        }
+        
+        /* Unmatched row styling - cells that couldn't be matched across versions */
+        .merge-row.unmatched-row {
+            background: rgba(255, 193, 7, 0.08);
+            border-left: 4px solid #ffc107;
+            margin: 8px 0;
+            border-radius: 4px;
+        }
+        
+        .merge-row.unmatched-row .column-label::after {
+            content: ' (unmatched)';
+            font-size: 10px;
+            opacity: 0.7;
+        }
+        
+        /* When a row is both conflict and unmatched, use orange-ish color */
+        .merge-row.conflict-row.unmatched-row {
+            border-left-color: #ff9800;
+            background: rgba(255, 152, 0, 0.08);
         }
         
         /* Unified row for identical cells */
@@ -1464,10 +1580,36 @@ export class UnifiedConflictPanel {
             padding: 16px;
         }
         
+        .cell-placeholder.cell-deleted {
+            background: rgba(128, 128, 128, 0.08);
+            border: 1px dashed var(--vscode-panel-border);
+            border-radius: 4px;
+            margin: 8px;
+        }
+        
         .placeholder-text {
             color: var(--vscode-descriptionForeground);
             font-style: italic;
             font-size: 13px;
+        }
+        
+        .cell-deleted .placeholder-text {
+            color: var(--vscode-editorWarning-foreground, #cca700);
+        }
+        
+        /* Drag and drop styles */
+        .notebook-cell[draggable="true"] {
+            cursor: grab;
+        }
+        
+        .notebook-cell.dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+        
+        .cell-placeholder.drag-over {
+            background: rgba(3, 102, 214, 0.15);
+            border: 2px dashed var(--incoming-accent);
         }
         
         /* Resolution bar - full width row */
@@ -2288,6 +2430,156 @@ export class UnifiedConflictPanel {
         
         // Initialize progress indicator on page load
         updateProgressIndicator();
+        
+        // Drag and drop handlers for unmatched cells
+        let draggedCellData = null;
+        
+        function setupDragAndDrop() {
+            // Helper to make a cell draggable
+            function makeDraggable(cell) {
+                if (cell.closest('.cell-placeholder')) return;
+                
+                cell.setAttribute('draggable', 'true');
+                
+                cell.addEventListener('dragstart', (e) => {
+                    const row = cell.closest('.merge-row');
+                    const column = cell.closest('.cell-column');
+                    const conflictIndex = row?.getAttribute('data-conflict');
+                    const side = column?.classList.contains('base-column') ? 'base' :
+                                column?.classList.contains('current-column') ? 'current' : 'incoming';
+                    
+                    draggedCellData = {
+                        conflictIndex,
+                        side,
+                        source: cell.querySelector('.cell-content')?.textContent || '',
+                        cellElement: cell
+                    };
+                    
+                    cell.classList.add('dragging');
+                    if (e.dataTransfer) {
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', 'dragging');
+                    }
+                });
+                
+                cell.addEventListener('dragend', (e) => {
+                    cell.classList.remove('dragging');
+                    draggedCellData = null;
+                });
+            }
+
+            // Helper to make a placeholder a drop target
+            function makeDroppable(placeholder) {
+                placeholder.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    
+                    // Check if we should allow drop here (column check)
+                    const targetColumn = placeholder.closest('.cell-column');
+                    const targetSide = targetColumn?.classList.contains('base-column') ? 'base' :
+                                      targetColumn?.classList.contains('current-column') ? 'current' : 'incoming';
+                    
+                    if (draggedCellData && targetSide === draggedCellData.side && e.dataTransfer) {
+                        e.dataTransfer.dropEffect = 'move';
+                        placeholder.classList.add('drag-over');
+                    } else if (e.dataTransfer) {
+                        e.dataTransfer.dropEffect = 'none';
+                    }
+                });
+                
+                placeholder.addEventListener('dragleave', (e) => {
+                    placeholder.classList.remove('drag-over');
+                });
+                
+                placeholder.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    placeholder.classList.remove('drag-over');
+                    
+                    if (!draggedCellData) return;
+                    
+                    // Find which row and column this placeholder is in
+                    const targetRow = placeholder.closest('.merge-row');
+                    const targetColumn = placeholder.closest('.cell-column');
+                    const targetConflictIndex = targetRow?.getAttribute('data-conflict');
+                    const targetSide = targetColumn?.classList.contains('base-column') ? 'base' :
+                                      targetColumn?.classList.contains('current-column') ? 'current' : 'incoming';
+                    
+                    if (!targetRow || !targetSide) return;
+                    
+                    // STRICT RULE: One column only drag and drop
+                    if (draggedCellData.side !== targetSide) {
+                        return;
+                    }
+                    
+                    // Get the cell content from the dragged cell source row
+                    const sourceRow = document.querySelector(\`.merge-row[data-conflict="\${draggedCellData.conflictIndex}"]\`);
+                    if (!sourceRow) return;
+                    
+                    const sourceAttr = \`data-\${draggedCellData.side}-source\`;
+                    const source = decodeURIComponent(sourceRow.getAttribute(sourceAttr) || '');
+                    
+                    // Also get outputs if available
+                    const outputsAttr = \`data-\${draggedCellData.side}-outputs\`;
+                    const outputs = sourceRow.getAttribute(outputsAttr);
+                    
+                    // Update the TARGET row attributes so selectResolution works properly
+                    const targetSourceAttr = \`data-\${targetSide}-source\`;
+                    targetRow.setAttribute(targetSourceAttr, encodeURIComponent(source));
+                    targetRow.setAttribute(\`data-has-\${targetSide}\`, 'true');
+                    
+                    if (outputs) {
+                        targetRow.setAttribute(\`data-\${targetSide}-outputs\`, outputs);
+                    }
+                    
+                    // Replace placeholder with the dragged cell content
+                    const cellHtml = draggedCellData.cellElement.cloneNode(true);
+                    cellHtml.classList.remove('dragging');
+                    cellHtml.style.opacity = '';
+                    cellHtml.style.cursor = '';
+                    
+                    // Make the new cell draggable
+                    makeDraggable(cellHtml);
+                    
+                    placeholder.replaceWith(cellHtml);
+                    
+                    // Auto-select this as the resolution for the target row
+                    selectResolution(targetConflictIndex, targetSide);
+                    
+                    // Resolve the SOURCE row
+                    const sourceConflictIndex = draggedCellData.conflictIndex;
+                    if (sourceConflictIndex !== targetConflictIndex) {
+                        // Create a new placeholder for the source location
+                        const newPlaceholder = document.createElement('div');
+                        newPlaceholder.className = 'cell-placeholder cell-deleted';
+                        newPlaceholder.innerHTML = '<span class="placeholder-text">(deleted)</span>';
+                        makeDroppable(newPlaceholder);
+
+                        // Replace the old cell with placeholder
+                        draggedCellData.cellElement.replaceWith(newPlaceholder);
+
+                        // Update source row attributes to reflect deletion
+                        sourceRow.setAttribute(\`data-has-\${draggedCellData.side}\`, 'false');
+                        // We also clear source/outputs just to be clean, though has-{side}=false handles the logic
+                        sourceRow.setAttribute(\`data-\${draggedCellData.side}-source\`, '');
+                        sourceRow.removeAttribute(\`data-\${draggedCellData.side}-outputs\`);
+
+                        // Select the SAME side as resolution, which is now empty (deleted)
+                        selectResolution(sourceConflictIndex, draggedCellData.side);
+                        
+                        // Mark it as resolved immediately which will show the resolved "deleted" state
+                        applySingleResolution(sourceConflictIndex);
+                    }
+                    
+                    debugLog('Drag-drop: moved cell from', draggedCellData.side, 'to', targetSide, 'in conflict', targetConflictIndex);
+                });
+            }
+            
+            // Initialize
+            document.querySelectorAll('.merge-row.unmatched-row .notebook-cell').forEach(makeDraggable);
+            document.querySelectorAll('.cell-placeholder').forEach(makeDroppable);
+        }
+        
+        // Setup drag and drop after page load
+        setupDragAndDrop();
         
         // Render markdown content using markdown-it library (VSCode native)
         const md = window.markdownit({
