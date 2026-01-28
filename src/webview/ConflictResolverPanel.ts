@@ -301,11 +301,21 @@ export class UnifiedConflictPanel {
                 return posA - posB;
             }
 
-            // Tiebreaker: prefer rows with more matched sides (fully matched before unmatched)
-            const matchedA = (a.baseCell ? 1 : 0) + (a.currentCell ? 1 : 0) + (a.incomingCell ? 1 : 0);
-            const matchedB = (b.baseCell ? 1 : 0) + (b.currentCell ? 1 : 0) + (b.incomingCell ? 1 : 0);
+            // For same anchor position, base-anchored cells should come first
+            // (they represent the "original" cell at that position)
+            const hasBaseA = a.baseCellIndex !== undefined;
+            const hasBaseB = b.baseCellIndex !== undefined;
+            
+            if (hasBaseA !== hasBaseB) {
+                return hasBaseA ? -1 : 1;
+            }
 
-            return matchedB - matchedA; // More matched sides first
+            // Secondary tiebreaker: use the actual cell index on the specific side
+            // This preserves insertion order for cells added in branches
+            const currentPosA = a.currentCellIndex ?? a.incomingCellIndex ?? 0;
+            const currentPosB = b.currentCellIndex ?? b.incomingCellIndex ?? 0;
+
+            return currentPosA - currentPosB;
         });
     }
 

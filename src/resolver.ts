@@ -425,30 +425,31 @@ export class NotebookConflictResolver {
                 const choice = (res?.choice || 'current') as string;
                 const customContent = res?.customContent;
                 
-                // Pick the cell based on choice
+                // Determine the reference cell for metadata (cell_type, outputs, etc.)
+                // Priority: chosen side > any available cell
+                let referenceCell: NotebookCell | undefined;
                 if (choice === 'current' || choice === 'both') {
-                    cellToAdd = currentCell ? JSON.parse(JSON.stringify(currentCell)) : undefined;
+                    referenceCell = currentCell || incomingCell || baseCell;
                 } else if (choice === 'incoming') {
-                    cellToAdd = incomingCell ? JSON.parse(JSON.stringify(incomingCell)) : undefined;
+                    referenceCell = incomingCell || currentCell || baseCell;
                 } else if (choice === 'base') {
-                    cellToAdd = baseCell ? JSON.parse(JSON.stringify(baseCell)) : undefined;
+                    referenceCell = baseCell || currentCell || incomingCell;
                 }
-
-                // Apply custom content if provided (user edited the cell)
-                if (customContent !== undefined && cellToAdd) {
-                    if (Array.isArray(cellToAdd.source)) {
-                        cellToAdd.source = customContent === '' ? [] : customContent.split(/(?<=\n)/);
-                    } else {
-                        cellToAdd.source = customContent;
-                    }
-                } else if (customContent !== undefined && !cellToAdd && customContent.length > 0) {
-                    // User added content to a deleted cell - create a new cell
-                    // Use the cell type from the non-deleted side, or default to 'code'
-                    const referenceCell = currentCell || incomingCell || baseCell;
+                
+                // Check if this is a deletion (empty customContent explicitly provided)
+                const isDeleted = customContent !== undefined && customContent === '';
+                
+                if (isDeleted) {
+                    // User explicitly deleted this cell - don't add anything
+                    cellToAdd = undefined;
+                } else if (customContent !== undefined && customContent.length > 0) {
+                    // User provided content (possibly from drag-and-drop or edit)
+                    // ALWAYS use customContent as the source when provided
+                    // This handles the case where a cell was dragged to this row
                     const cellType = referenceCell?.cell_type || 'code';
                     cellToAdd = {
                         cell_type: cellType,
-                        metadata: referenceCell?.metadata || {},
+                        metadata: referenceCell?.metadata ? JSON.parse(JSON.stringify(referenceCell.metadata)) : {},
                         source: customContent.split(/(?<=\n)/)
                     } as NotebookCell;
                     
@@ -456,6 +457,15 @@ export class NotebookConflictResolver {
                     if (cellType === 'code') {
                         (cellToAdd as any).execution_count = null;
                         (cellToAdd as any).outputs = [];
+                    }
+                } else {
+                    // No customContent provided - use the cell from the chosen side
+                    if (choice === 'current' || choice === 'both') {
+                        cellToAdd = currentCell ? JSON.parse(JSON.stringify(currentCell)) : undefined;
+                    } else if (choice === 'incoming') {
+                        cellToAdd = incomingCell ? JSON.parse(JSON.stringify(incomingCell)) : undefined;
+                    } else if (choice === 'base') {
+                        cellToAdd = baseCell ? JSON.parse(JSON.stringify(baseCell)) : undefined;
                     }
                 }
 
@@ -573,48 +583,57 @@ export class NotebookConflictResolver {
                     const choice = res.choice;
                     const customContent = res.customContent;
 
-                    // Get the cell based on choice
+                    // Determine the reference cell for metadata (cell_type, outputs, etc.)
+                    // Priority: chosen side > any available cell
+                    let referenceCell: NotebookCell | undefined;
                     switch (choice) {
                         case 'base':
-                            cellToUse = baseCell;
+                            referenceCell = baseCell || currentCell || incomingCell;
                             break;
                         case 'current':
-                            cellToUse = currentCell;
+                            referenceCell = currentCell || incomingCell || baseCell;
                             break;
                         case 'incoming':
-                            cellToUse = incomingCell;
+                            referenceCell = incomingCell || currentCell || baseCell;
                             break;
                     }
 
-                    // Check if this is a deletion (empty custom content or no cell for chosen side)
+                    // Check if this is a deletion (empty custom content explicitly provided)
                     if (customContent !== undefined && customContent === '') {
                         isDeleted = true;
-                    } else if (!cellToUse) {
-                        isDeleted = true;
-                    }
-
-                    // If custom content was provided and not deleted, apply it to the cell
-                    if (customContent !== undefined && customContent !== '' && cellToUse) {
-                        const editedCell: NotebookCell = JSON.parse(JSON.stringify(cellToUse));
-                        // Convert source to the same format (string or string[]) as original
-                        if (Array.isArray(editedCell.source)) {
-                            editedCell.source = customContent.split(/(?<=\n)/);
-                        } else {
-                            editedCell.source = customContent;
+                    } else if (customContent !== undefined && customContent.length > 0) {
+                        // User provided content (possibly from drag-and-drop or edit)
+                        // ALWAYS use customContent as the source when provided
+                        // This handles the case where a cell was dragged to this row
+                        const cellType = referenceCell?.cell_type || 'code';
+                        cellToUse = {
+                            cell_type: cellType,
+                            metadata: referenceCell?.metadata ? JSON.parse(JSON.stringify(referenceCell.metadata)) : {},
+                            source: customContent.split(/(?<=\n)/)
+                        } as NotebookCell;
+                        
+                        // Add execution_count and outputs for code cells
+                        if (cellType === 'code') {
+                            (cellToUse as any).execution_count = null;
+                            (cellToUse as any).outputs = [];
                         }
-                        cellToUse = editedCell;
-                    } else if (customContent !== undefined && customContent !== '' && !cellToUse) {
-                        // User added content to a deleted cell - create a new cell
-                        // Use the first available cell as a template for metadata/type
-                        const templateCell = currentCell || incomingCell || baseCell;
-                        if (templateCell) {
-                            const newCell: NotebookCell = JSON.parse(JSON.stringify(templateCell));
-                            if (Array.isArray(newCell.source)) {
-                                newCell.source = customContent.split(/(?<=\n)/);
-                            } else {
-                                newCell.source = customContent;
-                            }
-                            cellToUse = newCell;
+                    } else {
+                        // No customContent provided - use the cell from the chosen side
+                        switch (choice) {
+                            case 'base':
+                                cellToUse = baseCell;
+                                break;
+                            case 'current':
+                                cellToUse = currentCell;
+                                break;
+                            case 'incoming':
+                                cellToUse = incomingCell;
+                                break;
+                        }
+                        
+                        // If the chosen cell doesn't exist, mark as deleted
+                        if (!cellToUse) {
+                            isDeleted = true;
                         }
                     }
                 } else {

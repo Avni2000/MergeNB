@@ -286,7 +286,42 @@ export function matchCells(
         });
     }
     
-    return mappings;
+    // Sort mappings to preserve logical cell order
+    // This ensures the resolver and webview see cells in the same order
+    return sortMappingsByPosition(mappings);
+}
+
+/**
+ * Sort cell mappings to preserve logical cell order.
+ * Uses anchor position (base > current > incoming) with tiebreakers
+ * to maintain original notebook structure.
+ */
+function sortMappingsByPosition(mappings: CellMapping[]): CellMapping[] {
+    return [...mappings].sort((a, b) => {
+        // Primary sort: by anchor position (first available index)
+        const posA = a.baseIndex ?? a.currentIndex ?? a.incomingIndex ?? 0;
+        const posB = b.baseIndex ?? b.currentIndex ?? b.incomingIndex ?? 0;
+
+        if (posA !== posB) {
+            return posA - posB;
+        }
+
+        // For same anchor position, base-anchored cells should come first
+        // (they represent the "original" cell at that position)
+        const hasBaseA = a.baseIndex !== undefined;
+        const hasBaseB = b.baseIndex !== undefined;
+        
+        if (hasBaseA !== hasBaseB) {
+            return hasBaseA ? -1 : 1;
+        }
+
+        // Secondary tiebreaker: use the actual cell index on the specific side
+        // This preserves insertion order for cells added in branches
+        const currentPosA = a.currentIndex ?? a.incomingIndex ?? 0;
+        const currentPosB = b.currentIndex ?? b.incomingIndex ?? 0;
+        
+        return currentPosA - currentPosB;
+    });
 }
 
 /**
