@@ -306,21 +306,38 @@ function sortMappingsByPosition(mappings: CellMapping[]): CellMapping[] {
             return posA - posB;
         }
 
-        // For same anchor position, base-anchored cells should come first
-        // (they represent the "original" cell at that position)
-        const hasBaseA = a.baseIndex !== undefined;
-        const hasBaseB = b.baseIndex !== undefined;
+        // Tie-breaker: compare indices from all versions to preserve insertion order
+        // Check each version systematically to handle cell insertions/reordering
         
-        if (hasBaseA !== hasBaseB) {
-            return hasBaseA ? -1 : 1;
+        // If both have incoming index, compare them
+        if (a.incomingIndex !== undefined && b.incomingIndex !== undefined) {
+            if (a.incomingIndex !== b.incomingIndex) {
+                return a.incomingIndex - b.incomingIndex;
+            }
         }
-
-        // Secondary tiebreaker: use the actual cell index on the specific side
-        // This preserves insertion order for cells added in branches
-        const currentPosA = a.currentIndex ?? a.incomingIndex ?? 0;
-        const currentPosB = b.currentIndex ?? b.incomingIndex ?? 0;
         
-        return currentPosA - currentPosB;
+        // If both have current index, compare them
+        if (a.currentIndex !== undefined && b.currentIndex !== undefined) {
+            if (a.currentIndex !== b.currentIndex) {
+                return a.currentIndex - b.currentIndex;
+            }
+        }
+        
+        // If both have base index, compare them
+        if (a.baseIndex !== undefined && b.baseIndex !== undefined) {
+            if (a.baseIndex !== b.baseIndex) {
+                return a.baseIndex - b.baseIndex;
+            }
+        }
+        
+        // If one has an index and the other doesn't, prefer the one with an index
+        const hasAnyIndexA = (a.incomingIndex ?? a.currentIndex ?? a.baseIndex) !== undefined;
+        const hasAnyIndexB = (b.incomingIndex ?? b.currentIndex ?? b.baseIndex) !== undefined;
+        
+        if (hasAnyIndexA && !hasAnyIndexB) return -1;
+        if (!hasAnyIndexA && hasAnyIndexB) return 1;
+        
+        return 0;
     });
 }
 
