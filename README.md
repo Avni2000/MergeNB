@@ -1,71 +1,80 @@
-# merge-nb README
+# MergeNB
 
-This is the README for your extension "merge-nb". After writing up a brief description, we recommend including the following sections.
+A VS Code extension for resolving merge conflicts in Jupyter notebooks (`.ipynb` files).
+
+## The Problem
+
+Git doesn't know how to resolve git merge conflicts with Jupyter Notebooks at all. It doesn't even necessary know there ARE any conflicts, least of all where. So, alternate "mergetools" are used to create a specialized UI  
+
+The canonical solution is NBdime, a collection of tools designed just for this purpose; however, it has been buggy and unreliable in my experience. Specifically, conflicts that can be found via mergeNB often just go undetected entirely with NBDime.
+ 
+---
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+MergeNB aims to fix all of that. It features, in no particular order:
 
-For example if there is an image subfolder under your extension project workspace:
+(a) 3 way merge interface: each cell is compared across 3 versions, current, incoming, and base (the most common ancestor of current and incoming).
 
-\!\[feature X\]\(images/feature-x.png\)
+(b) Conflict detection: We parse through each set of cells - and match them with each other across stable index changes - in order to compute a "diff" (conflict) between each of current/incoming/base. This logic allows us to detect conflicts that would otherwise go unnoticed.
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+(c) Unmatched Cells: Cells that are unmatched (eg. new cells added in one branch, as well as cells that we can't 100% match across branches) are also shown in the merge interface, allowing users to manually resolve them.
 
-## Requirements
+(d) Diff View: Each cell's diff is shown in a side-by-side view, allowing users to see exactly what changed in each cell.
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+- mergeNB.autoResolve.executionCount: Automatically resolve execution count differences by setting `execution_count` to `null`. Default = true
 
-For example:
+- mergeNB.autoResolve.kernelVersion: Prefer the current kernel/version metadata during resolution. Default = true
 
-This extension contributes the following settings:
+- mergeNB.autoResolve.stripOutputs: Strip cell outputs during automatic resolution to avoid output-only conflicts. Default = true
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+- mergeNB.ui.showCellHeaders: Show per-cell headers (cell index, type, execution count) in the conflict resolver UI. Default = false
+
+This list will remain up-to-date.
 
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+None so far, but please report any you find!
 
-## Release Notes
+## Manual Testing
 
-Users appreciate release notes as you update your extension.
+Your efforts are highly appreciated!
 
-### 1.0.0
+1. You can download the merge-nb-0.0.1.vsix file from the releases page and install it in your VS Code instance with the command "Extensions: Install from VSIX..." in the command palette.
 
-Initial release of ...
+2. I'm most interested in (a) whether the merge resolution UI is usable and intuitive (make an issue!), and (b) all the "I/O" is right.
 
-### 1.0.1
+That is, there's 2 places which are most error prone. 
 
-Fixed issue #.
+One is whilst creating the conflict resolver UI, wherein cells can be deleted, overly unmatched, overly conflicted, in the wrong spots, etc.
 
-### 1.1.0
+The other is upon resolving each of your conflicts. Here, cells in the original notebook SHOULD maintain the same order as in the webview, and no cells should be duplicated/deleted unless you chose to do so.
 
-Added features X, Y, and Z.
+For heavily complex notebooks, I am happy to take screen recordings of the notebook before/while resolving/after resolving, if you don't want to track all of that. Feel free to make an issue + add a link to it.
 
----
 
-## Following extension guidelines
+## Development
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+```bash
+git clone https://github.com/Avni2000/MergeNB.git
 
-## Working with Markdown
+cd MergeNB
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+npm install
 
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+npm run compile
 
-## For more information
+# To run the extension in a new VS Code window
 
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+code --extensionDevelopmentPath=$(pwd) --new-window /path/to/a/repo/with/merge/conflicts
 
-**Enjoy!**
+# to make a .vsix package
+
+npm install -g vsce
+
+vsce package
+```

@@ -3,8 +3,9 @@
   "displayName": "MergeNB",
   "description": "Rich Jupyter Notebook Merge Conflict Resolver",
   "version": "0.0.1",
+  "repository": "https://github.com/Avni2000",
   "engines": {
-    "vscode": "^1.107.0"
+    "vscode": "^1.108.0"
   },
   "categories": [
     "Other"
