@@ -8,9 +8,9 @@ Git doesn't know how to resolve git merge conflicts with Jupyter Notebooks at al
 
 The canonical solution is NBdime, a collection of tools designed just for this purpose; however, it has been buggy and unreliable in my experience. Specifically, conflicts that can be found via mergeNB often just go undetected entirely with NBDime.
  
----
-
 ## Features
+
+![Diff View Example](readme-assets/nonconflicted_and_conflicted.png)
 
 MergeNB aims to fix all of that. It features, in no particular order:
 
@@ -21,7 +21,6 @@ MergeNB aims to fix all of that. It features, in no particular order:
 (c) Unmatched Cells: Cells that are unmatched (eg. new cells added in one branch, as well as cells that we can't 100% match across branches) are also shown in the merge interface, allowing users to manually resolve them.
 
 (d) Diff View: Each cell's diff is shown in a side-by-side view, allowing users to see exactly what changed in each cell.
-
 
 ## Extension Settings
 
