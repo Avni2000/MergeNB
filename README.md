@@ -10,7 +10,6 @@ The canonical solution is NBdime, a collection of tools designed just for this p
  
 ## Features
 
-![Diff View Example](readme-assets/nonconflicted_and_conflicted.png)
 
 MergeNB aims to fix all of that. It features, in no particular order:
 
@@ -18,9 +17,18 @@ MergeNB aims to fix all of that. It features, in no particular order:
 
 (b) Conflict detection: We parse through each set of cells - and match them with each other across stable index changes - in order to compute a "diff" (conflict) between each of current/incoming/base. This logic allows us to detect conflicts that would otherwise go unnoticed.
 
+![Diff View Example](readme-assets/conflicted.png)
+
+
 (c) Unmatched Cells: Cells that are unmatched (eg. new cells added in one branch, as well as cells that we can't 100% match across branches) are also shown in the merge interface, allowing users to manually resolve them.
 
-(d) Diff View: Each cell's diff is shown in a side-by-side view, allowing users to see exactly what changed in each cell.
+![New unmatched Cells Example](readme-assets/unmatched.png)
+
+*New cell, not in either base or incoming*
+
+![Unmatched cell Example](readme-assets/two_unmatched.png)
+*This cell should be matched, but it is >30% different from the other two. This requires manual resolution*
+
 
 ## Extension Settings
 

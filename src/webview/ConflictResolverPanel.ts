@@ -1484,25 +1484,26 @@ export class UnifiedConflictPanel {
             color: var(--vscode-textLink-activeForeground);
         }
         
-        .markdown-table {
+        /* Style tables rendered by markdown-it inside the markdown-content container */
+        .markdown-content table {
             border-collapse: collapse;
             margin: 1em 0;
             width: auto;
         }
-        
-        .markdown-table th,
-        .markdown-table td {
+
+        .markdown-content th,
+        .markdown-content td {
             border: 1px solid var(--vscode-panel-border);
             padding: 8px 12px;
             text-align: left;
         }
-        
-        .markdown-table th {
+
+        .markdown-content th {
             background: var(--vscode-editor-selectionBackground);
             font-weight: bold;
         }
-        
-        .markdown-table tr:nth-child(even) {
+
+        .markdown-content tr:nth-child(even) {
             background: rgba(128, 128, 128, 0.05);
         }
         

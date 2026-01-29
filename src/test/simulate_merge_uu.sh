@@ -8,6 +8,10 @@ set -euo pipefail
 # The goal is to make a cli tool that allows us to test more thouroughly at some point (and allow cli resolutions in general),
 # but for now this is a quick way to manually test the extension in a UU conflict state
 
+cd ~/source/repos/MergeNB
+
+npm run compile
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TMPDIR="$(mktemp -d /tmp/mergeNB-throwaway-XXXXXX)"
 
@@ -69,7 +73,7 @@ if command -v code >/dev/null 2>&1; then
 else
   echo "VS Code CLI 'code' not found. Run the following to open manually:"
   echo
-  echo "  code --extensionDevelopmentPath=\"$ROOT\" --new-window \"$TMPDIR\" \"$ROOT/dist/extension.js\""
+  echo "  code --extensionDevelopmentPath=\"$ROOT\" --new-window \"$TMPDIR\" "
 fi
 
 echo
