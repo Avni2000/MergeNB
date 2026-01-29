@@ -292,9 +292,10 @@ export function matchCells(
 }
 
 /**
- * Sort cell mappings to preserve logical cell order.
- * Uses anchor position (base > current > incoming) with tiebreakers
- * to maintain original notebook structure.
+ * Sorts an array of cell mappings into the logical notebook order.
+ *
+ * @param mappings - Cell mappings across base, current, and incoming versions to be ordered
+ * @returns The same mappings sorted by position using the canonical anchor (base, then current, then incoming) and per-version tie-breakers
  */
 function sortMappingsByPosition(mappings: CellMapping[]): CellMapping[] {
     return sortByPosition(mappings, (m) => ({
@@ -306,8 +307,12 @@ function sortMappingsByPosition(mappings: CellMapping[]): CellMapping[] {
 }
 
 /**
- * Generic comparator that compares two position-like objects.
- * Accepts canonical keys: `anchor`, `incoming`, `current`, `base`.
+ * Compare two position-like objects to determine their ordering.
+ *
+ * Orders primarily by `anchor`, then uses `incoming`, `current`, and `base` indices as tie-breakers.
+ * If one item has any per-version index (`incoming`, `current`, or `base`) and the other does not, the item with an index is ordered first.
+ *
+ * @returns A negative number if `a` should come before `b`, `0` if they are equivalent for ordering, or a positive number if `a` should come after `b`.
  */
 export function compareByPosition(
     a: { anchor?: number; incoming?: number; current?: number; base?: number },
@@ -343,8 +348,11 @@ export function compareByPosition(
 }
 
 /**
- * Sort a list of items using a position accessor that maps each item
- * to the canonical position fields consumed by `compareByPosition`.
+ * Return a new array with items sorted by a canonical position derived from each item.
+ *
+ * @param items - The array of items to sort
+ * @param accessor - Function that maps an item to an object with optional `anchor`, `incoming`, `current`, and `base` indices used for ordering
+ * @returns A new array containing the input items ordered according to `compareByPosition` applied to the accessor results
  */
 export function sortByPosition<T>(
     items: T[],
