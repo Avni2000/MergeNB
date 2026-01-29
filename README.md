@@ -6,7 +6,7 @@ A VS Code extension for resolving merge conflicts in Jupyter notebooks (`.ipynb`
 
 Git doesn't know how to resolve git merge conflicts with Jupyter Notebooks at all. It doesn't even necessary know there ARE any conflicts, least of all where. So, alternate "mergetools" are used to create a specialized UI  
 
-The canonical solution is NBdime, a collection of tools designed just for this purpose; however, it has been buggy and unreliable in my experience. Specifically, conflicts that can be found via mergeNB often just go undetected entirely with NBDime.
+The canonical solution is nbdime, a collection of tools designed just for this purpose; however, it has been buggy and unreliable in my experience. Specifically, conflicts that can be found via mergeNB often just go undetected entirely with nbdime.
  
 ## Features
 
