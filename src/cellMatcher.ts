@@ -297,48 +297,60 @@ export function matchCells(
  * to maintain original notebook structure.
  */
 function sortMappingsByPosition(mappings: CellMapping[]): CellMapping[] {
-    return [...mappings].sort((a, b) => {
-        // Primary sort: by anchor position (first available index)
-        const posA = a.baseIndex ?? a.currentIndex ?? a.incomingIndex ?? 0;
-        const posB = b.baseIndex ?? b.currentIndex ?? b.incomingIndex ?? 0;
+    return sortByPosition(mappings, (m) => ({
+        anchor: m.baseIndex ?? m.currentIndex ?? m.incomingIndex ?? 0,
+        base: m.baseIndex,
+        current: m.currentIndex,
+        incoming: m.incomingIndex
+    }));
+}
 
-        if (posA !== posB) {
-            return posA - posB;
-        }
+/**
+ * Generic comparator that compares two position-like objects.
+ * Accepts canonical keys: `anchor`, `incoming`, `current`, `base`.
+ */
+export function compareByPosition(
+    a: { anchor?: number; incoming?: number; current?: number; base?: number },
+    b: { anchor?: number; incoming?: number; current?: number; base?: number }
+): number {
+    const posA = a.anchor ?? 0;
+    const posB = b.anchor ?? 0;
 
-        // Tie-breaker: compare indices from all versions to preserve insertion order
-        // Check each version systematically to handle cell insertions/reordering
-        
-        // If both have incoming index, compare them
-        if (a.incomingIndex !== undefined && b.incomingIndex !== undefined) {
-            if (a.incomingIndex !== b.incomingIndex) {
-                return a.incomingIndex - b.incomingIndex;
-            }
-        }
-        
-        // If both have current index, compare them
-        if (a.currentIndex !== undefined && b.currentIndex !== undefined) {
-            if (a.currentIndex !== b.currentIndex) {
-                return a.currentIndex - b.currentIndex;
-            }
-        }
-        
-        // If both have base index, compare them
-        if (a.baseIndex !== undefined && b.baseIndex !== undefined) {
-            if (a.baseIndex !== b.baseIndex) {
-                return a.baseIndex - b.baseIndex;
-            }
-        }
-        
-        // If one has an index and the other doesn't, prefer the one with an index
-        const hasAnyIndexA = (a.incomingIndex ?? a.currentIndex ?? a.baseIndex) !== undefined;
-        const hasAnyIndexB = (b.incomingIndex ?? b.currentIndex ?? b.baseIndex) !== undefined;
-        
-        if (hasAnyIndexA && !hasAnyIndexB) return -1;
-        if (!hasAnyIndexA && hasAnyIndexB) return 1;
-        
-        return 0;
-    });
+    if (posA !== posB) {
+        return posA - posB;
+    }
+
+    // Tie-breaker: compare indices from all versions to preserve insertion order
+    if (a.incoming !== undefined && b.incoming !== undefined) {
+        if (a.incoming !== b.incoming) return a.incoming - b.incoming;
+    }
+
+    if (a.current !== undefined && b.current !== undefined) {
+        if (a.current !== b.current) return a.current - b.current;
+    }
+
+    if (a.base !== undefined && b.base !== undefined) {
+        if (a.base !== b.base) return a.base - b.base;
+    }
+
+    const hasAnyIndexA = (a.incoming ?? a.current ?? a.base) !== undefined;
+    const hasAnyIndexB = (b.incoming ?? b.current ?? b.base) !== undefined;
+
+    if (hasAnyIndexA && !hasAnyIndexB) return -1;
+    if (!hasAnyIndexA && hasAnyIndexB) return 1;
+
+    return 0;
+}
+
+/**
+ * Sort a list of items using a position accessor that maps each item
+ * to the canonical position fields consumed by `compareByPosition`.
+ */
+export function sortByPosition<T>(
+    items: T[],
+    accessor: (item: T) => { anchor?: number; incoming?: number; current?: number; base?: number }
+): T[] {
+    return [...items].sort((x, y) => compareByPosition(accessor(x), accessor(y)));
 }
 
 /**
