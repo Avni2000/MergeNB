@@ -69,7 +69,7 @@ git status --porcelain | grep '^UU' || true
 echo
 echo "Opening VS Code in extension development mode with the throwaway repo and dist/extension.js..."
 if command -v code >/dev/null 2>&1; then
-  code --extensionDevelopmentPath="$ROOT" --new-window "$TMPDIR" "$ROOT/dist/extension.js"
+  code --extensionDevelopmentPath="$ROOT" --new-window "$TMPDIR"
 else
   echo "VS Code CLI 'code' not found. Run the following to open manually:"
   echo
