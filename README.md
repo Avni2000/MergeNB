@@ -44,7 +44,7 @@ This list will remain up-to-date.
 
 ## Known Issues
 
-None so far, but please report any you find!
+See issues tab :)
 
 ## Manual Testing
 
