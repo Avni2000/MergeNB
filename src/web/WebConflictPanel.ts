@@ -1,15 +1,17 @@
 /**
- * @file ConflictResolverPanel.ts
- * @description 3-way split webview panel for notebook conflict resolution.
- * @import markdown-it for markdown rendering (VSCode native).
- * @import markdown-it-texmath for LaTeX support in markdown cells.
+ * @file WebConflictPanel.ts
+ * @description Web-based conflict resolution panel that opens in the browser.
  * 
- * Displays the entire notebook in three synchronized columns (Base, current, incoming)
- * with cells rendered properly (markdown/code/outputs). Conflicts are highlighted
- * inline within the notebook view, making it feel like viewing the file split into
- * three windows with differences highlighted.
+ * This is the web equivalent of UnifiedConflictPanel. Instead of creating a
+ * VSCode webview panel, it:
+ * 1. Generates HTML content for the conflict resolver UI
+ * 2. Opens the browser via the web server
+ * 3. Communicates with the browser via WebSocket
+ * 4. Handles resolution messages and callbacks
+ * 
+ * The HTML/CSS/JS is largely ported from ConflictResolverPanel but adapted
+ * to work in a standalone browser context using WebSocket instead of vscode.postMessage.
  */
-
 
 import * as vscode from 'vscode';
 import * as logger from '../logger';
@@ -26,34 +28,8 @@ import {
 import { AutoResolveResult } from '../conflictDetector';
 import { computeLineDiff, DiffLine } from '../diffUtils';
 import { sortByPosition } from '../cellMatcher';
-
-/**
- * Unified type for conflicts from both textual and semantic sources
- */
-export interface UnifiedConflict {
-    filePath: string;
-    type: 'textual' | 'semantic';
-    textualConflict?: NotebookConflict;
-    semanticConflict?: NotebookSemanticConflict;
-    /** Result of auto-resolution, if any conflicts were auto-resolved */
-    autoResolveResult?: AutoResolveResult;
-    /** Whether to hide outputs for non-conflicted cells */
-    hideNonConflictOutputs?: boolean;
-}
-
-/**
- * Resolution result from the panel
- */
-export interface UnifiedResolution {
-    type: 'textual' | 'semantic';
-    // For textual conflicts
-    textualResolutions?: Map<number, { choice: ResolutionChoice; customContent?: string }>;
-    // For semantic conflicts
-    semanticChoice?: 'current' | 'incoming';
-    semanticResolutions?: Map<number, { choice: 'base' | 'current' | 'incoming'; customContent?: string }>;
-    // Whether to mark file as resolved with git add
-    markAsResolved: boolean;
-}
+import { getWebServer } from './webServer';
+import { UnifiedConflict, UnifiedResolution } from '../webview/ConflictResolverPanel';
 
 /**
  * Represents a row in the 3-way merge view
@@ -66,106 +42,134 @@ interface MergeRow {
     baseCellIndex?: number;
     currentCellIndex?: number;
     incomingCellIndex?: number;
-    conflictIndex?: number; // Index into the semantic conflicts array
+    conflictIndex?: number;
     conflictType?: string;
-    /** Whether this row contains an unmatched cell (cell exists in one/two versions but not matched) */
     isUnmatched?: boolean;
-    /** Which sides have the cell (for unmatched rows) */
     unmatchedSides?: ('base' | 'current' | 'incoming')[];
-    /** The "anchor" position for this row (used for sorting/reordering) */
     anchorPosition?: number;
 }
 
 /**
- * Unified panel for resolving both textual and semantic notebook conflicts.
- * Shows a 3-way split view of the entire notebook.
+ * Web-based panel for resolving notebook conflicts in the browser.
+ * 
+ * Usage is similar to UnifiedConflictPanel:
+ * ```
+ * WebConflictPanel.createOrShow(extensionUri, conflict, (resolution) => {
+ *     // Handle resolution
+ * });
+ * ```
  */
-export class UnifiedConflictPanel {
-    public static currentPanel: UnifiedConflictPanel | undefined;
-    private readonly _panel: vscode.WebviewPanel;
+export class WebConflictPanel {
+    public static currentPanel: WebConflictPanel | undefined;
+    
     private readonly _extensionUri: vscode.Uri;
-    private _disposables: vscode.Disposable[] = [];
     private _conflict: UnifiedConflict | undefined;
     private _onResolutionComplete: ((resolution: UnifiedResolution) => void) | undefined;
+    private _sessionId: string | undefined;
+    private _isDisposed: boolean = false;
 
-    public static createOrShow(
+    public static async createOrShow(
         extensionUri: vscode.Uri,
         conflict: UnifiedConflict,
         onResolutionComplete: (resolution: UnifiedResolution) => void
-    ) {
-        const column = vscode.window.activeTextEditor
-            ? vscode.window.activeTextEditor.viewColumn
-            : undefined;
-
-        if (UnifiedConflictPanel.currentPanel) {
-            UnifiedConflictPanel.currentPanel._panel.reveal(column);
-            UnifiedConflictPanel.currentPanel.setConflict(conflict, onResolutionComplete);
-            return;
+    ): Promise<void> {
+        // Close existing panel if any
+        if (WebConflictPanel.currentPanel) {
+            WebConflictPanel.currentPanel.dispose();
         }
 
-        const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
-        // Get the directory containing the notebook for loading relative images
-        const notebookDir = vscode.Uri.file(conflict.filePath).with({ path: conflict.filePath.substring(0, conflict.filePath.lastIndexOf('/')) });
-        const panel = vscode.window.createWebviewPanel(
-            'mergeNbConflictResolver',
-            `! ${fileName} (Resolving Conflicts)`,
-            column || vscode.ViewColumn.One,
-            {
-                enableScripts: true,
-                enableFindWidget: true,
-                localResourceRoots: [extensionUri, notebookDir],
-                retainContextWhenHidden: true
-            }
-        );
-
-        UnifiedConflictPanel.currentPanel = new UnifiedConflictPanel(panel, extensionUri, conflict, onResolutionComplete);
+        const panel = new WebConflictPanel(extensionUri, conflict, onResolutionComplete);
+        WebConflictPanel.currentPanel = panel;
+        
+        await panel._openInBrowser();
     }
 
     private constructor(
-        panel: vscode.WebviewPanel,
         extensionUri: vscode.Uri,
         conflict: UnifiedConflict,
         onResolutionComplete: (resolution: UnifiedResolution) => void
     ) {
-        this._panel = panel;
         this._extensionUri = extensionUri;
         this._conflict = conflict;
         this._onResolutionComplete = onResolutionComplete;
-
-        this._update();
-
-        this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-
-        this._panel.webview.onDidReceiveMessage(
-            message => {
-                switch (message.command) {
-                    case 'resolve':
-                        this._handleResolution(message);
-                        break;
-                    case 'cancel':
-                        this._panel.dispose();
-                        break;
-                }
-            },
-            null,
-            this._disposables
-        );
     }
 
     public setConflict(
         conflict: UnifiedConflict,
         onResolutionComplete: (resolution: UnifiedResolution) => void
-    ) {
+    ): void {
         this._conflict = conflict;
         this._onResolutionComplete = onResolutionComplete;
-        this._update();
+        // Note: In web mode, we'd need to send updated conflict data via WebSocket
+        // For now, this requires opening a new browser session
     }
 
-    private _handleResolution(message: { type: string; resolutions?: Array<{ index: number; choice: string; customContent?: string }>; semanticChoice?: string; markAsResolved?: boolean }) {
+    private async _openInBrowser(): Promise<void> {
+        const server = getWebServer();
+        
+        // Start server if not running
+        if (!server.isRunning()) {
+            await server.start();
+        }
+
+        // Generate session ID and HTML content
+        this._sessionId = server.generateSessionId();
+        const htmlContent = this._getHtmlForBrowser();
+
+        // Open session in browser
+        try {
+            await server.openSession(
+                this._sessionId,
+                htmlContent,
+                (message: unknown) => this._handleMessage(message)
+            );
+            
+            logger.info(`[WebConflictPanel] Opened conflict resolver in browser, session: ${this._sessionId}`);
+        } catch (error) {
+            logger.error('[WebConflictPanel] Failed to open browser session:', error);
+            vscode.window.showErrorMessage(`Failed to open conflict resolver in browser: ${error}`);
+        }
+    }
+
+    private _handleMessage(message: unknown): void {
+        if (this._isDisposed) return;
+        
+        const msg = message as { command?: string; type?: string; resolutions?: unknown[]; semanticChoice?: string; markAsResolved?: boolean };
+        
+        logger.debug('[WebConflictPanel] Received message:', msg.command || msg.type);
+
+        switch (msg.command) {
+            case 'resolve':
+                this._handleResolution(msg as {
+                    type: string;
+                    resolutions?: Array<{ index: number; choice: string; customContent?: string }>;
+                    semanticChoice?: string;
+                    markAsResolved?: boolean;
+                });
+                break;
+            case 'cancel':
+                this.dispose();
+                break;
+            case 'ready':
+                // Browser is ready, could send additional data if needed
+                logger.debug('[WebConflictPanel] Browser is ready');
+                break;
+        }
+    }
+
+    private _handleResolution(message: { 
+        type: string; 
+        resolutions?: Array<{ index: number; choice: string; customContent?: string }>; 
+        semanticChoice?: string; 
+        markAsResolved?: boolean 
+    }): void {
         if (this._conflict?.type === 'textual') {
             const resolutionMap = new Map<number, { choice: ResolutionChoice; customContent?: string }>();
             for (const r of (message.resolutions || [])) {
-                resolutionMap.set(r.index, { choice: r.choice as ResolutionChoice, customContent: r.customContent });
+                resolutionMap.set(r.index, { 
+                    choice: r.choice as ResolutionChoice, 
+                    customContent: r.customContent 
+                });
             }
             if (this._onResolutionComplete) {
                 this._onResolutionComplete({
@@ -191,22 +195,21 @@ export class UnifiedConflictPanel {
                 });
             }
         }
-        this._panel.dispose();
+        this.dispose();
     }
 
-    public dispose() {
-        UnifiedConflictPanel.currentPanel = undefined;
-        this._panel.dispose();
-        while (this._disposables.length) {
-            const d = this._disposables.pop();
-            if (d) {
-                d.dispose();
-            }
+    public dispose(): void {
+        if (this._isDisposed) return;
+        this._isDisposed = true;
+        
+        WebConflictPanel.currentPanel = undefined;
+        
+        if (this._sessionId) {
+            const server = getWebServer();
+            server.closeSession(this._sessionId);
         }
-    }
-
-    private _update() {
-        this._panel.webview.html = this._getHtmlForWebview();
+        
+        logger.debug('[WebConflictPanel] Disposed');
     }
 
     private _shouldShowCellHeaders(): boolean {
@@ -214,10 +217,10 @@ export class UnifiedConflictPanel {
         return config.get<boolean>('ui.showCellHeaders', false);
     }
 
-    private _getHtmlForWebview(): string {
+    private _getHtmlForBrowser(): string {
         const conflict = this._conflict;
         if (!conflict) {
-            return '<html><body><p>No conflicts to resolve.</p></body></html>';
+            return this._getErrorHtml('No conflicts to resolve.');
         }
 
         if (conflict.type === 'textual' && conflict.textualConflict) {
@@ -226,24 +229,58 @@ export class UnifiedConflictPanel {
             return this._getSemanticConflictHtml(conflict.semanticConflict);
         }
 
-        return '<html><body><p>Unknown conflict type.</p></body></html>';
+        return this._getErrorHtml('Unknown conflict type.');
+    }
+
+    private _getErrorHtml(message: string): string {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MergeNB - Error</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .error-box {
+            text-align: center;
+            padding: 40px;
+            background: #252526;
+            border-radius: 8px;
+            border: 1px solid #3c3c3c;
+        }
+        h1 { color: #f14c4c; }
+    </style>
+</head>
+<body>
+    <div class="error-box">
+        <h1>Error</h1>
+        <p>${escapeHtml(message)}</p>
+    </div>
+</body>
+</html>`;
     }
 
     /**
      * Build merge rows from cell mappings for 3-way view.
-     * Rows are ordered to preserve original cell positions as much as possible.
      */
     private _buildMergeRows(semanticConflict: NotebookSemanticConflict): MergeRow[] {
         const rows: MergeRow[] = [];
         const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();
 
-        // Index conflicts by cell indices for quick lookup
         semanticConflict.semanticConflicts.forEach((c, i) => {
             const key = `${c.baseCellIndex ?? 'x'}-${c.currentCellIndex ?? 'x'}-${c.incomingCellIndex ?? 'x'}`;
             conflictMap.set(key, { conflict: c, index: i });
         });
 
-        // Use cell mappings to build rows, calculating anchor positions
         for (const mapping of semanticConflict.cellMappings) {
             const baseCell = mapping.baseIndex !== undefined && semanticConflict.base
                 ? semanticConflict.base.cells[mapping.baseIndex] : undefined;
@@ -255,16 +292,12 @@ export class UnifiedConflictPanel {
             const key = `${mapping.baseIndex ?? 'x'}-${mapping.currentIndex ?? 'x'}-${mapping.incomingIndex ?? 'x'}`;
             const conflictInfo = conflictMap.get(key);
 
-            // Determine if this is an unmatched cell (exists in one/two versions only)
             const presentSides: ('base' | 'current' | 'incoming')[] = [];
             if (baseCell) presentSides.push('base');
             if (currentCell) presentSides.push('current');
             if (incomingCell) presentSides.push('incoming');
 
             const isUnmatched = presentSides.length < 3 && presentSides.length > 0;
-
-            // Calculate anchor position: use the first available index
-            // Priority: base > current > incoming (base is the common ancestor)
             const anchorPosition = mapping.baseIndex ?? mapping.currentIndex ?? mapping.incomingIndex ?? 0;
 
             rows.push({
@@ -283,15 +316,9 @@ export class UnifiedConflictPanel {
             });
         }
 
-        // Sort rows by anchor position to preserve original ordering
-        // This ensures unmatched cells appear at their original position, not at the bottom
         return this._sortRowsByPosition(rows);
     }
 
-    /**
-     * Sort merge rows to preserve original cell ordering.
-     * Uses a weighted position calculation that considers all available indices.
-     */
     private _sortRowsByPosition(rows: MergeRow[]): MergeRow[] {
         return sortByPosition(rows, (r) => ({
             anchor: r.anchorPosition ?? 0,
@@ -305,7 +332,6 @@ export class UnifiedConflictPanel {
         const rows = this._buildMergeRows(conflict);
         const totalConflicts = conflict.semanticConflicts.length;
 
-        // Build the notebook view with all cells
         let notebookHtml = '';
         for (const row of rows) {
             notebookHtml += this._renderMergeRow(row, conflict);
@@ -323,13 +349,11 @@ export class UnifiedConflictPanel {
     }
 
     private _getTextualConflictHtml(conflict: NotebookConflict): string {
-        // If we have cell mappings from Git, render like semantic conflicts with full context
         if (conflict.cellMappings && conflict.cellMappings.length > 0 &&
             (conflict.current || conflict.incoming)) {
             return this._getTextualConflictWithContextHtml(conflict);
         }
 
-        // Fall back to simple conflict-only rendering (when Git versions unavailable)
         const conflictsHtml = conflict.conflicts.map((c, i) =>
             this._renderTextualConflictRow(c, i)
         ).join('');
@@ -346,24 +370,16 @@ export class UnifiedConflictPanel {
         );
     }
 
-    /**
-     * Render textual conflicts with full notebook context from Git versions.
-     * Shows non-conflicted cells as unified rows and conflicts in 3-column view.
-     */
     private _getTextualConflictWithContextHtml(conflict: NotebookConflict): string {
         const rows = this._buildMergeRowsForTextual(conflict);
-
-        // Count conflicts from the rows (detected by comparing Git versions)
         const cellConflictCount = rows.filter(r => r.type === 'conflict').length;
         const totalConflicts = cellConflictCount + conflict.metadataConflicts.length;
 
-        // Build the notebook view with all cells
         let notebookHtml = '';
         for (const row of rows) {
             notebookHtml += this._renderMergeRowForTextual(row, conflict);
         }
 
-        // Add metadata conflicts at the end (their indices come after cell conflicts)
         const metadataConflictsHtml = conflict.metadataConflicts.map((c, i) =>
             this._renderMetadataConflictRow(c, cellConflictCount + i)
         ).join('');
@@ -378,12 +394,6 @@ export class UnifiedConflictPanel {
         );
     }
 
-    /**
-     * Build merge rows from cell mappings for textual conflicts with Git context.
-     * Since textual conflicts are in the working copy (with markers), but Git staging
-     * has clean current/incoming versions, we detect conflicts by comparing current vs incoming.
-     * Rows are ordered to preserve original cell positions.
-     */
     private _buildMergeRowsForTextual(conflict: NotebookConflict): MergeRow[] {
         const rows: MergeRow[] = [];
 
@@ -391,15 +401,6 @@ export class UnifiedConflictPanel {
             return rows;
         }
 
-        logger.debug('Building merge rows for textual conflict');
-        logger.debug('base cells:', conflict.base?.cells?.length);
-        logger.debug('current cells:', conflict.current?.cells?.length);
-        logger.debug('incoming cells:', conflict.incoming?.cells?.length);
-        logger.debug('mappings count:', conflict.cellMappings.length);
-        logger.debug('original textual conflicts:', conflict.conflicts.length);
-
-        // For textual conflicts, we detect conflicts by comparing current vs incoming
-        // from the Git staging areas (not from the working copy markers)
         let conflictIndex = 0;
 
         for (const mapping of conflict.cellMappings) {
@@ -410,57 +411,39 @@ export class UnifiedConflictPanel {
             const incomingCell = mapping.incomingIndex !== undefined && conflict.incoming
                 ? conflict.incoming.cells[mapping.incomingIndex] : undefined;
 
-            // Determine if this is a conflict by comparing cells
             let isConflict = false;
 
-            // Case 1: Cell exists in current only (added in current)
             if (currentCell && !incomingCell && !baseCell) {
                 isConflict = true;
-            }
-            // Case 2: Cell exists in incoming only (added in incoming)
-            else if (incomingCell && !currentCell && !baseCell) {
+            } else if (incomingCell && !currentCell && !baseCell) {
                 isConflict = true;
-            }
-            // Case 3: Cell exists in both current and incoming - check if they differ
-            else if (currentCell && incomingCell) {
+            } else if (currentCell && incomingCell) {
                 const currentSource = Array.isArray(currentCell.source) ? currentCell.source.join('') : currentCell.source;
                 const incomingSource = Array.isArray(incomingCell.source) ? incomingCell.source.join('') : incomingCell.source;
 
-                // Check source content
                 if (currentSource !== incomingSource) {
                     isConflict = true;
-                }
-                // Also check outputs for code cells
-                else if (currentCell.cell_type === 'code') {
+                } else if (currentCell.cell_type === 'code') {
                     const currentOutputs = JSON.stringify(currentCell.outputs || []);
                     const incomingOutputs = JSON.stringify(incomingCell.outputs || []);
                     if (currentOutputs !== incomingOutputs) {
-                        // Output difference - could be a conflict or just execution difference
-                        // For now, mark as conflict only if source also differs slightly
-                        // or execution_count differs
                         if (currentCell.execution_count !== incomingCell.execution_count) {
-                            // Minor difference - not a real conflict for textual resolution
                             isConflict = false;
                         }
                     }
                 }
-            }
-            // Case 4: Cell deleted in one branch (exists in base but not current or incoming)
-            else if (baseCell && (!currentCell || !incomingCell) && (currentCell || incomingCell)) {
+            } else if (baseCell && (!currentCell || !incomingCell) && (currentCell || incomingCell)) {
                 isConflict = true;
             }
 
             const currentConflictIndex = isConflict ? conflictIndex++ : undefined;
 
-            // Determine if this is an unmatched cell
             const presentSides: ('base' | 'current' | 'incoming')[] = [];
             if (baseCell) presentSides.push('base');
             if (currentCell) presentSides.push('current');
             if (incomingCell) presentSides.push('incoming');
 
             const isUnmatched = presentSides.length < 3 && presentSides.length > 0;
-
-            // Calculate anchor position for sorting
             const anchorPosition = mapping.baseIndex ?? mapping.currentIndex ?? mapping.incomingIndex ?? 0;
 
             rows.push({
@@ -479,22 +462,13 @@ export class UnifiedConflictPanel {
             });
         }
 
-        logger.debug('Detected conflicts from Git comparison:', conflictIndex);
-
-        // Sort rows by anchor position to preserve original ordering
         return this._sortRowsByPosition(rows);
     }
 
-    /**
-     * Render a merge row for textual conflicts with context.
-     * Similar to _renderMergeRow but adapted for textual conflict data.
-     */
     private _renderMergeRowForTextual(row: MergeRow, conflict: NotebookConflict): string {
         const isConflict = row.type === 'conflict';
         const conflictClass = isConflict ? 'conflict-row' : '';
-        const conflictAttr = row.conflictIndex !== undefined ? `data-conflict="${row.conflictIndex}"` : '';
 
-        // Encode cell sources for JavaScript access (for editing)
         const baseSource = row.baseCell ?
             (Array.isArray(row.baseCell.source) ? row.baseCell.source.join('') : row.baseCell.source) : '';
         const currentSource = row.currentCell ?
@@ -502,7 +476,6 @@ export class UnifiedConflictPanel {
         const incomingSource = row.incomingCell ?
             (Array.isArray(row.incomingCell.source) ? row.incomingCell.source.join('') : row.incomingCell.source) : '';
 
-        // Store cell metadata for JS access
         const cellDataAttrs = isConflict ? `
             data-base-source="${encodeURIComponent(baseSource)}"
             data-current-source="${encodeURIComponent(currentSource)}"
@@ -513,7 +486,6 @@ export class UnifiedConflictPanel {
             data-has-incoming="${row.incomingCell ? 'true' : 'false'}"
         ` : '';
 
-        // Encode outputs for editing view
         const baseOutputs = row.baseCell?.outputs ? encodeURIComponent(JSON.stringify(row.baseCell.outputs)) : '';
         const currentOutputs = row.currentCell?.outputs ? encodeURIComponent(JSON.stringify(row.currentCell.outputs)) : '';
         const incomingOutputs = row.incomingCell?.outputs ? encodeURIComponent(JSON.stringify(row.incomingCell.outputs)) : '';
@@ -524,7 +496,6 @@ export class UnifiedConflictPanel {
             data-incoming-outputs="${incomingOutputs}"
         ` : '';
 
-        // For identical rows (non-conflicts), render as a single unified cell
         if (!isConflict) {
             const displayCell = row.currentCell || row.incomingCell || row.baseCell;
             const displayIndex = row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex;
@@ -536,11 +507,7 @@ export class UnifiedConflictPanel {
 </div>`;
         }
 
-        // For conflicts, show all 3 columns
-        // Determine conflict index - use existing or generate one for detected conflicts
         const effectiveConflictIndex = row.conflictIndex ?? -1;
-
-        // Determine additional classes for unmatched rows
         const unmatchedClass = row.isUnmatched ? 'unmatched-row' : '';
         const rowClasses = `merge-row ${conflictClass} ${unmatchedClass}`.trim();
 
@@ -564,9 +531,6 @@ export class UnifiedConflictPanel {
 </div>`;
     }
 
-    /**
-     * Render cell content for textual conflict with context view.
-     */
     private _renderCellContentForTextual(
         cell: NotebookCell | undefined,
         cellIndex: number | undefined,
@@ -576,14 +540,10 @@ export class UnifiedConflictPanel {
         showHeaders: boolean = false
     ): string {
         if (!cell) {
-            // Determine appropriate placeholder text based on context
             let placeholderText = '(cell deleted)';
-
-            // If this side never had the cell (unmatched from another version)
             if (row.isUnmatched && row.unmatchedSides && !row.unmatchedSides.includes(side)) {
                 placeholderText = '(unmatched cell)';
             }
-
             return `<div class="cell-placeholder cell-deleted">
                 <span class="placeholder-text">${placeholderText}</span>
             </div>`;
@@ -592,10 +552,8 @@ export class UnifiedConflictPanel {
         const cellType = cell.cell_type;
         const source = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
 
-        // Determine if we should show diff highlighting
         let contentHtml: string;
         if (row.type === 'conflict' && cellType !== 'markdown') {
-            // Show diff for conflicts
             const compareSource = side === 'current'
                 ? (row.incomingCell ? (Array.isArray(row.incomingCell.source) ? row.incomingCell.source.join('') : row.incomingCell.source) : '')
                 : side === 'incoming'
@@ -608,7 +566,6 @@ export class UnifiedConflictPanel {
             contentHtml = `<pre class="code-content">${escapeHtml(source)}</pre>`;
         }
 
-        // Render outputs for code cells (conditionally hide for non-conflicted cells)
         let outputsHtml = '';
         const hideNonConflict = this._conflict?.hideNonConflictOutputs ?? true;
         if (cellType === 'code' && cell.outputs && cell.outputs.length > 0) {
@@ -637,9 +594,6 @@ export class UnifiedConflictPanel {
 </div>`;
     }
 
-    /**
-     * Resolution bar for known textual conflicts (from conflict list)
-     */
     private _renderResolutionBarForTextual(conflictIndex: number, row: MergeRow): string {
         return `
 <div class="resolution-bar-row" data-conflict="${conflictIndex}">
@@ -652,12 +606,7 @@ export class UnifiedConflictPanel {
 </div>`;
     }
 
-    /**
-     * Resolution bar for detected conflicts (differences not in original conflict list)
-     */
     private _renderResolutionBarForDetectedConflict(row: MergeRow): string {
-        // These are conflicts detected by cell comparison but not in the original textual conflict list
-        // Generate a unique identifier based on cell indices
         const conflictId = `detected-${row.currentCellIndex ?? 'x'}-${row.incomingCellIndex ?? 'x'}`;
         return `
 <div class="resolution-bar-row" data-conflict="${conflictId}">
@@ -674,7 +623,6 @@ export class UnifiedConflictPanel {
         const conflictClass = isConflict ? 'conflict-row' : '';
         const conflictAttr = row.conflictIndex !== undefined ? `data-conflict="${row.conflictIndex}"` : '';
 
-        // Encode cell sources for JavaScript access (for editing)
         const baseSource = row.baseCell ?
             (Array.isArray(row.baseCell.source) ? row.baseCell.source.join('') : row.baseCell.source) : '';
         const currentSource = row.currentCell ?
@@ -682,7 +630,6 @@ export class UnifiedConflictPanel {
         const incomingSource = row.incomingCell ?
             (Array.isArray(row.incomingCell.source) ? row.incomingCell.source.join('') : row.incomingCell.source) : '';
 
-        // Store cell metadata for JS access
         const cellDataAttrs = isConflict ? `
             data-base-source="${encodeURIComponent(baseSource)}"
             data-current-source="${encodeURIComponent(currentSource)}"
@@ -693,7 +640,6 @@ export class UnifiedConflictPanel {
             data-has-incoming="${row.incomingCell ? 'true' : 'false'}"
         ` : '';
 
-        // Encode outputs for editing view
         const baseOutputs = row.baseCell?.outputs ? encodeURIComponent(JSON.stringify(row.baseCell.outputs)) : '';
         const currentOutputs = row.currentCell?.outputs ? encodeURIComponent(JSON.stringify(row.currentCell.outputs)) : '';
         const incomingOutputs = row.incomingCell?.outputs ? encodeURIComponent(JSON.stringify(row.incomingCell.outputs)) : '';
@@ -704,7 +650,6 @@ export class UnifiedConflictPanel {
             data-incoming-outputs="${incomingOutputs}"
         ` : '';
 
-        // For identical rows (non-conflicts), render as a single unified cell
         if (!isConflict) {
             const cell = row.currentCell || row.baseCell || row.incomingCell;
             const cellIndex = row.currentCellIndex ?? row.baseCellIndex ?? row.incomingCellIndex;
@@ -716,11 +661,9 @@ export class UnifiedConflictPanel {
 </div>`;
         }
 
-        // Determine additional classes for unmatched rows
         const unmatchedClass = row.isUnmatched ? 'unmatched-row' : '';
         const rowClasses = `merge-row ${conflictClass} ${unmatchedClass}`.trim();
 
-        // For conflicts, show all 3 columns
         return `
 <div class="${rowClasses}" ${conflictAttr} ${cellDataAttrs} ${outputDataAttrs} data-is-unmatched="${row.isUnmatched || false}">
     <div class="cell-columns-container">
@@ -750,16 +693,11 @@ export class UnifiedConflictPanel {
         showHeaders: boolean = false
     ): string {
         if (!cell) {
-            // Check if this is a conflict/unmatched where the cell doesn't exist on this side
             if (row.type === 'conflict' || row.isUnmatched) {
-                // Determine appropriate placeholder text based on context
                 let placeholderText = '(cell deleted)';
-
-                // If this side never had the cell (unmatched from another version)
                 if (row.isUnmatched && row.unmatchedSides && !row.unmatchedSides.includes(side)) {
                     placeholderText = '(unmatched cell)';
                 }
-
                 return `<div class="cell-placeholder cell-deleted">
                     <span class="placeholder-text">${placeholderText}</span>
                 </div>`;
@@ -770,10 +708,8 @@ export class UnifiedConflictPanel {
         const cellType = cell.cell_type;
         const source = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
 
-        // Determine if we should show diff highlighting
         let contentHtml: string;
         if (row.type === 'conflict' && cellType !== 'markdown') {
-            // Get comparison source for diff
             const compareCell = side === 'current' ? row.incomingCell :
                 side === 'incoming' ? row.currentCell :
                     (row.currentCell || row.incomingCell);
@@ -787,7 +723,6 @@ export class UnifiedConflictPanel {
             contentHtml = `<pre class="code-content">${escapeHtml(source)}</pre>`;
         }
 
-        // Render outputs for code cells (conditionally hide for non-conflicted cells)
         let outputsHtml = '';
         const hideNonConflict = this._conflict?.hideNonConflictOutputs ?? true;
         if (cellType === 'code' && cell.outputs && cell.outputs.length > 0) {
@@ -818,63 +753,22 @@ export class UnifiedConflictPanel {
     }
 
     private _renderMarkdown(source: string): string {
-        // Get notebook directory for resolving relative image paths
-        const notebookDir = this._conflict?.filePath
-            ? this._conflict.filePath.substring(0, this._conflict.filePath.lastIndexOf('/'))
-            : '';
-
-        // Pre-process: convert relative image paths to webview URIs
-        // Handle both markdown images ![alt](src) and HTML <img> tags
-        let processed = source;
-
-        // Convert markdown image syntax
-        processed = processed.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, src) => {
-            const webviewSrc = this._convertImagePath(src, notebookDir);
-            return `![${alt}](${webviewSrc})`;
-        });
-
-        // Convert HTML img tags
-        processed = processed.replace(/<img([^>]*)src=["']([^"']+)["']([^>]*)>/gi, (match, before, src, after) => {
-            const webviewSrc = this._convertImagePath(src, notebookDir);
-            return `<img${before}src="${webviewSrc}"${after}>`;
-        });
-
-        // Encode content for markdown-it renderer (will be parsed client-side)
-        const encodedSource = encodeURIComponent(processed);
-
+        // For web version, we use the client-side markdown-it renderer
+        // The data-markdown attribute will be processed by JavaScript on the client
+        const encodedSource = encodeURIComponent(source);
         return `<div class="markdown-content" data-markdown="${encodedSource}"></div>`;
     }
 
-    /**
-     * Convert an image path to a webview URI if it's a relative path
-     */
-    private _convertImagePath(src: string, notebookDir: string): string {
-        // Skip if it's already an absolute URL (http, https, data:)
-        if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
-            return src;
-        }
-
-        // Skip if it's already a vscode-webview-resource URI
-        if (src.includes('vscode-webview-resource')) {
-            return src;
-        }
-
-        // For relative paths, resolve against notebook directory
-        if (notebookDir) {
-            const absolutePath = src.startsWith('/')
-                ? src
-                : `${notebookDir}/${src}`;
-            const fileUri = vscode.Uri.file(absolutePath);
-            return this._panel.webview.asWebviewUri(fileUri).toString();
-        }
-
-        return src;
-    }
-
-    private _renderOutputs(outputs: any[]): string {
+    private _renderOutputs(outputs: unknown[]): string {
         let html = '<div class="cell-outputs">';
 
-        for (const output of outputs) {
+        for (const output of outputs as Array<{
+            output_type: string;
+            text?: string | string[];
+            name?: string;
+            data?: Record<string, unknown>;
+            traceback?: string[];
+        }>) {
             if (output.output_type === 'stream') {
                 const text = Array.isArray(output.text) ? output.text.join('') : (output.text || '');
                 const streamClass = output.name === 'stderr' ? 'stderr' : 'stdout';
@@ -882,17 +776,13 @@ export class UnifiedConflictPanel {
             } else if (output.output_type === 'execute_result' || output.output_type === 'display_data') {
                 if (output.data) {
                     if (output.data['text/html']) {
-                        const htmlContent = Array.isArray(output.data['text/html'])
-                            ? output.data['text/html'].join('')
-                            : output.data['text/html'];
-                        // Sanitize HTML output - for now just show placeholder
                         html += `<div class="output-html">[HTML Output]</div>`;
                     } else if (output.data['image/png']) {
                         html += `<img class="output-image" src="data:image/png;base64,${output.data['image/png']}" />`;
                     } else if (output.data['text/plain']) {
                         const text = Array.isArray(output.data['text/plain'])
-                            ? output.data['text/plain'].join('')
-                            : output.data['text/plain'];
+                            ? (output.data['text/plain'] as string[]).join('')
+                            : output.data['text/plain'] as string;
                         html += `<pre class="output-text">${escapeHtml(text)}</pre>`;
                     }
                 }
@@ -907,10 +797,6 @@ export class UnifiedConflictPanel {
     }
 
     private _renderResolutionBar(conflictIndex: number, row: MergeRow): string {
-        const hasBase = !!row.baseCell;
-        const hascurrent = !!row.currentCell;
-        const hasincoming = !!row.incomingCell;
-
         return `
 <div class="resolution-bar-row" data-conflict="${conflictIndex}">
     <div class="resolution-buttons">
@@ -921,12 +807,10 @@ export class UnifiedConflictPanel {
 </div>`;
     }
 
-
     private _renderTextualConflictRow(conflict: CellConflict, index: number): string {
         const hascurrent = conflict.currentContent.trim().length > 0;
         const hasincoming = conflict.incomingContent.trim().length > 0;
 
-        // Store data attributes for JS access
         const cellDataAttrs = `
             data-base-source=""
             data-current-source="${encodeURIComponent(conflict.currentContent)}"
@@ -979,7 +863,6 @@ export class UnifiedConflictPanel {
         conflict: { field: string; currentContent: string; incomingContent: string },
         index: number
     ): string {
-        // Store data attributes for JS access
         const cellDataAttrs = `
             data-base-source=""
             data-current-source="${encodeURIComponent(conflict.currentContent)}"
@@ -1081,44 +964,88 @@ export class UnifiedConflictPanel {
         autoResolveResult?: AutoResolveResult
     ): string {
         const fileName = filePath.split('/').pop() || filePath;
+        const sessionId = this._sessionId || '';
 
-        let autoResolveInfo = '';
-        // if (autoResolveResult && autoResolveResult.autoResolvedCount > 0) {
-        //     const items = autoResolveResult.autoResolvedDescriptions.map(d => `<li>${escapeHtml(d)}</li>`).join('');
-        //     autoResolveInfo = `<div class="auto-resolve-banner">
-        //         <span class="auto-resolve-icon">✓</span>
-        //         <span>Auto-resolved ${autoResolveResult.autoResolvedCount} conflict(s)</span>
-        //         <ul>${items}</ul>
-        //     </div>`;
-        // }
+        // The main difference from the VSCode webview version is:
+        // 1. No acquireVsCodeApi() - we use WebSocket instead
+        // 2. WebSocket connection setup for communication
+        // 3. Window close behavior
 
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Merge: ${escapeHtml(fileName)}</title>
+    <title>MergeNB: ${escapeHtml(fileName)}</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/markdown-it-texmath@1.0.0/texmath.min.js"></script>
     <style>
+${this._getStyles()}
+    </style>
+</head>
+<body>
+    <div class="merge-container">
+        ${contentHtml}
+    </div>
+    
+    <div class="bottom-actions">
+        <div class="action-left">
+            <div class="progress-info">
+                <span class="progress-count" id="progress-count">0 / ${totalConflicts}</span> conflicts resolved
+            </div>
+            <div class="error-message" id="error-message" style="display: none;"></div>
+        </div>
+        <div class="action-center">
+            <button class="btn btn-accept-all" onclick="acceptAllCurrent()">Accept All Current</button>
+            <button class="btn btn-accept-all" onclick="acceptAllIncoming()">Accept All Incoming</button>
+        </div>
+        <div class="action-right">
+            <button class="btn btn-secondary" onclick="cancel()">Cancel</button>
+            <button class="btn btn-primary" id="apply-btn" onclick="applyResolutions()">Apply & Save</button>
+        </div>
+    </div>
+
+    <script>
+${this._getClientScript(sessionId, conflictType, totalConflicts)}
+    </script>
+</body>
+</html>`;
+    }
+
+    private _getStyles(): string {
+        // Return the CSS styles - same as the webview version but with browser-compatible values
+        return `
         :root {
-            --vscode-bg: var(--vscode-editor-background);
-            --vscode-fg: var(--vscode-editor-foreground);
-            --border-color: var(--vscode-panel-border);
-            --cell-bg: var(--vscode-editor-background);
-            --header-bg: var(--vscode-titleBar-activeBackground);
+            --vscode-bg: #1e1e1e;
+            --vscode-fg: #d4d4d4;
+            --border-color: #3c3c3c;
+            --cell-bg: #1e1e1e;
+            --header-bg: #252526;
             --current-accent: #22863a;
             --incoming-accent: #0366d6;
             --base-accent: #6a737d;
             --conflict-bg: rgba(255, 0, 0, 0.05);
+            --button-bg: #0e639c;
+            --button-fg: #ffffff;
+            --button-hover-bg: #1177bb;
+            --button-secondary-bg: #3c3c3c;
+            --button-secondary-fg: #cccccc;
+            --input-bg: #3c3c3c;
+            --input-fg: #cccccc;
+            --focus-border: #007fd4;
+            --text-link: #3794ff;
+            --description-fg: #858585;
+            --error-fg: #f14c4c;
+            --code-block-bg: #2d2d2d;
+            --selection-bg: #264f78;
         }
         
         * { box-sizing: border-box; margin: 0; padding: 0; }
         
         body {
-            font-family: var(--vscode-font-family);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
             background: var(--vscode-bg);
             color: var(--vscode-fg);
             height: 100vh;
@@ -1128,13 +1055,12 @@ export class UnifiedConflictPanel {
             position: relative;
         }
         
-        /* Bottom action bar */
         .bottom-actions {
             position: sticky;
             bottom: 0;
             left: 0;
             right: 0;
-            background: var(--vscode-editor-background);
+            background: var(--vscode-bg);
             border-top: 1px solid var(--border-color);
             padding: 12px 16px;
             display: flex;
@@ -1142,7 +1068,7 @@ export class UnifiedConflictPanel {
             justify-content: space-between;
             gap: 12px;
             z-index: 1000;
-            box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
         }
         
         .action-left {
@@ -1167,27 +1093,27 @@ export class UnifiedConflictPanel {
             font-size: 12px;
             border-radius: 4px;
             cursor: pointer;
-            border: 1px solid var(--vscode-button-border, transparent);
-            background: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
+            border: 1px solid var(--border-color);
+            background: var(--button-secondary-bg);
+            color: var(--button-secondary-fg);
         }
         
         .btn-accept-all:hover {
-            background: var(--vscode-button-secondaryHoverBackground);
+            background: #4c4c4c;
         }
         
         .progress-info {
             font-size: 13px;
-            color: var(--vscode-descriptionForeground);
+            color: var(--description-fg);
         }
         
         .progress-count {
             font-weight: 600;
-            color: var(--vscode-foreground);
+            color: var(--vscode-fg);
         }
         
         .error-message {
-            color: var(--vscode-errorForeground);
+            color: var(--error-fg);
             font-size: 12px;
             display: flex;
             align-items: center;
@@ -1215,43 +1141,23 @@ export class UnifiedConflictPanel {
         }
         
         .btn-primary {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
+            background: var(--button-bg);
+            color: var(--button-fg);
         }
         
         .btn-primary:hover:not(:disabled) {
-            background: var(--vscode-button-hoverBackground);
+            background: var(--button-hover-bg);
         }
         
         .btn-secondary {
-            background: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
+            background: var(--button-secondary-bg);
+            color: var(--button-secondary-fg);
         }
         
         .btn-secondary:hover:not(:disabled) {
-            background: var(--vscode-button-secondaryHoverBackground);
+            background: #4c4c4c;
         }
         
-        // /* Auto-resolve banner */
-        // .auto-resolve-banner {
-        //     background: rgba(40, 167, 69, 0.15);
-        //     border-bottom: 1px solid #28a745;
-        //     padding: 8px 16px;
-        //     font-size: 13px;
-        //     display: flex;
-        //     align-items: center;
-        //     gap: 8px;
-        //     flex-wrap: wrap;
-        // }
-        
-        // .auto-resolve-banner ul {
-        //     display: flex;
-        //     gap: 16px;
-        //     list-style: none;
-        //     margin-left: 8px;
-        // }
-        
-        /* Main content area */
         .merge-container {
             flex: 1;
             overflow-y: auto;
@@ -1259,7 +1165,6 @@ export class UnifiedConflictPanel {
             padding-bottom: 16px;
         }
         
-        /* Merge rows */
         .merge-row {
             display: flex;
             flex-direction: column;
@@ -1274,7 +1179,6 @@ export class UnifiedConflictPanel {
             border-radius: 4px;
         }
         
-        /* Unmatched row styling - cells that couldn't be matched across versions */
         .merge-row.unmatched-row {
             background: rgba(255, 193, 7, 0.08);
             border-left: 4px solid #ffc107;
@@ -1288,13 +1192,11 @@ export class UnifiedConflictPanel {
             opacity: 0.7;
         }
         
-        /* When a row is both conflict and unmatched, use orange-ish color */
         .merge-row.conflict-row.unmatched-row {
             border-left-color: #ff9800;
             background: rgba(255, 152, 0, 0.08);
         }
         
-        /* Unified row for identical cells */
         .merge-row.unified-row {
             background: transparent;
             border-bottom: none;
@@ -1309,13 +1211,11 @@ export class UnifiedConflictPanel {
             border: none;
         }
         
-        /* Container for the three columns (only for conflicts) */
         .cell-columns-container {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
         }
         
-        /* Cell columns */
         .cell-column {
             border-right: 1px solid var(--border-color);
             min-height: 60px;
@@ -1334,16 +1234,15 @@ export class UnifiedConflictPanel {
             background: rgba(3, 102, 214, 0.03); 
         }
         
-        /* Column labels for conflict rows */
         .column-label {
             font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             padding: 4px 8px;
-            color: var(--vscode-descriptionForeground);
+            color: var(--description-fg);
             border-bottom: 1px solid var(--border-color);
-            background: var(--vscode-editorWidget-background);
+            background: var(--header-bg);
         }
         
         .base-column .column-label {
@@ -1358,7 +1257,6 @@ export class UnifiedConflictPanel {
             color: var(--incoming-accent);
         }
         
-        /* Notebook cells */
         .notebook-cell {
             padding: 8px;
         }
@@ -1389,24 +1287,24 @@ export class UnifiedConflictPanel {
         }
         
         .execution-count {
-            color: var(--vscode-descriptionForeground);
-            font-family: var(--vscode-editor-font-family, monospace);
+            color: var(--description-fg);
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
         }
         
         .cell-index {
-            color: var(--vscode-descriptionForeground);
+            color: var(--description-fg);
             margin-left: auto;
         }
         
         .cell-content {
-            background: var(--vscode-textCodeBlock-background);
+            background: var(--code-block-bg);
             border-radius: 4px;
             overflow: hidden;
             padding: 8px;
         }
         
         .code-content, .diff-content {
-            font-family: var(--vscode-editor-font-family, monospace);
+            font-family: 'SF Mono', Monaco, Consolas, 'Liberation Mono', monospace;
             font-size: 13px;
             line-height: 1.5;
             padding: 8px 12px;
@@ -1428,11 +1326,11 @@ export class UnifiedConflictPanel {
         
         .markdown-content h4 { font-size: 1.1em; }
         .markdown-content h5 { font-size: 1em; }
-        .markdown-content h6 { font-size: 0.9em; color: var(--vscode-descriptionForeground); }
+        .markdown-content h6 { font-size: 0.9em; color: var(--description-fg); }
         
         .markdown-content hr {
             border: none;
-            border-top: 1px solid var(--vscode-panel-border);
+            border-top: 1px solid var(--border-color);
             margin: 1em 0;
         }
         
@@ -1442,14 +1340,13 @@ export class UnifiedConflictPanel {
         }
         
         .markdown-content a {
-            color: var(--vscode-textLink-foreground);
+            color: var(--text-link);
         }
         
         .markdown-content a:hover {
-            color: var(--vscode-textLink-activeForeground);
+            text-decoration: underline;
         }
         
-        /* Style tables rendered by markdown-it inside the markdown-content container */
         .markdown-content table {
             border-collapse: collapse;
             margin: 1em 0;
@@ -1458,13 +1355,13 @@ export class UnifiedConflictPanel {
 
         .markdown-content th,
         .markdown-content td {
-            border: 1px solid var(--vscode-panel-border);
+            border: 1px solid var(--border-color);
             padding: 8px 12px;
             text-align: left;
         }
 
         .markdown-content th {
-            background: var(--vscode-editor-selectionBackground);
+            background: var(--selection-bg);
             font-weight: bold;
         }
 
@@ -1473,7 +1370,7 @@ export class UnifiedConflictPanel {
         }
         
         .markdown-content pre {
-            background: var(--vscode-textCodeBlock-background);
+            background: var(--code-block-bg);
             padding: 12px;
             border-radius: 4px;
             overflow-x: auto;
@@ -1485,13 +1382,12 @@ export class UnifiedConflictPanel {
         }
         
         .markdown-content code {
-            background: var(--vscode-textCodeBlock-background);
+            background: var(--code-block-bg);
             padding: 2px 4px;
             border-radius: 3px;
-            font-family: var(--vscode-editor-font-family, monospace);
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
         }
         
-        /* Diff highlighting */
         .diff-line {
             padding: 0 12px;
             min-height: 1.5em;
@@ -1507,7 +1403,6 @@ export class UnifiedConflictPanel {
         .diff-inline-added { background: rgba(0, 255, 0, 0.3); }
         .diff-inline-removed { background: rgba(255, 0, 0, 0.3); }
         
-        /* Cell outputs */
         .cell-outputs {
             margin-top: 8px;
             border-top: 1px dashed var(--border-color);
@@ -1515,10 +1410,10 @@ export class UnifiedConflictPanel {
         }
         
         .output-stream, .output-text {
-            font-family: var(--vscode-editor-font-family, monospace);
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
             font-size: 12px;
             padding: 8px;
-            background: var(--vscode-textCodeBlock-background);
+            background: var(--code-block-bg);
             border-radius: 4px;
             margin: 4px 0;
             white-space: pre-wrap;
@@ -1531,7 +1426,7 @@ export class UnifiedConflictPanel {
         }
         
         .output-error {
-            font-family: var(--vscode-editor-font-family, monospace);
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
             font-size: 12px;
             padding: 8px;
             background: rgba(255, 0, 0, 0.1);
@@ -1548,13 +1443,12 @@ export class UnifiedConflictPanel {
         
         .output-html {
             padding: 8px;
-            background: var(--vscode-textCodeBlock-background);
+            background: var(--code-block-bg);
             border-radius: 4px;
             font-style: italic;
-            color: var(--vscode-descriptionForeground);
+            color: var(--description-fg);
         }
         
-        /* Placeholders */
         .cell-placeholder {
             display: flex;
             align-items: center;
@@ -1565,42 +1459,26 @@ export class UnifiedConflictPanel {
         
         .cell-placeholder.cell-deleted {
             background: rgba(128, 128, 128, 0.08);
-            border: 1px dashed var(--vscode-panel-border);
+            border: 1px dashed var(--border-color);
             border-radius: 4px;
             margin: 8px;
         }
         
         .placeholder-text {
-            color: var(--vscode-descriptionForeground);
+            color: var(--description-fg);
             font-style: italic;
             font-size: 13px;
         }
         
         .cell-deleted .placeholder-text {
-            color: var(--vscode-editorWarning-foreground, #cca700);
+            color: #cca700;
         }
         
-        /* Drag and drop styles */
-        .notebook-cell[draggable="true"] {
-            cursor: grab;
-        }
-        
-        .notebook-cell.dragging {
-            opacity: 0.5;
-            cursor: grabbing;
-        }
-        
-        .cell-placeholder.drag-over {
-            background: rgba(3, 102, 214, 0.15);
-            border: 2px dashed var(--incoming-accent);
-        }
-        
-        /* Resolution bar - full width row */
         .resolution-bar-row {
             display: flex;
             justify-content: center;
             padding: 8px;
-            background: var(--vscode-editor-background);
+            background: var(--vscode-bg);
             border-top: 1px solid var(--border-color);
         }
         
@@ -1643,16 +1521,15 @@ export class UnifiedConflictPanel {
         }
         
         .btn-resolve.btn-both {
-            background: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
+            background: var(--button-secondary-bg);
+            color: var(--button-secondary-fg);
         }
         
         .btn-resolve.selected {
-            outline: 3px solid var(--vscode-focusBorder);
+            outline: 3px solid var(--focus-border);
             opacity: 1;
         }
         
-        /* Metadata conflict */
         .metadata-cell {
             padding: 12px;
         }
@@ -1661,12 +1538,11 @@ export class UnifiedConflictPanel {
             font-weight: 500;
         }
         
-        /* Editor view below conflict row */
         .result-editor-container {
             grid-column: 1 / -1;
             padding: 16px;
-            border-top: 2px solid var(--vscode-focusBorder);
-            background: var(--vscode-editor-background);
+            border-top: 2px solid var(--focus-border);
+            background: var(--vscode-bg);
         }
         
         .result-editor-header {
@@ -1700,7 +1576,7 @@ export class UnifiedConflictPanel {
         }
         
         .result-editor-header .edit-hint {
-            color: var(--vscode-descriptionForeground);
+            color: var(--description-fg);
             font-size: 12px;
             font-style: italic;
         }
@@ -1712,7 +1588,7 @@ export class UnifiedConflictPanel {
         }
         
         .result-editor-wrapper.deleted-cell-editor {
-            background: var(--vscode-input-background);
+            background: var(--input-bg);
             opacity: 0.8;
         }
         
@@ -1720,54 +1596,40 @@ export class UnifiedConflictPanel {
             width: 100%;
             min-height: 120px;
             padding: 12px;
-            font-family: var(--vscode-editor-font-family, monospace);
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
             font-size: 13px;
             line-height: 1.5;
-            background: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
+            background: var(--input-bg);
+            color: var(--input-fg);
             border: none;
             resize: vertical;
             outline: none;
         }
         
         .result-editor::placeholder {
-            color: var(--vscode-input-placeholderForeground);
+            color: var(--description-fg);
             opacity: 0.6;
             font-style: italic;
         }
         
         .result-editor:focus {
-            box-shadow: inset 0 0 0 1px var(--vscode-focusBorder);
+            box-shadow: inset 0 0 0 1px var(--focus-border);
         }
         
         .result-outputs {
             padding: 12px;
-            background: var(--vscode-textCodeBlock-background);
+            background: var(--code-block-bg);
             border-top: 1px dashed var(--border-color);
         }
         
         .result-outputs-label {
             font-size: 11px;
-            color: var(--vscode-descriptionForeground);
+            color: var(--description-fg);
             margin-bottom: 8px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
         
-        .result-outputs .output-stream,
-        .result-outputs .output-text {
-            font-family: var(--vscode-editor-font-family, monospace);
-            font-size: 12px;
-            padding: 8px;
-            background: var(--vscode-textCodeBlock-background);
-            border-radius: 4px;
-            margin: 4px 0;
-            white-space: pre-wrap;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        
-        /* Editor footer with apply button */
         .result-editor-footer {
             display: flex;
             justify-content: flex-end;
@@ -1776,7 +1638,7 @@ export class UnifiedConflictPanel {
             margin-top: 12px;
             padding-top: 12px;
             border-top: 1px solid var(--border-color);
-            background: var(--vscode-editor-background);
+            background: var(--vscode-bg);
             position: relative;
             z-index: 1;
         }
@@ -1788,12 +1650,10 @@ export class UnifiedConflictPanel {
             cursor: pointer;
             font-size: 13px;
             font-family: inherit;
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            box-shadow: none !important;
+            background: var(--button-bg);
+            color: var(--button-fg);
         }
         
-
         .apply-single:hover {
             opacity: 0.9;
         }
@@ -1801,7 +1661,7 @@ export class UnifiedConflictPanel {
         .clear-single {
             padding: 6px 12px;
             background: transparent;
-            color: var(--vscode-descriptionForeground);
+            color: var(--description-fg);
             border: 1px solid var(--border-color);
             border-radius: 4px;
             cursor: pointer;
@@ -1810,10 +1670,9 @@ export class UnifiedConflictPanel {
         
         .clear-single:hover {
             background: rgba(255, 255, 255, 0.05);
-            color: var(--vscode-foreground);
+            color: var(--vscode-fg);
         }
         
-        /* Resolved state styling */
         .merge-row.is-resolved {
             background: rgba(40, 167, 69, 0.06);
             position: relative;
@@ -1865,7 +1724,7 @@ export class UnifiedConflictPanel {
         .resolved-result-header .btn-change {
             padding: 4px 10px;
             background: transparent;
-            color: var(--vscode-textLink-foreground);
+            color: var(--text-link);
             border: 1px solid var(--border-color);
             border-radius: 4px;
             cursor: pointer;
@@ -1877,14 +1736,14 @@ export class UnifiedConflictPanel {
         }
         
         .resolved-result-content {
-            background: var(--vscode-editor-background);
+            background: var(--vscode-bg);
             border: 1px solid var(--border-color);
             border-radius: 4px;
             overflow: hidden;
         }
         
         .resolved-result-content.deleted-cell pre {
-            color: var(--vscode-descriptionForeground);
+            color: var(--description-fg);
             font-style: italic;
             text-align: center;
             padding: 30px 12px;
@@ -1892,7 +1751,7 @@ export class UnifiedConflictPanel {
         }
         
         .resolved-result-content pre {
-            font-family: var(--vscode-editor-font-family, monospace);
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
             font-size: 13px;
             line-height: 1.5;
             padding: 12px;
@@ -1909,50 +1768,70 @@ export class UnifiedConflictPanel {
         
         .resolved-result-outputs .outputs-label {
             font-size: 11px;
-            color: var(--vscode-descriptionForeground);
+            color: var(--description-fg);
             margin-bottom: 6px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-    </style>
-</head>
-<body>
-    ${autoResolveInfo}
-    
-    <div class="merge-container">
-        ${contentHtml}
-    </div>
-    
-    <div class="bottom-actions">
-        <div class="action-left">
-            <div class="progress-info">
-                <span class="progress-count" id="progress-count">0 / ${totalConflicts}</span> conflicts resolved
-            </div>
-            <div class="error-message" id="error-message" style="display: none;"></div>
-        </div>
-        <div class="action-center">
-            <button class="btn btn-accept-all" onclick="acceptAllCurrent()">Accept All Current</button>
-            <button class="btn btn-accept-all" onclick="acceptAllIncoming()">Accept All Incoming</button>
-        </div>
-        <div class="action-right">
-            <button class="btn btn-secondary" onclick="cancel()">Cancel</button>
-            <button class="btn btn-primary" id="apply-btn" onclick="applyResolutions()">Apply & Save</button>
-        </div>
-    </div>
+        `;
+    }
 
-    <script>
-        const vscode = acquireVsCodeApi();
-        const resolutions = {};
-        const totalConflicts = ${totalConflicts};
+    private _getClientScript(sessionId: string, conflictType: string, totalConflicts: number): string {
+        // This is the client-side JavaScript that runs in the browser
+        // Key difference from webview: uses WebSocket instead of vscode.postMessage
+        return `
+        // WebSocket connection for communication with VSCode
+        let ws = null;
+        const sessionId = '${sessionId}';
         const conflictType = '${conflictType}';
-        const isDebugMode = ${process.env.__VSCODE_EXTENSION_DEVELOPMENT__ === 'true'};
+        const totalConflicts = ${totalConflicts};
+        const resolutions = {};
         
-        // Debug logger - only logs in development mode
-        function debugLog(...args) {
-            if (isDebugMode) {
-                console.log('[MergeNB]', ...args);
+        // Connect to WebSocket
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = protocol + '//' + window.location.host + '/?session=' + encodeURIComponent(sessionId);
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                console.log('[MergeNB] WebSocket connected');
+                ws.send(JSON.stringify({ command: 'ready' }));
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    console.log('[MergeNB] Received:', message.type);
+                    
+                    if (message.type === 'close') {
+                        window.close();
+                    }
+                } catch (e) {
+                    console.error('[MergeNB] Error parsing message:', e);
+                }
+            };
+            
+            ws.onclose = function() {
+                console.log('[MergeNB] WebSocket closed');
+            };
+            
+            ws.onerror = function(error) {
+                console.error('[MergeNB] WebSocket error:', error);
+            };
+        }
+        
+        // Send message to VSCode extension
+        function sendMessage(message) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(message));
+            } else {
+                console.error('[MergeNB] WebSocket not connected');
             }
         }
+        
+        // Initialize WebSocket on page load
+        connectWebSocket();
         
         // Render outputs from JSON data
         function renderOutputsFromData(outputsJson) {
@@ -1968,26 +1847,26 @@ export class UnifiedConflictPanel {
                     if (output.output_type === 'stream') {
                         const text = Array.isArray(output.text) ? output.text.join('') : (output.text || '');
                         const streamClass = output.name === 'stderr' ? 'stderr' : '';
-                        html += \`<div class="output-stream \${streamClass}">\${escapeHtmlInJs(text)}</div>\`;
+                        html += '<div class="output-stream ' + streamClass + '">' + escapeHtmlInJs(text) + '</div>';
                     } else if (output.output_type === 'execute_result' || output.output_type === 'display_data') {
                         if (output.data) {
                             if (output.data['image/png']) {
-                                html += \`<img class="output-image" src="data:image/png;base64,\${output.data['image/png']}" />\`;
+                                html += '<img class="output-image" src="data:image/png;base64,' + output.data['image/png'] + '" />';
                             } else if (output.data['text/html']) {
                                 const textHtml = Array.isArray(output.data['text/html']) 
                                     ? output.data['text/html'].join('') 
                                     : output.data['text/html'];
-                                html += \`<div class="output-html">\${textHtml}</div>\`;
+                                html += '<div class="output-html">' + textHtml + '</div>';
                             } else if (output.data['text/plain']) {
                                 const text = Array.isArray(output.data['text/plain']) 
                                     ? output.data['text/plain'].join('') 
                                     : output.data['text/plain'];
-                                html += \`<div class="output-text">\${escapeHtmlInJs(text)}</div>\`;
+                                html += '<div class="output-text">' + escapeHtmlInJs(text) + '</div>';
                             }
                         }
                     } else if (output.output_type === 'error') {
-                        const traceback = output.traceback ? output.traceback.join('\\n') : \`\${output.ename}: \${output.evalue}\`;
-                        html += \`<div class="output-error">\${escapeHtmlInJs(traceback)}</div>\`;
+                        const traceback = output.traceback ? output.traceback.join('\\n') : (output.ename + ': ' + output.evalue);
+                        html += '<div class="output-error">' + escapeHtmlInJs(traceback) + '</div>';
                     }
                 }
                 
@@ -2006,30 +1885,25 @@ export class UnifiedConflictPanel {
         }
         
         function selectResolution(index, choice) {
-            const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
+            const row = document.querySelector('.merge-row[data-conflict="' + index + '"]');
             if (!row) return;
             
-            // If already resolved, need to unresolve first
             if (row.classList.contains('is-resolved')) {
                 unresolveConflict(index);
             }
             
-            // Check if the chosen side exists (detect deleted cells)
-            const hasAttr = \`data-has-\${choice}\`;
+            const hasAttr = 'data-has-' + choice;
             const hasCell = row.getAttribute(hasAttr) === 'true';
             
-            // Get source content based on choice
-            const sourceAttr = \`data-\${choice}-source\`;
+            const sourceAttr = 'data-' + choice + '-source';
             const source = decodeURIComponent(row.getAttribute(sourceAttr) || '');
             const cellType = row.getAttribute('data-cell-type') || 'code';
             
-            // Get outputs for the chosen side
-            const outputsAttr = \`data-\${choice}-outputs\`;
+            const outputsAttr = 'data-' + choice + '-outputs';
             const outputsJson = row.getAttribute(outputsAttr);
             
-            // Store the choice and content (not yet applied)
             resolutions[index] = { 
-                choice, 
+                choice: choice, 
                 customContent: source,
                 originalContent: source,
                 originalChoice: choice,
@@ -2037,70 +1911,57 @@ export class UnifiedConflictPanel {
                 isDeleted: !hasCell
             };
             
-            // Update button states
-            document.querySelectorAll(\`[data-conflict="\${index}"] .btn-resolve\`).forEach(btn => {
+            document.querySelectorAll('[data-conflict="' + index + '"] .btn-resolve').forEach(function(btn) {
                 btn.classList.remove('selected');
             });
-            const selectedBtn = document.querySelector(\`[data-conflict="\${index}"] .btn-\${choice}\`);
+            const selectedBtn = document.querySelector('[data-conflict="' + index + '"] .btn-' + choice);
             if (selectedBtn) {
                 selectedBtn.classList.add('selected');
             }
             
-            // Check if editor already exists
             let editorContainer = row.querySelector('.result-editor-container');
             
             if (!editorContainer) {
-                // Create the editor container
                 editorContainer = document.createElement('div');
                 editorContainer.className = 'result-editor-container';
                 row.appendChild(editorContainer);
             }
             
-            // Check if this is a deleted cell
             const isDeleted = !hasCell;
-            
-            // Build editor HTML with Apply button
             const outputsHtml = renderOutputsFromData(outputsJson);
-            const editorId = \`editor-\${index}\`;
+            const editorId = 'editor-' + index;
             
-            // Always show editable textarea, but with different hints for deleted cells
-            editorContainer.innerHTML = \`
-                <div class="result-editor-header">
-                    <span class="badge \${choice}">Using \${choice === 'current' ? 'CURRENT' : choice === 'incoming' ? 'INCOMING' : choice.toUpperCase()}</span>
-                    <span class="edit-hint">\${isDeleted ? 'Cell will be deleted (or add content to restore)' : 'Edit the result below, then click Apply to confirm'}</span>
-                </div>
-                <div class="result-editor-wrapper \${isDeleted ? 'deleted-cell-editor' : ''}">
-                    <textarea 
-                        id="\${editorId}" 
-                        class="result-editor" 
-                        data-conflict="\${index}"
-                        spellcheck="false"
-                        placeholder="\${isDeleted ? '(cell deleted - add content here to restore it)' : ''}"
-                    >\${escapeHtmlInJs(source)}</textarea>
-                </div>
-                \${isDeleted ? '' : outputsHtml}
-                <div class="result-editor-footer">
-                    <button class="btn clear-single" onclick="clearSelection(\${index})">Cancel</button>
-                    <button class="btn apply-single" onclick="applySingleResolution(\${index})">Apply This Resolution</button>
-                </div>
-            \`;
+            editorContainer.innerHTML = 
+                '<div class="result-editor-header">' +
+                    '<span class="badge ' + choice + '">Using ' + (choice === 'current' ? 'CURRENT' : choice === 'incoming' ? 'INCOMING' : choice.toUpperCase()) + '</span>' +
+                    '<span class="edit-hint">' + (isDeleted ? 'Cell will be deleted (or add content to restore)' : 'Edit the result below, then click Apply to confirm') + '</span>' +
+                '</div>' +
+                '<div class="result-editor-wrapper ' + (isDeleted ? 'deleted-cell-editor' : '') + '">' +
+                    '<textarea ' +
+                        'id="' + editorId + '" ' +
+                        'class="result-editor" ' +
+                        'data-conflict="' + index + '" ' +
+                        'spellcheck="false" ' +
+                        'placeholder="' + (isDeleted ? '(cell deleted - add content here to restore it)' : '') + '"' +
+                    '>' + escapeHtmlInJs(source) + '</textarea>' +
+                '</div>' +
+                (isDeleted ? '' : outputsHtml) +
+                '<div class="result-editor-footer">' +
+                    '<button class="btn clear-single" onclick="clearSelection(' + index + ')">Cancel</button>' +
+                    '<button class="btn apply-single" onclick="applySingleResolution(' + index + ')">Apply This Resolution</button>' +
+                '</div>';
             
-            // Set up editor change listener
             const editor = document.getElementById(editorId);
             if (editor) {
-                // Auto-resize textarea
                 editor.style.height = 'auto';
                 editor.style.height = Math.max(120, editor.scrollHeight) + 'px';
                 
-                editor.addEventListener('input', (e) => {
-                    // Update custom content
+                editor.addEventListener('input', function(e) {
                     resolutions[index].customContent = e.target.value;
                     
-                    // Update deleted state based on content (regardless of original state)
                     const hasContent = e.target.value.length > 0;
                     resolutions[index].isDeleted = !hasContent;
                     
-                    // Update the hint text dynamically
                     const hintElement = editorContainer.querySelector('.edit-hint');
                     const wrapperElement = editorContainer.querySelector('.result-editor-wrapper');
                     if (hintElement && wrapperElement) {
@@ -2115,7 +1976,6 @@ export class UnifiedConflictPanel {
                         }
                     }
                     
-                    // Auto-resize
                     e.target.style.height = 'auto';
                     e.target.style.height = Math.max(120, e.target.scrollHeight) + 'px';
                 });
@@ -2123,41 +1983,23 @@ export class UnifiedConflictPanel {
         }
         
         function applySingleResolution(index) {
-            const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
+            const row = document.querySelector('.merge-row[data-conflict="' + index + '"]');
             if (!row || !resolutions[index]) return;
             
-            debugLog('Applying resolution for conflict', index, ':', {
-                choice: resolutions[index].choice,
-                isDeleted: resolutions[index].isDeleted,
-                contentLength: resolutions[index].customContent?.length ?? 0,
-                contentPreview: resolutions[index].customContent ?? ''
-            });
-            
-            // Mark as applied
             resolutions[index].applied = true;
-            
-            // Update UI to show resolved state
             row.classList.add('is-resolved');
             
-            // Remove the editor container
             const editorContainer = row.querySelector('.result-editor-container');
             if (editorContainer) {
                 editorContainer.remove();
             }
             
-            // Get the resolved content and outputs
-            const resolvedContent = resolutions[index].customContent ?? '';
-            const isDeleted = resolutions[index].isDeleted ?? false;
+            const resolvedContent = resolutions[index].customContent || '';
+            const isDeleted = resolutions[index].isDeleted || false;
             const choice = resolutions[index].choice;
-            const outputsAttr = \`data-\${choice}-outputs\`;
+            const outputsAttr = 'data-' + choice + '-outputs';
             const outputsJson = row.getAttribute(outputsAttr);
-            const outputsHtml = renderOutputsFromData(outputsJson);
             
-            // Create resolved result container showing just the final result
-            const resultContainer = document.createElement('div');
-            resultContainer.className = 'resolved-result-container';
-            
-            // Build outputs HTML for resolved view
             let resolvedOutputsHtml = '';
             if (outputsJson && !isDeleted) {
                 try {
@@ -2168,26 +2010,26 @@ export class UnifiedConflictPanel {
                             if (output.output_type === 'stream') {
                                 const text = Array.isArray(output.text) ? output.text.join('') : (output.text || '');
                                 const streamClass = output.name === 'stderr' ? 'stderr' : '';
-                                resolvedOutputsHtml += \`<div class="output-stream \${streamClass}">\${escapeHtmlInJs(text)}</div>\`;
+                                resolvedOutputsHtml += '<div class="output-stream ' + streamClass + '">' + escapeHtmlInJs(text) + '</div>';
                             } else if (output.output_type === 'execute_result' || output.output_type === 'display_data') {
                                 if (output.data) {
                                     if (output.data['image/png']) {
-                                        resolvedOutputsHtml += \`<img class="output-image" src="data:image/png;base64,\${output.data['image/png']}" />\`;
+                                        resolvedOutputsHtml += '<img class="output-image" src="data:image/png;base64,' + output.data['image/png'] + '" />';
                                     } else if (output.data['text/html']) {
                                         const textHtml = Array.isArray(output.data['text/html']) 
                                             ? output.data['text/html'].join('') 
                                             : output.data['text/html'];
-                                        resolvedOutputsHtml += \`<div class="output-html">\${textHtml}</div>\`;
+                                        resolvedOutputsHtml += '<div class="output-html">' + textHtml + '</div>';
                                     } else if (output.data['text/plain']) {
                                         const text = Array.isArray(output.data['text/plain']) 
                                             ? output.data['text/plain'].join('') 
                                             : output.data['text/plain'];
-                                        resolvedOutputsHtml += \`<div class="output-text">\${escapeHtmlInJs(text)}</div>\`;
+                                        resolvedOutputsHtml += '<div class="output-text">' + escapeHtmlInJs(text) + '</div>';
                                     }
                                 }
                             } else if (output.output_type === 'error') {
-                                const traceback = output.traceback ? output.traceback.join('\\n') : \`\${output.ename}: \${output.evalue}\`;
-                                resolvedOutputsHtml += \`<div class="output-error">\${escapeHtmlInJs(traceback)}</div>\`;
+                                const traceback = output.traceback ? output.traceback.join('\\n') : (output.ename + ': ' + output.evalue);
+                                resolvedOutputsHtml += '<div class="output-error">' + escapeHtmlInJs(traceback) + '</div>';
                             }
                         }
                         resolvedOutputsHtml += '</div>';
@@ -2197,23 +2039,23 @@ export class UnifiedConflictPanel {
                 }
             }
             
-            resultContainer.innerHTML = \`
-                <div class="resolved-result-header">
-                    <div class="resolved-badge">
-                        <span class="checkmark">✓</span>
-                        <span>Resolved</span>
-                    </div>
-                    <button class="btn-change" onclick="unresolveConflict(\${index})">Change</button>
-                </div>
-                <div class="resolved-result-content \${isDeleted ? 'deleted-cell' : ''}">
-                    <pre>\${isDeleted ? '(cell deleted)' : escapeHtmlInJs(resolvedContent)}</pre>
-                </div>
-                \${isDeleted ? '' : resolvedOutputsHtml}
-            \`;
+            const resultContainer = document.createElement('div');
+            resultContainer.className = 'resolved-result-container';
+            resultContainer.innerHTML = 
+                '<div class="resolved-result-header">' +
+                    '<div class="resolved-badge">' +
+                        '<span class="checkmark">✓</span>' +
+                        '<span>Resolved</span>' +
+                    '</div>' +
+                    '<button class="btn-change" onclick="unresolveConflict(' + index + ')">Change</button>' +
+                '</div>' +
+                '<div class="resolved-result-content ' + (isDeleted ? 'deleted-cell' : '') + '">' +
+                    '<pre>' + (isDeleted ? '(cell deleted)' : escapeHtmlInJs(resolvedContent)) + '</pre>' +
+                '</div>' +
+                (isDeleted ? '' : resolvedOutputsHtml);
             row.appendChild(resultContainer);
             
-            // Scroll the resolved cell into view smoothly
-            setTimeout(() => {
+            setTimeout(function() {
                 row.scrollIntoView({ 
                     behavior: 'smooth', 
                     block: 'center',
@@ -2221,61 +2063,50 @@ export class UnifiedConflictPanel {
                 });
             }, 100);
             
-            // Update progress indicator
             updateProgressIndicator();
         }
         
         function unresolveConflict(index) {
-            const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
+            const row = document.querySelector('.merge-row[data-conflict="' + index + '"]');
             if (!row) return;
             
-            // Remove resolved state
             row.classList.remove('is-resolved');
             
-            // Remove resolved result container
             const resultContainer = row.querySelector('.resolved-result-container');
             if (resultContainer) {
                 resultContainer.remove();
             }
             
-            // Clear button selection
-            document.querySelectorAll(\`[data-conflict="\${index}"] .btn-resolve\`).forEach(btn => {
+            document.querySelectorAll('[data-conflict="' + index + '"] .btn-resolve').forEach(function(btn) {
                 btn.classList.remove('selected');
             });
             
-            // Mark as not applied (but keep the data in case they want to re-apply)
             if (resolutions[index]) {
                 resolutions[index].applied = false;
             }
             
-            // Update progress indicator
             updateProgressIndicator();
         }
         
         function clearSelection(index) {
-            const row = document.querySelector(\`.merge-row[data-conflict="\${index}"]\`);
+            const row = document.querySelector('.merge-row[data-conflict="' + index + '"]');
             if (!row) return;
             
-            // Remove editor container
             const editorContainer = row.querySelector('.result-editor-container');
             if (editorContainer) {
                 editorContainer.remove();
             }
             
-            // Clear button selection
-            document.querySelectorAll(\`[data-conflict="\${index}"] .btn-resolve\`).forEach(btn => {
+            document.querySelectorAll('[data-conflict="' + index + '"] .btn-resolve').forEach(function(btn) {
                 btn.classList.remove('selected');
             });
             
-            // Remove from resolutions
             delete resolutions[index];
         }
         
         function acceptAllCurrent() {
-            // Select and apply 'current' (current) for all unresolved conflicts
             for (let i = 0; i < totalConflicts; i++) {
-                // Skip if already resolved
-                if (resolutions[i]?.applied) {
+                if (resolutions[i] && resolutions[i].applied) {
                     continue;
                 }
                 selectResolution(i, 'current');
@@ -2284,10 +2115,8 @@ export class UnifiedConflictPanel {
         }
         
         function acceptAllIncoming() {
-            // Select and apply 'incoming' (incoming) for all unresolved conflicts
             for (let i = 0; i < totalConflicts; i++) {
-                // Skip if already resolved
-                if (resolutions[i]?.applied) {
+                if (resolutions[i] && resolutions[i].applied) {
                     continue;
                 }
                 selectResolution(i, 'incoming');
@@ -2296,16 +2125,21 @@ export class UnifiedConflictPanel {
         }
         
         function updateProgressIndicator() {
-            const appliedCount = Object.values(resolutions).filter(r => r.applied).length;
+            let appliedCount = 0;
+            for (const key in resolutions) {
+                if (resolutions[key].applied) {
+                    appliedCount++;
+                }
+            }
+            
             const progressCount = document.getElementById('progress-count');
             const applyBtn = document.getElementById('apply-btn');
             const errorMessage = document.getElementById('error-message');
             
             if (progressCount) {
-                progressCount.textContent = \`\${appliedCount} / \${totalConflicts}\`;
+                progressCount.textContent = appliedCount + ' / ' + totalConflicts;
             }
             
-            // Enable/disable button based on whether all conflicts are resolved
             if (applyBtn) {
                 if (appliedCount === 0) {
                     applyBtn.disabled = true;
@@ -2316,7 +2150,7 @@ export class UnifiedConflictPanel {
                 } else if (appliedCount < totalConflicts) {
                     applyBtn.disabled = false;
                     if (errorMessage) {
-                        errorMessage.innerHTML = \`<span class="error-icon">⚠</span> \${totalConflicts - appliedCount} conflict(s) unresolved - will default to CURRENT\`;
+                        errorMessage.innerHTML = '<span class="error-icon">⚠</span> ' + (totalConflicts - appliedCount) + ' conflict(s) unresolved - will default to CURRENT';
                         errorMessage.style.display = 'flex';
                     }
                 } else {
@@ -2326,15 +2160,18 @@ export class UnifiedConflictPanel {
                     }
                 }
             }
-            
-            debugLog(\`Progress: \${appliedCount}/\${totalConflicts} resolved\`);
         }
 
         function applyResolutions() {
-            const appliedCount = Object.values(resolutions).filter(r => r.applied).length;
+            let appliedCount = 0;
+            for (const key in resolutions) {
+                if (resolutions[key].applied) {
+                    appliedCount++;
+                }
+            }
+            
             const errorMessage = document.getElementById('error-message');
             
-            // Check if any conflicts are resolved
             if (appliedCount === 0) {
                 if (errorMessage) {
                     errorMessage.innerHTML = '<span class="error-icon">✗</span> No conflicts resolved. Please resolve at least one conflict before applying.';
@@ -2343,25 +2180,28 @@ export class UnifiedConflictPanel {
                 return;
             }
             
-            // Check if all conflicts are resolved
             if (appliedCount < totalConflicts) {
                 const unresolvedCount = totalConflicts - appliedCount;
-                const unappliedSelections = Object.entries(resolutions).filter(([_, r]) => !r.applied).length;
-                
-                let message = \`\${appliedCount} of \${totalConflicts} conflicts resolved.\\n\`;
-                if (unappliedSelections > 0) {
-                    message += \`\${unappliedSelections} selection(s) not yet applied.\\n\`;
+                let unappliedSelections = 0;
+                for (const key in resolutions) {
+                    if (!resolutions[key].applied) {
+                        unappliedSelections++;
+                    }
                 }
-                message += \`\\n\${unresolvedCount} unresolved conflict(s) will default to CURRENT version.\\n\\nContinue?\`;
+                
+                let message = appliedCount + ' of ' + totalConflicts + ' conflicts resolved.\\n';
+                if (unappliedSelections > 0) {
+                    message += unappliedSelections + ' selection(s) not yet applied.\\n';
+                }
+                message += '\\n' + unresolvedCount + ' unresolved conflict(s) will default to CURRENT version.\\n\\nContinue?';
                 
                 if (!confirm(message)) {
                     return;
                 }
                 
-                // Apply defaults for unresolved conflicts
                 for (let i = 0; i < totalConflicts; i++) {
                     if (!resolutions[i] || !resolutions[i].applied) {
-                        const row = document.querySelector(\`.merge-row[data-conflict="\${i}"]\`);
+                        const row = document.querySelector('.merge-row[data-conflict="' + i + '"]');
                         const currentSource = row ? decodeURIComponent(row.getAttribute('data-current-source') || '') : '';
                         const hascurrent = row ? row.getAttribute('data-has-current') === 'true' : false;
                         resolutions[i] = { choice: 'current', customContent: currentSource, applied: true, isDeleted: !hascurrent };
@@ -2370,27 +2210,23 @@ export class UnifiedConflictPanel {
             }
             
             try {
-                const resolutionArray = Object.entries(resolutions).map(([index, data]) => ({
-                    index: parseInt(index),
-                    choice: data.choice,
-                    customContent: data.customContent
-                }));
+                const resolutionArray = [];
+                for (const index in resolutions) {
+                    resolutionArray.push({
+                        index: parseInt(index),
+                        choice: resolutions[index].choice,
+                        customContent: resolutions[index].customContent
+                    });
+                }
                 
-                debugLog('Sending resolutions to backend:', resolutionArray.map(r => ({
-                    index: r.index,
-                    choice: r.choice,
-                    contentLength: r.customContent?.length ?? 0,
-                    contentPreview: r.customContent ?? ''
-                })));
-                
-                vscode.postMessage({ 
+                sendMessage({ 
                     command: 'resolve', 
                     type: conflictType,
                     resolutions: resolutionArray 
                 });
             } catch (error) {
                 if (errorMessage) {
-                    errorMessage.innerHTML = \`<span class="error-icon">✗</span> Error applying resolutions: \${error.message}\`;
+                    errorMessage.innerHTML = '<span class="error-icon">✗</span> Error applying resolutions: ' + error.message;
                     errorMessage.style.display = 'flex';
                 }
                 console.error('Error applying resolutions:', error);
@@ -2398,12 +2234,12 @@ export class UnifiedConflictPanel {
         }
 
         function cancel() {
-            vscode.postMessage({ command: 'cancel' });
+            sendMessage({ command: 'cancel' });
+            window.close();
         }
         
         // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            // Only trigger save if not focused on textarea
+        document.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.tagName !== 'TEXTAREA') {
                 applyResolutions();
             } else if (e.key === 'Escape') {
@@ -2414,187 +2250,41 @@ export class UnifiedConflictPanel {
         // Initialize progress indicator on page load
         updateProgressIndicator();
         
-        // Drag and drop handlers for unmatched cells
-        let draggedCellData = null;
-        
-        function setupDragAndDrop() {
-            // Helper to make a cell draggable
-            function makeDraggable(cell) {
-                if (cell.closest('.cell-placeholder')) return;
-                
-                cell.setAttribute('draggable', 'true');
-                
-                cell.addEventListener('dragstart', (e) => {
-                    const row = cell.closest('.merge-row');
-                    const column = cell.closest('.cell-column');
-                    const conflictIndex = row?.getAttribute('data-conflict');
-                    const side = column?.classList.contains('base-column') ? 'base' :
-                                column?.classList.contains('current-column') ? 'current' : 'incoming';
-                    
-                    draggedCellData = {
-                        conflictIndex,
-                        side,
-                        source: cell.querySelector('.cell-content')?.textContent || '',
-                        cellElement: cell
-                    };
-                    
-                    cell.classList.add('dragging');
-                    if (e.dataTransfer) {
-                        e.dataTransfer.effectAllowed = 'move';
-                        e.dataTransfer.setData('text/plain', 'dragging');
-                    }
-                });
-                
-                cell.addEventListener('dragend', (e) => {
-                    cell.classList.remove('dragging');
-                    draggedCellData = null;
-                });
-            }
-
-            // Helper to make a placeholder a drop target
-            function makeDroppable(placeholder) {
-                placeholder.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    
-                    // Check if we should allow drop here (column check)
-                    const targetColumn = placeholder.closest('.cell-column');
-                    const targetSide = targetColumn?.classList.contains('base-column') ? 'base' :
-                                      targetColumn?.classList.contains('current-column') ? 'current' : 'incoming';
-                    
-                    if (draggedCellData && targetSide === draggedCellData.side && e.dataTransfer) {
-                        e.dataTransfer.dropEffect = 'move';
-                        placeholder.classList.add('drag-over');
-                    } else if (e.dataTransfer) {
-                        e.dataTransfer.dropEffect = 'none';
-                    }
-                });
-                
-                placeholder.addEventListener('dragleave', (e) => {
-                    placeholder.classList.remove('drag-over');
-                });
-                
-                placeholder.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    placeholder.classList.remove('drag-over');
-                    
-                    if (!draggedCellData) return;
-                    
-                    // Find which row and column this placeholder is in
-                    const targetRow = placeholder.closest('.merge-row');
-                    const targetColumn = placeholder.closest('.cell-column');
-                    const targetConflictIndex = targetRow?.getAttribute('data-conflict');
-                    const targetSide = targetColumn?.classList.contains('base-column') ? 'base' :
-                                      targetColumn?.classList.contains('current-column') ? 'current' : 'incoming';
-                    
-                    if (!targetRow || !targetSide) return;
-                    
-                    // STRICT RULE: One column only drag and drop
-                    if (draggedCellData.side !== targetSide) {
-                        return;
-                    }
-                    
-                    // Get the cell content from the dragged cell source row
-                    const sourceRow = document.querySelector(\`.merge-row[data-conflict="\${draggedCellData.conflictIndex}"]\`);
-                    if (!sourceRow) return;
-                    
-                    const sourceAttr = \`data-\${draggedCellData.side}-source\`;
-                    const source = decodeURIComponent(sourceRow.getAttribute(sourceAttr) || '');
-                    
-                    // Also get outputs if available
-                    const outputsAttr = \`data-\${draggedCellData.side}-outputs\`;
-                    const outputs = sourceRow.getAttribute(outputsAttr);
-                    
-                    // Update the TARGET row attributes so selectResolution works properly
-                    const targetSourceAttr = \`data-\${targetSide}-source\`;
-                    targetRow.setAttribute(targetSourceAttr, encodeURIComponent(source));
-                    targetRow.setAttribute(\`data-has-\${targetSide}\`, 'true');
-                    
-                    if (outputs) {
-                        targetRow.setAttribute(\`data-\${targetSide}-outputs\`, outputs);
-                    }
-                    
-                    // Replace placeholder with the dragged cell content
-                    const cellHtml = draggedCellData.cellElement.cloneNode(true);
-                    cellHtml.classList.remove('dragging');
-                    cellHtml.style.opacity = '';
-                    cellHtml.style.cursor = '';
-                    
-                    // Make the new cell draggable
-                    makeDraggable(cellHtml);
-                    
-                    placeholder.replaceWith(cellHtml);
-                    
-                    // Auto-select this as the resolution for the target row
-                    selectResolution(targetConflictIndex, targetSide);
-                    
-                    // Resolve the SOURCE row
-                    const sourceConflictIndex = draggedCellData.conflictIndex;
-                    if (sourceConflictIndex !== targetConflictIndex) {
-                        // Create a new placeholder for the source location
-                        const newPlaceholder = document.createElement('div');
-                        newPlaceholder.className = 'cell-placeholder cell-deleted';
-                        newPlaceholder.innerHTML = '<span class="placeholder-text">(deleted)</span>';
-                        makeDroppable(newPlaceholder);
-
-                        // Replace the old cell with placeholder
-                        draggedCellData.cellElement.replaceWith(newPlaceholder);
-
-                        // Update source row attributes to reflect deletion
-                        sourceRow.setAttribute(\`data-has-\${draggedCellData.side}\`, 'false');
-                        // We also clear source/outputs just to be clean, though has-{side}=false handles the logic
-                        sourceRow.setAttribute(\`data-\${draggedCellData.side}-source\`, '');
-                        sourceRow.removeAttribute(\`data-\${draggedCellData.side}-outputs\`);
-
-                        // Select the SAME side as resolution, which is now empty (deleted)
-                        selectResolution(sourceConflictIndex, draggedCellData.side);
-                        
-                        // Mark it as resolved immediately which will show the resolved "deleted" state
-                        applySingleResolution(sourceConflictIndex);
-                    }
-                    
-                    debugLog('Drag-drop: moved cell from', draggedCellData.side, 'to', targetSide, 'in conflict', targetConflictIndex);
+        // Render markdown content using markdown-it library
+        if (typeof markdownit !== 'undefined') {
+            const md = markdownit({
+                html: true,
+                breaks: true,
+                linkify: true,
+                typographer: true
+            });
+            
+            if (typeof texmath !== 'undefined' && typeof katex !== 'undefined') {
+                md.use(texmath, {
+                    engine: katex,
+                    delimiters: 'dollars',
+                    katexOptions: { macros: { "\\\\RR": "\\\\mathbb{R}" } }
                 });
             }
             
-            // Initialize
-            document.querySelectorAll('.merge-row.unmatched-row .notebook-cell').forEach(makeDraggable);
-            document.querySelectorAll('.cell-placeholder').forEach(makeDroppable);
-        }
-        
-        // Setup drag and drop after page load
-        setupDragAndDrop();
-        
-        // Render markdown content using markdown-it library (VSCode native)
-        const md = window.markdownit({
-            html: true,
-            breaks: true,
-            linkify: true,
-            typographer: true
-        }).use(texmath, {
-            engine: katex,
-            delimiters: 'dollars',
-            katexOptions: { macros: { "\\RR": "\\mathbb{R}" } }
-        });
-        
-        document.querySelectorAll('.markdown-content[data-markdown]').forEach(el => {
-            const encodedMarkdown = el.getAttribute('data-markdown');
-            if (encodedMarkdown) {
-                try {
-                    const markdown = decodeURIComponent(encodedMarkdown);
-                    el.innerHTML = md.render(markdown);
-                } catch (e) {
-                    console.error('Error rendering markdown:', e);
-                    el.textContent = decodeURIComponent(encodedMarkdown);
+            document.querySelectorAll('.markdown-content[data-markdown]').forEach(function(el) {
+                const encodedMarkdown = el.getAttribute('data-markdown');
+                if (encodedMarkdown) {
+                    try {
+                        const markdown = decodeURIComponent(encodedMarkdown);
+                        el.innerHTML = md.render(markdown);
+                    } catch (e) {
+                        console.error('Error rendering markdown:', e);
+                        el.textContent = decodeURIComponent(encodedMarkdown);
+                    }
                 }
-            }
-        });
-    </script>
-</body>
-</html>`;
+            });
+        }
+        `;
     }
 }
 
-export function escapeHtml(text: string): string {
+function escapeHtml(text: string): string {
     return text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')

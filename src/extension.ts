@@ -17,6 +17,7 @@ import * as vscode from 'vscode';
 import { NotebookConflictResolver, ConflictedNotebook } from './resolver';
 import { hasConflictMarkers } from './conflictDetector';
 import * as gitIntegration from './gitIntegration';
+import { getWebServer } from './web';
 
 let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
@@ -214,5 +215,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
 	fileDecorationProvider = undefined;
+	
+	// Stop the web server if it's running
+	const webServer = getWebServer();
+	if (webServer.isRunning()) {
+		webServer.stop();
+	}
 }
 

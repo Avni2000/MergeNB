@@ -24,6 +24,8 @@ export interface MergeNBSettings {
     autoResolveKernelVersion: boolean;
     stripOutputs: boolean;
     hideNonConflictOutputs: boolean;
+    /** Use browser-based conflict resolver instead of VSCode webview */
+    useWebBrowser: boolean;
 }
 
 /** Default settings used in headless mode */
@@ -31,7 +33,8 @@ const DEFAULT_SETTINGS: MergeNBSettings = {
     autoResolveExecutionCount: true,
     autoResolveKernelVersion: true,
     stripOutputs: true,
-    hideNonConflictOutputs: true
+    hideNonConflictOutputs: true,
+    useWebBrowser: false
 };
 
 /**
@@ -49,7 +52,8 @@ export function getSettings(): MergeNBSettings {
         autoResolveExecutionCount: config.get<boolean>('autoResolve.executionCount', true),
         autoResolveKernelVersion: config.get<boolean>('autoResolve.kernelVersion', true),
         stripOutputs: config.get<boolean>('autoResolve.stripOutputs', true),
-        hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', true)
+        hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', true),
+        useWebBrowser: config.get<boolean>('ui.useWebBrowser', false)
     };
 }
 

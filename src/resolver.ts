@@ -15,6 +15,7 @@ import * as vscode from 'vscode';
 import { analyzeNotebookConflicts, hasConflictMarkers, resolveAllConflicts, detectSemanticConflicts, applyAutoResolutions, AutoResolveResult, enrichTextualConflictsWithContext } from './conflictDetector';
 import { parseNotebook, serializeNotebook, renumberExecutionCounts } from './notebookParser';
 import { UnifiedConflictPanel, UnifiedConflict, UnifiedResolution } from './webview/ConflictResolverPanel';
+import { WebConflictPanel } from './web/WebConflictPanel';
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell, SemanticConflict } from './types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
@@ -175,13 +176,24 @@ export class NotebookConflictResolver {
             hideNonConflictOutputs: settings.hideNonConflictOutputs
         };
 
-        UnifiedConflictPanel.createOrShow(
-            this.extensionUri,
-            unifiedConflict,
-            async (resolution) => {
-                await this.applyTextualResolutions(uri, content, conflict, resolution);
-            }
-        );
+        const resolutionCallback = async (resolution: UnifiedResolution) => {
+            await this.applyTextualResolutions(uri, content, conflict, resolution);
+        };
+
+        // Use web browser or VSCode webview based on settings
+        if (settings.useWebBrowser) {
+            await WebConflictPanel.createOrShow(
+                this.extensionUri,
+                unifiedConflict,
+                resolutionCallback
+            );
+        } else {
+            UnifiedConflictPanel.createOrShow(
+                this.extensionUri,
+                unifiedConflict,
+                resolutionCallback
+            );
+        }
     }
 
     /**
@@ -248,13 +260,24 @@ export class NotebookConflictResolver {
             hideNonConflictOutputs: settings.hideNonConflictOutputs
         };
 
-        UnifiedConflictPanel.createOrShow(
-            this.extensionUri,
-            unifiedConflict,
-            async (resolution) => {
-                await this.applySemanticResolutions(uri, filteredSemanticConflict, resolution, autoResolveResult);
-            }
-        );
+        const resolutionCallback = async (resolution: UnifiedResolution) => {
+            await this.applySemanticResolutions(uri, filteredSemanticConflict, resolution, autoResolveResult);
+        };
+
+        // Use web browser or VSCode webview based on settings
+        if (settings.useWebBrowser) {
+            await WebConflictPanel.createOrShow(
+                this.extensionUri,
+                unifiedConflict,
+                resolutionCallback
+            );
+        } else {
+            UnifiedConflictPanel.createOrShow(
+                this.extensionUri,
+                unifiedConflict,
+                resolutionCallback
+            );
+        }
     }
 
     /**
