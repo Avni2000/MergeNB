@@ -6,6 +6,7 @@
 			"ES2022",
 			"DOM"
 		],
+		"jsx": "react-jsx",
 		"sourceMap": true,
 		"rootDir": "src",
 		"strict": true,   /* enable all strict type-checking options */

@@ -24,7 +24,8 @@ const esbuildProblemMatcherPlugin = {
 };
 
 async function main() {
-	const ctx = await esbuild.context({
+	// Extension bundle (Node.js / VSCode)
+	const extensionCtx = await esbuild.context({
 		entryPoints: [
 			'src/extension.ts'
 		],
@@ -38,15 +39,38 @@ async function main() {
 		external: ['vscode', 'ws', 'http', 'https', 'net', 'path', 'fs', 'os', 'util'],
 		logLevel: 'silent',
 		plugins: [
-			/* add to the end of plugins array */
 			esbuildProblemMatcherPlugin,
 		],
 	});
+
+	// Web client bundle (Browser / React)
+	const webClientCtx = await esbuild.context({
+		entryPoints: [
+			'src/web/client/index.tsx'
+		],
+		bundle: true,
+		format: 'esm',
+		minify: production,
+		sourcemap: !production,
+		sourcesContent: false,
+		platform: 'browser',
+		outfile: 'dist/web/client.js',
+		external: [],
+		logLevel: 'silent',
+		jsx: 'automatic',
+		loader: {
+			'.css': 'text',
+		},
+		plugins: [
+			esbuildProblemMatcherPlugin,
+		],
+	});
+
 	if (watch) {
-		await ctx.watch();
+		await Promise.all([extensionCtx.watch(), webClientCtx.watch()]);
 	} else {
-		await ctx.rebuild();
-		await ctx.dispose();
+		await Promise.all([extensionCtx.rebuild(), webClientCtx.rebuild()]);
+		await Promise.all([extensionCtx.dispose(), webClientCtx.dispose()]);
 	}
 }
 

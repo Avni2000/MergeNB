@@ -15,6 +15,8 @@
  */
 
 import * as http from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
 import WebSocket, { WebSocketServer } from 'ws';
 import * as vscode from 'vscode';
 
@@ -305,13 +307,12 @@ export class ConflictResolverWebServer {
         }
 
         if (pathname === '/' || pathname === '/index.html') {
-            // Get session-specific HTML content
+            // Serve minimal HTML shell that loads the React app
             const session = sessionId ? this.sessions.get(sessionId) : undefined;
-            const htmlContent = session?.htmlContent;
             
-            if (htmlContent) {
+            if (session) {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(htmlContent);
+                res.end(this.getHtmlShell(sessionId || 'default'));
             } else {
                 res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
                 res.end(`<!DOCTYPE html>
@@ -331,6 +332,9 @@ export class ConflictResolverWebServer {
 </body>
 </html>`);
             }
+        } else if (pathname === '/client.js' || pathname === '/client.js.map') {
+            // Serve bundled React app from dist/web/
+            this.serveStaticFile(res, pathname);
         } else if (pathname === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ 
@@ -344,6 +348,79 @@ export class ConflictResolverWebServer {
             res.writeHead(404, { 'Content-Type': 'text/plain' });
             res.end('Not Found');
         }
+    }
+
+    /**
+     * Serve static files from dist/web/.
+     */
+    private serveStaticFile(res: http.ServerResponse, pathname: string): void {
+        const fileName = pathname.replace(/^\//, '');
+        const filePath = this.extensionUri
+            ? path.join(this.extensionUri.fsPath, 'dist', 'web', fileName)
+            : path.join(__dirname, '..', '..', 'dist', 'web', fileName);
+
+        const ext = path.extname(fileName).toLowerCase();
+        const contentTypes: Record<string, string> = {
+            '.js': 'application/javascript',
+            '.css': 'text/css',
+            '.map': 'application/json',
+        };
+
+        fs.readFile(filePath, (err, data) => {
+            if (err) {
+                console.error(`[MergeNB Web] Failed to read ${filePath}:`, err.message);
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Not Found');
+            } else {
+                res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream' });
+                res.end(data);
+            }
+        });
+    }
+
+    /**
+     * Generate minimal HTML shell that loads the React app.
+     */
+    private getHtmlShell(sessionId: string): string {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MergeNB - Conflict Resolver</title>
+    <style>
+        body { margin: 0; background: #1e1e1e; }
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            gap: 16px;
+            color: #d4d4d4;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #3c3c3c;
+            border-top-color: #007acc;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="root">
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Loading MergeNB...</p>
+        </div>
+    </div>
+    <script type="module" src="/client.js"></script>
+</body>
+</html>`;
     }
 
     /**
