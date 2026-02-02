@@ -109,10 +109,12 @@ interface DiffContentProps {
 
 function DiffContent({ source, compareSource, side }: DiffContentProps): React.ReactElement {
     const diffLines = computeLineDiff(compareSource, source);
+    // Filter out empty alignment lines to avoid unnecessary whitespace
+    const visibleLines = diffLines.filter(line => line.type !== 'unchanged' || line.content !== '');
 
     return (
         <pre>
-            {diffLines.map((line, i) => (
+            {visibleLines.map((line, i) => (
                 <React.Fragment key={i}>
                     <span className={getDiffLineClass(line, side)}>
                         {line.inlineChanges ? (
@@ -125,7 +127,7 @@ function DiffContent({ source, compareSource, side }: DiffContentProps): React.R
                             line.content
                         )}
                     </span>
-                    {i < diffLines.length - 1 ? '\n' : ''}
+                    {i < visibleLines.length - 1 ? '\n' : ''}
                 </React.Fragment>
             ))}
         </pre>

@@ -181,12 +181,17 @@ body {
     background: var(--bg-primary);
     padding: 12px;
     min-height: 60px;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Cell content */
 .notebook-cell {
     border-radius: 4px;
     overflow: hidden;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
 .cell-content {
@@ -536,7 +541,6 @@ body {
 .drop-zone {
     min-height: 40px;
     border: 2px dashed transparent;
-    transition: all 0.2s;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -561,7 +565,6 @@ body {
     font-style: italic;
     border: 2px dashed var(--border-color);
     border-radius: 4px;
-    transition: all 0.2s ease;
     background: rgba(128, 128, 128, 0.05);
 }
 
@@ -569,7 +572,6 @@ body {
     border-color: var(--accent-blue);
     border-style: solid;
     background: rgba(0, 122, 204, 0.2);
-    box-shadow: inset 0 0 10px rgba(0, 122, 204, 0.3);
 }
 
 .cell-placeholder.drop-target .placeholder-text {
@@ -579,25 +581,6 @@ body {
 /* Make cells in unmatched rows draggable */
 .merge-row.unmatched-row .notebook-cell {
     cursor: grab;
-    transition: all 0.2s ease;
-    position: relative;
-}
-
-.merge-row.unmatched-row .notebook-cell::before {
-    content: '⋮⋮';
-    position: absolute;
-    left: 4px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--text-secondary);
-    opacity: 0;
-    font-size: 12px;
-    letter-spacing: 2px;
-    transition: opacity 0.2s;
-}
-
-.merge-row.unmatched-row .notebook-cell:hover::before {
-    opacity: 0.6;
 }
 
 .merge-row.unmatched-row .notebook-cell:active {
@@ -606,9 +589,8 @@ body {
 
 /* While actively dragging a cell */
 .merge-row.dragging .notebook-cell {
-    opacity: 0.4;
-    border: 2px dashed var(--accent-blue);
-    background: rgba(0, 122, 204, 0.1);
+    opacity: 0.5;
+    outline: 2px dashed var(--accent-blue);
 }
 
 /* Delete and custom buttons */

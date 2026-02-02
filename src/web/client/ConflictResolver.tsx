@@ -111,7 +111,13 @@ export function ConflictResolver({
         // Don't allow dropping on itself
         if (draggedCell.rowIndex === rowIndex) return;
         
-        setDropTarget({ rowIndex, side });
+        // Only update if the drop target actually changed (prevent excessive re-renders)
+        setDropTarget(prev => {
+            if (prev?.rowIndex === rowIndex && prev?.side === side) {
+                return prev; // No change, don't trigger re-render
+            }
+            return { rowIndex, side };
+        });
     }, [draggedCell]);
 
     const handleCellDrop = useCallback((targetRowIndex: number, targetSide: 'base' | 'current' | 'incoming') => {
@@ -179,7 +185,8 @@ export function ConflictResolver({
         if (draggedRowIndex === null || draggedRowIndex === targetIndex) {
             return;
         }
-        setDropRowIndex(targetIndex);
+        // Only update if target changed (prevent excessive re-renders)
+        setDropRowIndex(prev => prev === targetIndex ? prev : targetIndex);
     }, [draggedRowIndex]);
 
     const handleRowDrop = useCallback((targetIndex: number) => {
