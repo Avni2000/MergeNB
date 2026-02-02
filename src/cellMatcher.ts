@@ -13,7 +13,11 @@
  */
 
 import { NotebookCell, Notebook, CellMapping } from './types';
+import { compareByPosition, sortByPosition } from './positionUtils';
 import * as crypto from 'crypto';
+
+// Re-export position utilities for consumers
+export { compareByPosition, sortByPosition } from './positionUtils';
 
 /**
  * Compute a hash of cell content for similarity matching
@@ -303,54 +307,6 @@ function sortMappingsByPosition(mappings: CellMapping[]): CellMapping[] {
         current: m.currentIndex,
         incoming: m.incomingIndex
     }));
-}
-
-/**
- * Generic comparator that compares two position-like objects.
- * Accepts canonical keys: `anchor`, `incoming`, `current`, `base`.
- */
-export function compareByPosition(
-    a: { anchor?: number; incoming?: number; current?: number; base?: number },
-    b: { anchor?: number; incoming?: number; current?: number; base?: number }
-): number {
-    const posA = a.anchor ?? 0;
-    const posB = b.anchor ?? 0;
-
-    if (posA !== posB) {
-        return posA - posB;
-    }
-
-    // Tie-breaker: compare indices from all versions to preserve insertion order
-    if (a.incoming !== undefined && b.incoming !== undefined) {
-        if (a.incoming !== b.incoming) return a.incoming - b.incoming;
-    }
-
-    if (a.current !== undefined && b.current !== undefined) {
-        if (a.current !== b.current) return a.current - b.current;
-    }
-
-    if (a.base !== undefined && b.base !== undefined) {
-        if (a.base !== b.base) return a.base - b.base;
-    }
-
-    const hasAnyIndexA = (a.incoming ?? a.current ?? a.base) !== undefined;
-    const hasAnyIndexB = (b.incoming ?? b.current ?? b.base) !== undefined;
-
-    if (hasAnyIndexA && !hasAnyIndexB) return -1;
-    if (!hasAnyIndexA && hasAnyIndexB) return 1;
-
-    return 0;
-}
-
-/**
- * Sort a list of items using a position accessor that maps each item
- * to the canonical position fields consumed by `compareByPosition`.
- */
-export function sortByPosition<T>(
-    items: T[],
-    accessor: (item: T) => { anchor?: number; incoming?: number; current?: number; base?: number }
-): T[] {
-    return [...items].sort((x, y) => compareByPosition(accessor(x), accessor(y)));
 }
 
 /**

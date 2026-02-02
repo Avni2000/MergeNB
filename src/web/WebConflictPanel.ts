@@ -14,7 +14,7 @@ import * as vscode from 'vscode';
 import * as logger from '../logger';
 import { ResolutionChoice } from '../types';
 import { getWebServer } from './webServer';
-import { UnifiedConflict, UnifiedResolution } from '../webview/ConflictResolverPanel';
+import { UnifiedConflict, UnifiedResolution } from './webTypes';
 
 /**
  * Web-based panel for resolving notebook conflicts in the browser.

@@ -12,6 +12,9 @@
 
 import { Notebook, NotebookCell } from './types';
 
+// Re-export browser-safe utilities for convenience
+export { normalizeCellSource, sourceToCellFormat, getCellPreview } from './notebookUtils';
+
 /**
  * Parse a Jupyter notebook from JSON string.
  * Handles both clean notebooks and those with potential issues.
@@ -37,36 +40,8 @@ export function serializeNotebook(notebook: Notebook): string {
     return JSON.stringify(notebook, null, 1);
 }
 
-/**
- * Normalize cell source to a consistent string format.
- * Notebook sources can be string or string[].
- */
-export function normalizeCellSource(source: string | string[]): string {
-    if (Array.isArray(source)) {
-        return source.join('');
-    }
-    return source;
-}
-
-/**
- * Convert cell source back to the array format expected by nbformat.
- */
-export function sourceToCellFormat(source: string): string[] {
-    const lines = source.split('\n');
-    return lines.map((line, i) => i < lines.length - 1 ? line + '\n' : line);
-}
-
-/**
- * Get a display-friendly preview of a cell's content.
- */
-export function getCellPreview(cell: NotebookCell, maxLength: number = 100): string {
-    const source = normalizeCellSource(cell.source);
-    const firstLine = source.split('\n')[0] || '';
-    if (firstLine.length > maxLength) {
-        return firstLine.substring(0, maxLength) + '...';
-    }
-    return firstLine;
-}
+// Import from notebookUtils for internal use
+import { normalizeCellSource } from './notebookUtils';
 
 /**
  * Renumber execution counts in a notebook sequentially.

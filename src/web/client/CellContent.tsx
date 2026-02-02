@@ -5,6 +5,7 @@
 
 import React from 'react';
 import type { NotebookCell, CellOutput } from './types';
+import { normalizeCellSource } from '../../notebookUtils';
 import { renderMarkdown, escapeHtml } from './markdown';
 import { computeLineDiff, getDiffLineClass } from './diff';
 
@@ -33,7 +34,7 @@ export function CellContent({
         );
     }
 
-    const source = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
+    const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
 
     return (
@@ -42,7 +43,7 @@ export function CellContent({
                 {cellType === 'markdown' ? (
                     <MarkdownContent source={source} />
                 ) : isConflict && compareCell ? (
-                    <DiffContent source={source} compareSource={getCellSource(compareCell)} side={side} />
+                    <DiffContent source={source} compareSource={normalizeCellSource(compareCell.source)} side={side} />
                 ) : (
                     <pre>{source}</pre>
                 )}
@@ -52,10 +53,6 @@ export function CellContent({
             )}
         </div>
     );
-}
-
-function getCellSource(cell: NotebookCell): string {
-    return Array.isArray(cell.source) ? cell.source.join('') : cell.source;
 }
 
 interface MarkdownContentProps {

@@ -7,6 +7,10 @@ import MarkdownIt from 'markdown-it';
 // @ts-ignore - markdown-it-texmath has no types but is installed
 import texmath from 'markdown-it-texmath';
 import katex from 'katex';
+import { escapeHtml } from '../../notebookUtils';
+
+// Re-export escapeHtml for backward compatibility
+export { escapeHtml } from '../../notebookUtils';
 
 // Initialize markdown-it with texmath plugin
 const md = MarkdownIt({
@@ -32,16 +36,4 @@ export function renderMarkdown(source: string): string {
         console.error('[MergeNB] Markdown render error:', err);
         return `<pre>${escapeHtml(source)}</pre>`;
     }
-}
-
-/**
- * Escape HTML special characters.
- */
-export function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
 }

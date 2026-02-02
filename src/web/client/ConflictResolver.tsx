@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
+import { sortByPosition } from '../../positionUtils';
+import { normalizeCellSource } from '../../notebookUtils';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
@@ -184,7 +186,12 @@ function buildMergeRowsFromSemantic(conflict: NotebookSemanticConflict): MergeRo
         });
     }
 
-    return sortRowsByPosition(rows);
+    return sortByPosition(rows, (r) => ({
+        anchor: r.anchorPosition ?? 0,
+        incoming: r.incomingCellIndex,
+        current: r.currentCellIndex,
+        base: r.baseCellIndex
+    }));
 }
 
 /**
@@ -216,8 +223,8 @@ function buildMergeRowsFromTextual(conflict: NotebookConflict): MergeRowType[] {
         // Detect if this is a conflict by comparing cells
         let isConflict = false;
         if (currentCell && incomingCell) {
-            const currSrc = Array.isArray(currentCell.source) ? currentCell.source.join('') : currentCell.source;
-            const incSrc = Array.isArray(incomingCell.source) ? incomingCell.source.join('') : incomingCell.source;
+            const currSrc = normalizeCellSource(currentCell.source);
+            const incSrc = normalizeCellSource(incomingCell.source);
             if (currSrc !== incSrc) {
                 isConflict = true;
             }
@@ -251,12 +258,10 @@ function buildMergeRowsFromTextual(conflict: NotebookConflict): MergeRowType[] {
         });
     }
 
-    return sortRowsByPosition(rows);
-}
-
-/**
- * Sort rows by anchor position to preserve original cell ordering.
- */
-function sortRowsByPosition(rows: MergeRowType[]): MergeRowType[] {
-    return [...rows].sort((a, b) => (a.anchorPosition ?? 0) - (b.anchorPosition ?? 0));
+    return sortByPosition(rows, (r) => ({
+        anchor: r.anchorPosition ?? 0,
+        incoming: r.incomingCellIndex,
+        current: r.currentCellIndex,
+        base: r.baseCellIndex
+    }));
 }

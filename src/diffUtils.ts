@@ -281,11 +281,5 @@ function getInlineClass(type: InlineChange['type'], side: 'left' | 'right'): str
     }
 }
 
-function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
+// Import from notebookUtils to avoid duplication
+import { escapeHtml } from './notebookUtils';

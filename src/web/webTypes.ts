@@ -4,6 +4,9 @@
  * 
  * These types are used for communication between the VSCode extension
  * and the browser-based conflict resolver UI via WebSocket.
+ * 
+ * This is the single source of truth for conflict/resolution types,
+ * replacing the old ConflictResolverPanel types.
  */
 
 import { 
@@ -15,6 +18,39 @@ import {
     ResolutionChoice 
 } from '../types';
 import { AutoResolveResult } from '../conflictDetector';
+
+// Re-export AutoResolveResult for convenience
+export type { AutoResolveResult } from '../conflictDetector';
+
+/**
+ * Unified conflict data structure.
+ * This replaces the old UnifiedConflict from ConflictResolverPanel.
+ */
+export interface UnifiedConflict {
+    filePath: string;
+    type: 'textual' | 'semantic';
+    textualConflict?: NotebookConflict;
+    semanticConflict?: NotebookSemanticConflict;
+    /** Result of auto-resolution, if any conflicts were auto-resolved */
+    autoResolveResult?: AutoResolveResult;
+    /** Whether to hide outputs for non-conflicted cells */
+    hideNonConflictOutputs?: boolean;
+}
+
+/**
+ * Resolution result from the panel.
+ * This replaces the old UnifiedResolution from ConflictResolverPanel.
+ */
+export interface UnifiedResolution {
+    type: 'textual' | 'semantic';
+    // For textual conflicts
+    textualResolutions?: Map<number, { choice: ResolutionChoice; customContent?: string }>;
+    // For semantic conflicts
+    semanticChoice?: 'current' | 'incoming';
+    semanticResolutions?: Map<number, { choice: 'base' | 'current' | 'incoming'; customContent?: string }>;
+    // Whether to mark file as resolved with git add
+    markAsResolved: boolean;
+}
 
 /**
  * Unified conflict data sent to the browser.
