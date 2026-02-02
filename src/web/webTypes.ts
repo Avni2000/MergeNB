@@ -5,8 +5,6 @@
  * These types are used for communication between the VSCode extension
  * and the browser-based conflict resolver UI via WebSocket.
  * 
- * This is the single source of truth for conflict/resolution types,
- * replacing the old ConflictResolverPanel types.
  */
 
 import { 
@@ -24,7 +22,6 @@ export type { AutoResolveResult } from '../conflictDetector';
 
 /**
  * Unified conflict data structure.
- * This replaces the old UnifiedConflict from ConflictResolverPanel.
  */
 export interface UnifiedConflict {
     filePath: string;
@@ -39,7 +36,6 @@ export interface UnifiedConflict {
 
 /**
  * Resolution result from the panel.
- * This replaces the old UnifiedResolution from ConflictResolverPanel.
  */
 export interface UnifiedResolution {
     type: 'textual' | 'semantic';

@@ -4,27 +4,19 @@
  */
 
 import MarkdownIt from 'markdown-it';
-// @ts-ignore - markdown-it-texmath has no types but is installed
-import texmath from 'markdown-it-texmath';
-import katex from 'katex';
+// @ts-ignore - markdown-it-mathjax3 has no types
+import mathjax3 from 'markdown-it-mathjax3';
 import { escapeHtml } from '../../notebookUtils';
 
 // Re-export escapeHtml for backward compatibility
 export { escapeHtml } from '../../notebookUtils';
 
-// Initialize markdown-it with texmath plugin
+// Initialize markdown-it with MathJax 3 plugin
 const md = MarkdownIt({
     html: true,
     linkify: true,
     typographer: true,
-}).use(texmath, {
-    engine: katex,
-    delimiters: 'dollars',
-    katexOptions: {
-        throwOnError: false,
-        displayMode: false,
-    },
-});
+}).use(mathjax3);
 
 /**
  * Render markdown source to HTML.

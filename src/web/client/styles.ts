@@ -9,7 +9,7 @@ export const styles = `
     --bg-secondary: #252526;
     --bg-tertiary: #2d2d2d;
     --border-color: #3c3c3c;
-    --text-primary: #d4d4d4;
+    --text-primary: #f3f3f3;
     --text-secondary: #808080;
     --accent-blue: #007acc;
     --accent-green: #4ec9b0;
@@ -195,6 +195,19 @@ body {
     line-height: 1.5;
 }
 
+.cell-content {
+    color: var(--text-primary);
+}
+
+/* Ensure markdown and inline/code blocks use the same primary text color */
+.markdown-content,
+.markdown-content *,
+.cell-content pre,
+.markdown-content pre,
+.markdown-content code {
+    color: var(--text-primary);
+}
+
 .cell-content pre {
     margin: 0;
     padding: 12px;
@@ -222,7 +235,7 @@ body {
     align-items: center;
     justify-content: center;
     min-height: 60px;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-style: italic;
     font-size: 12px;
     background: var(--bg-tertiary);
@@ -369,6 +382,10 @@ body {
 }
 
 /* Markdown rendering */
+.markdown-content {
+    color: var(--text-primary);
+}
+
 .markdown-content h1, .markdown-content h2, .markdown-content h3,
 .markdown-content h4, .markdown-content h5, .markdown-content h6 {
     margin-top: 16px;
@@ -406,10 +423,243 @@ body {
     color: var(--text-secondary);
 }
 
-/* KaTeX overrides */
-.katex-display {
+/* MathJax styles */
+.mjx-container {
     margin: 16px 0;
     overflow-x: auto;
+    display: flex;
+    justify-content: center;
+}
+
+/* Custom editor for custom content */
+.custom-editor {
+    grid-column: 1 / -1;
+    padding: 16px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    margin-bottom: 12px;
+}
+
+.custom-content-input {
+    width: 100%;
+    min-height: 200px;
+    padding: 12px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 13px;
+    resize: vertical;
+}
+
+.editor-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.btn-save {
+    padding: 8px 16px;
+    background: var(--accent-blue);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.btn-save:hover {
+    background: #0062a3;
+}
+
+.btn-cancel {
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.btn-cancel:hover {
+    background: var(--bg-secondary);
+}
+
+/* Drag and drop styles */
+.merge-row.dragging {
+    opacity: 0.5;
+    cursor: move;
+}
+
+.merge-row[draggable="true"] {
+    cursor: grab;
+}
+
+.merge-row[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+/* Conflict row - red border for actual conflicts */
+.merge-row.conflict-row {
+    background: rgba(244, 135, 113, 0.05);
+    border-left: 4px solid #f48771;
+    margin: 8px 0;
+    border-radius: 4px;
+}
+
+/* Unmatched row - yellow border for cells that couldn't be matched */
+.merge-row.unmatched-row {
+    background: rgba(255, 193, 7, 0.08);
+    border-left: 4px solid #ffc107;
+    margin: 8px 0;
+    border-radius: 4px;
+}
+
+/* Unmatched indicator in column label */
+.merge-row.unmatched-row .column-label::after {
+    content: ' (unmatched)';
+    font-size: 10px;
+    opacity: 0.7;
+    margin-left: 4px;
+}
+
+/* When a row is both conflict and unmatched, use orange */
+.merge-row.conflict-row.unmatched-row {
+    border-left-color: #ff9800;
+    background: rgba(255, 152, 0, 0.08);
+}
+
+/* Drop zones for drag and drop */
+.drop-zone {
+    min-height: 40px;
+    border: 2px dashed transparent;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin: 4px 0;
+}
+
+.drop-zone.drop-target {
+    border-color: var(--accent-blue);
+    background: rgba(0, 122, 204, 0.15);
+}
+
+/* Cell placeholder (for deleted/not present cells) */
+.cell-placeholder {
+    min-height: 60px;
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+    font-style: italic;
+    border: 2px dashed var(--border-color);
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    background: rgba(128, 128, 128, 0.05);
+}
+
+.cell-placeholder.drop-target {
+    border-color: var(--accent-blue);
+    border-style: solid;
+    background: rgba(0, 122, 204, 0.2);
+    box-shadow: inset 0 0 10px rgba(0, 122, 204, 0.3);
+}
+
+.cell-placeholder.drop-target .placeholder-text {
+    display: none;
+}
+
+/* Make cells in unmatched rows draggable */
+.merge-row.unmatched-row .notebook-cell {
+    cursor: grab;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.merge-row.unmatched-row .notebook-cell::before {
+    content: '⋮⋮';
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+    opacity: 0;
+    font-size: 12px;
+    letter-spacing: 2px;
+    transition: opacity 0.2s;
+}
+
+.merge-row.unmatched-row .notebook-cell:hover::before {
+    opacity: 0.6;
+}
+
+.merge-row.unmatched-row .notebook-cell:active {
+    cursor: grabbing;
+}
+
+/* While actively dragging a cell */
+.merge-row.dragging .notebook-cell {
+    opacity: 0.4;
+    border: 2px dashed var(--accent-blue);
+    background: rgba(0, 122, 204, 0.1);
+}
+
+/* Delete and custom buttons */
+.btn-delete {
+    background: rgba(244, 135, 113, 0.2);
+    color: #f48771;
+    border: 1px solid rgba(244, 135, 113, 0.5);
+}
+
+.btn-delete:hover {
+    background: rgba(244, 135, 113, 0.3);
+}
+
+.btn-delete.selected {
+    background: rgba(244, 135, 113, 0.4);
+    border-color: #f48771;
+    font-weight: 600;
+}
+
+.btn-custom {
+    background: rgba(255, 213, 79, 0.2);
+    color: #ffd54f;
+    border: 1px solid rgba(255, 213, 79, 0.5);
+}
+
+.btn-custom:hover {
+    background: rgba(255, 213, 79, 0.3);
+}
+
+.btn-custom.selected {
+    background: rgba(255, 213, 79, 0.4);
+    border-color: #ffd54f;
+    font-weight: 600;
+}
+
+/* Enhanced inline diff highlighting for word-level changes */
+.diff-inline-unchanged {
+    color: var(--text-primary);
+}
+
+.diff-inline-added {
+    background: var(--diff-add);
+    padding: 0 2px;
+    border-radius: 2px;
+}
+
+.diff-inline-removed {
+    background: var(--diff-remove);
+    padding: 0 2px;
+    border-radius: 2px;
+    text-decoration: line-through;
 }
 `;
 

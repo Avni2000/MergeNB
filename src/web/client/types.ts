@@ -35,6 +35,10 @@ export interface MergeRow {
     isUnmatched?: boolean;
     unmatchedSides?: ('base' | 'current' | 'incoming')[];
     anchorPosition?: number;
+    /** Whether this row is in edit mode */
+    isEditing?: boolean;
+    /** Whether this row is being dragged */
+    isDragging?: boolean;
 }
 
 /**
@@ -65,7 +69,7 @@ export interface UnifiedConflictData {
  */
 export interface ConflictChoice {
     index: number;
-    choice: 'base' | 'current' | 'incoming' | 'both' | 'custom';
+    choice: 'base' | 'current' | 'incoming' | 'both' | 'custom' | 'delete';
     customContent?: string;
 }
 

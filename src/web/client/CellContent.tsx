@@ -3,11 +3,18 @@
  * @description React component for rendering notebook cell content.
  */
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { renderMarkdown, escapeHtml } from './markdown';
 import { computeLineDiff, getDiffLineClass } from './diff';
+
+// Augment window type for MathJax
+declare global {
+    interface Window {
+        rerenderMath?: () => Promise<void>;
+    }
+}
 
 interface CellContentProps {
     cell: NotebookCell | undefined;
@@ -16,6 +23,8 @@ interface CellContentProps {
     isConflict?: boolean;
     compareCell?: NotebookCell;
     showOutputs?: boolean;
+    onDragStart?: (e: React.DragEvent) => void;
+    onDragEnd?: () => void;
 }
 
 export function CellContent({
@@ -25,11 +34,13 @@ export function CellContent({
     isConflict = false,
     compareCell,
     showOutputs = true,
+    onDragStart,
+    onDragEnd,
 }: CellContentProps): React.ReactElement {
     if (!cell) {
         return (
             <div className="cell-placeholder">
-                <span>(not present)</span>
+                <span className="placeholder-text">(not present)</span>
             </div>
         );
     }
@@ -37,8 +48,19 @@ export function CellContent({
     const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
 
+    const cellClasses = [
+        'notebook-cell',
+        `${cellType}-cell`,
+        isConflict && 'has-conflict'
+    ].filter(Boolean).join(' ');
+
     return (
-        <div className={`notebook-cell ${cellType}-cell ${isConflict ? 'has-conflict' : ''}`}>
+        <div 
+            className={cellClasses}
+            draggable={isConflict && !!onDragStart}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+        >
             <div className="cell-content">
                 {cellType === 'markdown' ? (
                     <MarkdownContent source={source} />
@@ -60,9 +82,19 @@ interface MarkdownContentProps {
 }
 
 function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
+    const containerRef = useRef<HTMLDivElement>(null);
     const html = renderMarkdown(source);
+
+    useEffect(() => {
+        // Trigger MathJax re-rendering after content is mounted/updated
+        if (containerRef.current && window.rerenderMath) {
+            window.rerenderMath();
+        }
+    }, [html]);
+
     return (
         <div
+            ref={containerRef}
             className="markdown-content"
             dangerouslySetInnerHTML={{ __html: html }}
         />
@@ -81,13 +113,36 @@ function DiffContent({ source, compareSource, side }: DiffContentProps): React.R
     return (
         <pre>
             {diffLines.map((line, i) => (
-                <span key={i} className={getDiffLineClass(line, side)}>
-                    {line.content}
+                <React.Fragment key={i}>
+                    <span className={getDiffLineClass(line, side)}>
+                        {line.inlineChanges ? (
+                            line.inlineChanges.map((change, j) => (
+                                <span key={j} className={getInlineChangeClass(change.type, side)}>
+                                    {change.text}
+                                </span>
+                            ))
+                        ) : (
+                            line.content
+                        )}
+                    </span>
                     {i < diffLines.length - 1 ? '\n' : ''}
-                </span>
+                </React.Fragment>
             ))}
         </pre>
     );
+}
+
+function getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'base' | 'current' | 'incoming'): string {
+    switch (type) {
+        case 'unchanged':
+            return 'diff-inline-unchanged';
+        case 'added':
+            return 'diff-inline-added';
+        case 'removed':
+            return 'diff-inline-removed';
+        default:
+            return '';
+    }
 }
 
 interface CellOutputsProps {
