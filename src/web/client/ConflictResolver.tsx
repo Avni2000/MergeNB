@@ -69,7 +69,13 @@ export function ConflictResolver({
     const [dropRowIndex, setDropRowIndex] = useState<number | null>(null);
 
     const conflictRows = useMemo(() => rows.filter(r => r.type === 'conflict'), [rows]);
-    const totalConflicts = conflictRows.length;
+    const metadataConflicts = useMemo(() => {
+        if (conflict.type === 'textual' && conflict.textualConflict) {
+            return conflict.textualConflict.metadataConflicts || [];
+        }
+        return [];
+    }, [conflict]);
+    const totalConflicts = conflictRows.length + metadataConflicts.length;
     const resolvedCount = choices.size;
     const allResolved = resolvedCount === totalConflicts;
 
@@ -205,6 +211,8 @@ export function ConflictResolver({
     }, [draggedRowIndex, rows]);
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
+    const metadataOffset = conflictRows.length;
+    const allowCellDrag = conflict.type !== 'textual';
 
     return (
         <div className="app-container">
@@ -287,6 +295,7 @@ export function ConflictResolver({
                                 onSelectChoice={handleSelectChoice}
                                 isDragging={draggedRowIndex === i || draggedCell?.rowIndex === i}
                                 showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
+                                enableCellDrag={allowCellDrag}
                                 // Cell drag props
                                 draggedCell={draggedCell}
                                 dropTarget={dropTarget}
@@ -308,6 +317,51 @@ export function ConflictResolver({
                         </React.Fragment>
                     );
                 })}
+
+                {metadataConflicts.length > 0 && (
+                    <div className="metadata-conflicts">
+                        {metadataConflicts.map((meta, i) => {
+                            const conflictIdx = metadataOffset + i;
+                            const resolutionState = choices.get(conflictIdx);
+
+                            return (
+                                <div key={`metadata-${i}`} className="merge-row conflict-row metadata-conflict">
+                                    <div className="cell-columns">
+                                        <div className="cell-column base-column">
+                                            <div className="cell-placeholder cell-deleted">
+                                                <span className="placeholder-text">Metadata: {meta.field}</span>
+                                            </div>
+                                        </div>
+                                        <div className="cell-column current-column">
+                                            <div className="metadata-cell">
+                                                <pre>{meta.currentContent}</pre>
+                                            </div>
+                                        </div>
+                                        <div className="cell-column incoming-column">
+                                            <div className="metadata-cell">
+                                                <pre>{meta.incomingContent}</pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="resolution-bar">
+                                        <button
+                                            className={`btn-resolve btn-current ${resolutionState?.choice === 'current' ? 'selected' : ''}`}
+                                            onClick={() => handleSelectChoice(conflictIdx, 'current')}
+                                        >
+                                            Use Current
+                                        </button>
+                                        <button
+                                            className={`btn-resolve btn-incoming ${resolutionState?.choice === 'incoming' ? 'selected' : ''}`}
+                                            onClick={() => handleSelectChoice(conflictIdx, 'incoming')}
+                                        >
+                                            Use Incoming
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </main>
         </div>
     );
@@ -396,14 +450,25 @@ function buildMergeRowsFromTextual(conflict: NotebookConflict): MergeRowType[] {
 
         // Detect if this is a conflict by comparing cells
         let isConflict = false;
-        if (currentCell && incomingCell) {
+
+        // Case 1: Cell exists in current only (added in current)
+        if (currentCell && !incomingCell && !baseCell) {
+            isConflict = true;
+        }
+        // Case 2: Cell exists in incoming only (added in incoming)
+        else if (incomingCell && !currentCell && !baseCell) {
+            isConflict = true;
+        }
+        // Case 3: Cell exists in both current and incoming - check if they differ
+        else if (currentCell && incomingCell) {
             const currSrc = normalizeCellSource(currentCell.source);
             const incSrc = normalizeCellSource(incomingCell.source);
             if (currSrc !== incSrc) {
                 isConflict = true;
             }
-        } else if ((currentCell && !incomingCell) || (!currentCell && incomingCell)) {
-            // One side added/deleted
+        }
+        // Case 4: Cell deleted in one branch (exists in base but not current or incoming)
+        else if (baseCell && (!currentCell || !incomingCell) && (currentCell || incomingCell)) {
             isConflict = true;
         }
 

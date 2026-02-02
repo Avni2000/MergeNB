@@ -248,6 +248,22 @@ body {
     border: 1px dashed var(--border-color);
 }
 
+.cell-placeholder.cell-deleted {
+    border-color: #a86b6b;
+    color: #d2a6a6;
+}
+
+.metadata-cell pre {
+    margin: 0;
+    padding: 12px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border-left: 3px solid var(--base-border);
+}
+
 /* Resolution bar */
 .resolution-bar {
     display: flex;

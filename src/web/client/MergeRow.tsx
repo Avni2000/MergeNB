@@ -31,6 +31,7 @@ interface MergeRowProps {
     onSelectChoice: (index: number, choice: ResolutionChoice, customContent?: string) => void;
     isDragging?: boolean;
     showOutputs?: boolean;
+    enableCellDrag?: boolean;
     // Cell drag props
     draggedCell: DraggedCellData | null;
     dropTarget: DropTarget | null;
@@ -49,6 +50,7 @@ export function MergeRow({
     onSelectChoice,
     isDragging = false,
     showOutputs = true,
+    enableCellDrag = true,
     draggedCell,
     dropTarget,
     onCellDragStart,
@@ -91,6 +93,7 @@ export function MergeRow({
 
     // Check if this cell is a valid drop target
     const isDropTarget = (side: 'base' | 'current' | 'incoming') => {
+        if (!enableCellDrag) return false;
         if (!draggedCell) return false;
         if (draggedCell.side !== side) return false; // Same column only
         if (draggedCell.rowIndex === rowIndex) return false; // Not same row
@@ -98,7 +101,14 @@ export function MergeRow({
     };
 
     // Check if a cell can be dragged (only unmatched cells)
-    const canDragCell = row.isUnmatched;
+    const canDragCell = enableCellDrag && row.isUnmatched;
+
+    const getPlaceholderText = (side: 'base' | 'current' | 'incoming') => {
+        if (row.isUnmatched && row.unmatchedSides && !row.unmatchedSides.includes(side)) {
+            return '(unmatched cell)';
+        }
+        return '(cell deleted)';
+    };
 
     // For conflicts, show all 3 columns with drag-and-drop support for unmatched cells
     const rowClasses = [
@@ -149,11 +159,11 @@ export function MergeRow({
                                 />
                             ) : (
                                 <div 
-                                    className={`cell-placeholder ${isDropTarget('base') ? 'drop-target' : ''}`}
-                                    onDragOver={(e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'base'); }}
-                                    onDrop={() => onCellDrop(rowIndex, 'base')}
+                                    className={`cell-placeholder cell-deleted ${isDropTarget('base') ? 'drop-target' : ''}`}
+                                    onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'base'); } : undefined}
+                                    onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'base') : undefined}
                                 >
-                                    <span className="placeholder-text">(not present)</span>
+                                    <span className="placeholder-text">{getPlaceholderText('base')}</span>
                                 </div>
                             )}
                         </div>
@@ -175,11 +185,11 @@ export function MergeRow({
                                 />
                             ) : (
                                 <div 
-                                    className={`cell-placeholder ${isDropTarget('current') ? 'drop-target' : ''}`}
-                                    onDragOver={(e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'current'); }}
-                                    onDrop={() => onCellDrop(rowIndex, 'current')}
+                                    className={`cell-placeholder cell-deleted ${isDropTarget('current') ? 'drop-target' : ''}`}
+                                    onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'current'); } : undefined}
+                                    onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'current') : undefined}
                                 >
-                                    <span className="placeholder-text">(not present)</span>
+                                    <span className="placeholder-text">{getPlaceholderText('current')}</span>
                                 </div>
                             )}
                         </div>
@@ -201,11 +211,11 @@ export function MergeRow({
                                 />
                             ) : (
                                 <div 
-                                    className={`cell-placeholder ${isDropTarget('incoming') ? 'drop-target' : ''}`}
-                                    onDragOver={(e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'incoming'); }}
-                                    onDrop={() => onCellDrop(rowIndex, 'incoming')}
+                                    className={`cell-placeholder cell-deleted ${isDropTarget('incoming') ? 'drop-target' : ''}`}
+                                    onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'incoming'); } : undefined}
+                                    onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'incoming') : undefined}
                                 >
-                                    <span className="placeholder-text">(not present)</span>
+                                    <span className="placeholder-text">{getPlaceholderText('incoming')}</span>
                                 </div>
                             )}
                         </div>
