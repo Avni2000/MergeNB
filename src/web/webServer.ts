@@ -15,7 +15,7 @@
  */
 
 import * as http from 'http';
-import * as WebSocket from 'ws';
+import WebSocket, { WebSocketServer } from 'ws';
 import * as vscode from 'vscode';
 
 export interface WebServerOptions {

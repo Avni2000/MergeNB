@@ -13,6 +13,7 @@
  * to work in a standalone browser context using WebSocket instead of vscode.postMessage.
  */
 
+import markdownit from 'markdown-it';
 import * as vscode from 'vscode';
 import * as logger from '../logger';
 import {
@@ -977,10 +978,12 @@ export class WebConflictPanel {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MergeNB: ${escapeHtml(fileName)}</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/markdown-it-texmath@1.0.0/texmath.min.js"></script>
+    <!-- KaTeX for math rendering -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
+    <!-- Markdown-it for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@13.0.2/dist/markdown-it.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-texmath@1.0.0/texmath.min.js" crossorigin="anonymous"></script>
     <style>
 ${this._getStyles()}
     </style>
@@ -1345,6 +1348,23 @@ ${this._getClientScript(sessionId, conflictType, totalConflicts)}
         
         .markdown-content a:hover {
             text-decoration: underline;
+        }
+        
+        .markdown-content ul,
+        .markdown-content ol {
+            margin: 0.5em 0 0.5em 1.5em;
+            padding: 0;
+        }
+        
+        .markdown-content ul ul,
+        .markdown-content ol ul,
+        .markdown-content ul ol,
+        .markdown-content ol ol {
+            margin: 0.25em 0 0.25em 1.5em;
+        }
+        
+        .markdown-content li {
+            margin: 0.25em 0;
         }
         
         .markdown-content table {
@@ -2251,8 +2271,8 @@ ${this._getClientScript(sessionId, conflictType, totalConflicts)}
         updateProgressIndicator();
         
         // Render markdown content using markdown-it library
-        if (typeof markdownit !== 'undefined') {
-            const md = markdownit({
+        if (typeof window.markdownit !== 'undefined') {
+            const md = window.markdownit({
                 html: true,
                 breaks: true,
                 linkify: true,
@@ -2279,6 +2299,8 @@ ${this._getClientScript(sessionId, conflictType, totalConflicts)}
                     }
                 }
             });
+        } else {
+            console.warn('[MergeNB] markdown-it library not loaded, markdown cells will not render');
         }
         `;
     }
