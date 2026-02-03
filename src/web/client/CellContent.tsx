@@ -21,6 +21,11 @@ declare global {
     }
 }
 
+// Performance tuning constants
+const MATHJAX_DEBOUNCE_MS = 100; // Debounce time for batching MathJax renders
+const INTERSECTION_PRERENDER_MARGIN = '200px'; // Pre-render margin for intersection observer
+const LAZY_PREVIEW_LENGTH = 100; // Characters to show in lazy-loaded markdown preview
+
 // Debounce utility for MathJax rendering
 let mathJaxRenderTimeout: ReturnType<typeof setTimeout> | null = null;
 const pendingMathJaxElements = new Set<HTMLElement>();
@@ -43,7 +48,7 @@ function queueMathJaxRender(element: HTMLElement): void {
             });
         }
         mathJaxRenderTimeout = null;
-    }, 100); // 100ms debounce
+    }, MATHJAX_DEBOUNCE_MS);
 }
 
 interface CellContentProps {
@@ -92,7 +97,7 @@ export function CellContent({
             <div className={cellClasses} data-lazy="true">
                 <div className="cell-content">
                     <div style={{ minHeight: '50px', opacity: 0.3 }}>
-                        <pre>{source.substring(0, 100)}...</pre>
+                        <pre>{source.substring(0, LAZY_PREVIEW_LENGTH)}...</pre>
                     </div>
                 </div>
             </div>
@@ -151,7 +156,7 @@ function MarkdownContent({ source, isVisible = true }: MarkdownContentProps): Re
                     }
                 });
             },
-            { rootMargin: '200px' } // Pre-render 200px before entering viewport
+            { rootMargin: INTERSECTION_PRERENDER_MARGIN }
         );
 
         observerRef.current.observe(containerRef.current);

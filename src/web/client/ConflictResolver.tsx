@@ -17,6 +17,11 @@ import type {
 } from './types';
 import { MergeRow } from './MergeRow';
 
+// Virtualization constants
+const INITIAL_VISIBLE_ROWS = 20; // Number of rows to render initially
+const ESTIMATED_ROW_HEIGHT = 200; // Estimated height per row in pixels (tune based on content)
+const VIRTUALIZATION_OVERSCAN_ROWS = 5; // Number of rows to render outside viewport for smooth scrolling
+
 type ResolutionChoice = 'base' | 'current' | 'incoming' | 'both' | 'delete';
 
 /** Resolution state tracking for a cell conflict */
@@ -64,7 +69,7 @@ export function ConflictResolver({
     
     // Virtualization state
     const mainContentRef = useRef<HTMLDivElement>(null);
-    const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 }); // Initially render first 20 rows
+    const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_VISIBLE_ROWS });
     const [scrollTop, setScrollTop] = useState(0);
     
     // Cell-level drag state (for dragging cells between/into rows)
@@ -88,14 +93,10 @@ export function ConflictResolver({
             const scrollTop = mainContentRef.current.scrollTop;
             const viewportHeight = mainContentRef.current.clientHeight;
             
-            // Estimate row height (adjust based on actual content)
-            const estimatedRowHeight = 200; // Adjust as needed
-            const overscan = 5; // Number of rows to render outside viewport
-            
-            const startIndex = Math.max(0, Math.floor(scrollTop / estimatedRowHeight) - overscan);
+            const startIndex = Math.max(0, Math.floor(scrollTop / ESTIMATED_ROW_HEIGHT) - VIRTUALIZATION_OVERSCAN_ROWS);
             const endIndex = Math.min(
                 rows.length,
-                Math.ceil((scrollTop + viewportHeight) / estimatedRowHeight) + overscan
+                Math.ceil((scrollTop + viewportHeight) / ESTIMATED_ROW_HEIGHT) + VIRTUALIZATION_OVERSCAN_ROWS
             );
             
             setVisibleRange({ start: startIndex, end: endIndex });
