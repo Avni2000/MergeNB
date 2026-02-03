@@ -3,7 +3,7 @@
  * @description React component for rendering notebook cell content.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo, useState } from 'react';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { renderMarkdown, escapeHtml } from './markdown';
@@ -14,7 +14,36 @@ import DOMPurify from 'dompurify';
 declare global {
     interface Window {
         rerenderMath?: () => Promise<void>;
+        mathJaxReady?: boolean;
+        MathJax?: {
+            typesetPromise: (elements?: HTMLElement[]) => Promise<void>;
+        };
     }
+}
+
+// Debounce utility for MathJax rendering
+let mathJaxRenderTimeout: ReturnType<typeof setTimeout> | null = null;
+const pendingMathJaxElements = new Set<HTMLElement>();
+
+function queueMathJaxRender(element: HTMLElement): void {
+    pendingMathJaxElements.add(element);
+    
+    if (mathJaxRenderTimeout) {
+        clearTimeout(mathJaxRenderTimeout);
+    }
+    
+    mathJaxRenderTimeout = setTimeout(() => {
+        if (window.MathJax && window.mathJaxReady && pendingMathJaxElements.size > 0) {
+            const elementsToRender = Array.from(pendingMathJaxElements);
+            pendingMathJaxElements.clear();
+            
+            // Batch render all pending elements
+            window.MathJax.typesetPromise(elementsToRender).catch((err: Error) => {
+                console.error('MathJax batch render error:', err);
+            });
+        }
+        mathJaxRenderTimeout = null;
+    }, 100); // 100ms debounce
 }
 
 interface CellContentProps {
@@ -26,6 +55,7 @@ interface CellContentProps {
     showOutputs?: boolean;
     onDragStart?: (e: React.DragEvent) => void;
     onDragEnd?: () => void;
+    isVisible?: boolean; // For lazy rendering optimization
 }
 
 export function CellContent({
@@ -37,6 +67,7 @@ export function CellContent({
     showOutputs = true,
     onDragStart,
     onDragEnd,
+    isVisible = true,
 }: CellContentProps): React.ReactElement {
     if (!cell) {
         return (
@@ -55,6 +86,19 @@ export function CellContent({
         isConflict && 'has-conflict'
     ].filter(Boolean).join(' ');
 
+    // For non-visible cells, render a minimal placeholder to maintain layout
+    if (!isVisible && cellType === 'markdown') {
+        return (
+            <div className={cellClasses} data-lazy="true">
+                <div className="cell-content">
+                    <div style={{ minHeight: '50px', opacity: 0.3 }}>
+                        <pre>{source.substring(0, 100)}...</pre>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div 
             className={cellClasses}
@@ -64,7 +108,7 @@ export function CellContent({
         >
             <div className="cell-content">
                 {cellType === 'markdown' ? (
-                    <MarkdownContent source={source} />
+                    <MarkdownContent source={source} isVisible={isVisible} />
                 ) : isConflict && compareCell ? (
                     <DiffContent source={source} compareSource={normalizeCellSource(compareCell.source)} side={side} />
                 ) : (
@@ -72,7 +116,7 @@ export function CellContent({
                 )}
             </div>
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
-                <CellOutputs outputs={cell.outputs} />
+                <CellOutputs outputs={cell.outputs} isVisible={isVisible} />
             )}
         </div>
     );
@@ -80,18 +124,51 @@ export function CellContent({
 
 interface MarkdownContentProps {
     source: string;
+    isVisible?: boolean;
 }
 
-function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
+function MarkdownContent({ source, isVisible = true }: MarkdownContentProps): React.ReactElement {
     const containerRef = useRef<HTMLDivElement>(null);
-    const html = renderMarkdown(source);
+    const observerRef = useRef<IntersectionObserver | null>(null);
+    const [isInView, setIsInView] = useState(false);
+    
+    // Memoize HTML rendering to avoid re-parsing on every render
+    const html = useMemo(() => renderMarkdown(source), [source]);
 
     useEffect(() => {
-        // Trigger MathJax re-rendering after content is mounted/updated
-        if (containerRef.current && window.rerenderMath) {
-            window.rerenderMath();
+        if (!containerRef.current) return;
+
+        // Set up intersection observer for lazy MathJax rendering
+        observerRef.current = new IntersectionObserver(
+            (entries) => {
+                entries.forEach((entry) => {
+                    if (entry.isIntersecting) {
+                        setIsInView(true);
+                        // Queue MathJax rendering only when element is visible
+                        if (window.mathJaxReady && containerRef.current) {
+                            queueMathJaxRender(containerRef.current);
+                        }
+                    }
+                });
+            },
+            { rootMargin: '200px' } // Pre-render 200px before entering viewport
+        );
+
+        observerRef.current.observe(containerRef.current);
+
+        return () => {
+            if (observerRef.current) {
+                observerRef.current.disconnect();
+            }
+        };
+    }, []);
+
+    // Re-render MathJax when HTML content changes and element is in view
+    useEffect(() => {
+        if (isInView && containerRef.current && window.mathJaxReady) {
+            queueMathJaxRender(containerRef.current);
         }
-    }, [html]);
+    }, [html, isInView]);
 
     return (
         <div
@@ -150,9 +227,19 @@ function getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'ba
 
 interface CellOutputsProps {
     outputs: CellOutput[];
+    isVisible?: boolean;
 }
 
-function CellOutputs({ outputs }: CellOutputsProps): React.ReactElement {
+function CellOutputs({ outputs, isVisible = true }: CellOutputsProps): React.ReactElement {
+    // For non-visible outputs, render minimal placeholder
+    if (!isVisible && outputs.length > 0) {
+        return (
+            <div className="cell-outputs" style={{ minHeight: '30px', opacity: 0.3 }}>
+                <pre>({outputs.length} output{outputs.length > 1 ? 's' : ''})</pre>
+            </div>
+        );
+    }
+
     return (
         <div className="cell-outputs">
             {outputs.map((output, i) => (

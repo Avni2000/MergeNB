@@ -3,7 +3,7 @@
  * @description Main React component for the conflict resolution UI.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { sortByPosition } from '../../positionUtils';
 import { normalizeCellSource } from '../../notebookUtils';
 import type {
@@ -62,6 +62,11 @@ export function ConflictResolver({
         return [];
     });
     
+    // Virtualization state
+    const mainContentRef = useRef<HTMLDivElement>(null);
+    const [visibleRange, setVisibleRange] = useState({ start: 0, end: 20 }); // Initially render first 20 rows
+    const [scrollTop, setScrollTop] = useState(0);
+    
     // Cell-level drag state (for dragging cells between/into rows)
     const [draggedCell, setDraggedCell] = useState<DraggedCellData | null>(null);
     const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
@@ -74,6 +79,38 @@ export function ConflictResolver({
     const totalConflicts = conflictRows.length;
     const resolvedCount = choices.size;
     const allResolved = resolvedCount === totalConflicts;
+
+    // Handle scroll for virtualization
+    useEffect(() => {
+        const handleScroll = () => {
+            if (!mainContentRef.current) return;
+            
+            const scrollTop = mainContentRef.current.scrollTop;
+            const viewportHeight = mainContentRef.current.clientHeight;
+            
+            // Estimate row height (adjust based on actual content)
+            const estimatedRowHeight = 200; // Adjust as needed
+            const overscan = 5; // Number of rows to render outside viewport
+            
+            const startIndex = Math.max(0, Math.floor(scrollTop / estimatedRowHeight) - overscan);
+            const endIndex = Math.min(
+                rows.length,
+                Math.ceil((scrollTop + viewportHeight) / estimatedRowHeight) + overscan
+            );
+            
+            setVisibleRange({ start: startIndex, end: endIndex });
+            setScrollTop(scrollTop);
+        };
+        
+        const element = mainContentRef.current;
+        if (element) {
+            element.addEventListener('scroll', handleScroll);
+            // Initial calculation
+            handleScroll();
+            
+            return () => element.removeEventListener('scroll', handleScroll);
+        }
+    }, [rows.length]);
 
     /** Handle user selecting a branch choice (sets both choice and initial content) */
     const handleSelectChoice = useCallback((index: number, choice: ResolutionChoice, resolvedContent: string) => {
@@ -261,7 +298,7 @@ export function ConflictResolver({
                 </div>
             </header>
 
-            <main className="main-content">
+            <main className="main-content" ref={mainContentRef}>
                 {conflict.autoResolveResult && conflict.autoResolveResult.autoResolvedCount > 0 && (
                     <div className="auto-resolve-banner">
                         <span className="icon">✓</span>
@@ -285,54 +322,61 @@ export function ConflictResolver({
                     </div>
                 </div>
 
-                {rows.map((row, i) => {
-                    const conflictIdx = row.conflictIndex ?? -1;
-                    const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
-                    const isDropTargetRow = dropRowIndex === i;
-                    
-                    return (
-                        <React.Fragment key={i}>
-                            {/* Drop zone before first row */}
-                            {i === 0 && draggedRowIndex !== null && (
-                                <div 
-                                    className={`row-drop-zone ${dropRowIndex === 0 ? 'drag-over' : ''}`}
-                                    onDragOver={(e) => handleRowDragOver(e, 0)}
-                                    onDrop={() => handleRowDrop(0)}
-                                    onDragLeave={() => setDropRowIndex(null)}
+                {/* Virtual scrolling container */}
+                <div style={{ position: 'relative' }}>
+                    {rows.map((row, i) => {
+                        const conflictIdx = row.conflictIndex ?? -1;
+                        const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+                        const isDropTargetRow = dropRowIndex === i;
+                        
+                        // Check if row is in visible range
+                        const isVisible = i >= visibleRange.start && i < visibleRange.end;
+                        
+                        return (
+                            <React.Fragment key={i}>
+                                {/* Drop zone before first row */}
+                                {i === 0 && draggedRowIndex !== null && (
+                                    <div 
+                                        className={`row-drop-zone ${dropRowIndex === 0 ? 'drag-over' : ''}`}
+                                        onDragOver={(e) => handleRowDragOver(e, 0)}
+                                        onDrop={() => handleRowDrop(0)}
+                                        onDragLeave={() => setDropRowIndex(null)}
+                                    />
+                                )}
+                                
+                                <MergeRow
+                                    row={row}
+                                    rowIndex={i}
+                                    conflictIndex={conflictIdx}
+                                    resolutionState={resolutionState}
+                                    onSelectChoice={handleSelectChoice}
+                                    onUpdateContent={handleUpdateContent}
+                                    isDragging={draggedRowIndex === i || draggedCell?.rowIndex === i}
+                                    showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
+                                    enableCellDrag={allowCellDrag}
+                                    isVisible={isVisible}
+                                    // Cell drag props
+                                    draggedCell={draggedCell}
+                                    dropTarget={dropTarget}
+                                    onCellDragStart={handleCellDragStart}
+                                    onCellDragEnd={handleCellDragEnd}
+                                    onCellDragOver={handleCellDragOver}
+                                    onCellDrop={handleCellDrop}
                                 />
-                            )}
-                            
-                            <MergeRow
-                                row={row}
-                                rowIndex={i}
-                                conflictIndex={conflictIdx}
-                                resolutionState={resolutionState}
-                                onSelectChoice={handleSelectChoice}
-                                onUpdateContent={handleUpdateContent}
-                                isDragging={draggedRowIndex === i || draggedCell?.rowIndex === i}
-                                showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
-                                enableCellDrag={allowCellDrag}
-                                // Cell drag props
-                                draggedCell={draggedCell}
-                                dropTarget={dropTarget}
-                                onCellDragStart={handleCellDragStart}
-                                onCellDragEnd={handleCellDragEnd}
-                                onCellDragOver={handleCellDragOver}
-                                onCellDrop={handleCellDrop}
-                            />
-                            
-                            {/* Drop zone between/after rows */}
-                            {draggedRowIndex !== null && draggedRowIndex !== i && draggedRowIndex !== i + 1 && (
-                                <div 
-                                    className={`row-drop-zone ${dropRowIndex === i + 1 ? 'drag-over' : ''}`}
-                                    onDragOver={(e) => handleRowDragOver(e, i + 1)}
-                                    onDrop={() => handleRowDrop(i + 1)}
-                                    onDragLeave={() => setDropRowIndex(null)}
-                                />
-                            )}
-                        </React.Fragment>
-                    );
-                })}
+                                
+                                {/* Drop zone between/after rows */}
+                                {draggedRowIndex !== null && draggedRowIndex !== i && draggedRowIndex !== i + 1 && (
+                                    <div 
+                                        className={`row-drop-zone ${dropRowIndex === i + 1 ? 'drag-over' : ''}`}
+                                        onDragOver={(e) => handleRowDragOver(e, i + 1)}
+                                        onDrop={() => handleRowDrop(i + 1)}
+                                        onDragLeave={() => setDropRowIndex(null)}
+                                    />
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
+                </div>
             </main>
         </div>
     );
