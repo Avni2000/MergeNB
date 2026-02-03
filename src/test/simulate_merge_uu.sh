@@ -8,7 +8,7 @@ set -euo pipefail
 # The goal is to make a cli tool that allows us to test more thouroughly at some point (and allow cli resolutions in general),
 # but for now this is a quick way to manually test the extension in a UU conflict state
 
-# Parse flags: -textual or -semantic (default: semantic)
+# Parse flags: -02, -03, or -04 to select test suite (default: 02)
 TEST_SUITE="02"
 while [[ $# -gt 0 ]]; do
   case "$1" in

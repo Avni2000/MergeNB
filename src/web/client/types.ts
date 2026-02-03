@@ -55,8 +55,7 @@ export interface AutoResolveResult {
  */
 export interface UnifiedConflictData {
     filePath: string;
-    type: 'textual' | 'semantic';
-    textualConflict?: import('../../types').NotebookConflict;
+    type: 'semantic';
     semanticConflict?: import('../../types').NotebookSemanticConflict;
     autoResolveResult?: AutoResolveResult;
     hideNonConflictOutputs?: boolean;
@@ -83,7 +82,7 @@ export interface ConflictChoice {
  */
 export interface ResolutionMessage {
     command: 'resolve';
-    type: 'textual' | 'semantic';
+    type: 'semantic';
     resolutions: ConflictChoice[];
     semanticChoice?: 'current' | 'incoming';
     markAsResolved: boolean;

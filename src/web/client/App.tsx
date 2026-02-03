@@ -14,7 +14,7 @@ export function App(): React.ReactElement {
     const handleResolve = (resolutions: ConflictChoice[], markAsResolved: boolean) => {
         sendMessage({
             command: 'resolve',
-            type: conflictData?.type || 'textual',
+            type: 'semantic',
             resolutions,
             markAsResolved,
         });
