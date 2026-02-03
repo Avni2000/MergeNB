@@ -140,6 +140,18 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         return null;
     }
 }
+
+/**
+ * Analyze cell mappings to identify semantic conflicts.
+ * Exported for testing purposes.
+ */
+export function analyzeSemanticConflictsFromMappings(mappings: CellMapping[]): SemanticConflict[] {
+    const conflicts: SemanticConflict[] = [];
+
+    // Check for cell reordering
+    if (detectReordering(mappings)) {
+        conflicts.push({
+            type: 'cell-reordered',
             description: 'Cells have been reordered between versions'
         });
     }
