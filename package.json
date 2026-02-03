@@ -67,6 +67,11 @@
     "configuration": {
       "title": "MergeNB",
       "properties": {
+        "mergeNB.ui.hideNonConflictOutputs": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hide outputs from cells without conflicts in the conflict resolution view"
+        },
         "mergeNB.autoResolve.executionCount": {
           "type": "boolean",
           "default": true,
