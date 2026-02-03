@@ -3,53 +3,15 @@
  * @description React component for rendering notebook cell content.
  */
 
-import React, { useEffect, useRef, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { renderMarkdown, escapeHtml } from './markdown';
 import { computeLineDiff, getDiffLineClass } from './diff';
 import DOMPurify from 'dompurify';
 
-// Augment window type for MathJax
-declare global {
-    interface Window {
-        rerenderMath?: () => Promise<void>;
-        mathJaxReady?: boolean;
-        MathJax?: {
-            typesetPromise: (elements?: HTMLElement[]) => Promise<void>;
-        };
-    }
-}
-
 // Performance tuning constants
-const MATHJAX_DEBOUNCE_MS = 100; // Debounce time for batching MathJax renders
-const INTERSECTION_PRERENDER_MARGIN = '200px'; // Pre-render margin for intersection observer
 const LAZY_PREVIEW_LENGTH = 100; // Characters to show in lazy-loaded markdown preview
-
-// Debounce utility for MathJax rendering
-let mathJaxRenderTimeout: ReturnType<typeof setTimeout> | null = null;
-const pendingMathJaxElements = new Set<HTMLElement>();
-
-function queueMathJaxRender(element: HTMLElement): void {
-    pendingMathJaxElements.add(element);
-    
-    if (mathJaxRenderTimeout) {
-        clearTimeout(mathJaxRenderTimeout);
-    }
-    
-    mathJaxRenderTimeout = setTimeout(() => {
-        if (window.MathJax && window.mathJaxReady && pendingMathJaxElements.size > 0) {
-            const elementsToRender = Array.from(pendingMathJaxElements);
-            pendingMathJaxElements.clear();
-            
-            // Batch render all pending elements
-            window.MathJax.typesetPromise(elementsToRender).catch((err: Error) => {
-                console.error('MathJax batch render error:', err);
-            });
-        }
-        mathJaxRenderTimeout = null;
-    }, MATHJAX_DEBOUNCE_MS);
-}
 
 interface CellContentProps {
     cell: NotebookCell | undefined;
@@ -113,7 +75,7 @@ export function CellContent({
         >
             <div className="cell-content">
                 {cellType === 'markdown' ? (
-                    <MarkdownContent source={source} isVisible={isVisible} />
+                    <MarkdownContent source={source} />
                 ) : isConflict && compareCell ? (
                     <DiffContent source={source} compareSource={normalizeCellSource(compareCell.source)} side={side} />
                 ) : (
@@ -129,55 +91,14 @@ export function CellContent({
 
 interface MarkdownContentProps {
     source: string;
-    isVisible?: boolean;
 }
 
-function MarkdownContent({ source, isVisible = true }: MarkdownContentProps): React.ReactElement {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const observerRef = useRef<IntersectionObserver | null>(null);
-    const [isInView, setIsInView] = useState(false);
-    
+function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
     // Memoize HTML rendering to avoid re-parsing on every render
     const html = useMemo(() => renderMarkdown(source), [source]);
 
-    useEffect(() => {
-        if (!containerRef.current) return;
-
-        // Set up intersection observer for lazy MathJax rendering
-        observerRef.current = new IntersectionObserver(
-            (entries) => {
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting) {
-                        setIsInView(true);
-                        // Queue MathJax rendering only when element is visible
-                        if (window.mathJaxReady && containerRef.current) {
-                            queueMathJaxRender(containerRef.current);
-                        }
-                    }
-                });
-            },
-            { rootMargin: INTERSECTION_PRERENDER_MARGIN }
-        );
-
-        observerRef.current.observe(containerRef.current);
-
-        return () => {
-            if (observerRef.current) {
-                observerRef.current.disconnect();
-            }
-        };
-    }, []);
-
-    // Re-render MathJax when HTML content changes and element is in view
-    useEffect(() => {
-        if (isInView && containerRef.current && window.mathJaxReady) {
-            queueMathJaxRender(containerRef.current);
-        }
-    }, [html, isInView]);
-
     return (
         <div
-            ref={containerRef}
             className="markdown-content"
             dangerouslySetInnerHTML={{ __html: html }}
         />
