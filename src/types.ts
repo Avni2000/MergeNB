@@ -117,7 +117,7 @@ export interface ConflictResolution {
 }
 
 /**
- * Semantic conflict types (Git UU status without textual markers)
+ * Semantic conflict types (Git UU status)
  */
 
 export type SemanticConflictType = 
@@ -158,9 +158,6 @@ export interface CellMapping {
 
 export interface NotebookSemanticConflict {
     filePath: string;
-    
-    // True if file also has textual conflict markers
-    hasTextualConflicts: boolean;
     
     // All semantic conflicts detected
     semanticConflicts: SemanticConflict[];

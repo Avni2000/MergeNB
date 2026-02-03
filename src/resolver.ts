@@ -3,8 +3,8 @@
  * @description Main conflict resolution orchestrator for MergeNB.
  * 
  * The NotebookConflictResolver class coordinates the entire resolution workflow:
- * 1. Scans workspace for notebooks with conflicts (textual markers or Git UU status)
- * 2. Detects conflict type and retrieves base/current/incoming versions from Git
+ * 1. Scans workspace for notebooks with Git UU status
+ * 2. Detects semantic conflicts and retrieves base/current/incoming versions from Git
  * 3. Applies auto-resolutions for trivial conflicts (execution counts, outputs)
  * 4. Opens the webview panel for manual resolution of remaining conflicts
  * 5. Applies user choices and writes the resolved notebook back to disk
@@ -12,25 +12,23 @@
  */
 
 import * as vscode from 'vscode';
-import { analyzeNotebookConflicts, hasConflictMarkers, resolveAllConflicts, detectSemanticConflicts, applyAutoResolutions, AutoResolveResult, enrichTextualConflictsWithContext } from './conflictDetector';
-import { parseNotebook, serializeNotebook, renumberExecutionCounts } from './notebookParser';
+import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
+import { serializeNotebook, renumberExecutionCounts } from './notebookParser';
 import { WebConflictPanel } from './web/WebConflictPanel';
 import { UnifiedConflict, UnifiedResolution } from './web/webTypes';
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell, SemanticConflict } from './types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
-import * as logger from './logger';
 import { promisify } from 'util';
 import { exec as execCallback } from 'child_process';
 
 const exec = promisify(execCallback);
 
 /**
- * Represents a notebook with any type of conflict (textual or semantic)
+ * Represents a notebook with semantic conflicts (Git UU status)
  */
 export interface ConflictedNotebook {
     uri: vscode.Uri;
-    hasTextualConflicts: boolean;
     hasSemanticConflicts: boolean;
 }
 
@@ -41,52 +39,27 @@ export class NotebookConflictResolver {
     constructor(private readonly extensionUri: vscode.Uri) {}
 
     /**
-     * Check if a file has textual merge conflicts.
-     */
-    async hasTextualConflicts(uri: vscode.Uri): Promise<boolean> {
-        try {
-            const content = await this.readFile(uri);
-            return hasConflictMarkers(content);
-        } catch {
-            return false;
-        }
-    }
-
-    /**
-     * Check if a file has semantic conflicts (Git UU status without textual markers).
+     * Check if a file has semantic conflicts (Git UU status).
      */
     async hasSemanticConflicts(uri: vscode.Uri): Promise<boolean> {
         try {
-            const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
-            if (!isUnmerged) return false;
-
-            const content = await this.readFile(uri);
-            return !hasConflictMarkers(content);
+            return await gitIntegration.isUnmergedFile(uri.fsPath);
         } catch {
             return false;
         }
     }
 
     /**
-     * Check if a file has any type of conflict.
+     * Check if a file has conflicts (Git UU status).
      */
     async hasAnyConflicts(uri: vscode.Uri): Promise<ConflictedNotebook | null> {
         try {
-            const content = await this.readFile(uri);
-            const hasTextual = hasConflictMarkers(content);
+            const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
             
-            // Check for semantic conflicts only if no textual markers
-            let hasSemantic = false;
-            if (!hasTextual) {
-                const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
-                hasSemantic = isUnmerged;
-            }
-
-            if (hasTextual || hasSemantic) {
+            if (isUnmerged) {
                 return {
                     uri,
-                    hasTextualConflicts: hasTextual,
-                    hasSemanticConflicts: hasSemantic
+                    hasSemanticConflicts: true
                 };
             }
             return null;
@@ -96,13 +69,13 @@ export class NotebookConflictResolver {
     }
 
     /**
-     * Find all notebook files with any type of conflict in the workspace.
-     * Fast path: Only queries Git for unmerged files, no file scanning.
+     * Find all notebook files with conflicts (Git UU status) in the workspace.
+     * Only queries Git for unmerged files, no file scanning.
      */
     async findNotebooksWithConflicts(): Promise<ConflictedNotebook[]> {
         const withConflicts: ConflictedNotebook[] = [];
         
-        // Fast path: Only get unmerged files from Git status
+        // Get unmerged files from Git status
         const unmergedFiles = await gitIntegration.getUnmergedFiles();
         
         for (const file of unmergedFiles) {
@@ -113,19 +86,9 @@ export class NotebookConflictResolver {
             
             const uri = vscode.Uri.file(file.path);
             
-            // Quick check if file has textual markers
-            let hasTextual = false;
-            try {
-                const content = await this.readFile(uri);
-                hasTextual = hasConflictMarkers(content);
-            } catch {
-                // File might not be readable, treat as semantic conflict
-            }
-            
             withConflicts.push({
                 uri,
-                hasTextualConflicts: hasTextual,
-                hasSemanticConflicts: !hasTextual
+                hasSemanticConflicts: true
             });
         }
         
@@ -133,63 +96,20 @@ export class NotebookConflictResolver {
     }
 
     /**
-     * Resolve conflicts in a notebook - handles both textual and semantic.
+     * Resolve semantic conflicts in a notebook.
      */
     async resolveConflicts(uri: vscode.Uri): Promise<void> {
-        const content = await this.readFile(uri);
-        const hasTextual = hasConflictMarkers(content);
-        
-        if (hasTextual) {
-            // Handle textual conflicts
-            await this.resolveTextualConflicts(uri, content);
+        // Check for semantic conflicts (Git UU status)
+        const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
+        if (isUnmerged) {
+            await this.resolveSemanticConflicts(uri);
         } else {
-            // Check for semantic conflicts
-            const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
-            if (isUnmerged) {
-                await this.resolveSemanticConflicts(uri);
-            } else {
-                vscode.window.showInformationMessage('No merge conflicts found in this notebook.');
-            }
+            vscode.window.showInformationMessage('No merge conflicts found in this notebook.');
         }
     }
 
     /**
-     * Resolve textual conflicts (<<<<<<< markers).
-     */
-    private async resolveTextualConflicts(uri: vscode.Uri, content: string): Promise<void> {
-        let conflict = analyzeNotebookConflicts(uri.fsPath, content);
-
-        if (conflict.conflicts.length === 0 && conflict.metadataConflicts.length === 0) {
-            vscode.window.showWarningMessage('Conflict markers found but could not be parsed. The notebook may be corrupted.');
-            return;
-        }
-
-        // Enrich with base/current/incoming versions from Git to show full notebook context
-        conflict = await enrichTextualConflictsWithContext(conflict);
-
-        const settings = getSettings();
-
-        const unifiedConflict: UnifiedConflict = {
-            filePath: uri.fsPath,
-            type: 'textual',
-            textualConflict: conflict,
-            hideNonConflictOutputs: settings.hideNonConflictOutputs
-        };
-
-        const resolutionCallback = async (resolution: UnifiedResolution) => {
-            await this.applyTextualResolutions(uri, content, conflict, resolution);
-        };
-
-        // Open conflict resolver in browser
-        await WebConflictPanel.createOrShow(
-            this.extensionUri,
-            unifiedConflict,
-            resolutionCallback
-        );
-    }
-
-    /**
-     * Resolve semantic conflicts (Git UU status without textual markers).
+     * Resolve semantic conflicts (Git UU status).
      * Auto-resolves execution count and kernel version differences based on settings.
      */
     async resolveSemanticConflicts(uri: vscode.Uri): Promise<void> {
@@ -262,239 +182,6 @@ export class NotebookConflictResolver {
             unifiedConflict,
             resolutionCallback
         );
-    }
-
-    /**
-     * Apply textual conflict resolutions.
-     * 
-     * When conflicts are enriched with Git context (cellMappings), we build the
-     * resolved notebook from the Git versions. Otherwise, we use textual marker
-     * replacement on the original content.
-     */
-    private async applyTextualResolutions(
-        uri: vscode.Uri,
-        originalContent: string,
-        conflict: ReturnType<typeof analyzeNotebookConflicts>,
-        resolution: UnifiedResolution
-    ): Promise<void> {
-        if (resolution.type !== 'textual' || !resolution.textualResolutions) {
-            return;
-        }
-
-        logger.debug('Applying textual resolutions for:', uri.fsPath);
-        logger.debug('Resolutions received:', Array.from(resolution.textualResolutions.entries()).map(([idx, res]) => ({
-            index: idx,
-            choice: res.choice,
-            contentLength: res.resolvedContent?.length ?? 0,
-            contentPreview: res.resolvedContent ?? ""
-        })));
-
-        const resolutions = resolution.textualResolutions;
-        let resolvedContent: string;
-
-        // If we have Git context (cellMappings), build notebook from chosen cells
-        // This matches how the webview displays conflicts when enriched with context
-        if (conflict.cellMappings && conflict.cellMappings.length > 0 && conflict.current) {
-            const resolvedNotebook = this.buildResolvedNotebookFromChoices(
-                conflict,
-                resolutions
-            );
-            
-            // Ask user if they want to renumber execution counts
-            const renumber = await vscode.window.showQuickPick(
-                ['Yes', 'No'],
-                {
-                    placeHolder: 'Renumber execution counts sequentially?',
-                    title: 'Execution Counts'
-                }
-            );
-
-            const finalNotebook = renumber === 'Yes' 
-                ? renumberExecutionCounts(resolvedNotebook) 
-                : resolvedNotebook;
-
-            resolvedContent = serializeNotebook(finalNotebook);
-        } else {
-            // Fall back to textual marker replacement when no Git context
-            const allConflicts = [
-                ...conflict.conflicts.map((c, i) => ({ marker: c.marker, index: i })),
-                ...conflict.metadataConflicts.map((c, i) => ({ marker: c.marker, index: i + conflict.conflicts.length }))
-            ];
-
-            const resolutionArray = allConflicts.map(({ marker, index }) => {
-                const res = resolutions.get(index) || { choice: 'current' as ResolutionChoice, resolvedContent: '' };
-                return {
-                    marker,
-                    choice: res.choice as 'current' | 'incoming' | 'both',
-                    customContent: res.resolvedContent
-                };
-            });
-
-            resolvedContent = resolveAllConflicts(originalContent, resolutionArray);
-
-            // Try to parse and validate the resolved notebook
-            try {
-                let notebook = parseNotebook(resolvedContent);
-
-                // Ask user if they want to renumber execution counts
-                const renumber = await vscode.window.showQuickPick(
-                    ['Yes', 'No'],
-                    {
-                        placeHolder: 'Renumber execution counts sequentially?',
-                        title: 'Execution Counts'
-                    }
-                );
-
-                if (renumber === 'Yes') {
-                    notebook = renumberExecutionCounts(notebook);
-                }
-
-                resolvedContent = serializeNotebook(notebook);
-            } catch (err) {
-                const proceed = await vscode.window.showWarningMessage(
-                    'The resolved notebook has JSON errors. Save anyway?',
-                    'Save', 'Cancel'
-                );
-                if (proceed !== 'Save') {
-                    return;
-                }
-            }
-        }
-
-        // Write the resolved content
-        const encoder = new TextEncoder();
-        await vscode.workspace.fs.writeFile(uri, encoder.encode(resolvedContent));
-
-        // Mark as resolved with git add if requested
-        if (resolution.markAsResolved) {
-            await this.markFileAsResolved(uri);
-        }
-
-        vscode.window.showInformationMessage(`Resolved ${resolutions.size} conflict(s) in ${uri.fsPath}`);
-    }
-
-    /**
-     * Build a resolved notebook from user choices when we have Git context.
-     * This walks through cellMappings and picks cells based on user resolutions.
-     */
-    private buildResolvedNotebookFromChoices(
-        conflict: ReturnType<typeof analyzeNotebookConflicts>,
-        resolutions: Map<number, { choice: ResolutionChoice; resolvedContent: string }>
-    ): Notebook {
-        // Start with the current notebook as base (it has the structure we want)
-        const currentNotebook = conflict.current!;
-        const incomingNotebook = conflict.incoming;
-        const baseNotebook = conflict.base;
-        
-        // Create a new notebook with the same metadata
-        const resolvedNotebook: Notebook = {
-            cells: [],
-            metadata: JSON.parse(JSON.stringify(currentNotebook.metadata)),
-            nbformat: currentNotebook.nbformat,
-            nbformat_minor: currentNotebook.nbformat_minor
-        };
-
-        // Track conflict index as we iterate through mappings
-        let conflictIndex = 0;
-        
-        for (const mapping of conflict.cellMappings!) {
-            const baseCell = mapping.baseIndex !== undefined && baseNotebook 
-                ? baseNotebook.cells[mapping.baseIndex] : undefined;
-            const currentCell = mapping.currentIndex !== undefined 
-                ? currentNotebook.cells[mapping.currentIndex] : undefined;
-            const incomingCell = mapping.incomingIndex !== undefined && incomingNotebook 
-                ? incomingNotebook.cells[mapping.incomingIndex] : undefined;
-
-            // Determine if this mapping represents a conflict (same logic as webview)
-            let isConflict = false;
-            
-            if (currentCell && !incomingCell && !baseCell) {
-                isConflict = true; // Added in current only
-            } else if (incomingCell && !currentCell && !baseCell) {
-                isConflict = true; // Added in incoming only
-            } else if (currentCell && incomingCell) {
-                const currentSource = Array.isArray(currentCell.source) ? currentCell.source.join('') : currentCell.source;
-                const incomingSource = Array.isArray(incomingCell.source) ? incomingCell.source.join('') : incomingCell.source;
-                if (currentSource !== incomingSource) {
-                    isConflict = true; // Content differs
-                }
-            } else if (baseCell && (!currentCell || !incomingCell) && (currentCell || incomingCell)) {
-                isConflict = true; // Deleted in one branch
-            }
-
-            let cellToAdd: NotebookCell | undefined;
-
-            if (isConflict) {
-                // Get resolution for this conflict
-                const res = resolutions.get(conflictIndex);
-                // Choice could be 'current', 'incoming', 'both', 'delete', or 'base' (from 3-way view)
-                const choice = (res?.choice || 'current') as string;
-                // resolvedContent is always the source of truth from the editable text area
-                const resolvedContent = res?.resolvedContent;
-                
-                // Determine the reference cell for metadata (cell_type, outputs, etc.)
-                // Priority: chosen side > any available cell
-                let referenceCell: NotebookCell | undefined;
-                if (choice === 'current' || choice === 'both') {
-                    referenceCell = currentCell || incomingCell || baseCell;
-                } else if (choice === 'incoming') {
-                    referenceCell = incomingCell || currentCell || baseCell;
-                } else if (choice === 'base') {
-                    referenceCell = baseCell || currentCell || incomingCell;
-                }
-                
-                // Check if this is a deletion
-                const isDeleted = choice === 'delete' || (resolvedContent !== undefined && resolvedContent === '');
-                
-                if (isDeleted) {
-                    // User explicitly deleted this cell - don't add anything
-                    cellToAdd = undefined;
-                } else if (resolvedContent !== undefined && resolvedContent.length > 0) {
-                    // Use resolvedContent as the source of truth (editable text area content)
-                    const cellType = referenceCell?.cell_type || 'code';
-                    cellToAdd = {
-                        cell_type: cellType,
-                        metadata: referenceCell?.metadata ? JSON.parse(JSON.stringify(referenceCell.metadata)) : {},
-                        source: resolvedContent.split(/(?<=\n)/)
-                    } as NotebookCell;
-                    
-                    // Add execution_count and outputs for code cells
-                    if (cellType === 'code') {
-                        (cellToAdd as any).execution_count = null;
-                        (cellToAdd as any).outputs = [];
-                    }
-                } else {
-                    // No resolvedContent provided - use the cell from the chosen side
-                    if (choice === 'current' || choice === 'both') {
-                        cellToAdd = currentCell ? JSON.parse(JSON.stringify(currentCell)) : undefined;
-                    } else if (choice === 'incoming') {
-                        cellToAdd = incomingCell ? JSON.parse(JSON.stringify(incomingCell)) : undefined;
-                    } else if (choice === 'base') {
-                        cellToAdd = baseCell ? JSON.parse(JSON.stringify(baseCell)) : undefined;
-                    }
-                }
-
-                // For 'both', also add incoming cell after current
-                if (choice === 'both' && incomingCell && cellToAdd) {
-                    resolvedNotebook.cells.push(cellToAdd);
-                    cellToAdd = JSON.parse(JSON.stringify(incomingCell));
-                }
-
-                conflictIndex++;
-            } else {
-                // Not a conflict - use the available cell
-                cellToAdd = currentCell || incomingCell || baseCell;
-                if (cellToAdd) {
-                    cellToAdd = JSON.parse(JSON.stringify(cellToAdd));
-                }
-            }
-
-            if (cellToAdd) {
-                resolvedNotebook.cells.push(cellToAdd);
-            }
-        }
-
-        return resolvedNotebook;
     }
 
     /**
