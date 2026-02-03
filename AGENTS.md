@@ -1,6 +1,6 @@
 # MergeNB - Jupyter Notebook Merge Conflict Resolver
 
-A VSCode extension for resolving merge conflicts in Jupyter notebooks (`.ipynb` files). Git's default merge behavior strips execution counts to `null` and inserts `<<<<<<<`/`>>>>>>>` conflict markers, but these markers can appear anywhere in the notebook JSON—cell source, outputs, or metadata—making standard text-based conflict resolution inadequate.
+A VSCode extension for resolving merge conflicts in Jupyter notebooks (`.ipynb` files). Git's default merge behavior strips execution counts to `null` when merging notebooks, which can cause different execution states, outputs, or cell modifications between branches.
 
 This extension provides a rich UI for notebook-aware conflict resolution. Instead of treating `.ipynb` files as flat JSON, it parses the notebook structure and presents conflicts at the cell level, letting users accept current/incoming/both versions per-cell while preserving valid notebook format.
 
@@ -23,7 +23,7 @@ This extension provides a rich UI for notebook-aware conflict resolution. Instea
 
 ## Key Files
 
-- `conflictDetector.ts` - Detection (`hasConflictMarkers`, `analyzeNotebookConflicts`, `detectSemanticConflicts`) and resolution (`resolveAllConflicts`)
+- `conflictDetector.ts` - Detection (`analyzeNotebookConflicts`, `detectSemanticConflicts`) and resolution (`resolveAllConflicts`)
 - `gitIntegration.ts` - Git operations (retrieve base/current/incoming versions from staging areas, detect `UU` status)
 - `cellMatcher.ts` - Content-based cell matching algorithm for 3-way merge
 - `positionUtils.ts` - Browser-safe position comparison/sorting utilities for cell ordering
@@ -44,6 +44,4 @@ Single unified command:
 `npm run test:integration` 
 
 Test files in `src/test/`:
-- `04_Cascadia.ipynb` - cell-level HTML-styled conflicts
-- `simple-textual-conflict.ipynb` - inline conflicts with output conflicts
 - `02_base.ipynb`, `02_current.ipynb`, `02_incoming.ipynb` - three-way semantic conflict test case
