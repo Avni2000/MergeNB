@@ -262,12 +262,13 @@ export function ConflictResolver({
             </header>
 
             <main className="main-content">
-                {conflict.autoResolveResult && conflict.autoResolveResult.resolved > 0 && (
+                {conflict.autoResolveResult && conflict.autoResolveResult.autoResolvedCount > 0 && (
                     <div className="auto-resolve-banner">
                         <span className="icon">✓</span>
                         <span className="text">
-                            Auto-resolved {conflict.autoResolveResult.resolved} of {conflict.autoResolveResult.total} conflicts
-                            ({conflict.autoResolveResult.types.join(', ')})
+                            Auto-resolved {conflict.autoResolveResult.autoResolvedCount} conflict{conflict.autoResolveResult.autoResolvedCount !== 1 ? 's' : ''}
+                            {conflict.autoResolveResult.autoResolvedDescriptions.length > 0 && 
+                                ` (${conflict.autoResolveResult.autoResolvedDescriptions.join(', ')})`}
                         </span>
                     </div>
                 )}

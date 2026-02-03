@@ -7,14 +7,14 @@
  * 
  */
 
-import { 
+import type { 
     NotebookCell, 
     Notebook, 
     CellMapping, 
     NotebookSemanticConflict,
     ResolutionChoice 
 } from '../types';
-import { AutoResolveResult } from '../conflictDetector';
+import type { AutoResolveResult } from '../conflictDetector';
 
 // Re-export AutoResolveResult for convenience
 export type { AutoResolveResult } from '../conflictDetector';

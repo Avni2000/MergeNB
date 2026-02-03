@@ -18,6 +18,8 @@ export type {
     NotebookSemanticConflict,
     ResolutionChoice,
 } from '../../types';
+import type { AutoResolveResult } from  '../webTypes';
+export type { AutoResolveResult } from '../webTypes';
 
 /**
  * Represents a row in the 3-way merge view
@@ -39,15 +41,6 @@ export interface MergeRow {
     isEditing?: boolean;
     /** Whether this row is being dragged */
     isDragging?: boolean;
-}
-
-/**
- * Auto-resolution result info
- */
-export interface AutoResolveResult {
-    resolved: number;
-    total: number;
-    types: string[];
 }
 
 /**
