@@ -49,7 +49,7 @@ if command -v gum >/dev/null 2>&1; then
     echo "No selection made; falling back to default based on conflict type."
   fi
 else
-  echo "'gum' CLI not found. Identify test "02", "03", or "04" as a parameter."
+  echo "'gum' CLI not found. Identify test \"02\", \"03\", or \"04\" as a parameter."
   CHOICE="$TEST_SUITE"
 fi
 
