@@ -3,7 +3,7 @@
  * @description VS Code extension entry point for MergeNB.
  * 
  * Registers the `merge-nb.findConflicts` command which:
- * 1. Checks the active notebook for conflicts (textual or semantic)
+ * 1. Checks the active notebook for conflicts (semantic / Git UU status)
  * 2. If none active, scans workspace for all conflicted notebooks
  * 3. Presents a quick-pick menu to select which notebook to resolve
  * 4. Opens the conflict resolution webview panel
@@ -15,7 +15,6 @@
 
 import * as vscode from 'vscode';
 import { NotebookConflictResolver, ConflictedNotebook } from './resolver';
-import { hasConflictMarkers } from './conflictDetector';
 import * as gitIntegration from './gitIntegration';
 import { getWebServer } from './web';
 
@@ -90,7 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// Initial status bar update
 	updateStatusBar();
 
-	// Command: Find all notebooks with conflicts (both textual and semantic)
+	// Command: Find all notebooks with conflicts (semantic / Git UU status)
 	context.subscriptions.push(
 		vscode.commands.registerCommand('merge-nb.findConflicts', async () => {
 			// First check if current notebook has conflicts
@@ -118,16 +117,8 @@ export function activate(context: vscode.ExtensionContext) {
 			
 			// Create descriptive labels showing conflict type
 			const items = files.map((f: ConflictedNotebook) => {
-				let icon = '$(notebook)';
-				let detail = '';
-				
-				if (f.hasTextualConflicts) {
-					icon = '$(warning)';
-					detail = 'Textual conflicts (<<<<<<< markers)';
-				} else if (f.hasSemanticConflicts) {
-					icon = '$(git-compare)';
-					detail = 'Semantic conflicts (Git UU status)';
-				}
+				const icon = '$(git-compare)';
+				const detail = 'Semantic conflicts (Git UU status)';
 				
 				return {
 					label: `${icon} ${vscode.workspace.asRelativePath(f.uri)}`,
