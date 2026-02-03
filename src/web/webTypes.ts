@@ -11,7 +11,6 @@ import {
     NotebookCell, 
     Notebook, 
     CellMapping, 
-    NotebookConflict, 
     NotebookSemanticConflict,
     ResolutionChoice 
 } from '../types';
