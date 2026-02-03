@@ -18,11 +18,16 @@ import type {
 } from './types';
 import { MergeRow } from './MergeRow';
 
-type ResolutionChoice = 'base' | 'current' | 'incoming' | 'both' | 'custom' | 'delete';
+type ResolutionChoice = 'base' | 'current' | 'incoming' | 'both' | 'delete';
 
+/** Resolution state tracking for a cell conflict */
 interface ResolutionState {
+    /** The branch choice that determines outputs, metadata, etc. */
     choice: ResolutionChoice;
-    customContent?: string;
+    /** The original content from the chosen branch (for detecting modifications) */
+    originalContent: string;
+    /** The current resolved content (may be edited by user) */
+    resolvedContent: string;
 }
 
 /** Data about a cell being dragged */
@@ -79,10 +84,26 @@ export function ConflictResolver({
     const resolvedCount = choices.size;
     const allResolved = resolvedCount === totalConflicts;
 
-    const handleSelectChoice = useCallback((index: number, choice: ResolutionChoice, customContent?: string) => {
+    /** Handle user selecting a branch choice (sets both choice and initial content) */
+    const handleSelectChoice = useCallback((index: number, choice: ResolutionChoice, resolvedContent: string) => {
         setChoices(prev => {
             const next = new Map(prev);
-            next.set(index, { choice, customContent });
+            next.set(index, { 
+                choice, 
+                originalContent: resolvedContent,
+                resolvedContent 
+            });
+            return next;
+        });
+    }, []);
+
+    /** Handle user editing the resolved content (just updates the text) */
+    const handleUpdateContent = useCallback((index: number, resolvedContent: string) => {
+        setChoices(prev => {
+            const existing = prev.get(index);
+            if (!existing) return prev;
+            const next = new Map(prev);
+            next.set(index, { ...existing, resolvedContent });
             return next;
         });
     }, []);
@@ -90,7 +111,11 @@ export function ConflictResolver({
     const handleResolve = useCallback(() => {
         const resolutions: ConflictChoice[] = [];
         for (const [index, state] of choices) {
-            resolutions.push({ index, choice: state.choice, customContent: state.customContent });
+            resolutions.push({ 
+                index, 
+                choice: state.choice, 
+                resolvedContent: state.resolvedContent 
+            });
         }
         onResolve(resolutions, markAsResolved);
     }, [choices, markAsResolved, onResolve]);
@@ -290,9 +315,9 @@ export function ConflictResolver({
                                 row={row}
                                 rowIndex={i}
                                 conflictIndex={conflictIdx}
-                                selectedChoice={resolutionState?.choice}
-                                customContent={resolutionState?.customContent}
+                                resolutionState={resolutionState}
                                 onSelectChoice={handleSelectChoice}
+                                onUpdateContent={handleUpdateContent}
                                 isDragging={draggedRowIndex === i || draggedCell?.rowIndex === i}
                                 showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
                                 enableCellDrag={allowCellDrag}
@@ -346,13 +371,13 @@ export function ConflictResolver({
                                     <div className="resolution-bar">
                                         <button
                                             className={`btn-resolve btn-current ${resolutionState?.choice === 'current' ? 'selected' : ''}`}
-                                            onClick={() => handleSelectChoice(conflictIdx, 'current')}
+                                            onClick={() => handleSelectChoice(conflictIdx, 'current', meta.currentContent)}
                                         >
                                             Use Current
                                         </button>
                                         <button
                                             className={`btn-resolve btn-incoming ${resolutionState?.choice === 'incoming' ? 'selected' : ''}`}
-                                            onClick={() => handleSelectChoice(conflictIdx, 'incoming')}
+                                            onClick={() => handleSelectChoice(conflictIdx, 'incoming', meta.incomingContent)}
                                         >
                                             Use Incoming
                                         </button>

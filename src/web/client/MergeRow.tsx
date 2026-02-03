@@ -1,13 +1,20 @@
 /**
  * @file MergeRow.tsx
  * @description React component for a single row in the 3-way merge view.
+ * 
+ * New UI flow:
+ * 1. User selects a branch (base/current/incoming) 
+ * 2. A resolved text area appears with green highlighting, pre-filled with that branch's content
+ * 3. User can edit the content freely
+ * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import type { MergeRow as MergeRowType, NotebookCell } from './types';
 import { CellContent } from './CellContent';
+import { normalizeCellSource } from '../../notebookUtils';
 
-type ResolutionChoice = 'base' | 'current' | 'incoming' | 'both' | 'custom' | 'delete';
+type ResolutionChoice = 'base' | 'current' | 'incoming' | 'both' | 'delete';
 
 /** Data about a cell being dragged */
 interface DraggedCellData {
@@ -22,13 +29,22 @@ interface DropTarget {
     side: 'base' | 'current' | 'incoming';
 }
 
+/** Resolution state for a cell */
+interface ResolutionState {
+    choice: ResolutionChoice;
+    /** The content as it was when the branch was selected */
+    originalContent: string;
+    /** The current content in the text area (may be edited) */
+    resolvedContent: string;
+}
+
 interface MergeRowProps {
     row: MergeRowType;
     rowIndex: number;
     conflictIndex: number;
-    selectedChoice?: ResolutionChoice;
-    customContent?: string;
-    onSelectChoice: (index: number, choice: ResolutionChoice, customContent?: string) => void;
+    resolutionState?: ResolutionState;
+    onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
+    onUpdateContent: (index: number, resolvedContent: string) => void;
     isDragging?: boolean;
     showOutputs?: boolean;
     enableCellDrag?: boolean;
@@ -45,9 +61,9 @@ export function MergeRow({
     row,
     rowIndex,
     conflictIndex,
-    selectedChoice,
-    customContent,
+    resolutionState,
     onSelectChoice,
+    onUpdateContent,
     isDragging = false,
     showOutputs = true,
     enableCellDrag = true,
@@ -59,8 +75,63 @@ export function MergeRow({
     onCellDrop,
 }: MergeRowProps): React.ReactElement {
     const isConflict = row.type === 'conflict';
-    const [isEditMode, setIsEditMode] = useState(false);
-    const [editContent, setEditContent] = useState(customContent || '');
+    
+    // All hooks must be called unconditionally at the top (Rules of Hooks)
+    const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
+    const [showWarning, setShowWarning] = useState(false);
+
+    // Get content for a given choice
+    const getContentForChoice = useCallback((choice: ResolutionChoice): string => {
+        if (choice === 'delete') return '';
+        if (choice === 'both') {
+            const currentContent = row.currentCell ? normalizeCellSource(row.currentCell.source) : '';
+            const incomingContent = row.incomingCell ? normalizeCellSource(row.incomingCell.source) : '';
+            return currentContent + '\n' + incomingContent;
+        }
+        const cell = choice === 'base' ? row.baseCell 
+            : choice === 'current' ? row.currentCell 
+            : row.incomingCell;
+        return cell ? normalizeCellSource(cell.source) : '';
+    }, [row]);
+
+    // Check if content has been modified from the original
+    const isContentModified = resolutionState 
+        ? resolutionState.resolvedContent !== resolutionState.originalContent 
+        : false;
+
+    // Handle branch selection
+    const handleChoiceClick = (choice: ResolutionChoice) => {
+        if (resolutionState && isContentModified && choice !== resolutionState.choice) {
+            // User has modified content and is trying to change branch - show warning
+            setPendingChoice(choice);
+            setShowWarning(true);
+        } else {
+            // No modification or same choice - proceed directly
+            const content = getContentForChoice(choice);
+            onSelectChoice(conflictIndex, choice, content);
+        }
+    };
+
+    // Confirm branch change (overwrite edited content)
+    const confirmBranchChange = () => {
+        if (pendingChoice) {
+            const content = getContentForChoice(pendingChoice);
+            onSelectChoice(conflictIndex, pendingChoice, content);
+        }
+        setShowWarning(false);
+        setPendingChoice(null);
+    };
+
+    // Cancel branch change
+    const cancelBranchChange = () => {
+        setShowWarning(false);
+        setPendingChoice(null);
+    };
+
+    // Handle content editing in the resolved text area
+    const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        onUpdateContent(conflictIndex, e.target.value);
+    };
 
     // For identical rows, show a unified single cell
     if (!isConflict) {
@@ -81,18 +152,8 @@ export function MergeRow({
         );
     }
 
-    const handleSaveCustom = () => {
-        onSelectChoice(conflictIndex, 'custom', editContent);
-        setIsEditMode(false);
-    };
-
-    const handleCancelEdit = () => {
-        setEditContent(customContent || '');
-        setIsEditMode(false);
-    };
-
     // Check if this cell is a valid drop target
-    const isDropTarget = (side: 'base' | 'current' | 'incoming') => {
+    const isDropTargetCell = (side: 'base' | 'current' | 'incoming') => {
         if (!enableCellDrag) return false;
         if (!draggedCell) return false;
         if (draggedCell.side !== side) return false; // Same column only
@@ -115,195 +176,188 @@ export function MergeRow({
         'merge-row',
         'conflict-row',
         row.isUnmatched && 'unmatched-row',
-        isDragging && 'dragging'
+        isDragging && 'dragging',
+        resolutionState && 'resolved-row'
     ].filter(Boolean).join(' ');
+
+    const hasBase = !!row.baseCell;
+    const hasCurrent = !!row.currentCell;
+    const hasIncoming = !!row.incomingCell;
 
     return (
         <div className={rowClasses}>
-            {isEditMode ? (
-                <div className="custom-editor">
-                    <textarea
-                        className="custom-content-input"
-                        value={editContent}
-                        onChange={(e) => setEditContent(e.target.value)}
-                        placeholder="Enter custom cell content..."
-                        rows={10}
-                    />
-                    <div className="editor-actions">
-                        <button className="btn-save" onClick={handleSaveCustom}>
-                            Save Custom Content
-                        </button>
-                        <button className="btn-cancel" onClick={handleCancelEdit}>
-                            Cancel
-                        </button>
+            {/* Warning modal for branch change */}
+            {showWarning && (
+                <div className="warning-modal-overlay">
+                    <div className="warning-modal">
+                        <div className="warning-icon">⚠️</div>
+                        <h3>Change base branch?</h3>
+                        <p>You have edited the resolved content. Changing the base branch will overwrite your changes.</p>
+                        <div className="warning-actions">
+                            <button className="btn-cancel" onClick={cancelBranchChange}>
+                                Keep my edits
+                            </button>
+                            <button className="btn-confirm" onClick={confirmBranchChange}>
+                                Overwrite with {pendingChoice}
+                            </button>
+                        </div>
                     </div>
                 </div>
-            ) : (
-                <>
-                    <div className="cell-columns">
-                        <div className="cell-column base-column">
-                            {row.baseCell ? (
-                                <CellContent
-                                    cell={row.baseCell}
-                                    cellIndex={row.baseCellIndex}
-                                    side="base"
-                                    isConflict={true}
-                                    compareCell={row.currentCell || row.incomingCell}
-                                    showOutputs={showOutputs}
-                                    onDragStart={canDragCell ? (e) => {
-                                        e.dataTransfer.effectAllowed = 'move';
-                                        e.dataTransfer.setData('text/plain', Array.isArray(row.baseCell!.source) ? row.baseCell!.source.join('') : row.baseCell!.source);
-                                        onCellDragStart(rowIndex, 'base', row.baseCell!);
-                                    } : undefined}
-                                    onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
-                                />
-                            ) : (
-                                <div 
-                                    className={`cell-placeholder cell-deleted ${isDropTarget('base') ? 'drop-target' : ''}`}
-                                    onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'base'); } : undefined}
-                                    onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'base') : undefined}
-                                >
-                                    <span className="placeholder-text">{getPlaceholderText('base')}</span>
-                                </div>
-                            )}
+            )}
+
+            {/* Three-way diff view */}
+            <div className="cell-columns">
+                <div className="cell-column base-column">
+                    {row.baseCell ? (
+                        <CellContent
+                            cell={row.baseCell}
+                            cellIndex={row.baseCellIndex}
+                            side="base"
+                            isConflict={true}
+                            compareCell={row.currentCell || row.incomingCell}
+                            showOutputs={showOutputs}
+                            onDragStart={canDragCell ? (e) => {
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('text/plain', Array.isArray(row.baseCell!.source) ? row.baseCell!.source.join('') : row.baseCell!.source);
+                                onCellDragStart(rowIndex, 'base', row.baseCell!);
+                            } : undefined}
+                            onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
+                        />
+                    ) : (
+                        <div 
+                            className={`cell-placeholder cell-deleted ${isDropTargetCell('base') ? 'drop-target' : ''}`}
+                            onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'base'); } : undefined}
+                            onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'base') : undefined}
+                        >
+                            <span className="placeholder-text">{getPlaceholderText('base')}</span>
                         </div>
-                        <div className="cell-column current-column">
-                            {row.currentCell ? (
-                                <CellContent
-                                    cell={row.currentCell}
-                                    cellIndex={row.currentCellIndex}
-                                    side="current"
-                                    isConflict={true}
-                                    compareCell={row.incomingCell || row.baseCell}
-                                    showOutputs={showOutputs}
-                                    onDragStart={canDragCell ? (e) => {
-                                        e.dataTransfer.effectAllowed = 'move';
-                                        e.dataTransfer.setData('text/plain', Array.isArray(row.currentCell!.source) ? row.currentCell!.source.join('') : row.currentCell!.source);
-                                        onCellDragStart(rowIndex, 'current', row.currentCell!);
-                                    } : undefined}
-                                    onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
-                                />
-                            ) : (
-                                <div 
-                                    className={`cell-placeholder cell-deleted ${isDropTarget('current') ? 'drop-target' : ''}`}
-                                    onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'current'); } : undefined}
-                                    onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'current') : undefined}
-                                >
-                                    <span className="placeholder-text">{getPlaceholderText('current')}</span>
-                                </div>
-                            )}
+                    )}
+                </div>
+                <div className="cell-column current-column">
+                    {row.currentCell ? (
+                        <CellContent
+                            cell={row.currentCell}
+                            cellIndex={row.currentCellIndex}
+                            side="current"
+                            isConflict={true}
+                            compareCell={row.incomingCell || row.baseCell}
+                            showOutputs={showOutputs}
+                            onDragStart={canDragCell ? (e) => {
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('text/plain', Array.isArray(row.currentCell!.source) ? row.currentCell!.source.join('') : row.currentCell!.source);
+                                onCellDragStart(rowIndex, 'current', row.currentCell!);
+                            } : undefined}
+                            onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
+                        />
+                    ) : (
+                        <div 
+                            className={`cell-placeholder cell-deleted ${isDropTargetCell('current') ? 'drop-target' : ''}`}
+                            onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'current'); } : undefined}
+                            onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'current') : undefined}
+                        >
+                            <span className="placeholder-text">{getPlaceholderText('current')}</span>
                         </div>
-                        <div className="cell-column incoming-column">
-                            {row.incomingCell ? (
-                                <CellContent
-                                    cell={row.incomingCell}
-                                    cellIndex={row.incomingCellIndex}
-                                    side="incoming"
-                                    isConflict={true}
-                                    compareCell={row.currentCell || row.baseCell}
-                                    showOutputs={showOutputs}
-                                    onDragStart={canDragCell ? (e) => {
-                                        e.dataTransfer.effectAllowed = 'move';
-                                        e.dataTransfer.setData('text/plain', Array.isArray(row.incomingCell!.source) ? row.incomingCell!.source.join('') : row.incomingCell!.source);
-                                        onCellDragStart(rowIndex, 'incoming', row.incomingCell!);
-                                    } : undefined}
-                                    onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
-                                />
-                            ) : (
-                                <div 
-                                    className={`cell-placeholder cell-deleted ${isDropTarget('incoming') ? 'drop-target' : ''}`}
-                                    onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'incoming'); } : undefined}
-                                    onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'incoming') : undefined}
-                                >
-                                    <span className="placeholder-text">{getPlaceholderText('incoming')}</span>
-                                </div>
-                            )}
+                    )}
+                </div>
+                <div className="cell-column incoming-column">
+                    {row.incomingCell ? (
+                        <CellContent
+                            cell={row.incomingCell}
+                            cellIndex={row.incomingCellIndex}
+                            side="incoming"
+                            isConflict={true}
+                            compareCell={row.currentCell || row.baseCell}
+                            showOutputs={showOutputs}
+                            onDragStart={canDragCell ? (e) => {
+                                e.dataTransfer.effectAllowed = 'move';
+                                e.dataTransfer.setData('text/plain', Array.isArray(row.incomingCell!.source) ? row.incomingCell!.source.join('') : row.incomingCell!.source);
+                                onCellDragStart(rowIndex, 'incoming', row.incomingCell!);
+                            } : undefined}
+                            onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
+                        />
+                    ) : (
+                        <div 
+                            className={`cell-placeholder cell-deleted ${isDropTargetCell('incoming') ? 'drop-target' : ''}`}
+                            onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'incoming'); } : undefined}
+                            onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'incoming') : undefined}
+                        >
+                            <span className="placeholder-text">{getPlaceholderText('incoming')}</span>
                         </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Resolution bar - select which branch to use as base */}
+            <div className="resolution-bar">
+                {hasBase && (
+                    <button
+                        className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
+                        onClick={() => handleChoiceClick('base')}
+                    >
+                        Use Base
+                    </button>
+                )}
+                {hasCurrent && (
+                    <button
+                        className={`btn-resolve btn-current ${resolutionState?.choice === 'current' ? 'selected' : ''}`}
+                        onClick={() => handleChoiceClick('current')}
+                    >
+                        Use Current
+                    </button>
+                )}
+                {hasIncoming && (
+                    <button
+                        className={`btn-resolve btn-incoming ${resolutionState?.choice === 'incoming' ? 'selected' : ''}`}
+                        onClick={() => handleChoiceClick('incoming')}
+                    >
+                        Use Incoming
+                    </button>
+                )}
+                {hasCurrent && hasIncoming && (
+                    <button
+                        className={`btn-resolve btn-both ${resolutionState?.choice === 'both' ? 'selected' : ''}`}
+                        onClick={() => handleChoiceClick('both')}
+                    >
+                        Use Both
+                    </button>
+                )}
+                <button
+                    className={`btn-resolve btn-delete ${resolutionState?.choice === 'delete' ? 'selected' : ''}`}
+                    onClick={() => handleChoiceClick('delete')}
+                >
+                    Delete Cell
+                </button>
+            </div>
+
+            {/* Resolved content editor - appears after selecting a branch */}
+            {resolutionState && resolutionState.choice !== 'delete' && (
+                <div className="resolved-cell">
+                    <div className="resolved-header">
+                        <span className="resolved-label">✓ Resolved</span>
+                        <span className="resolved-base">
+                            Based on: <strong>{resolutionState.choice}</strong>
+                            {isContentModified && <span className="modified-badge">(edited)</span>}
+                        </span>
                     </div>
-                    <ResolutionBar
-                        conflictIndex={conflictIndex}
-                        hasBase={!!row.baseCell}
-                        hasCurrent={!!row.currentCell}
-                        hasIncoming={!!row.incomingCell}
-                        selectedChoice={selectedChoice}
-                        onSelectChoice={onSelectChoice}
-                        onEditCustom={() => setIsEditMode(true)}
+                    <textarea
+                        className="resolved-content-input"
+                        value={resolutionState.resolvedContent}
+                        onChange={handleContentChange}
+                        placeholder="Enter cell content..."
+                        rows={Math.max(5, resolutionState.resolvedContent.split('\n').length + 1)}
                     />
-                </>
+                </div>
             )}
-        </div>
-    );
-}
 
-interface ResolutionBarProps {
-    conflictIndex: number;
-    hasBase: boolean;
-    hasCurrent: boolean;
-    hasIncoming: boolean;
-    selectedChoice?: ResolutionChoice;
-    onSelectChoice: (index: number, choice: ResolutionChoice, customContent?: string) => void;
-    onEditCustom: () => void;
-}
-
-function ResolutionBar({
-    conflictIndex,
-    hasBase,
-    hasCurrent,
-    hasIncoming,
-    selectedChoice,
-    onSelectChoice,
-    onEditCustom,
-}: ResolutionBarProps): React.ReactElement {
-    const handleClick = (choice: ResolutionChoice) => {
-        onSelectChoice(conflictIndex, choice);
-    };
-
-    return (
-        <div className="resolution-bar">
-            {hasBase && (
-                <button
-                    className={`btn-resolve btn-base ${selectedChoice === 'base' ? 'selected' : ''}`}
-                    onClick={() => handleClick('base')}
-                >
-                    Use Base
-                </button>
+            {/* Show delete confirmation */}
+            {resolutionState && resolutionState.choice === 'delete' && (
+                <div className="resolved-cell resolved-deleted">
+                    <div className="resolved-header">
+                        <span className="resolved-label">✓ Resolved</span>
+                        <span className="resolved-base">Cell will be deleted</span>
+                    </div>
+                </div>
             )}
-            {hasCurrent && (
-                <button
-                    className={`btn-resolve btn-current ${selectedChoice === 'current' ? 'selected' : ''}`}
-                    onClick={() => handleClick('current')}
-                >
-                    Use Current
-                </button>
-            )}
-            {hasIncoming && (
-                <button
-                    className={`btn-resolve btn-incoming ${selectedChoice === 'incoming' ? 'selected' : ''}`}
-                    onClick={() => handleClick('incoming')}
-                >
-                    Use Incoming
-                </button>
-            )}
-            {hasCurrent && hasIncoming && (
-                <button
-                    className={`btn-resolve btn-both ${selectedChoice === 'both' ? 'selected' : ''}`}
-                    onClick={() => handleClick('both')}
-                >
-                    Use Both
-                </button>
-            )}
-            <button
-                className={`btn-resolve btn-custom ${selectedChoice === 'custom' ? 'selected' : ''}`}
-                onClick={onEditCustom}
-            >
-                Custom...
-            </button>
-            <button
-                className={`btn-resolve btn-delete ${selectedChoice === 'delete' ? 'selected' : ''}`}
-                onClick={() => handleClick('delete')}
-            >
-                Delete Cell
-            </button>
         </div>
     );
 }

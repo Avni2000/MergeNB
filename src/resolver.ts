@@ -285,9 +285,8 @@ export class NotebookConflictResolver {
         logger.debug('Resolutions received:', Array.from(resolution.textualResolutions.entries()).map(([idx, res]) => ({
             index: idx,
             choice: res.choice,
-            hasCustomContent: res.customContent !== undefined,
-            contentLength: res.customContent?.length ?? 0,
-            contentPreview: res.customContent ?? ""
+            contentLength: res.resolvedContent?.length ?? 0,
+            contentPreview: res.resolvedContent ?? ""
         })));
 
         const resolutions = resolution.textualResolutions;
@@ -323,11 +322,11 @@ export class NotebookConflictResolver {
             ];
 
             const resolutionArray = allConflicts.map(({ marker, index }) => {
-                const res = resolutions.get(index) || { choice: 'current' as ResolutionChoice };
+                const res = resolutions.get(index) || { choice: 'current' as ResolutionChoice, resolvedContent: '' };
                 return {
                     marker,
-                    choice: res.choice === 'custom' ? 'current' : res.choice as 'current' | 'incoming' | 'both',
-                    customContent: res.customContent
+                    choice: res.choice as 'current' | 'incoming' | 'both',
+                    customContent: res.resolvedContent
                 };
             });
 
@@ -380,7 +379,7 @@ export class NotebookConflictResolver {
      */
     private buildResolvedNotebookFromChoices(
         conflict: ReturnType<typeof analyzeNotebookConflicts>,
-        resolutions: Map<number, { choice: ResolutionChoice; customContent?: string }>
+        resolutions: Map<number, { choice: ResolutionChoice; resolvedContent: string }>
     ): Notebook {
         // Start with the current notebook as base (it has the structure we want)
         const currentNotebook = conflict.current!;
@@ -428,9 +427,10 @@ export class NotebookConflictResolver {
             if (isConflict) {
                 // Get resolution for this conflict
                 const res = resolutions.get(conflictIndex);
-                // Choice could be 'current', 'incoming', 'both', 'custom', or 'base' (from 3-way view)
+                // Choice could be 'current', 'incoming', 'both', 'delete', or 'base' (from 3-way view)
                 const choice = (res?.choice || 'current') as string;
-                const customContent = res?.customContent;
+                // resolvedContent is always the source of truth from the editable text area
+                const resolvedContent = res?.resolvedContent;
                 
                 // Determine the reference cell for metadata (cell_type, outputs, etc.)
                 // Priority: chosen side > any available cell
@@ -443,21 +443,19 @@ export class NotebookConflictResolver {
                     referenceCell = baseCell || currentCell || incomingCell;
                 }
                 
-                // Check if this is a deletion (empty customContent explicitly provided)
-                const isDeleted = customContent !== undefined && customContent === '';
+                // Check if this is a deletion
+                const isDeleted = choice === 'delete' || (resolvedContent !== undefined && resolvedContent === '');
                 
                 if (isDeleted) {
                     // User explicitly deleted this cell - don't add anything
                     cellToAdd = undefined;
-                } else if (customContent !== undefined && customContent.length > 0) {
-                    // User provided content (possibly from drag-and-drop or edit)
-                    // ALWAYS use customContent as the source when provided
-                    // This handles the case where a cell was dragged to this row
+                } else if (resolvedContent !== undefined && resolvedContent.length > 0) {
+                    // Use resolvedContent as the source of truth (editable text area content)
                     const cellType = referenceCell?.cell_type || 'code';
                     cellToAdd = {
                         cell_type: cellType,
                         metadata: referenceCell?.metadata ? JSON.parse(JSON.stringify(referenceCell.metadata)) : {},
-                        source: customContent.split(/(?<=\n)/)
+                        source: resolvedContent.split(/(?<=\n)/)
                     } as NotebookCell;
                     
                     // Add execution_count and outputs for code cells
@@ -466,7 +464,7 @@ export class NotebookConflictResolver {
                         (cellToAdd as any).outputs = [];
                     }
                 } else {
-                    // No customContent provided - use the cell from the chosen side
+                    // No resolvedContent provided - use the cell from the chosen side
                     if (choice === 'current' || choice === 'both') {
                         cellToAdd = currentCell ? JSON.parse(JSON.stringify(currentCell)) : undefined;
                     } else if (choice === 'incoming') {
@@ -588,7 +586,8 @@ export class NotebookConflictResolver {
                 if (res) {
                     // User provided a resolution
                     const choice = res.choice;
-                    const customContent = res.customContent;
+                    // resolvedContent is the source of truth from the editable text area
+                    const resolvedContent = res.resolvedContent;
 
                     // Determine the reference cell for metadata (cell_type, outputs, etc.)
                     // Priority: chosen side > any available cell
@@ -605,18 +604,16 @@ export class NotebookConflictResolver {
                             break;
                     }
 
-                    // Check if this is a deletion (empty custom content explicitly provided)
-                    if (customContent !== undefined && customContent === '') {
+                    // Check if this is a deletion (empty content)
+                    if (resolvedContent !== undefined && resolvedContent === '') {
                         isDeleted = true;
-                    } else if (customContent !== undefined && customContent.length > 0) {
-                        // User provided content (possibly from drag-and-drop or edit)
-                        // ALWAYS use customContent as the source when provided
-                        // This handles the case where a cell was dragged to this row
+                    } else if (resolvedContent !== undefined && resolvedContent.length > 0) {
+                        // Use resolvedContent as the source of truth (editable text area content)
                         const cellType = referenceCell?.cell_type || 'code';
                         cellToUse = {
                             cell_type: cellType,
                             metadata: referenceCell?.metadata ? JSON.parse(JSON.stringify(referenceCell.metadata)) : {},
-                            source: customContent.split(/(?<=\n)/)
+                            source: resolvedContent.split(/(?<=\n)/)
                         } as NotebookCell;
                         
                         // Add execution_count and outputs for code cells
@@ -625,7 +622,7 @@ export class NotebookConflictResolver {
                             (cellToUse as any).outputs = [];
                         }
                     } else {
-                        // No customContent provided - use the cell from the chosen side
+                        // No resolvedContent provided - use the cell from the chosen side
                         switch (choice) {
                             case 'base':
                                 cellToUse = baseCell;

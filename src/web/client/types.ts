@@ -65,12 +65,17 @@ export interface UnifiedConflictData {
 }
 
 /**
- * Resolution choice for a single conflict
+ * Resolution choice for a single conflict.
+ * 
+ * New flow: User selects a branch, then can edit the content.
+ * The resolvedContent is always the source of truth for rebuilding.
  */
 export interface ConflictChoice {
     index: number;
-    choice: 'base' | 'current' | 'incoming' | 'both' | 'custom' | 'delete';
-    customContent?: string;
+    /** The base branch the user selected (determines outputs, metadata, etc.) */
+    choice: 'base' | 'current' | 'incoming' | 'both' | 'delete';
+    /** The resolved content - always present for resolved cells, serves as source of truth */
+    resolvedContent: string;
 }
 
 /**

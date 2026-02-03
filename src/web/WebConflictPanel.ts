@@ -128,7 +128,7 @@ export class WebConflictPanel {
         const msg = message as { 
             command?: string; 
             type?: string; 
-            resolutions?: Array<{ index: number; choice: string; customContent?: string }>; 
+            resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>; 
             semanticChoice?: string; 
             markAsResolved?: boolean 
         };
@@ -151,16 +151,16 @@ export class WebConflictPanel {
 
     private _handleResolution(message: { 
         type?: string; 
-        resolutions?: Array<{ index: number; choice: string; customContent?: string }>; 
+        resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>; 
         semanticChoice?: string; 
         markAsResolved?: boolean 
     }): void {
         if (this._conflict?.type === 'textual') {
-            const resolutionMap = new Map<number, { choice: ResolutionChoice; customContent?: string }>();
+            const resolutionMap = new Map<number, { choice: ResolutionChoice; resolvedContent: string }>();
             for (const r of (message.resolutions || [])) {
                 resolutionMap.set(r.index, { 
                     choice: r.choice as ResolutionChoice, 
-                    customContent: r.customContent 
+                    resolvedContent: r.resolvedContent 
                 });
             }
             if (this._onResolutionComplete) {
@@ -171,11 +171,11 @@ export class WebConflictPanel {
                 });
             }
         } else if (this._conflict?.type === 'semantic') {
-            const semanticResolutionMap = new Map<number, { choice: 'base' | 'current' | 'incoming'; customContent?: string }>();
+            const semanticResolutionMap = new Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>();
             for (const r of (message.resolutions || [])) {
                 semanticResolutionMap.set(r.index, {
                     choice: r.choice as 'base' | 'current' | 'incoming',
-                    customContent: r.customContent
+                    resolvedContent: r.resolvedContent
                 });
             }
             if (this._onResolutionComplete) {

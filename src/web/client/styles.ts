@@ -474,6 +474,159 @@ body {
     resize: vertical;
 }
 
+/* Resolved cell styling - green highlighting to mark as resolved */
+.resolved-cell {
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(78, 201, 176, 0.1);
+    border: 2px solid var(--accent-green);
+    border-radius: 6px;
+}
+
+.resolved-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(78, 201, 176, 0.3);
+}
+
+.resolved-label {
+    color: var(--accent-green);
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.resolved-base {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.resolved-base strong {
+    color: var(--text-primary);
+    text-transform: capitalize;
+}
+
+.modified-badge {
+    margin-left: 8px;
+    padding: 2px 6px;
+    background: rgba(255, 213, 79, 0.2);
+    border: 1px solid rgba(255, 213, 79, 0.5);
+    border-radius: 4px;
+    color: #ffd54f;
+    font-size: 11px;
+}
+
+.resolved-content-input {
+    width: 100%;
+    min-height: 120px;
+    padding: 12px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid rgba(78, 201, 176, 0.4);
+    border-radius: 4px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-size: 13px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.resolved-content-input:focus {
+    outline: none;
+    border-color: var(--accent-green);
+    box-shadow: 0 0 0 2px rgba(78, 201, 176, 0.2);
+}
+
+/* Resolved deleted cell */
+.resolved-cell.resolved-deleted {
+    background: rgba(244, 135, 113, 0.1);
+    border-color: #f48771;
+}
+
+.resolved-deleted .resolved-label {
+    color: #f48771;
+}
+
+/* Resolved row styling */
+.merge-row.resolved-row {
+    border-left-color: var(--accent-green);
+    background: rgba(78, 201, 176, 0.03);
+}
+
+/* Warning modal for branch change */
+.warning-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.warning-modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 24px;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.warning-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+}
+
+.warning-modal h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+
+.warning-modal p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+
+.warning-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+}
+
+.warning-actions .btn-cancel {
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.warning-actions .btn-confirm {
+    padding: 8px 16px;
+    background: #f48771;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.warning-actions .btn-confirm:hover {
+    background: #e67867;
+}
+
 .editor-actions {
     display: flex;
     gap: 8px;
@@ -609,7 +762,7 @@ body {
     outline: 2px dashed var(--accent-blue);
 }
 
-/* Delete and custom buttons */
+/* Delete button */
 .btn-delete {
     background: rgba(244, 135, 113, 0.2);
     color: #f48771;
@@ -623,22 +776,6 @@ body {
 .btn-delete.selected {
     background: rgba(244, 135, 113, 0.4);
     border-color: #f48771;
-    font-weight: 600;
-}
-
-.btn-custom {
-    background: rgba(255, 213, 79, 0.2);
-    color: #ffd54f;
-    border: 1px solid rgba(255, 213, 79, 0.5);
-}
-
-.btn-custom:hover {
-    background: rgba(255, 213, 79, 0.3);
-}
-
-.btn-custom.selected {
-    background: rgba(255, 213, 79, 0.4);
-    border-color: #ffd54f;
     font-weight: 600;
 }
 

@@ -36,14 +36,17 @@ export interface UnifiedConflict {
 
 /**
  * Resolution result from the panel.
+ * 
+ * The resolvedContent field is now the source of truth for the final cell content.
+ * It contains the text from the editable resolved text area.
  */
 export interface UnifiedResolution {
     type: 'textual' | 'semantic';
-    // For textual conflicts
-    textualResolutions?: Map<number, { choice: ResolutionChoice; customContent?: string }>;
+    // For textual conflicts - resolvedContent is the source of truth
+    textualResolutions?: Map<number, { choice: ResolutionChoice; resolvedContent: string }>;
     // For semantic conflicts
     semanticChoice?: 'current' | 'incoming';
-    semanticResolutions?: Map<number, { choice: 'base' | 'current' | 'incoming'; customContent?: string }>;
+    semanticResolutions?: Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>;
     // Whether to mark file as resolved with git add
     markAsResolved: boolean;
 }
