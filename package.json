@@ -112,6 +112,7 @@
     "test:cli": "npx ts-node src/test/cli-test.ts"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.0.5",
     "@types/markdown-it": "^14.1.2",
     "@types/mocha": "^10.0.10",
     "@types/node": "25.x",
@@ -130,6 +131,7 @@
     "typescript-eslint": "^8.53.1"
   },
   "dependencies": {
+    "dompurify": "^3.3.1",
     "markdown-it": "^14.1.0",
     "markdown-it-mathjax3": "^4.3.2",
     "react": "^18.3.1",

@@ -8,6 +8,7 @@ import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { renderMarkdown, escapeHtml } from './markdown';
 import { computeLineDiff, getDiffLineClass } from './diff';
+import DOMPurify from 'dompurify';
 
 // Augment window type for MathJax
 declare global {
@@ -181,7 +182,8 @@ function OutputItem({ output }: { output: CellOutput }): React.ReactElement | nu
         // HTML
         if (data['text/html']) {
             const html = Array.isArray(data['text/html']) ? data['text/html'].join('') : String(data['text/html']);
-            return <div dangerouslySetInnerHTML={{ __html: html }} />;
+            const sanitizedHtml = DOMPurify.sanitize(html);
+            return <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
         }
 
         // Plain text
