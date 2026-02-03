@@ -25,8 +25,7 @@ export type { AutoResolveResult } from '../conflictDetector';
  */
 export interface UnifiedConflict {
     filePath: string;
-    type: 'textual' | 'semantic';
-    textualConflict?: NotebookConflict;
+    type: 'semantic';
     semanticConflict?: NotebookSemanticConflict;
     /** Result of auto-resolution, if any conflicts were auto-resolved */
     autoResolveResult?: AutoResolveResult;
@@ -41,10 +40,7 @@ export interface UnifiedConflict {
  * It contains the text from the editable resolved text area.
  */
 export interface UnifiedResolution {
-    type: 'textual' | 'semantic';
-    // For textual conflicts - resolvedContent is the source of truth
-    textualResolutions?: Map<number, { choice: ResolutionChoice; resolvedContent: string }>;
-    // For semantic conflicts
+    type: 'semantic';
     semanticChoice?: 'current' | 'incoming';
     semanticResolutions?: Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>;
     // Whether to mark file as resolved with git add
@@ -58,10 +54,7 @@ export interface UnifiedResolution {
 export interface WebConflictData {
     filePath: string;
     fileName: string;
-    type: 'textual' | 'semantic';
-    
-    // For textual conflicts
-    textualConflict?: WebTextualConflict;
+    type: 'semantic';
     
     // For semantic conflicts
     semanticConflict?: WebSemanticConflict;
@@ -79,52 +72,10 @@ export interface WebConflictData {
 }
 
 /**
- * Web-compatible textual conflict structure.
- */
-export interface WebTextualConflict {
-    filePath: string;
-    conflicts: WebCellConflict[];
-    metadataConflicts: WebMetadataConflict[];
-    
-    // Full notebook versions
-    base?: Notebook;
-    current?: Notebook;
-    incoming?: Notebook;
-    
-    // Cell mappings
-    cellMappings?: CellMapping[];
-    
-    // Branch information
-    currentBranch?: string;
-    incomingBranch?: string;
-}
-
-/**
- * Web-compatible cell conflict.
- */
-export interface WebCellConflict {
-    cellIndex: number;
-    field: 'source' | 'outputs' | 'metadata' | 'execution_count';
-    currentContent: string;
-    incomingContent: string;
-    cellType?: 'code' | 'markdown' | 'raw';
-}
-
-/**
- * Web-compatible metadata conflict.
- */
-export interface WebMetadataConflict {
-    field: string;
-    currentContent: string;
-    incomingContent: string;
-}
-
-/**
  * Web-compatible semantic conflict structure.
  */
 export interface WebSemanticConflict {
     filePath: string;
-    hasTextualConflicts: boolean;
     semanticConflicts: WebSemanticConflictItem[];
     cellMappings: CellMapping[];
     
@@ -185,7 +136,7 @@ export type ExtensionToBrowserMessage =
 export type BrowserToExtensionMessage =
     | { 
         command: 'resolve'; 
-        type: 'textual' | 'semantic';
+        type: 'semantic';
         resolutions: Array<{
             index: number;
             choice: string;
@@ -201,7 +152,7 @@ export type BrowserToExtensionMessage =
  * Resolution data structure returned from the browser.
  */
 export interface WebResolutionData {
-    type: 'textual' | 'semantic';
+    type: 'semantic';
     resolutions: Array<{
         index: number;
         choice: ResolutionChoice | 'base';
@@ -212,39 +163,11 @@ export interface WebResolutionData {
 }
 
 /**
- * Convert NotebookConflict to WebTextualConflict.
- */
-export function toWebTextualConflict(conflict: NotebookConflict): WebTextualConflict {
-    return {
-        filePath: conflict.filePath,
-        conflicts: conflict.conflicts.map(c => ({
-            cellIndex: c.cellIndex,
-            field: c.field,
-            currentContent: c.currentContent,
-            incomingContent: c.incomingContent,
-            cellType: c.cellType
-        })),
-        metadataConflicts: conflict.metadataConflicts.map(m => ({
-            field: m.field,
-            currentContent: m.currentContent,
-            incomingContent: m.incomingContent
-        })),
-        base: conflict.base,
-        current: conflict.current,
-        incoming: conflict.incoming,
-        cellMappings: conflict.cellMappings,
-        currentBranch: conflict.currentBranch,
-        incomingBranch: conflict.incomingBranch
-    };
-}
-
-/**
  * Convert NotebookSemanticConflict to WebSemanticConflict.
  */
 export function toWebSemanticConflict(conflict: NotebookSemanticConflict): WebSemanticConflict {
     return {
         filePath: conflict.filePath,
-        hasTextualConflicts: conflict.hasTextualConflicts,
         semanticConflicts: conflict.semanticConflicts.map(c => ({
             type: c.type,
             baseCellIndex: c.baseCellIndex,

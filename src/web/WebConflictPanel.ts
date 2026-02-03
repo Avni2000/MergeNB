@@ -111,12 +111,11 @@ export class WebConflictPanel {
         const data = {
             filePath: this._conflict.filePath,
             type: this._conflict.type,
-            textualConflict: this._conflict.textualConflict,
             semanticConflict: this._conflict.semanticConflict,
             autoResolveResult: this._conflict.autoResolveResult,
             hideNonConflictOutputs: this._conflict.hideNonConflictOutputs,
-            currentBranch: this._conflict.textualConflict?.currentBranch || this._conflict.semanticConflict?.currentBranch,
-            incomingBranch: this._conflict.textualConflict?.incomingBranch || this._conflict.semanticConflict?.incomingBranch,
+            currentBranch: this._conflict.semanticConflict?.currentBranch,
+            incomingBranch: this._conflict.semanticConflict?.incomingBranch,
         };
 
         server.sendConflictData(this._sessionId, data);
@@ -155,22 +154,7 @@ export class WebConflictPanel {
         semanticChoice?: string; 
         markAsResolved?: boolean 
     }): void {
-        if (this._conflict?.type === 'textual') {
-            const resolutionMap = new Map<number, { choice: ResolutionChoice; resolvedContent: string }>();
-            for (const r of (message.resolutions || [])) {
-                resolutionMap.set(r.index, { 
-                    choice: r.choice as ResolutionChoice, 
-                    resolvedContent: r.resolvedContent 
-                });
-            }
-            if (this._onResolutionComplete) {
-                this._onResolutionComplete({
-                    type: 'textual',
-                    textualResolutions: resolutionMap,
-                    markAsResolved: message.markAsResolved ?? false
-                });
-            }
-        } else if (this._conflict?.type === 'semantic') {
+        if (this._conflict?.type === 'semantic') {
             const semanticResolutionMap = new Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>();
             for (const r of (message.resolutions || [])) {
                 semanticResolutionMap.set(r.index, {

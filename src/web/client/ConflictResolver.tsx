@@ -11,7 +11,6 @@ import type {
     MergeRow as MergeRowType,
     ConflictChoice,
     NotebookSemanticConflict,
-    NotebookConflict,
     CellMapping,
     SemanticConflict,
     NotebookCell,
@@ -59,8 +58,6 @@ export function ConflictResolver({
     const [rows, setRows] = useState<MergeRowType[]>(() => {
         if (conflict.type === 'semantic' && conflict.semanticConflict) {
             return buildMergeRowsFromSemantic(conflict.semanticConflict);
-        } else if (conflict.type === 'textual' && conflict.textualConflict) {
-            return buildMergeRowsFromTextual(conflict.textualConflict);
         }
         return [];
     });
@@ -74,13 +71,7 @@ export function ConflictResolver({
     const [dropRowIndex, setDropRowIndex] = useState<number | null>(null);
 
     const conflictRows = useMemo(() => rows.filter(r => r.type === 'conflict'), [rows]);
-    const metadataConflicts = useMemo(() => {
-        if (conflict.type === 'textual' && conflict.textualConflict) {
-            return conflict.textualConflict.metadataConflicts || [];
-        }
-        return [];
-    }, [conflict]);
-    const totalConflicts = conflictRows.length + metadataConflicts.length;
+    const totalConflicts = conflictRows.length;
     const resolvedCount = choices.size;
     const allResolved = resolvedCount === totalConflicts;
 
@@ -236,8 +227,7 @@ export function ConflictResolver({
     }, [draggedRowIndex, rows]);
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
-    const metadataOffset = conflictRows.length;
-    const allowCellDrag = conflict.type !== 'textual';
+    const allowCellDrag = true;
 
     return (
         <div className="app-container">
@@ -342,51 +332,6 @@ export function ConflictResolver({
                         </React.Fragment>
                     );
                 })}
-
-                {metadataConflicts.length > 0 && (
-                    <div className="metadata-conflicts">
-                        {metadataConflicts.map((meta, i) => {
-                            const conflictIdx = metadataOffset + i;
-                            const resolutionState = choices.get(conflictIdx);
-
-                            return (
-                                <div key={`metadata-${i}`} className="merge-row conflict-row metadata-conflict">
-                                    <div className="cell-columns">
-                                        <div className="cell-column base-column">
-                                            <div className="cell-placeholder cell-deleted">
-                                                <span className="placeholder-text">Metadata: {meta.field}</span>
-                                            </div>
-                                        </div>
-                                        <div className="cell-column current-column">
-                                            <div className="metadata-cell">
-                                                <pre>{meta.currentContent}</pre>
-                                            </div>
-                                        </div>
-                                        <div className="cell-column incoming-column">
-                                            <div className="metadata-cell">
-                                                <pre>{meta.incomingContent}</pre>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="resolution-bar">
-                                        <button
-                                            className={`btn-resolve btn-current ${resolutionState?.choice === 'current' ? 'selected' : ''}`}
-                                            onClick={() => handleSelectChoice(conflictIdx, 'current', meta.currentContent)}
-                                        >
-                                            Use Current
-                                        </button>
-                                        <button
-                                            className={`btn-resolve btn-incoming ${resolutionState?.choice === 'incoming' ? 'selected' : ''}`}
-                                            onClick={() => handleSelectChoice(conflictIdx, 'incoming', meta.incomingContent)}
-                                        >
-                                            Use Incoming
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
             </main>
         </div>
     );
@@ -433,89 +378,6 @@ function buildMergeRowsFromSemantic(conflict: NotebookSemanticConflict): MergeRo
             incomingCellIndex: mapping.incomingIndex,
             conflictIndex: conflictInfo?.index,
             conflictType: conflictInfo?.conflict.type,
-            isUnmatched,
-            unmatchedSides: isUnmatched ? presentSides : undefined,
-            anchorPosition,
-        });
-    }
-
-    return sortByPosition(rows, (r) => ({
-        anchor: r.anchorPosition ?? 0,
-        incoming: r.incomingCellIndex,
-        current: r.currentCellIndex,
-        base: r.baseCellIndex
-    }));
-}
-
-/**
- * Build merge rows from textual conflict data.
- */
-function buildMergeRowsFromTextual(conflict: NotebookConflict): MergeRowType[] {
-    const rows: MergeRowType[] = [];
-
-    if (!conflict.cellMappings) {
-        // Fallback: just show the conflicts directly
-        return conflict.conflicts.map((c, i) => ({
-            type: 'conflict' as const,
-            currentCell: { cell_type: c.cellType || 'code', source: c.currentContent, metadata: {} },
-            incomingCell: { cell_type: c.cellType || 'code', source: c.incomingContent, metadata: {} },
-            conflictIndex: i,
-        }));
-    }
-
-    let conflictIndex = 0;
-
-    for (const mapping of conflict.cellMappings) {
-        const baseCell = mapping.baseIndex !== undefined && conflict.base
-            ? conflict.base.cells[mapping.baseIndex] : undefined;
-        const currentCell = mapping.currentIndex !== undefined && conflict.current
-            ? conflict.current.cells[mapping.currentIndex] : undefined;
-        const incomingCell = mapping.incomingIndex !== undefined && conflict.incoming
-            ? conflict.incoming.cells[mapping.incomingIndex] : undefined;
-
-        // Detect if this is a conflict by comparing cells
-        let isConflict = false;
-
-        // Case 1: Cell exists in current only (added in current)
-        if (currentCell && !incomingCell && !baseCell) {
-            isConflict = true;
-        }
-        // Case 2: Cell exists in incoming only (added in incoming)
-        else if (incomingCell && !currentCell && !baseCell) {
-            isConflict = true;
-        }
-        // Case 3: Cell exists in both current and incoming - check if they differ
-        else if (currentCell && incomingCell) {
-            const currSrc = normalizeCellSource(currentCell.source);
-            const incSrc = normalizeCellSource(incomingCell.source);
-            if (currSrc !== incSrc) {
-                isConflict = true;
-            }
-        }
-        // Case 4: Cell deleted in one branch (exists in base but not current or incoming)
-        else if (baseCell && (!currentCell || !incomingCell) && (currentCell || incomingCell)) {
-            isConflict = true;
-        }
-
-        const currentConflictIndex = isConflict ? conflictIndex++ : undefined;
-
-        const presentSides: ('base' | 'current' | 'incoming')[] = [];
-        if (baseCell) presentSides.push('base');
-        if (currentCell) presentSides.push('current');
-        if (incomingCell) presentSides.push('incoming');
-
-        const isUnmatched = presentSides.length < 3 && presentSides.length > 0;
-        const anchorPosition = mapping.baseIndex ?? mapping.currentIndex ?? mapping.incomingIndex ?? 0;
-
-        rows.push({
-            type: isConflict ? 'conflict' : 'identical',
-            baseCell,
-            currentCell,
-            incomingCell,
-            baseCellIndex: mapping.baseIndex,
-            currentCellIndex: mapping.currentIndex,
-            incomingCellIndex: mapping.incomingIndex,
-            conflictIndex: currentConflictIndex,
             isUnmatched,
             unmatchedSides: isUnmatched ? presentSides : undefined,
             anchorPosition,
