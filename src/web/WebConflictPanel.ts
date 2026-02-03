@@ -31,14 +31,14 @@ export class WebConflictPanel {
     
     private readonly _extensionUri: vscode.Uri;
     private _conflict: UnifiedConflict | undefined;
-    private _onResolutionComplete: ((resolution: UnifiedResolution) => void) | undefined;
+    private _onResolutionComplete: ((resolution: UnifiedResolution) => Promise<void>) | undefined;
     private _sessionId: string | undefined;
     private _isDisposed: boolean = false;
 
     public static async createOrShow(
         extensionUri: vscode.Uri,
         conflict: UnifiedConflict,
-        onResolutionComplete: (resolution: UnifiedResolution) => void
+        onResolutionComplete: (resolution: UnifiedResolution) => Promise<void>
     ): Promise<void> {
         // Close existing panel if any
         if (WebConflictPanel.currentPanel) {
@@ -54,7 +54,7 @@ export class WebConflictPanel {
     private constructor(
         extensionUri: vscode.Uri,
         conflict: UnifiedConflict,
-        onResolutionComplete: (resolution: UnifiedResolution) => void
+        onResolutionComplete: (resolution: UnifiedResolution) => Promise<void>
     ) {
         this._extensionUri = extensionUri;
         this._conflict = conflict;
@@ -63,7 +63,7 @@ export class WebConflictPanel {
 
     public setConflict(
         conflict: UnifiedConflict,
-        onResolutionComplete: (resolution: UnifiedResolution) => void
+        onResolutionComplete: (resolution: UnifiedResolution) => Promise<void>
     ): void {
         this._conflict = conflict;
         this._onResolutionComplete = onResolutionComplete;
@@ -136,7 +136,8 @@ export class WebConflictPanel {
 
         switch (msg.command) {
             case 'resolve':
-                this._handleResolution(msg);
+                // Fire and forget - errors are handled in _handleResolution
+                void this._handleResolution(msg);
                 break;
             case 'cancel':
                 this.dispose();
@@ -148,12 +149,12 @@ export class WebConflictPanel {
         }
     }
 
-    private _handleResolution(message: { 
+    private async _handleResolution(message: { 
         type?: string; 
         resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>; 
         semanticChoice?: string; 
         markAsResolved?: boolean 
-    }): void {
+    }): Promise<void> {
         if (this._conflict?.type === 'semantic') {
             const semanticResolutionMap = new Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>();
             for (const r of (message.resolutions || [])) {
@@ -163,12 +164,18 @@ export class WebConflictPanel {
                 });
             }
             if (this._onResolutionComplete) {
-                this._onResolutionComplete({
-                    type: 'semantic',
-                    semanticChoice: message.semanticChoice as 'current' | 'incoming' | undefined,
-                    semanticResolutions: semanticResolutionMap,
-                    markAsResolved: message.markAsResolved ?? false
-                });
+                try {
+                    await this._onResolutionComplete({
+                        type: 'semantic',
+                        semanticChoice: message.semanticChoice as 'current' | 'incoming' | undefined,
+                        semanticResolutions: semanticResolutionMap,
+                        markAsResolved: message.markAsResolved ?? false
+                    });
+                } catch (error) {
+                    logger.error('[WebConflictPanel] Error applying semantic resolutions:', error);
+                    vscode.window.showErrorMessage(`Failed to apply resolutions: ${error}`);
+                    return; // Don't dispose on error so user can see the state
+                }
             }
         }
         this.dispose();

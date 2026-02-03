@@ -172,7 +172,7 @@ export class NotebookConflictResolver {
             hideNonConflictOutputs: settings.hideNonConflictOutputs
         };
 
-        const resolutionCallback = async (resolution: UnifiedResolution) => {
+        const resolutionCallback = async (resolution: UnifiedResolution): Promise<void> => {
             await this.applySemanticResolutions(uri, filteredSemanticConflict, resolution, autoResolveResult);
         };
 
