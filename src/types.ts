@@ -99,16 +99,25 @@ export interface NotebookConflict {
     incomingBranch?: string;
 }
 
-export type ResolutionChoice = 'current' | 'incoming' | 'both' | 'custom';
+/**
+ * Resolution choices for conflict resolution.
+ * - base: Use the base version (pre-merge common ancestor)
+ * - current: Use the current branch version
+ * - incoming: Use the incoming branch version  
+ * - both: Include both current and incoming content
+ * - delete: Remove the cell entirely
+ */
+export type ResolutionChoice = 'base' | 'current' | 'incoming' | 'both' | 'delete';
 
 export interface ConflictResolution {
     conflict: CellConflict;
     choice: ResolutionChoice;
-    customContent?: string;
+    /** The resolved content from the editable text area (source of truth) */
+    resolvedContent?: string;
 }
 
 /**
- * Semantic conflict types (Git UU status without textual markers)
+ * Semantic conflict types (Git UU status)
  */
 
 export type SemanticConflictType = 
@@ -150,9 +159,6 @@ export interface CellMapping {
 export interface NotebookSemanticConflict {
     filePath: string;
     
-    // True if file also has textual conflict markers
-    hasTextualConflicts: boolean;
-    
     // All semantic conflicts detected
     semanticConflicts: SemanticConflict[];
     
@@ -171,6 +177,7 @@ export interface NotebookSemanticConflict {
 
 export interface SemanticConflictResolution {
     conflict: SemanticConflict;
-    choice: 'base' | 'current' | 'incoming' | 'custom';
-    customContent?: NotebookCell;
+    choice: 'base' | 'current' | 'incoming' | 'delete';
+    /** The resolved content from the editable text area (source of truth) */
+    resolvedContent?: string;
 }

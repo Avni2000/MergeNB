@@ -1,7 +1,7 @@
 /**
  * @file diffUtils.ts
  * @description Text diffing utilities for visual conflict comparison.
- * 
+ *
  * Implements LCS (Longest Common Subsequence) based diff algorithm:
  * - Line-by-line comparison between two text versions
  * - Inline word/character-level change detection within modified lines
@@ -33,17 +33,17 @@ export interface DiffResult {
 export function computeLineDiff(oldText: string, newText: string): DiffResult {
     const oldLines = oldText.split('\n');
     const newLines = newText.split('\n');
-    
+
     // Compute LCS (Longest Common Subsequence) for line matching
     const lcs = computeLCS(oldLines, newLines);
-    
+
     const left: DiffLine[] = [];
     const right: DiffLine[] = [];
-    
+
     let oldIdx = 0;
     let newIdx = 0;
     let lcsIdx = 0;
-    
+
     while (oldIdx < oldLines.length || newIdx < newLines.length) {
         if (lcsIdx < lcs.length && oldIdx < oldLines.length && oldLines[oldIdx] === lcs[lcsIdx]) {
             // Check if this line also matches in new
@@ -69,14 +69,14 @@ export function computeLineDiff(oldText: string, newText: string): DiffResult {
             // Both lines are different - this is a modification
             const inlineLeft = computeInlineDiff(oldLines[oldIdx], newLines[newIdx]);
             const inlineRight = computeInlineDiff(newLines[newIdx], oldLines[oldIdx], true);
-            
-            left.push({ 
-                type: 'modified', 
+
+            left.push({
+                type: 'modified',
                 content: oldLines[oldIdx],
                 inlineChanges: inlineLeft
             });
-            right.push({ 
-                type: 'modified', 
+            right.push({
+                type: 'modified',
                 content: newLines[newIdx],
                 inlineChanges: inlineRight
             });
@@ -94,84 +94,104 @@ export function computeLineDiff(oldText: string, newText: string): DiffResult {
             newIdx++;
         }
     }
-    
+
     return { left, right };
 }
 
 /**
- * Compute inline (character-level) diff for a modified line.
+ * Compute inline (word/character-level) diff for a modified line.
+ * Uses word-level granularity for better readability.
  */
 function computeInlineDiff(text: string, otherText: string, isNew: boolean = false): InlineChange[] {
-    // Simple word-level diff for better readability
-    const words1 = tokenize(text);
-    const words2 = tokenize(otherText);
-    const lcs = computeLCS(words1, words2);
-    
+    // Tokenize into words and whitespace
+    const tokens1 = tokenizeWords(text);
+    const tokens2 = tokenizeWords(otherText);
+    const lcs = computeLCS(tokens1, tokens2);
+
     const changes: InlineChange[] = [];
     let idx1 = 0;
     let lcsIdx = 0;
-    
-    while (idx1 < words1.length) {
-        if (lcsIdx < lcs.length && words1[idx1] === lcs[lcsIdx]) {
-            changes.push({ type: 'unchanged', text: words1[idx1] });
+
+    while (idx1 < tokens1.length) {
+        if (lcsIdx < lcs.length && tokens1[idx1] === lcs[lcsIdx]) {
+            changes.push({ type: 'unchanged', text: tokens1[idx1] });
             idx1++;
             lcsIdx++;
         } else {
-            // This word was removed/added
-            changes.push({ 
-                type: isNew ? 'added' : 'removed', 
-                text: words1[idx1] 
+            // This token was removed/added
+            changes.push({
+                type: isNew ? 'added' : 'removed',
+                text: tokens1[idx1]
             });
             idx1++;
         }
     }
-    
+
     return changes;
 }
 
 /**
- * Tokenize text into words and whitespace for inline diff.
+ * Tokenize text into words and whitespace for word-level diff.
+ * Preserves all characters including punctuation as separate tokens for fine-grained comparison.
  */
-function tokenize(text: string): string[] {
+function tokenizeWords(text: string): string[] {
     const tokens: string[] = [];
     let current = '';
-    let inWord = false;
-    
-    for (const char of text) {
+
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
         const isWhitespace = /\s/.test(char);
+        const isAlphaNum = /[a-zA-Z0-9_]/.test(char);
+
         if (isWhitespace) {
+            // Flush current token
+            if (current) {
+                tokens.push(current);
+                current = '';
+            }
+            // Add whitespace as a token
+            tokens.push(char);
+        } else if (isAlphaNum) {
+            // Continue building alphanumeric word
+            current += char;
+        } else {
+            // Punctuation or special character - flush and add separately
             if (current) {
                 tokens.push(current);
                 current = '';
             }
             tokens.push(char);
-            inWord = false;
-        } else {
-            current += char;
-            inWord = true;
         }
     }
-    
+
     if (current) {
         tokens.push(current);
     }
-    
+
     return tokens;
 }
 
 /**
+ * Legacy tokenize function for backward compatibility.
+ * @deprecated Use tokenizeWords for better word-level granularity.
+ */
+function tokenize(text: string): string[] {
+    return tokenizeWords(text);
+}
+
+/**
  * Compute Longest Common Subsequence of two arrays.
- * @param arr1 
- * @param arr2 
+ * @param arr1
+ * @param arr2
  * @returns The LCS as an array
  */
 function computeLCS<T>(arr1: T[], arr2: T[]): T[] {
     const m = arr1.length;
     const n = arr2.length;
-    
+
     // DP table
     const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
-    
+
     for (let i = 1; i <= m; i++) {
         for (let j = 1; j <= n; j++) {
             if (arr1[i - 1] === arr2[j - 1]) {
@@ -181,7 +201,7 @@ function computeLCS<T>(arr1: T[], arr2: T[]): T[] {
             }
         }
     }
-    
+
     // Backtrack to find the LCS
     const lcs: T[] = [];
     let i = m, j = n;
@@ -196,7 +216,7 @@ function computeLCS<T>(arr1: T[], arr2: T[]): T[] {
             j--;
         }
     }
-    
+
     return lcs;
 }
 
@@ -205,20 +225,20 @@ function computeLCS<T>(arr1: T[], arr2: T[]): T[] {
  * This creates a side-by-side view with synchronized line highlighting.
  */
 export function generateDiffHtml(
-    oldText: string, 
+    oldText: string,
     newText: string,
     oldLabel: string = 'Old',
     newLabel: string = 'New'
 ): { leftHtml: string; rightHtml: string } {
     const diff = computeLineDiff(oldText, newText);
-    
+
     let leftHtml = '';
     let rightHtml = '';
-    
+
     for (let i = 0; i < Math.max(diff.left.length, diff.right.length); i++) {
         const leftLine = diff.left[i];
         const rightLine = diff.right[i];
-        
+
         if (leftLine) {
             leftHtml += renderDiffLine(leftLine, 'left');
         }
@@ -226,7 +246,7 @@ export function generateDiffHtml(
             rightHtml += renderDiffLine(rightLine, 'right');
         }
     }
-    
+
     return { leftHtml, rightHtml };
 }
 
@@ -235,12 +255,12 @@ export function generateDiffHtml(
  */
 function renderDiffLine(line: DiffLine, side: 'left' | 'right'): string {
     const lineClass = getLineClass(line.type, side);
-    
+
     if (line.content === '' && (line.type === 'unchanged')) {
         // Empty placeholder line for alignment
         return `<div class="diff-line diff-line-empty">&nbsp;</div>`;
     }
-    
+
     if (line.inlineChanges && line.inlineChanges.length > 0) {
         // Line with inline changes
         const content = line.inlineChanges.map(change => {
@@ -249,7 +269,7 @@ function renderDiffLine(line: DiffLine, side: 'left' | 'right'): string {
         }).join('');
         return `<div class="diff-line ${lineClass}">${content || '&nbsp;'}</div>`;
     }
-    
+
     return `<div class="diff-line ${lineClass}">${escapeHtml(line.content) || '&nbsp;'}</div>`;
 }
 
@@ -281,11 +301,5 @@ function getInlineClass(type: InlineChange['type'], side: 'left' | 'right'): str
     }
 }
 
-function escapeHtml(text: string): string {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
-}
+// Import from notebookUtils to avoid duplication
+import { escapeHtml } from './notebookUtils';

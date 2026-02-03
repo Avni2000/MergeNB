@@ -208,17 +208,10 @@ export async function getThreeWayVersions(filePath: string): Promise<{
 }
 
 /**
- * Check if a file is a semantic conflict (unmerged but no textual markers)
+ * Check if a file is a semantic conflict (unmerged status)
  */
 export async function isSemanticConflict(filePath: string, content: string): Promise<boolean> {
-    const isUnmerged = await isUnmergedFile(filePath);
-    if (!isUnmerged) return false;
-
-    // Check if content has textual conflict markers
-    const hasTextualMarkers = /<{7}|={7}|>{7}/.test(content);
-    
-    // Semantic conflict = unmerged status WITHOUT textual markers
-    return !hasTextualMarkers;
+    return await isUnmergedFile(filePath);
 }
 
 /**

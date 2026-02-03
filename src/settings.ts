@@ -49,7 +49,7 @@ export function getSettings(): MergeNBSettings {
         autoResolveExecutionCount: config.get<boolean>('autoResolve.executionCount', true),
         autoResolveKernelVersion: config.get<boolean>('autoResolve.kernelVersion', true),
         stripOutputs: config.get<boolean>('autoResolve.stripOutputs', true),
-        hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', true)
+        hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', true),
     };
 }
 
