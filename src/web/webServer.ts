@@ -388,7 +388,6 @@ export class ConflictResolverWebServer {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MergeNB - Conflict Resolver</title>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
     <style>
         body { margin: 0; background: #1e1e1e; }
         .loading-container {
@@ -411,15 +410,6 @@ export class ConflictResolverWebServer {
         }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
-</head>
-<body>
-    <div id="root">
-        <div class="loading-container">
-            <div class="spinner"></div>
-            <p>Loading MergeNB...</p>
-        </div>
-    </div>
-    <script type="module" src="/client.js"></script>
     <script>
         // Initialize MathJax configuration for full LaTeX support
         window.MathJax = {
@@ -448,6 +438,16 @@ export class ConflictResolverWebServer {
             return Promise.resolve();
         };
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
+</head>
+<body>
+    <div id="root">
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Loading MergeNB...</p>
+        </div>
+    </div>
+    <script type="module" src="/client.js"></script>
 </body>
 </html>`;
     }
