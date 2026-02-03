@@ -19,8 +19,7 @@ This extension provides a rich UI for notebook-aware conflict resolution. Instea
 
 ## Conflict Types
 
-1. **Raw markers** - `<<<<<<<`/`>>>>>>>` in JSON breaks parsing; use `analyzeRawConflicts()`
-2. **Semantic conflicts** - Git `UU` status without textual markers; different execution states, outputs, or cell modifications between branches
+1. **Semantic conflicts** - Git `UU` status; different execution states, outputs, or cell modifications between branches
 
 ## Key Files
 
@@ -38,7 +37,7 @@ This extension provides a rich UI for notebook-aware conflict resolution. Instea
 ## Commands
 
 Single unified command:
-- `merge-nb.findConflicts` - Find notebooks with merge conflicts (both textual and semantic), brings up the conflict resolution panel
+- `merge-nb.findConflicts` - Find notebooks with merge conflicts, brings up the conflict resolution panel
 
 ## Testing
 
