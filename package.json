@@ -86,11 +86,6 @@
           "type": "boolean",
           "default": false,
           "description": "Show cell type, execution count, and cell index in the conflict resolution view"
-        },
-        "mergeNB.ui.useWebBrowser": {
-          "type": "boolean",
-          "default": true,
-          "description": "Open conflict resolver in web browser instead of VSCode webview panel (enables more powerful dev tools and works outside VSCode)"
         }
       }
     }
