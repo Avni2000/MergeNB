@@ -228,6 +228,7 @@ export class NotebookConflictResolver {
             semanticConflict, 
             resolvedRows, 
             resolution.markAsResolved,
+            resolution.renumberExecutionCounts,
             autoResolveResult
         );
     }
@@ -240,6 +241,7 @@ export class NotebookConflictResolver {
         semanticConflict: NotebookSemanticConflict,
         resolvedRows: import('./web/webTypes').ResolvedRow[],
         markAsResolved: boolean,
+        shouldRenumber: boolean,
         autoResolveResult?: AutoResolveResult
     ): Promise<void> {
         const baseNotebook = semanticConflict.base;
@@ -317,20 +319,16 @@ export class NotebookConflictResolver {
             cells: resolvedCells
         };
 
-        const renumber = await vscode.window.showQuickPick(
-            ['Yes', 'No'],
-            {
-                placeHolder: 'Renumber execution counts sequentially?',
-                title: 'Execution Counts'
-            }
-        );
-
-        if (renumber === 'Yes') {
+        if (shouldRenumber) {
             resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
         }
 
         await this.saveResolvedNotebook(uri, resolvedNotebook, markAsResolved);
-        vscode.window.showInformationMessage(`Resolved conflicts in ${uri.fsPath}`);
+        
+        // Show success notification (non-blocking, fire and forget)
+        vscode.window.showInformationMessage(
+            `Resolved conflicts in ${uri.fsPath.split('/').pop()}`
+        );
     }
 
     /**

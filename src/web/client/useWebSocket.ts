@@ -11,12 +11,16 @@ interface UseWebSocketResult {
     sessionId: string | null;
     conflictData: UnifiedConflictData | null;
     sendMessage: (message: object) => void;
+    resolutionStatus: 'pending' | 'success' | 'error' | null;
+    resolutionMessage: string | null;
 }
 
 export function useWebSocket(): UseWebSocketResult {
     const [connected, setConnected] = useState(false);
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [conflictData, setConflictData] = useState<UnifiedConflictData | null>(null);
+    const [resolutionStatus, setResolutionStatus] = useState<'pending' | 'success' | 'error' | null>(null);
+    const [resolutionMessage, setResolutionMessage] = useState<string | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
     useEffect(() => {
@@ -42,10 +46,18 @@ export function useWebSocket(): UseWebSocketResult {
                 const msg = JSON.parse(event.data) as WSMessage;
                 console.log('[MergeNB] Received:', msg);
 
-                if ('type' in msg && msg.type === 'connected') {
-                    setSessionId(msg.sessionId);
-                } else if ('type' in msg && msg.type === 'conflict-data') {
-                    setConflictData(msg.data);
+                if ('type' in msg) {
+                    if (msg.type === 'connected') {
+                        setSessionId(msg.sessionId);
+                    } else if (msg.type === 'conflict-data') {
+                        setConflictData(msg.data);
+                    } else if (msg.type === 'resolution-success') {
+                        setResolutionStatus('success');
+                        setResolutionMessage(msg.message);
+                    } else if (msg.type === 'resolution-error') {
+                        setResolutionStatus('error');
+                        setResolutionMessage(msg.message);
+                    }
                 }
             } catch (err) {
                 console.error('[MergeNB] Failed to parse message:', err);
@@ -69,10 +81,11 @@ export function useWebSocket(): UseWebSocketResult {
     const sendMessage = useCallback((message: object) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify(message));
+            setResolutionStatus('pending');
         } else {
             console.warn('[MergeNB] Cannot send - WebSocket not connected');
         }
     }, []);
 
-    return { connected, sessionId, conflictData, sendMessage };
+    return { connected, sessionId, conflictData, sendMessage, resolutionStatus, resolutionMessage };
 }

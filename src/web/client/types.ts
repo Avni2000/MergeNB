@@ -105,6 +105,7 @@ export interface ResolutionMessage {
     resolvedRows: ResolvedRow[];
     semanticChoice?: 'current' | 'incoming';
     markAsResolved: boolean;
+    renumberExecutionCounts: boolean;
 }
 
 /**
@@ -113,6 +114,8 @@ export interface ResolutionMessage {
 export type WSMessage =
     | { type: 'connected'; sessionId: string }
     | { type: 'conflict-data'; data: UnifiedConflictData }
+    | { type: 'resolution-success'; message: string }
+    | { type: 'resolution-error'; message: string }
     | ResolutionMessage
     | { command: 'cancel' }
     | { command: 'ready' };

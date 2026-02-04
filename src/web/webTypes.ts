@@ -69,6 +69,8 @@ export interface UnifiedResolution {
     resolvedRows?: ResolvedRow[];
     // Whether to mark file as resolved with git add
     markAsResolved: boolean;
+    // Whether to renumber execution counts sequentially
+    renumberExecutionCounts: boolean;
 }
 
 /**

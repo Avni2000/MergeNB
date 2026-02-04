@@ -49,7 +49,7 @@ interface DropTarget {
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
-    onResolve: (resolutions: ConflictChoice[], markAsResolved: boolean, resolvedRows: import('./types').ResolvedRow[]) => void;
+    onResolve: (resolutions: ConflictChoice[], markAsResolved: boolean, renumberExecutionCounts: boolean, resolvedRows: import('./types').ResolvedRow[]) => void;
     onCancel: () => void;
 }
 
@@ -60,6 +60,7 @@ export function ConflictResolver({
 }: ConflictResolverProps): React.ReactElement {
     const [choices, setChoices] = useState<Map<number, ResolutionState>>(new Map());
     const [markAsResolved, setMarkAsResolved] = useState(true);
+    const [renumberExecutionCounts, setRenumberExecutionCounts] = useState(true);
     const [rows, setRows] = useState<MergeRowType[]>(() => {
         if (conflict.type === 'semantic' && conflict.semanticConflict) {
             return buildMergeRowsFromSemantic(conflict.semanticConflict);
@@ -166,8 +167,8 @@ export function ConflictResolver({
             };
         });
         
-        onResolve(resolutions, markAsResolved, resolvedRows);
-    }, [choices, markAsResolved, onResolve, rows]);
+        onResolve(resolutions, markAsResolved, renumberExecutionCounts, resolvedRows);
+    }, [choices, markAsResolved, renumberExecutionCounts, onResolve, rows]);
 
     // Cell drag handlers
     const handleCellDragStart = useCallback((rowIndex: number, side: 'base' | 'current' | 'incoming', cell: NotebookCell) => {
@@ -298,6 +299,14 @@ export function ConflictResolver({
                     <span className="conflict-counter">
                         {resolvedCount} / {totalConflicts} resolved
                     </span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                        <input
+                            type="checkbox"
+                            checked={renumberExecutionCounts}
+                            onChange={e => setRenumberExecutionCounts(e.target.checked)}
+                        />
+                        Renumber execution counts
+                    </label>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
                         <input
                             type="checkbox"
