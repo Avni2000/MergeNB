@@ -6,16 +6,17 @@
 import React from 'react';
 import { useWebSocket } from './useWebSocket';
 import { ConflictResolver } from './ConflictResolver';
-import type { ConflictChoice } from './types';
+import type { ConflictChoice, ResolvedRow } from './types';
 
 export function App(): React.ReactElement {
     const { connected, conflictData, sendMessage } = useWebSocket();
 
-    const handleResolve = (resolutions: ConflictChoice[], markAsResolved: boolean) => {
+    const handleResolve = (resolutions: ConflictChoice[], markAsResolved: boolean, resolvedRows: ResolvedRow[]) => {
         sendMessage({
             command: 'resolve',
             type: 'semantic',
             resolutions,
+            resolvedRows,
             markAsResolved,
         });
     };
