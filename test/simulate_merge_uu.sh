@@ -69,7 +69,7 @@ fi
 # (find processes with "code" in the command line and "/tmp/" in the args,
 # then try graceful TERM, then KILL if needed)
 if command -v ps >/dev/null 2>&1; then
-  mapfile -t _code_pids < <(ps -eo pid=,args= | grep -F 'code' | grep '/tmp/' | awk '{print $1}' | sort -u)
+mapfile -t _code_pids < <(ps -eo pid=,comm=,args= | awk '$2 ~ /^[Cc]ode$/ && /\/tmp\// {print $1}' | sort -u)
   if [ "${#_code_pids[@]}" -gt 0 ]; then
     echo "Closing VS Code instances with open items in /tmp: ${_code_pids[*]}"
     for _pid in "${_code_pids[@]}"; do
