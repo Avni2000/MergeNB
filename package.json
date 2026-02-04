@@ -2,7 +2,7 @@
   "name": "merge-nb",
   "displayName": "MergeNB",
   "description": "Rich Jupyter Notebook Merge Conflict Resolver",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "repository": "https://github.com/Avni2000/MergeNB",
   "engines": {
     "vscode": "^1.108.0"
