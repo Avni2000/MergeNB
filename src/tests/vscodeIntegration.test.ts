@@ -24,6 +24,8 @@ interface ExpectedCell {
     cellType: string;
     isConflict: boolean;
     isDeleted: boolean;
+    metadata?: Record<string, unknown>;
+    hasOutputs?: boolean; // Whether the cell will have outputs after resolution
 }
 
 function checkHealth(port: number): Promise<boolean> {
@@ -39,6 +41,19 @@ function checkHealth(port: number): Promise<boolean> {
 function getCellSource(cell: any): string {
     if (!cell) return '';
     return Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
+}
+
+function parseCellFromAttribute(cellJson: string | null, context: string): any {
+    if (!cellJson) {
+        console.error(`Missing data-cell attribute for ${context}`);
+        throw new Error(`Missing data-cell attribute for ${context}`);
+    }
+    try {
+        return JSON.parse(decodeURIComponent(cellJson));
+    } catch (err) {
+        console.error(`Failed to parse cell JSON for ${context}`, err);
+        throw new Error(`Failed to parse cell JSON for ${context}`);
+    }
 }
 
 function getHealthInfo(port: number): Promise<HealthResponse | null> {
@@ -266,6 +281,14 @@ export async function run(): Promise<void> {
         if (!await renumberCheckbox.isChecked()) {
             await renumberCheckbox.check();
         }
+        const renumberEnabled = await renumberCheckbox.isChecked();
+
+        const getColumnCell = async (row: import('playwright').Locator, column: 'base' | 'current' | 'incoming', rowIndex: number) => {
+            const cellEl = row.locator(`.${column}-column .notebook-cell`);
+            if (await cellEl.count() === 0) return null;
+            const cellJson = await cellEl.getAttribute('data-cell');
+            return parseCellFromAttribute(cellJson, `row ${rowIndex} ${column} cell`);
+        };
         
         // Capture expected cells from UI BEFORE clicking apply
         console.log('\n=== Capturing expected cells from UI ===');
@@ -282,47 +305,21 @@ export async function run(): Promise<void> {
             if (isIdenticalRow) {
                 const cellJson = await row.getAttribute('data-cell');
                 const cellType = await row.getAttribute('data-cell-type') || 'code';
-
-                if (cellJson) {
-                    try {
-                        const cell = JSON.parse(decodeURIComponent(cellJson));
-                        expectedCells.push({
-                            rowIndex: i,
-                            source: getCellSource(cell),
-                            cellType: cell.cell_type || cellType,
-                            isConflict: false,
-                            isDeleted: false
-                        });
-                        continue;
-                    } catch (err) {
-                        console.warn('Failed to parse cell JSON', err);
-                    }
-                }
-
-                // Fallback for cells without data attribute or if parsing fails
-                const rawSource = await row.getAttribute('data-raw-source');
-                if (rawSource !== null) {
-                    expectedCells.push({
-                        rowIndex: i,
-                        source: rawSource,
-                        cellType,
-                        isConflict: false,
-                        isDeleted: false
-                    });
-                } else {
-                    const cellContent = row.locator('.cell-column .notebook-cell .cell-content');
-                    if (await cellContent.count() > 0) {
-                        const textContent = await cellContent.textContent() || '';
-                        const hasCodeClass = await row.locator('.notebook-cell').evaluate(el => el.classList.contains('code-cell'));
-                        expectedCells.push({
-                            rowIndex: i,
-                            source: textContent,
-                            cellType: hasCodeClass ? 'code' : 'markdown',
-                            isConflict: false,
-                            isDeleted: false
-                        });
-                    }
-                }
+                const cell = parseCellFromAttribute(cellJson, `identical row ${i}`);
+                const resolvedCellType = cell.cell_type || cellType;
+                // Identical cells retain their original outputs
+                const hasOutputs = resolvedCellType === 'code' && 
+                    Array.isArray(cell.outputs) && 
+                    cell.outputs.length > 0;
+                expectedCells.push({
+                    rowIndex: i,
+                    source: getCellSource(cell),
+                    cellType: resolvedCellType,
+                    metadata: cell.metadata || {},
+                    hasOutputs,
+                    isConflict: false,
+                    isDeleted: false
+                });
             } else if (isConflictRow) {
                 const resolvedCell = row.locator('.resolved-cell');
                 const hasResolvedCell = await resolvedCell.count() > 0;
@@ -344,12 +341,43 @@ export async function run(): Promise<void> {
                             const textareaValue = await textarea.inputValue();
                             // Get cell type from resolution choice
                             const resInfo = resolutionChoices.get(conflictIdx);
-                            const cellType = resInfo?.chosenCellType || 'code';
+                            if (!resInfo) {
+                                console.error(`Missing resolution info for conflict row ${i}`);
+                                throw new Error(`Missing resolution info for conflict row ${i}`);
+                            }
+                            const cellType = resInfo.chosenCellType || 'code';
+                            let referenceCell: any | null = null;
+                            switch (resInfo.choice) {
+                                case 'base':
+                                    referenceCell = await getColumnCell(row, 'base', i);
+                                    break;
+                                case 'current':
+                                    referenceCell = await getColumnCell(row, 'current', i);
+                                    break;
+                                case 'incoming':
+                                    referenceCell = await getColumnCell(row, 'incoming', i);
+                                    break;
+                                case 'both':
+                                    referenceCell = await getColumnCell(row, 'current', i)
+                                        || await getColumnCell(row, 'incoming', i)
+                                        || await getColumnCell(row, 'base', i);
+                                    break;
+                                case 'delete':
+                                    referenceCell = null;
+                                    break;
+                            }
+                            if (!referenceCell) {
+                                console.error(`Missing reference cell for conflict row ${i} (${resInfo.choice})`);
+                                throw new Error(`Missing reference cell for conflict row ${i} (${resInfo.choice})`);
+                            }
                             
+                            // Resolved conflict cells have outputs cleared
                             expectedCells.push({
                                 rowIndex: i,
                                 source: textareaValue,
                                 cellType,
+                                metadata: referenceCell.metadata || {},
+                                hasOutputs: false, // Outputs are always cleared for resolved conflicts
                                 isConflict: true,
                                 isDeleted: false
                             });
@@ -418,9 +446,12 @@ export async function run(): Promise<void> {
             throw new Error(`Cell count mismatch: expected ${expectedNonDeletedCells.length}, got ${resolvedNotebook.cells.length}`);
         }
         
-        // Check each cell source and type
+        // Check each cell source, type, metadata, and execution count
         let sourceMismatches = 0;
         let typeMismatches = 0;
+        let metadataMismatches = 0;
+        let executionMismatches = 0;
+        let nextExecutionCount = 1;
         
         for (let i = 0; i < expectedNonDeletedCells.length; i++) {
             const expected = expectedNonDeletedCells[i];
@@ -438,6 +469,25 @@ export async function run(): Promise<void> {
                 typeMismatches++;
                 console.log(`Type mismatch at cell ${i}: expected ${expected.cellType}, got ${actual.cell_type}`);
             }
+
+            const expectedMetadata = expected.metadata || {};
+            const actualMetadata = actual.metadata || {};
+            if (JSON.stringify(expectedMetadata) !== JSON.stringify(actualMetadata)) {
+                metadataMismatches++;
+                console.log(`Metadata mismatch at cell ${i}`);
+            }
+
+            // Validate execution counts (renumberExecutionCounts only numbers cells with outputs)
+            if (expected.cellType === 'code') {
+                const expectedExecutionCount = renumberEnabled
+                    ? (expected.hasOutputs ? nextExecutionCount++ : null)
+                    : null; // After resolution, all conflict cells have null initially
+                const actualExecutionCount = actual.execution_count ?? null;
+                if (expectedExecutionCount !== actualExecutionCount) {
+                    executionMismatches++;
+                    console.log(`Execution count mismatch at cell ${i}: expected ${expectedExecutionCount}, got ${actualExecutionCount}`);
+                }
+            }
         }
         
         if (sourceMismatches > 0) {
@@ -446,6 +496,14 @@ export async function run(): Promise<void> {
         
         if (typeMismatches > 0) {
             throw new Error(`${typeMismatches} cells have type mismatches`);
+        }
+
+        if (metadataMismatches > 0) {
+            throw new Error(`${metadataMismatches} cells have metadata mismatches`);
+        }
+
+        if (executionMismatches > 0) {
+            throw new Error(`${executionMismatches} cells have execution count mismatches`);
         }
         
         // Verify notebook structure

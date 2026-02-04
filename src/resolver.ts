@@ -333,10 +333,9 @@ export class NotebookConflictResolver {
                     (cellToUse as any).outputs = [];
                 }
             } else {
-                const autoResolvedCell = row.currentCellIndex !== undefined && autoResolvedNotebook
-                    ? autoResolvedNotebook.cells[row.currentCellIndex]
-                    : undefined;
-                cellToUse = autoResolvedCell || currentCell || incomingCell || baseCell;
+                // For non-conflict (identical) rows, use the original cell directly
+                // Don't use autoResolvedCell here because it may have stripped outputs
+                cellToUse = currentCell || incomingCell || baseCell;
             }
 
             if (cellToUse) {
