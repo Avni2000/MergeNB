@@ -108,9 +108,6 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
-    "test:integration": "mocha --timeout 20000 -r ts-node/register src/test/integration/mergeConflict.test.ts",
-    "test:cli": "npx ts-node src/test/cli-test.ts",
-    "test:gui": "npm run compile && npx playwright test src/tests/gui.test.ts",
     "test:vscode": "npm run compile && npm run compile-tests && node out/tests/runIntegrationTest.js"
   },
   "devDependencies": {
