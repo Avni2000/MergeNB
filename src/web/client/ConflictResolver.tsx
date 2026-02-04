@@ -97,32 +97,49 @@ export function ConflictResolver({
         return rowHeights.get(index) ?? DEFAULT_ROW_HEIGHT;
     }, [rowHeights]);
 
-    // Calculate cumulative heights for virtualization
-    const getCumulativeHeight = useCallback((upToIndex: number): number => {
-        let total = 0;
-        for (let i = 0; i < upToIndex && i < rows.length; i++) {
-            total += getRowHeight(i);
+    // Pre-calculate cumulative heights to optimize scrolling performance (O(1) lookups vs O(N))
+    // cumulativeHeights[i] = cumulative height BEFORE row i starts (i.e. top position of row i)
+    // cumulativeHeights[rows.length] = total height
+    const cumulativeHeights = useMemo(() => {
+        const heights = new Array(rows.length + 1).fill(0);
+        let current = 0;
+        for (let i = 0; i < rows.length; i++) {
+            heights[i] = current;
+            current += (rowHeights.get(i) ?? DEFAULT_ROW_HEIGHT);
         }
-        return total;
-    }, [rows.length, getRowHeight]);
+        heights[rows.length] = current;
+        return heights;
+    }, [rows.length, rowHeights]);
 
     // Get total content height
     const getTotalHeight = useCallback((): number => {
-        return getCumulativeHeight(rows.length);
-    }, [rows.length, getCumulativeHeight]);
+        return cumulativeHeights[rows.length];
+    }, [cumulativeHeights, rows.length]);
 
-    // Find row index at a given scroll position
+    // Find row index at a given scroll position using binary search
     const getRowIndexAtPosition = useCallback((scrollPos: number): number => {
-        let cumulative = 0;
-        for (let i = 0; i < rows.length; i++) {
-            const height = getRowHeight(i);
-            if (cumulative + height > scrollPos) {
-                return i;
+        // Binary search for the row where cumulativeHeights[i] <= scrollPos < cumulativeHeights[i+1]
+        let low = 0;
+        let high = rows.length - 1;
+
+        while (low <= high) {
+            const mid = Math.floor((low + high) / 2);
+            const rowTop = cumulativeHeights[mid];
+            const rowBottom = cumulativeHeights[mid + 1];
+
+            if (scrollPos >= rowTop && scrollPos < rowBottom) {
+                return mid;
+            } else if (scrollPos < rowTop) {
+                high = mid - 1;
+            } else {
+                low = mid + 1;
             }
-            cumulative += height;
         }
-        return rows.length - 1;
-    }, [rows.length, getRowHeight]);
+
+        // Fallback for out of bounds (should return last row if scrolled way past)
+        if (scrollPos >= cumulativeHeights[rows.length]) return rows.length - 1;
+        return 0;
+    }, [cumulativeHeights, rows.length]);
 
     // Setup ResizeObserver to track actual row heights
     useEffect(() => {
@@ -468,7 +485,20 @@ export function ConflictResolver({
                     </div>
                 </div>
 
-                {/* Virtual scrolling container with actual height */}
+                {/* 
+                    Virtualization Strategy: Content Windowing
+                    
+                    We render ALL row wrapper divs in the normal document flow here. 
+                    This allows the browser to calculate the correct document height and scrollbar natively,
+                    and allows ResizeObserver to measure the actual height of every row (even "off-screen" ones).
+                    
+                    True virtualization (removing nodes) would require absolute positioning and estimating heights,
+                    which breaks the sticky headers and variable-height content flow.
+                    
+                    Optimization comes from passing `isVisible` to the MergeRow component.
+                    When `isVisible` is false, MergeRow skips rendering expensive content (like syntax highlighting 
+                    and diffs), rendering lightweight placeholders instead.
+                */}
                 <div style={{ position: 'relative', minHeight: getTotalHeight() }}>
                     {rows.map((row, i) => {
                         const conflictIdx = row.conflictIndex ?? -1;
@@ -492,7 +522,7 @@ export function ConflictResolver({
 
                                 {/* Row wrapper for height measurement */}
                                 <div
-                                    ref={(el) => registerRowRef(i, el)}
+                                    ref={getRefCallback(i)}
                                     data-row-index={i}
                                     style={{ width: '100%' }}
                                 >
