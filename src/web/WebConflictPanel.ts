@@ -155,7 +155,8 @@ export class WebConflictPanel {
         resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>; 
         resolvedRows?: ResolvedRow[];
         semanticChoice?: string; 
-        markAsResolved?: boolean 
+        markAsResolved?: boolean;
+        renumberExecutionCounts?: boolean;
     }): Promise<void> {
         if (this._conflict?.type === 'semantic') {
             const semanticResolutionMap = new Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>();
@@ -172,11 +173,33 @@ export class WebConflictPanel {
                         semanticChoice: message.semanticChoice as 'current' | 'incoming' | undefined,
                         semanticResolutions: semanticResolutionMap,
                         resolvedRows: message.resolvedRows,
-                        markAsResolved: message.markAsResolved ?? false
+                        markAsResolved: message.markAsResolved ?? false,
+                        renumberExecutionCounts: message.renumberExecutionCounts ?? false
                     });
+                    
+                    // Send success message to browser
+                    if (this._sessionId) {
+                        const server = getWebServer();
+                        server.sendMessage(this._sessionId, {
+                            type: 'resolution-success',
+                            message: 'Conflicts resolved successfully!'
+                        });
+                        
+                        // Wait to ensure message is delivered to browser
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
                 } catch (error) {
                     logger.error('[WebConflictPanel] Error applying semantic resolutions:', error);
                     vscode.window.showErrorMessage(`Failed to apply resolutions: ${error}`);
+                    
+                    // Send error message to browser
+                    if (this._sessionId) {
+                        const server = getWebServer();
+                        server.sendMessage(this._sessionId, {
+                            type: 'resolution-error',
+                            message: `Failed to apply resolutions: ${error}`
+                        });
+                    }
                     return; // Don't dispose on error so user can see the state
                 }
             }

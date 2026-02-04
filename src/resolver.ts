@@ -11,6 +11,7 @@
  * 6. Stages the resolved file in Git
  */
 
+import * as path from 'path';  
 import * as vscode from 'vscode';
 import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
 import { serializeNotebook, renumberExecutionCounts } from './notebookParser';
@@ -23,6 +24,11 @@ import { promisify } from 'util';
 import { exec as execCallback } from 'child_process';
 
 const exec = promisify(execCallback);
+
+/**
+ * Event fired when a notebook conflict is successfully resolved.
+ */
+export const onDidResolveConflict = new vscode.EventEmitter<vscode.Uri>();
 
 /**
  * Represents a notebook with semantic conflicts (Git UU status)
@@ -228,6 +234,7 @@ export class NotebookConflictResolver {
             semanticConflict, 
             resolvedRows, 
             resolution.markAsResolved,
+            resolution.renumberExecutionCounts,
             autoResolveResult
         );
     }
@@ -240,6 +247,7 @@ export class NotebookConflictResolver {
         semanticConflict: NotebookSemanticConflict,
         resolvedRows: import('./web/webTypes').ResolvedRow[],
         markAsResolved: boolean,
+        shouldRenumber: boolean,
         autoResolveResult?: AutoResolveResult
     ): Promise<void> {
         const baseNotebook = semanticConflict.base;
@@ -317,20 +325,16 @@ export class NotebookConflictResolver {
             cells: resolvedCells
         };
 
-        const renumber = await vscode.window.showQuickPick(
-            ['Yes', 'No'],
-            {
-                placeHolder: 'Renumber execution counts sequentially?',
-                title: 'Execution Counts'
-            }
-        );
-
-        if (renumber === 'Yes') {
+        if (shouldRenumber) {
             resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
         }
 
         await this.saveResolvedNotebook(uri, resolvedNotebook, markAsResolved);
-        vscode.window.showInformationMessage(`Resolved conflicts in ${uri.fsPath}`);
+        
+        // Show success notification (non-blocking, fire and forget)
+        vscode.window.showInformationMessage(
+            `Resolved conflicts in ${path.basename(uri.fsPath)}`
+        );
     }
 
     /**
@@ -345,6 +349,9 @@ export class NotebookConflictResolver {
         if (markAsResolved) {
             await this.markFileAsResolved(uri);
         }
+        
+        // Fire event to notify extension (for status bar, decorations, etc.)
+        onDidResolveConflict.fire(uri);
     }
 
     private async readFile(uri: vscode.Uri): Promise<string> {

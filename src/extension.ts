@@ -14,14 +14,17 @@
  */
 
 import * as vscode from 'vscode';
-import { NotebookConflictResolver, ConflictedNotebook } from './resolver';
+import { NotebookConflictResolver, ConflictedNotebook, onDidResolveConflict } from './resolver';
 import * as gitIntegration from './gitIntegration';
 import { getWebServer } from './web';
 
 let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
 let currentFileHasConflicts = false;
-let fileDecorationProvider: vscode.Disposable | undefined;
+let successTimeout: NodeJS.Timeout | undefined;
+
+// Event emitter to trigger decoration refresh
+const decorationChangeEmitter = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
 
 /**
  * Get the file URI for the currently active notebook.
@@ -88,6 +91,15 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Initial status bar update
 	updateStatusBar();
+	
+	// Listen for resolution success events
+	context.subscriptions.push(
+		onDidResolveConflict.event((uri: vscode.Uri) => {
+			
+			// Trigger decoration refresh
+			decorationChangeEmitter.fire(uri);
+		})
+	);
 
 	// Command: Find all notebooks with conflicts (semantic / Git UU status)
 	context.subscriptions.push(
@@ -140,6 +152,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register file decoration for notebooks with conflicts
 	const decorationProvider = vscode.window.registerFileDecorationProvider({
+		onDidChangeFileDecorations: decorationChangeEmitter.event,
 		provideFileDecoration: async (uri) => {
 			if (!uri.fsPath.endsWith('.ipynb')) {
 				return undefined;
@@ -162,29 +175,21 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	
 	context.subscriptions.push(decorationProvider);
-	fileDecorationProvider = decorationProvider;
 	
 	// Watch for file system changes to update decorations when conflicts are resolved
 	const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.ipynb');
 	context.subscriptions.push(
 		fileWatcher,
 		fileWatcher.onDidChange(uri => {
-			// Trigger decoration refresh for the changed file
-			if (fileDecorationProvider) {
-				vscode.commands.executeCommand('_workbench.reloadDecorations', uri);
-			}
+			decorationChangeEmitter.fire(uri);
 			updateStatusBar();
 		}),
 		fileWatcher.onDidCreate(uri => {
-			if (fileDecorationProvider) {
-				vscode.commands.executeCommand('_workbench.reloadDecorations', uri);
-			}
+			decorationChangeEmitter.fire(uri);
 			updateStatusBar();
 		}),
 		fileWatcher.onDidDelete(uri => {
-			if (fileDecorationProvider) {
-				vscode.commands.executeCommand('_workbench.reloadDecorations', uri);
-			}
+			decorationChangeEmitter.fire(uri);
 			updateStatusBar();
 		})
 	);
@@ -195,18 +200,13 @@ export function activate(context: vscode.ExtensionContext) {
 		gitWatcher,
 		gitWatcher.onDidChange(async () => {
 			// Git index changed, refresh all notebook decorations
-			const notebooks = await vscode.workspace.findFiles('**/*.ipynb');
-			for (const uri of notebooks) {
-				vscode.commands.executeCommand('_workbench.reloadDecorations', uri);
-			}
+			decorationChangeEmitter.fire(undefined);
 			updateStatusBar();
 		})
 	);
 }
 
 export function deactivate() {
-	fileDecorationProvider = undefined;
-	
 	// Stop the web server if it's running
 	const webServer = getWebServer();
 	if (webServer.isRunning()) {
