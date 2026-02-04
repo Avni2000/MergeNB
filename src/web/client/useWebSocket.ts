@@ -78,10 +78,13 @@ export function useWebSocket(): UseWebSocketResult {
         };
     }, []);
 
-    const sendMessage = useCallback((message: object) => {
+    const sendMessage = useCallback((message: object & { command?: string }) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify(message));
-            setResolutionStatus('pending');
+            // Only set pending status for resolve commands
+            if (message.command === 'resolve') {
+                setResolutionStatus('pending');
+            }
         } else {
             console.warn('[MergeNB] Cannot send - WebSocket not connected');
         }
