@@ -6,7 +6,7 @@
  * - Line-by-line comparison between two text versions
  * - Inline word/character-level change detection within modified lines
  * - Produces aligned left/right diff results for side-by-side display
- * - Used by the webview panel to render diff highlighting
+ * - Used by the browser-based conflict resolver to render diff highlighting
  */
 
 export interface DiffLine {
@@ -172,14 +172,6 @@ function tokenizeWords(text: string): string[] {
 }
 
 /**
- * Legacy tokenize function for backward compatibility.
- * @deprecated Use tokenizeWords for better word-level granularity.
- */
-function tokenize(text: string): string[] {
-    return tokenizeWords(text);
-}
-
-/**
  * Compute Longest Common Subsequence of two arrays.
  * @param arr1
  * @param arr2
@@ -219,87 +211,3 @@ function computeLCS<T>(arr1: T[], arr2: T[]): T[] {
 
     return lcs;
 }
-
-/**
- * Generate HTML for a diff view with proper highlighting.
- * This creates a side-by-side view with synchronized line highlighting.
- */
-export function generateDiffHtml(
-    oldText: string,
-    newText: string,
-    oldLabel: string = 'Old',
-    newLabel: string = 'New'
-): { leftHtml: string; rightHtml: string } {
-    const diff = computeLineDiff(oldText, newText);
-
-    let leftHtml = '';
-    let rightHtml = '';
-
-    for (let i = 0; i < Math.max(diff.left.length, diff.right.length); i++) {
-        const leftLine = diff.left[i];
-        const rightLine = diff.right[i];
-
-        if (leftLine) {
-            leftHtml += renderDiffLine(leftLine, 'left');
-        }
-        if (rightLine) {
-            rightHtml += renderDiffLine(rightLine, 'right');
-        }
-    }
-
-    return { leftHtml, rightHtml };
-}
-
-/**
- * Render a single diff line with appropriate CSS classes.
- */
-function renderDiffLine(line: DiffLine, side: 'left' | 'right'): string {
-    const lineClass = getLineClass(line.type, side);
-
-    if (line.content === '' && (line.type === 'unchanged')) {
-        // Empty placeholder line for alignment
-        return `<div class="diff-line diff-line-empty">&nbsp;</div>`;
-    }
-
-    if (line.inlineChanges && line.inlineChanges.length > 0) {
-        // Line with inline changes
-        const content = line.inlineChanges.map(change => {
-            const cls = getInlineClass(change.type, side);
-            return `<span class="${cls}">${escapeHtml(change.text)}</span>`;
-        }).join('');
-        return `<div class="diff-line ${lineClass}">${content || '&nbsp;'}</div>`;
-    }
-
-    return `<div class="diff-line ${lineClass}">${escapeHtml(line.content) || '&nbsp;'}</div>`;
-}
-
-function getLineClass(type: DiffLine['type'], side: 'left' | 'right'): string {
-    switch (type) {
-        case 'unchanged':
-            return 'diff-line-unchanged';
-        case 'added':
-            return 'diff-line-added';
-        case 'removed':
-            return 'diff-line-removed';
-        case 'modified':
-            return side === 'left' ? 'diff-line-modified-old' : 'diff-line-modified-new';
-        default:
-            return '';
-    }
-}
-
-function getInlineClass(type: InlineChange['type'], side: 'left' | 'right'): string {
-    switch (type) {
-        case 'unchanged':
-            return 'diff-inline-unchanged';
-        case 'added':
-            return 'diff-inline-added';
-        case 'removed':
-            return 'diff-inline-removed';
-        default:
-            return '';
-    }
-}
-
-// Import from notebookUtils to avoid duplication
-import { escapeHtml } from './notebookUtils';

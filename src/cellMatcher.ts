@@ -16,9 +16,6 @@ import { NotebookCell, Notebook, CellMapping } from './types';
 import { compareByPosition, sortByPosition } from './positionUtils';
 import * as crypto from 'crypto';
 
-// Re-export position utilities for consumers
-export { compareByPosition, sortByPosition } from './positionUtils';
-
 /**
  * Compute a hash of cell content for similarity matching
  */

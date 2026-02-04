@@ -11,9 +11,7 @@
  */
 
 import { Notebook, NotebookCell } from './types';
-
-// Re-export browser-safe utilities for convenience
-export { normalizeCellSource, sourceToCellFormat, getCellPreview } from './notebookUtils';
+import { normalizeCellSource } from './notebookUtils';
 
 /**
  * Parse a Jupyter notebook from JSON string.
@@ -39,9 +37,6 @@ export function parseNotebook(content: string): Notebook {
 export function serializeNotebook(notebook: Notebook): string {
     return JSON.stringify(notebook, null, 1);
 }
-
-// Import from notebookUtils for internal use
-import { normalizeCellSource } from './notebookUtils';
 
 /**
  * Renumber execution counts in a notebook sequentially.

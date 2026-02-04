@@ -9,9 +9,6 @@ import katex from '@vscode/markdown-it-katex';
 import DOMPurify from 'dompurify';
 import { escapeHtml } from '../../notebookUtils';
 
-// Re-export escapeHtml for backward compatibility
-export { escapeHtml } from '../../notebookUtils';
-
 // Initialize markdown-it with KaTeX plugin
 const md = MarkdownIt({
     html: true,
