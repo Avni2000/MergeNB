@@ -294,6 +294,143 @@ export async function run(): Promise<void> {
         console.log('\n=== RAW CAPTURED DATA (JSON) ===\n');
         console.log(JSON.stringify(capturedRows, null, 2));
         
+        // Now interact with the UI to resolve conflicts
+        console.log('\n=== RESOLVING CONFLICTS ===\n');
+        
+        const conflictRows = capturedRows.filter(r => r.isConflict);
+        
+        for (let i = 0; i < conflictRows.length; i++) {
+            const capturedRow = conflictRows[i];
+            const rowIndex = capturedRow.rowIndex;
+            
+            console.log(`Resolving conflict row ${i} (rowIndex ${rowIndex})...`);
+            
+            try {
+                // Find the actual row element
+                const rowElement = page.locator(`[data-testid="${capturedRow.testId}"]`);
+                await rowElement.waitFor({ timeout: 10000 });
+                
+                // Scroll the row into view to ensure it's visible
+                await rowElement.scrollIntoViewIfNeeded();
+                
+                // Check which cells exist
+                const hasBase = capturedRow.base.exists;
+                const hasCurrent = capturedRow.current.exists;
+                const hasIncoming = capturedRow.incoming.exists;
+                
+                console.log(`  -> Cells: base=${hasBase}, current=${hasCurrent}, incoming=${hasIncoming}`);
+                
+                // Determine which button to click based on row index and what exists
+                let buttonToClick: string;
+                let appendNote = '';
+                
+                if (rowIndex % 2 === 0) {
+                    // Even index: prefer incoming
+                    if (hasIncoming) {
+                        buttonToClick = '.btn-incoming';
+                        console.log(`  -> Clicking "Use Incoming" (even index)`);
+                    } else if (hasCurrent) {
+                        buttonToClick = '.btn-current';
+                        appendNote = '(incoming doesn\'t exist)';
+                        console.log(`  -> Clicking "Use Current" (incoming doesn't exist)`);
+                    } else {
+                        buttonToClick = '.btn-base';
+                        appendNote = '(neither current nor incoming exist)';
+                        console.log(`  -> Clicking "Use Base" (neither current nor incoming exist)`);
+                    }
+                } else {
+                    // Odd index: prefer current
+                    if (hasCurrent) {
+                        buttonToClick = '.btn-current';
+                        console.log(`  -> Clicking "Use Current" (odd index)`);
+                    } else if (hasIncoming) {
+                        buttonToClick = '.btn-incoming';
+                        appendNote = '(current doesn\'t exist)';
+                        console.log(`  -> Clicking "Use Incoming" (current doesn't exist)`);
+                    } else {
+                        buttonToClick = '.btn-base';
+                        appendNote = '(neither current nor incoming exist)';
+                        console.log(`  -> Clicking "Use Base" (neither current nor incoming exist)`);
+                    }
+                }
+                
+                // Click the resolution button
+                const button = rowElement.locator(buttonToClick);
+                await button.waitFor({ timeout: 10000 });
+                await button.click();
+                
+                // Wait for textarea to appear
+                await rowElement.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+                
+                const textarea = rowElement.locator('.resolved-content-input');
+                
+                // Get current value
+                let currentValue = await textarea.inputValue();
+                let modifications: string[] = [];
+                
+                // Add note if cell didn't exist
+                if (appendNote) {
+                    modifications.push(appendNote);
+                }
+                
+                // If row index is divisible by 5, add that note too
+                if (rowIndex % 5 === 0) {
+                    modifications.push('(current taken - divisible by 5)');
+                }
+                
+                // Apply modifications if any
+                if (modifications.length > 0) {
+                    const newValue = currentValue + '\n' + modifications.join('\n');
+                    await textarea.fill(newValue);
+                    console.log(`  -> Modified text with: ${modifications.join(', ')}`);
+                }
+                
+                // Small delay between rows
+                await new Promise(r => setTimeout(r, 200));
+            } catch (error: any) {
+                console.error(`  -> Failed to resolve row ${i}: ${error.message}`);
+                throw error;
+            }
+        }
+        
+        console.log('\n=== VERIFYING CHECKBOXES ===\n');
+        
+        // Ensure "Mark as resolved" checkbox is checked
+        const markAsResolvedCheckbox = page.locator('label:has-text("Mark as resolved") input[type="checkbox"]');
+        const isMarkAsResolvedChecked = await markAsResolvedCheckbox.isChecked();
+        console.log(`Mark as resolved: ${isMarkAsResolvedChecked}`);
+        if (!isMarkAsResolvedChecked) {
+            console.log('  -> Checking "Mark as resolved"');
+            await markAsResolvedCheckbox.check();
+        }
+        
+        // Ensure "Renumber execution counts" checkbox is checked
+        const renumberCheckbox = page.locator('label:has-text("Renumber execution counts") input[type="checkbox"]');
+        const isRenumberChecked = await renumberCheckbox.isChecked();
+        console.log(`Renumber execution counts: ${isRenumberChecked}`);
+        if (!isRenumberChecked) {
+            console.log('  -> Checking "Renumber execution counts"');
+            await renumberCheckbox.check();
+        }
+        
+        console.log('\n=== APPLYING RESOLUTION ===\n');
+        
+        // Click the "Apply Resolution" button
+        const applyButton = page.locator('button.btn-primary:has-text("Apply Resolution")');
+        await applyButton.waitFor({ timeout: 5000 });
+        
+        // Verify button is enabled
+        const isDisabled = await applyButton.isDisabled();
+        if (isDisabled) {
+            throw new Error('Apply Resolution button is disabled - not all conflicts may be resolved');
+        }
+        
+        console.log('Clicking "Apply Resolution"...');
+        await applyButton.click();
+        
+        // Wait a moment for the resolution to be sent to the extension
+        await new Promise(r => setTimeout(r, 2000));
+        
         console.log('\n=== TEST PASSED ===\n');
         
     } finally {
