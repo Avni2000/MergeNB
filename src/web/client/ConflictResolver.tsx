@@ -144,25 +144,25 @@ export function ConflictResolver({
     // Setup ResizeObserver to track actual row heights
     useEffect(() => {
         resizeObserver.current = new ResizeObserver((entries) => {
-            const newHeights = new Map(rowHeights);
-            let hasChanges = false;
+            setRowHeights(prev => {
+                const newHeights = new Map(prev); 
+                let hasChanges = false;
 
-            for (const entry of entries) {
-                const element = entry.target as HTMLDivElement;
-                const rowIndex = parseInt(element.dataset.rowIndex ?? '-1', 10);
-                if (rowIndex >= 0) {
-                    const newHeight = entry.contentRect.height;
-                    const currentHeight = newHeights.get(rowIndex);
-                    if (currentHeight !== newHeight && newHeight > 0) {
-                        newHeights.set(rowIndex, newHeight);
-                        hasChanges = true;
+                for (const entry of entries) {
+                    const element = entry.target as HTMLDivElement;
+                    const rowIndex = parseInt(element.dataset.rowIndex ?? '-1', 10);
+                    if (rowIndex >= 0) {
+                        const newHeight = entry.contentRect.height;
+                        const currentHeight = newHeights.get(rowIndex);
+                        if (currentHeight !== newHeight && newHeight > 0) {
+                            newHeights.set(rowIndex, newHeight);
+                            hasChanges = true;
+                        }
                     }
                 }
-            }
 
-            if (hasChanges) {
-                setRowHeights(newHeights);
-            }
+                return hasChanges ? newHeights : prev;
+            });
         });
 
         return () => {
@@ -184,6 +184,10 @@ export function ConflictResolver({
             resizeObserver.current?.observe(element);
         }
     }, []);
+    
+    const getRefCallback = useCallback((index: number) => (element: HTMLDivElement | null) => {
+        registerRowRef(index, element);
+    }, [registerRowRef]);
 
     // Adjust scroll position when rows are deleted to prevent "black spots"
     useEffect(() => {
