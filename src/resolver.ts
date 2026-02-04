@@ -187,9 +187,9 @@ export class NotebookConflictResolver {
     /**
      * Apply semantic conflict resolutions.
      * 
-     * IMPORTANT: This method builds a new notebook from scratch using cellMappings,
-     * rather than trying to patch an existing notebook. This avoids index corruption
-     * when cells are added, deleted, or reordered.
+     * IMPORTANT: This method now builds the notebook from the resolvedRows sent by the UI,
+     * which is the source of truth after all drag/drop operations and user edits.
+     * We no longer use cellMappings to iterate - we use the rows directly.
      */
     private async applySemanticResolutions(
         uri: vscode.Uri,
@@ -201,7 +201,21 @@ export class NotebookConflictResolver {
             return;
         }
 
+        const resolvedRows = resolution.resolvedRows;
         const resolutions = resolution.semanticResolutions;
+        
+        // If we have resolvedRows (new flow), use them as the source of truth
+        if (resolvedRows && resolvedRows.length > 0) {
+            return this.applySemanticResolutionsFromRows(
+                uri, 
+                semanticConflict, 
+                resolvedRows, 
+                resolution.markAsResolved,
+                autoResolveResult
+            );
+        }
+        
+        // Fallback to old flow for backwards compatibility
         if (!resolutions || resolutions.size === 0) {
             // If no manual resolutions but we have auto-resolutions, use those
             if (autoResolveResult) {
@@ -225,6 +239,136 @@ export class NotebookConflictResolver {
             }
             return;
         }
+
+        // Old cellMapping-based flow (kept for backwards compatibility)
+        await this.applySemanticResolutionsLegacy(uri, semanticConflict, resolutions, autoResolveResult, resolution.markAsResolved);
+    }
+
+    /**
+     * NEW: Apply resolutions using resolvedRows from the UI (source of truth).
+     * This respects all drag/drop operations and reordering done by the user.
+     */
+    private async applySemanticResolutionsFromRows(
+        uri: vscode.Uri,
+        semanticConflict: NotebookSemanticConflict,
+        resolvedRows: import('./web/webTypes').ResolvedRow[],
+        markAsResolved: boolean,
+        autoResolveResult?: AutoResolveResult
+    ): Promise<void> {
+        const baseNotebook = semanticConflict.base;
+        const currentNotebook = semanticConflict.current;
+        const incomingNotebook = semanticConflict.incoming;
+        const autoResolvedNotebook = autoResolveResult?.resolvedNotebook;
+
+        if (!currentNotebook && !incomingNotebook) {
+            vscode.window.showErrorMessage('Cannot apply resolutions: no notebook versions available.');
+            return;
+        }
+
+        // Build the resolved notebook cells from the resolvedRows (THE SOURCE OF TRUTH)
+        const resolvedCells: NotebookCell[] = [];
+
+        for (const row of resolvedRows) {
+            const { baseCell, currentCell, incomingCell, resolution: res } = row;
+            
+            let cellToUse: NotebookCell | undefined;
+
+            if (res) {
+                // This row has a user resolution
+                const choice = res.choice;
+                const resolvedContent = res.resolvedContent;
+
+                // Determine the reference cell for metadata (cell_type, outputs, etc.)
+                let referenceCell: NotebookCell | undefined;
+                switch (choice) {
+                    case 'base':
+                        referenceCell = baseCell || currentCell || incomingCell;
+                        break;
+                    case 'current':
+                        referenceCell = currentCell || incomingCell || baseCell;
+                        break;
+                    case 'incoming':
+                        referenceCell = incomingCell || currentCell || baseCell;
+                        break;
+                    case 'both':
+                        // For 'both', we need to merge content - use current as reference
+                        referenceCell = currentCell || incomingCell || baseCell;
+                        break;
+                    case 'delete':
+                        // Skip this cell entirely
+                        continue;
+                }
+
+                // Check if deletion (empty content)
+                if (resolvedContent === '') {
+                    continue; // Skip this cell
+                }
+
+                // Build cell from resolvedContent (source of truth from text area)
+                const cellType = referenceCell?.cell_type || 'code';
+                cellToUse = {
+                    cell_type: cellType,
+                    metadata: referenceCell?.metadata ? JSON.parse(JSON.stringify(referenceCell.metadata)) : {},
+                    source: resolvedContent.split(/(?<=\n)/)
+                } as NotebookCell;
+                
+                // Add execution_count and outputs for code cells
+                if (cellType === 'code') {
+                    (cellToUse as any).execution_count = null;
+                    (cellToUse as any).outputs = [];
+                }
+            } else {
+                // No resolution - this is an identical/unmodified cell
+                // Prefer auto-resolved version (if outputs were cleared), otherwise use current
+                cellToUse = (currentCell && autoResolvedNotebook ? autoResolvedNotebook.cells.find(c => 
+                    c === currentCell || JSON.stringify(c.source) === JSON.stringify(currentCell.source)
+                ) : undefined) || currentCell || incomingCell || baseCell;
+            }
+
+            if (cellToUse) {
+                resolvedCells.push(JSON.parse(JSON.stringify(cellToUse)));
+            }
+        }
+
+        // Build the final notebook
+        const metadataSource = autoResolvedNotebook || currentNotebook || incomingNotebook || baseNotebook;
+        const templateNotebook = currentNotebook || incomingNotebook || baseNotebook;
+        let resolvedNotebook: Notebook = {
+            nbformat: templateNotebook!.nbformat,
+            nbformat_minor: templateNotebook!.nbformat_minor,
+            metadata: JSON.parse(JSON.stringify(metadataSource!.metadata)),
+            cells: resolvedCells
+        };
+
+        // Ask user if they want to renumber execution counts
+        const renumber = await vscode.window.showQuickPick(
+            ['Yes', 'No'],
+            {
+                placeHolder: 'Renumber execution counts sequentially?',
+                title: 'Execution Counts'
+            }
+        );
+
+        if (renumber === 'Yes') {
+            resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
+        }
+
+        // Save the resolved notebook
+        await this.saveResolvedNotebook(uri, resolvedNotebook, markAsResolved);
+        vscode.window.showInformationMessage(`Resolved conflicts in ${uri.fsPath} using ${resolvedRows.length} rows`);
+    }
+
+    /**
+     * LEGACY: Apply resolutions using cellMappings (old flow).
+     * Kept for backwards compatibility but should not be used with new UI.
+     */
+    private async applySemanticResolutionsLegacy(
+        uri: vscode.Uri,
+        semanticConflict: NotebookSemanticConflict,
+        resolutions: Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>,
+        autoResolveResult: AutoResolveResult | undefined,
+        markAsResolved: boolean
+    ): Promise<void> {
 
         const baseNotebook = semanticConflict.base;
         const currentNotebook = semanticConflict.current;
@@ -375,7 +519,7 @@ export class NotebookConflictResolver {
         }
 
         // Save the resolved notebook
-        await this.saveResolvedNotebook(uri, resolvedNotebook, resolution.markAsResolved);
+        await this.saveResolvedNotebook(uri, resolvedNotebook, markAsResolved);
         vscode.window.showInformationMessage(`Resolved ${resolutions.size} semantic conflict(s) in ${uri.fsPath}`);
     }
 

@@ -14,7 +14,7 @@ import * as vscode from 'vscode';
 import * as logger from '../logger';
 import { ResolutionChoice } from '../types';
 import { getWebServer } from './webServer';
-import { UnifiedConflict, UnifiedResolution } from './webTypes';
+import { UnifiedConflict, UnifiedResolution, ResolvedRow } from './webTypes';
 
 /**
  * Web-based panel for resolving notebook conflicts in the browser.
@@ -128,6 +128,7 @@ export class WebConflictPanel {
             command?: string; 
             type?: string; 
             resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>; 
+            resolvedRows?: ResolvedRow[];
             semanticChoice?: string; 
             markAsResolved?: boolean 
         };
@@ -152,6 +153,7 @@ export class WebConflictPanel {
     private async _handleResolution(message: { 
         type?: string; 
         resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>; 
+        resolvedRows?: ResolvedRow[];
         semanticChoice?: string; 
         markAsResolved?: boolean 
     }): Promise<void> {
@@ -169,6 +171,7 @@ export class WebConflictPanel {
                         type: 'semantic',
                         semanticChoice: message.semanticChoice as 'current' | 'incoming' | undefined,
                         semanticResolutions: semanticResolutionMap,
+                        resolvedRows: message.resolvedRows,
                         markAsResolved: message.markAsResolved ?? false
                     });
                 } catch (error) {
