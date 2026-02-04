@@ -118,6 +118,8 @@ export function ConflictResolver({
 
     // Find row index at a given scroll position using binary search
     const getRowIndexAtPosition = useCallback((scrollPos: number): number => {
+        if (rows.length === 0) return 0;
+
         // Binary search for the row where cumulativeHeights[i] <= scrollPos < cumulativeHeights[i+1]
         let low = 0;
         let high = rows.length - 1;
