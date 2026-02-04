@@ -156,6 +156,9 @@ export function ConflictResolver({
                 baseCell: row.baseCell,
                 currentCell: row.currentCell,
                 incomingCell: row.incomingCell,
+                baseCellIndex: row.baseCellIndex,
+                currentCellIndex: row.currentCellIndex,
+                incomingCellIndex: row.incomingCellIndex,
                 resolution: resolutionState ? {
                     choice: resolutionState.choice,
                     resolvedContent: resolutionState.resolvedContent
