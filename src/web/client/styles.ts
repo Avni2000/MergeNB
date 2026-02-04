@@ -130,7 +130,7 @@ body {
 /* Column labels */
 .column-labels {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
     margin-bottom: 12px;
     position: sticky;
@@ -172,7 +172,7 @@ body {
 
 .cell-columns {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1px;
     background: var(--border-color);
 }

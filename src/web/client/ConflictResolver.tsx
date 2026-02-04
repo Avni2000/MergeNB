@@ -494,6 +494,7 @@ export function ConflictResolver({
                                 <div
                                     ref={(el) => registerRowRef(i, el)}
                                     data-row-index={i}
+                                    style={{ width: '100%' }}
                                 >
                                     <MergeRow
                                         row={row}
