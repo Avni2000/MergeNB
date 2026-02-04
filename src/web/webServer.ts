@@ -335,6 +335,9 @@ export class ConflictResolverWebServer {
         } else if (pathname === '/client.js' || pathname === '/client.js.map') {
             // Serve bundled React app from dist/web/
             this.serveStaticFile(res, pathname);
+        } else if (pathname.startsWith('/katex/')) {
+            // Serve KaTeX files from dist/web/katex/
+            this.serveStaticFile(res, pathname);
         } else if (pathname === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ 
@@ -352,18 +355,47 @@ export class ConflictResolverWebServer {
 
     /**
      * Serve static files from dist/web/.
+     * Validates that the resolved file path stays within the intended directory
+     * to prevent directory traversal attacks.
      */
     private serveStaticFile(res: http.ServerResponse, pathname: string): void {
         const fileName = pathname.replace(/^\//, '');
-        const filePath = this.extensionUri
-            ? path.join(this.extensionUri.fsPath, 'dist', 'web', fileName)
-            : path.join(__dirname, '..', '..', 'dist', 'web', fileName);
+        
+        // Reject pathnames containing ".." to prevent directory traversal
+        if (fileName.includes('..')) {
+            console.warn(`[MergeNB Web] Rejected path with ".." traversal: ${pathname}`);
+            res.writeHead(403, { 'Content-Type': 'text/plain' });
+            res.end('Forbidden');
+            return;
+        }
+
+        const baseDir = this.extensionUri
+            ? path.join(this.extensionUri.fsPath, 'dist', 'web')
+            : path.join(__dirname, '..', '..', 'dist', 'web');
+        
+        const filePath = path.join(baseDir, fileName);
+
+        // Resolve both paths to absolute paths and verify the file is within the base directory
+        const resolvedBasePath = path.resolve(baseDir);
+        const resolvedFilePath = path.resolve(filePath);
+
+        if (!resolvedFilePath.startsWith(resolvedBasePath + path.sep) && resolvedFilePath !== resolvedBasePath) {
+            console.warn(`[MergeNB Web] Path traversal attempt blocked: ${pathname} -> ${resolvedFilePath}`);
+            res.writeHead(403, { 'Content-Type': 'text/plain' });
+            res.end('Forbidden');
+            return;
+        }
 
         const ext = path.extname(fileName).toLowerCase();
         const contentTypes: Record<string, string> = {
             '.js': 'application/javascript',
             '.css': 'text/css',
             '.map': 'application/json',
+            '.woff': 'font/woff',
+            '.woff2': 'font/woff2',
+            '.ttf': 'font/ttf',
+            '.otf': 'font/otf',
+            '.svg': 'image/svg+xml',
         };
 
         fs.readFile(filePath, (err, data) => {
@@ -388,6 +420,7 @@ export class ConflictResolverWebServer {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MergeNB - Conflict Resolver</title>
+    <link rel="stylesheet" href="/katex/katex.min.css">
     <style>
         body { margin: 0; background: #1e1e1e; }
         .loading-container {
@@ -410,35 +443,6 @@ export class ConflictResolverWebServer {
         }
         @keyframes spin { to { transform: rotate(360deg); } }
     </style>
-    <script>
-        // Initialize MathJax configuration for full LaTeX support
-        window.MathJax = {
-            tex: {
-                inlineMath: [['$', '$']],
-                displayMath: [['$$', '$$']],
-                processEscapes: true,
-            },
-            svg: { fontCache: 'global' },
-            startup: {
-                ready: () => {
-                    MathJax.startup.defaultReady();
-                    // Make typesetPromise available after startup
-                    window.mathJaxReady = true;
-                }
-            }
-        };
-        
-        // Utility to re-render math when content updates
-        window.rerenderMath = () => {
-            if (window.MathJax && window.MathJax.typesetPromise) {
-                return window.MathJax.typesetPromise().catch(err => {
-                    console.error('MathJax render error:', err);
-                });
-            }
-            return Promise.resolve();
-        };
-    </script>
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" defer></script>
 </head>
 <body>
     <div id="root">

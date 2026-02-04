@@ -9,7 +9,7 @@
  * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { MergeRow as MergeRowType, NotebookCell } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource } from '../../notebookUtils';
@@ -48,6 +48,7 @@ interface MergeRowProps {
     isDragging?: boolean;
     showOutputs?: boolean;
     enableCellDrag?: boolean;
+    isVisible?: boolean; // For lazy rendering optimization
     // Cell drag props
     draggedCell: DraggedCellData | null;
     dropTarget: DropTarget | null;
@@ -67,6 +68,7 @@ export function MergeRow({
     isDragging = false,
     showOutputs = true,
     enableCellDrag = true,
+    isVisible = true,
     draggedCell,
     dropTarget,
     onCellDragStart,
@@ -145,6 +147,7 @@ export function MergeRow({
                             cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
                             side="current"
                             showOutputs={showOutputs}
+                            isVisible={isVisible}
                         />
                     </div>
                 </div>
@@ -216,6 +219,7 @@ export function MergeRow({
                             isConflict={true}
                             compareCell={row.currentCell || row.incomingCell}
                             showOutputs={showOutputs}
+                            isVisible={isVisible}
                             onDragStart={canDragCell ? (e) => {
                                 e.dataTransfer.effectAllowed = 'move';
                                 e.dataTransfer.setData('text/plain', Array.isArray(row.baseCell!.source) ? row.baseCell!.source.join('') : row.baseCell!.source);
@@ -242,6 +246,7 @@ export function MergeRow({
                             isConflict={true}
                             compareCell={row.incomingCell || row.baseCell}
                             showOutputs={showOutputs}
+                            isVisible={isVisible}
                             onDragStart={canDragCell ? (e) => {
                                 e.dataTransfer.effectAllowed = 'move';
                                 e.dataTransfer.setData('text/plain', Array.isArray(row.currentCell!.source) ? row.currentCell!.source.join('') : row.currentCell!.source);
@@ -268,6 +273,7 @@ export function MergeRow({
                             isConflict={true}
                             compareCell={row.currentCell || row.baseCell}
                             showOutputs={showOutputs}
+                            isVisible={isVisible}
                             onDragStart={canDragCell ? (e) => {
                                 e.dataTransfer.effectAllowed = 'move';
                                 e.dataTransfer.setData('text/plain', Array.isArray(row.incomingCell!.source) ? row.incomingCell!.source.join('') : row.incomingCell!.source);

@@ -3,19 +3,15 @@
  * @description React component for rendering notebook cell content.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useMemo } from 'react';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { renderMarkdown, escapeHtml } from './markdown';
 import { computeLineDiff, getDiffLineClass } from './diff';
 import DOMPurify from 'dompurify';
 
-// Augment window type for MathJax
-declare global {
-    interface Window {
-        rerenderMath?: () => Promise<void>;
-    }
-}
+// Performance tuning constants
+const LAZY_PREVIEW_LENGTH = 100; // Characters to show in lazy-loaded markdown preview
 
 interface CellContentProps {
     cell: NotebookCell | undefined;
@@ -26,6 +22,7 @@ interface CellContentProps {
     showOutputs?: boolean;
     onDragStart?: (e: React.DragEvent) => void;
     onDragEnd?: () => void;
+    isVisible?: boolean; // For lazy rendering optimization
 }
 
 export function CellContent({
@@ -37,6 +34,7 @@ export function CellContent({
     showOutputs = true,
     onDragStart,
     onDragEnd,
+    isVisible = true,
 }: CellContentProps): React.ReactElement {
     if (!cell) {
         return (
@@ -55,6 +53,19 @@ export function CellContent({
         isConflict && 'has-conflict'
     ].filter(Boolean).join(' ');
 
+    // For non-visible cells, render a minimal placeholder to maintain layout
+    if (!isVisible && cellType === 'markdown') {
+        return (
+            <div className={cellClasses} data-lazy="true">
+                <div className="cell-content">
+                    <div style={{ minHeight: '50px', opacity: 0.3 }}>
++                      <pre>{source.length > LAZY_PREVIEW_LENGTH ? `${source.substring(0, LAZY_PREVIEW_LENGTH)}...` : source}</pre>  
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div 
             className={cellClasses}
@@ -72,7 +83,7 @@ export function CellContent({
                 )}
             </div>
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
-                <CellOutputs outputs={cell.outputs} />
+                <CellOutputs outputs={cell.outputs} isVisible={isVisible} />
             )}
         </div>
     );
@@ -83,19 +94,11 @@ interface MarkdownContentProps {
 }
 
 function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const html = renderMarkdown(source);
-
-    useEffect(() => {
-        // Trigger MathJax re-rendering after content is mounted/updated
-        if (containerRef.current && window.rerenderMath) {
-            window.rerenderMath();
-        }
-    }, [html]);
+    // Memoize HTML rendering to avoid re-parsing on every render
+    const html = useMemo(() => renderMarkdown(source), [source]);
 
     return (
         <div
-            ref={containerRef}
             className="markdown-content"
             dangerouslySetInnerHTML={{ __html: html }}
         />
@@ -150,9 +153,19 @@ function getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'ba
 
 interface CellOutputsProps {
     outputs: CellOutput[];
+    isVisible?: boolean;
 }
 
-function CellOutputs({ outputs }: CellOutputsProps): React.ReactElement {
+function CellOutputs({ outputs, isVisible = true }: CellOutputsProps): React.ReactElement {
+    // For non-visible outputs, render minimal placeholder
+    if (!isVisible && outputs.length > 0) {
+        return (
+            <div className="cell-outputs" style={{ minHeight: '30px', opacity: 0.3 }}>
+                <pre>({outputs.length} output{outputs.length > 1 ? 's' : ''})</pre>
+            </div>
+        );
+    }
+
     return (
         <div className="cell-outputs">
             {outputs.map((output, i) => (

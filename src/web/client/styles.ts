@@ -444,12 +444,11 @@ body {
     color: var(--text-secondary);
 }
 
-/* MathJax styles */
-.mjx-container {
+/* KaTeX styles */
+.katex-display {
     margin: 16px 0;
     overflow-x: auto;
-    display: flex;
-    justify-content: center;
+    text-align: center;
 }
 
 /* Custom editor for custom content */
