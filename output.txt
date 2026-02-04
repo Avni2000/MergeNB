@@ -1,0 +1,78 @@
+
+> merge-nb@0.0.2 test:vscode
+> npm run compile && npm run compile-tests && node out/tests/runIntegrationTest.js
+
+
+> merge-nb@0.0.2 compile
+> npm run check-types && npm run lint && node esbuild.js
+
+
+> merge-nb@0.0.2 check-types
+> tsc --noEmit
+
+
+> merge-nb@0.0.2 lint
+> eslint src
+
+[watch] build started
+[watch] build started
+[watch] build finished
+[watch] build finished
+[katex] Copied KaTeX dist bundle
+
+> merge-nb@0.0.2 compile-tests
+> tsc -p . --outDir out
+
+Created test workspace at: /tmp/mergeNB-integration-yZ312l
+[90m[main 2026-02-04T22:51:19.119Z][0m update#setState disabled
+[90m[main 2026-02-04T22:51:19.121Z][0m update#ctor - updates are disabled by the environment
+Started local extension host with pid 286860.
+Loading development extension at /home/avni/source/repos/MergeNB
+MCP Registry configured: https://api.mcp.github.com
+MergeNB extension is now active
+Settings Sync: Account status changed from uninitialized to unavailable
+Starting MergeNB VS Code Integration Test...
+Executing merge-nb.findConflicts command...
+[MergeNB] detectSemanticConflicts for: /tmp/mergeNB-integration-yZ312l/conflict.ipynb
+[MergeNB] base length: 51829
+[MergeNB] current length: 1992378
+[MergeNB] incoming length: 51463
+[MergeNB] base === current: false
+[MergeNB] base === incoming: false
+[MergeNB] current === incoming: false
+[MergeNB] LEGO CELL PARSED:
+[MergeNB] - base has "Key insight": true
+[MergeNB] - current has "Key insight": true
+[MergeNB] - incoming has "Key insight": true
+[MergeNB Web] Server started at http://localhost:39725
+[MergeNB Web] Opening browser to: http://localhost:39725/?session=session-1770245485255-hfie8f5up
+[MergeNB Web] WebSocket connected for session: session-1770245485255-hfie8f5up
+[MergeNB] [WebConflictPanel] Opened conflict resolver in browser, session: session-1770245485255-hfie8f5up
+[MergeNB Web] Received message from session session-1770245485255-hfie8f5up: ready
+[MergeNB Web] WebSocket connected for session: session-1770245485255-hfie8f5up
+[MergeNB Web] Received message from session session-1770245485255-hfie8f5up: ready
+Found 71 merge rows
+Found 20 conflict rows
+
+=== Resolving conflicts ===
+
+=== Capturing expected cells from UI ===
+Captured 71 cells from UI
+Expected 69 cells in final notebook
+
+=== Applying resolution ===
+[MergeNB Web] Received message from session session-1770245485255-hfie8f5up: resolve
+[MergeNB Web] Session closed: session-1770245485255-hfie8f5up
+[MergeNB Web] WebSocket closed for session: session-1770245485255-hfie8f5up
+
+=== Verifying UI matches disk ===
+Notebook on disk: 69 cells
+Expected from UI: 69 cells
+
+=== TEST PASSED ===
+✓ 69 cells verified
+✓ All sources match
+✓ All types match
+✓ Notebook structure valid
+[90m[main 2026-02-04T22:51:49.776Z][0m Extension host with pid 286860 exited with code: 0, signal: unknown.
+Exit code:   0

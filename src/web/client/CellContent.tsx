@@ -46,6 +46,7 @@ export function CellContent({
 
     const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
+    const encodedCell = encodeURIComponent(JSON.stringify(cell));
 
     const cellClasses = [
         'notebook-cell',
@@ -59,7 +60,7 @@ export function CellContent({
             <div className={cellClasses} data-lazy="true">
                 <div className="cell-content">
                     <div style={{ minHeight: '50px', opacity: 0.3 }}>
-+                      <pre>{source.length > LAZY_PREVIEW_LENGTH ? `${source.substring(0, LAZY_PREVIEW_LENGTH)}...` : source}</pre>  
+                        <pre>{source.length > LAZY_PREVIEW_LENGTH ? `${source.substring(0, LAZY_PREVIEW_LENGTH)}...` : source}</pre>
                     </div>
                 </div>
             </div>
@@ -67,11 +68,13 @@ export function CellContent({
     }
 
     return (
-        <div 
+        <div
             className={cellClasses}
-            draggable={isConflict && !!onDragStart}
+            draggable={Boolean(isConflict && onDragStart)}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
+            data-cell={encodedCell}
+            data-cell-type={cellType}
         >
             <div className="cell-content">
                 {cellType === 'markdown' ? (
@@ -228,7 +231,7 @@ function OutputItem({ output }: { output: CellOutput }): React.ReactElement | nu
     }
 
     if (output.output_type === 'error') {
-        const traceback = output.traceback?.join('\n') || `${output.ename}: ${output.evalue}`;
+        const traceback = Array.isArray(output.traceback) ? output.traceback.join('\n') : (output.traceback ?? `${output.ename}: ${output.evalue}`);
         return <pre className="error-output">{traceback}</pre>;
     }
 
