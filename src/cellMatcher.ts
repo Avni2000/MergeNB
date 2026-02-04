@@ -227,8 +227,9 @@ function computeSnakes<T>(
 /**
  * Compute snakes using a multilevel multi-predicate algorithm.
  * 
- * This algorithm first finds matches using the strictest predicate (level N),
- * then recursively fills gaps between matches using looser predicates.
+ * Based on nbdime's snaking algorithm. This algorithm first finds matches using 
+ * the strictest predicate (level N), then recursively fills gaps between matches 
+ * using looser predicates.
  * 
  * @param A - First sequence of cells
  * @param B - Second sequence of cells
@@ -252,66 +253,53 @@ function computeSnakesMultilevel(
     
     const [i0, j0, i1, j1] = rect;
     
-    // Extract the subrange
-    const subA = A.slice(i0, i1);
-    const subB = B.slice(j0, j1);
-    
-    // Compute initial set of snakes at this level
+    // Compute initial set of coarse snakes at this level
     const compare = compares[level];
-    let snakes = computeSnakes(subA, subB, compare);
-    
-    // Offset snakes back to original coordinates
-    snakes = snakes.map(s => ({ i: s.i + i0, j: s.j + j0, n: s.n }));
+    const snakes = computeSnakes(A.slice(i0, i1), B.slice(j0, j1), compare)
+        .map(s => ({ i: s.i + i0, j: s.j + j0, n: s.n }));
     
     // Base case: at the loosest level, just return what we found
     if (level === 0) {
         return snakes;
     }
     
-    // Recursive case: fill gaps between snakes with lower-level matches
-    const newSnakes: Snake[] = [];
+    // Following nbdime's approach: start with an empty sentinel snake
+    // that may be extended or popped at the end
+    const newSnakes: Snake[] = [{ i: 0, j: 0, n: 0 }];
     let currentI = i0;
     let currentJ = j0;
     
     // Process each snake and the gap before it
+    // Append sentinel snake to handle final gap (as in nbdime)
     for (const snake of [...snakes, { i: i1, j: j1, n: 0 }]) {
         // Is there a gap before this snake?
         if (snake.i > currentI && snake.j > currentJ) {
-            // Recurse with looser predicates
+            // Recurse to compute snakes with less accurate compare 
+            // predicates between the coarse snakes
             const subRect: [number, number, number, number] = [currentI, currentJ, snake.i, snake.j];
             const gapSnakes = computeSnakesMultilevel(A, B, compares, subRect, level - 1);
-            
-            // Merge gap snakes with new snakes
-            for (const gapSnake of gapSnakes) {
-                if (newSnakes.length > 0) {
-                    const last = newSnakes[newSnakes.length - 1];
-                    // Check if we can merge with the last snake
-                    if (last.i + last.n === gapSnake.i && last.j + last.n === gapSnake.j) {
-                        last.n += gapSnake.n;
-                        continue;
-                    }
-                }
-                newSnakes.push({ ...gapSnake });
-            }
+            newSnakes.push(...gapSnakes);
         }
         
         // Add the current snake if it has length
         if (snake.n > 0) {
-            if (newSnakes.length > 0) {
-                const last = newSnakes[newSnakes.length - 1];
-                // Check if we can merge with the last snake
-                if (last.i + last.n === snake.i && last.j + last.n === snake.j) {
-                    last.n += snake.n;
-                } else {
-                    newSnakes.push({ ...snake });
-                }
+            const last = newSnakes[newSnakes.length - 1];
+            if (last.i + last.n === snake.i && last.j + last.n === snake.j) {
+                // Merge contiguous snakes
+                last.n += snake.n;
             } else {
+                // Add new snake
                 newSnakes.push({ ...snake });
             }
         }
         
         currentI = snake.i + snake.n;
         currentJ = snake.j + snake.n;
+    }
+    
+    // Pop empty snake from beginning if it wasn't extended inside the loop
+    if (newSnakes[0].n === 0) {
+        newSnakes.shift();
     }
     
     return newSnakes;
@@ -332,7 +320,7 @@ function cellsExactMatch(a: NotebookCell, b: NotebookCell): boolean {
 }
 
 /**
- * Similar match: cells have same type and >50% line similarity
+ * Similar match: cells have same type and >=50% line similarity
  */
 function cellsSimilarMatch(a: NotebookCell, b: NotebookCell): boolean {
     if (a.cell_type !== b.cell_type) return false;
@@ -341,7 +329,7 @@ function cellsSimilarMatch(a: NotebookCell, b: NotebookCell): boolean {
 }
 
 /**
- * Weak match: cells have same type and >30% line similarity
+ * Weak match: cells have same type and >=30% line similarity
  */
 function cellsWeakMatch(a: NotebookCell, b: NotebookCell): boolean {
     if (a.cell_type !== b.cell_type) return false;
@@ -355,8 +343,8 @@ function cellsWeakMatch(a: NotebookCell, b: NotebookCell): boolean {
  * 
  * Uses nbdime-style multilevel comparison:
  * - Level 2 (strictest): Exact content match
- * - Level 1: Similar content (>50% line similarity)
- * - Level 0 (loosest): Weak match (>30% line similarity)
+ * - Level 1: Similar content (>=50% line similarity)
+ * - Level 0 (loosest): Weak match (>=30% line similarity)
  * 
  * Returns a map from base cell index to other cell index.
  */
