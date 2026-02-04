@@ -5,7 +5,7 @@
 
 import MarkdownIt from 'markdown-it';
 // @ts-ignore - markdown-it-katex has no types
-import katex from 'markdown-it-katex';
+import katex from '@vscode/markdown-it-katex';
 import DOMPurify from 'dompurify';
 import { escapeHtml } from '../../notebookUtils';
 

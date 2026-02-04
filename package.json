@@ -3,7 +3,7 @@
   "displayName": "MergeNB",
   "description": "Rich Jupyter Notebook Merge Conflict Resolver",
   "version": "0.0.1",
-  "repository": "https://github.com/Avni2000",
+  "repository": "https://github.com/Avni2000/MergeNB",
   "engines": {
     "vscode": "^1.108.0"
   },
@@ -135,7 +135,7 @@
   "dependencies": {
     "dompurify": "^3.3.1",
     "markdown-it": "^14.1.0",
-    "markdown-it-katex": "^2.0.3",
+    "@vscode/markdown-it-katex": "^1.1.2",
     "katex": "^0.16.22",
     "ws": "^8.19.0"
   }
