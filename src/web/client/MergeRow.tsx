@@ -56,6 +56,7 @@ interface MergeRowProps {
     onCellDragEnd: () => void;
     onCellDragOver: (e: React.DragEvent, rowIndex: number, side: 'base' | 'current' | 'incoming') => void;
     onCellDrop: (targetRowIndex: number, targetSide: 'base' | 'current' | 'incoming') => void;
+    'data-testid'?: string;
 }
 
 export function MergeRow({
@@ -75,9 +76,10 @@ export function MergeRow({
     onCellDragEnd,
     onCellDragOver,
     onCellDrop,
+    'data-testid': testId,
 }: MergeRowProps): React.ReactElement {
     const isConflict = row.type === 'conflict';
-    
+
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
     const [showWarning, setShowWarning] = useState(false);
@@ -90,15 +92,15 @@ export function MergeRow({
             const incomingContent = row.incomingCell ? normalizeCellSource(row.incomingCell.source) : '';
             return currentContent + '\n' + incomingContent;
         }
-        const cell = choice === 'base' ? row.baseCell 
-            : choice === 'current' ? row.currentCell 
-            : row.incomingCell;
+        const cell = choice === 'base' ? row.baseCell
+            : choice === 'current' ? row.currentCell
+                : row.incomingCell;
         return cell ? normalizeCellSource(cell.source) : '';
     }, [row]);
 
     // Check if content has been modified from the original
-    const isContentModified = resolutionState 
-        ? resolutionState.resolvedContent !== resolutionState.originalContent 
+    const isContentModified = resolutionState
+        ? resolutionState.resolvedContent !== resolutionState.originalContent
         : false;
 
     // Handle branch selection
@@ -188,7 +190,7 @@ export function MergeRow({
     const hasIncoming = !!row.incomingCell;
 
     return (
-        <div className={rowClasses}>
+        <div className={rowClasses} data-testid={testId}>
             {/* Warning modal for branch change */}
             {showWarning && (
                 <div className="warning-modal-overlay">
@@ -228,7 +230,7 @@ export function MergeRow({
                             onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
                         />
                     ) : (
-                        <div 
+                        <div
                             className={`cell-placeholder cell-deleted ${isDropTargetCell('base') ? 'drop-target' : ''}`}
                             onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'base'); } : undefined}
                             onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'base') : undefined}
@@ -255,7 +257,7 @@ export function MergeRow({
                             onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
                         />
                     ) : (
-                        <div 
+                        <div
                             className={`cell-placeholder cell-deleted ${isDropTargetCell('current') ? 'drop-target' : ''}`}
                             onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'current'); } : undefined}
                             onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'current') : undefined}
@@ -282,7 +284,7 @@ export function MergeRow({
                             onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
                         />
                     ) : (
-                        <div 
+                        <div
                             className={`cell-placeholder cell-deleted ${isDropTargetCell('incoming') ? 'drop-target' : ''}`}
                             onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'incoming'); } : undefined}
                             onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'incoming') : undefined}

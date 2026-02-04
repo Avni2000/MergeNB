@@ -17,7 +17,20 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 import WebSocket, { WebSocketServer } from 'ws';
-import * as vscode from 'vscode';
+
+// VSCode is optional - only needed for openExternal
+let vscode: typeof import('vscode') | undefined;
+try {
+    vscode = require('vscode');
+} catch {
+    // Running in headless/test mode without VSCode
+}
+
+/** URI-like interface for test compatibility */
+interface UriLike {
+    fsPath: string;
+    toString?: () => string;
+}
 
 export interface WebServerOptions {
     port?: number;
@@ -66,7 +79,7 @@ export class ConflictResolverWebServer {
     private pendingConnections: Map<string, PendingConnection> = new Map();
     
     // Extension URI for resolving static assets
-    private extensionUri: vscode.Uri | undefined;
+    private extensionUri: UriLike | undefined;
 
     private constructor() {}
 
@@ -83,7 +96,7 @@ export class ConflictResolverWebServer {
     /**
      * Set the extension URI for resolving static assets.
      */
-    public setExtensionUri(uri: vscode.Uri): void {
+    public setExtensionUri(uri: UriLike): void {
         this.extensionUri = uri;
     }
 
@@ -237,7 +250,11 @@ export class ConflictResolverWebServer {
         // Open the browser to the session URL
         const sessionUrl = `${this.getServerUrl()}/?session=${encodeURIComponent(sessionId)}`;
         console.log(`[MergeNB Web] Opening browser to: ${sessionUrl}`);
-        await vscode.env.openExternal(vscode.Uri.parse(sessionUrl));
+        if (vscode) {
+            await vscode.env.openExternal(vscode.Uri.parse(sessionUrl));
+        } else {
+            console.log(`[MergeNB Web] VSCode not available, skipping browser open. URL: ${sessionUrl}`);
+        }
 
         return connectionPromise;
     }

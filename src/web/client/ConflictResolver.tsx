@@ -542,6 +542,7 @@ export function ConflictResolver({
                                         onCellDragEnd={handleCellDragEnd}
                                         onCellDragOver={handleCellDragOver}
                                         onCellDrop={handleCellDrop}
+                                        data-testid={row.type === 'conflict' ? `conflict-row-${conflictIdx}` : `row-${i}`}
                                     />
                                 </div>
 
