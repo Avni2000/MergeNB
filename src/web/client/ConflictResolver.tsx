@@ -49,7 +49,7 @@ interface DropTarget {
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
-    onResolve: (resolutions: ConflictChoice[], markAsResolved: boolean) => void;
+    onResolve: (resolutions: ConflictChoice[], markAsResolved: boolean, resolvedRows: import('./types').ResolvedRow[]) => void;
     onCancel: () => void;
 }
 
@@ -146,8 +146,28 @@ export function ConflictResolver({
                 resolvedContent: state.resolvedContent 
             });
         }
-        onResolve(resolutions, markAsResolved);
-    }, [choices, markAsResolved, onResolve]);
+        
+        // Build resolved rows - this is the source of truth for reconstruction
+        const resolvedRows: import('./types').ResolvedRow[] = rows.map((row) => {
+            const conflictIdx = row.conflictIndex ?? -1;
+            const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+            
+            return {
+                baseCell: row.baseCell,
+                currentCell: row.currentCell,
+                incomingCell: row.incomingCell,
+                baseCellIndex: row.baseCellIndex,
+                currentCellIndex: row.currentCellIndex,
+                incomingCellIndex: row.incomingCellIndex,
+                resolution: resolutionState ? {
+                    choice: resolutionState.choice,
+                    resolvedContent: resolutionState.resolvedContent
+                } : undefined
+            };
+        });
+        
+        onResolve(resolutions, markAsResolved, resolvedRows);
+    }, [choices, markAsResolved, onResolve, rows]);
 
     // Cell drag handlers
     const handleCellDragStart = useCallback((rowIndex: number, side: 'base' | 'current' | 'incoming', cell: NotebookCell) => {

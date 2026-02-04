@@ -16,7 +16,7 @@ import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from
 import { serializeNotebook, renumberExecutionCounts } from './notebookParser';
 import { WebConflictPanel } from './web/WebConflictPanel';
 import { UnifiedConflict, UnifiedResolution } from './web/webTypes';
-import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell, SemanticConflict } from './types';
+import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
 import { promisify } from 'util';
@@ -186,10 +186,7 @@ export class NotebookConflictResolver {
 
     /**
      * Apply semantic conflict resolutions.
-     * 
-     * IMPORTANT: This method builds a new notebook from scratch using cellMappings,
-     * rather than trying to patch an existing notebook. This avoids index corruption
-     * when cells are added, deleted, or reordered.
+     * Rebuilds notebook from resolvedRows sent by the UI.
      */
     private async applySemanticResolutions(
         uri: vscode.Uri,
@@ -201,9 +198,10 @@ export class NotebookConflictResolver {
             return;
         }
 
-        const resolutions = resolution.semanticResolutions;
-        if (!resolutions || resolutions.size === 0) {
-            // If no manual resolutions but we have auto-resolutions, use those
+        const resolvedRows = resolution.resolvedRows;
+        
+        if (!resolvedRows || resolvedRows.length === 0) {
+            // No resolutions provided
             if (autoResolveResult) {
                 let resolvedNotebook = autoResolveResult.resolvedNotebook;
                 
@@ -221,15 +219,32 @@ export class NotebookConflictResolver {
 
                 await this.saveResolvedNotebook(uri, resolvedNotebook);
                 vscode.window.showInformationMessage(`Resolved conflicts in ${uri.fsPath}`);
-                return;
             }
             return;
         }
 
+        await this.applySemanticResolutionsFromRows(
+            uri, 
+            semanticConflict, 
+            resolvedRows, 
+            resolution.markAsResolved,
+            autoResolveResult
+        );
+    }
+
+    /**
+     * Apply resolutions using resolvedRows from the UI.
+     */
+    private async applySemanticResolutionsFromRows(
+        uri: vscode.Uri,
+        semanticConflict: NotebookSemanticConflict,
+        resolvedRows: import('./web/webTypes').ResolvedRow[],
+        markAsResolved: boolean,
+        autoResolveResult?: AutoResolveResult
+    ): Promise<void> {
         const baseNotebook = semanticConflict.base;
         const currentNotebook = semanticConflict.current;
         const incomingNotebook = semanticConflict.incoming;
-        // Auto-resolved notebook contains cells with auto-resolutions applied (e.g., outputs cleared)
         const autoResolvedNotebook = autoResolveResult?.resolvedNotebook;
 
         if (!currentNotebook && !incomingNotebook) {
@@ -237,121 +252,62 @@ export class NotebookConflictResolver {
             return;
         }
 
-        // Build a conflict lookup map: key = "baseIdx-currentIdx-incomingIdx" -> {conflict, index}
-        // Note: semanticConflict.semanticConflicts is the FILTERED list (only user-resolvable conflicts)
-        const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();
-        semanticConflict.semanticConflicts.forEach((c, i) => {
-            const key = `${c.baseCellIndex ?? 'x'}-${c.currentCellIndex ?? 'x'}-${c.incomingCellIndex ?? 'x'}`;
-            conflictMap.set(key, { conflict: c, index: i });
-        });
-
-        // Build the resolved notebook cells from scratch by iterating cellMappings in order
         const resolvedCells: NotebookCell[] = [];
 
-        for (const mapping of semanticConflict.cellMappings) {
-            const key = `${mapping.baseIndex ?? 'x'}-${mapping.currentIndex ?? 'x'}-${mapping.incomingIndex ?? 'x'}`;
-            const conflictInfo = conflictMap.get(key);
-
-            // Get cells from each version
-            const baseCell = mapping.baseIndex !== undefined && baseNotebook 
-                ? baseNotebook.cells[mapping.baseIndex] : undefined;
-            const currentCell = mapping.currentIndex !== undefined && currentNotebook 
-                ? currentNotebook.cells[mapping.currentIndex] : undefined;
-            const incomingCell = mapping.incomingIndex !== undefined && incomingNotebook 
-                ? incomingNotebook.cells[mapping.incomingIndex] : undefined;
-            // Get the auto-resolved version of this cell (if auto-resolutions were applied)
-            const autoResolvedCell = mapping.currentIndex !== undefined && autoResolvedNotebook
-                ? autoResolvedNotebook.cells[mapping.currentIndex] : undefined;
-
+        for (const row of resolvedRows) {
+            const { baseCell, currentCell, incomingCell, resolution: res } = row;
+            
             let cellToUse: NotebookCell | undefined;
-            let isDeleted = false;
 
-            if (conflictInfo) {
-                // This mapping corresponds to a conflict - check if user resolved it
-                const res = resolutions.get(conflictInfo.index);
+            if (res) {
+                const choice = res.choice;
+                const resolvedContent = res.resolvedContent;
+
+                let referenceCell: NotebookCell | undefined;
+                switch (choice) {
+                    case 'base':
+                        referenceCell = baseCell || currentCell || incomingCell;
+                        break;
+                    case 'current':
+                        referenceCell = currentCell || incomingCell || baseCell;
+                        break;
+                    case 'incoming':
+                        referenceCell = incomingCell || currentCell || baseCell;
+                        break;
+                    case 'both':
+                        referenceCell = currentCell || incomingCell || baseCell;
+                        break;
+                    case 'delete':
+                        continue;
+                }
+
+                if (resolvedContent === '') {
+                    continue;
+                }
+
+                const cellType = referenceCell?.cell_type || 'code';
+                cellToUse = {
+                    cell_type: cellType,
+                    metadata: referenceCell?.metadata ? JSON.parse(JSON.stringify(referenceCell.metadata)) : {},
+                    source: resolvedContent.split(/(?<=\n)/)
+                } as NotebookCell;
                 
-                if (res) {
-                    // User provided a resolution
-                    const choice = res.choice;
-                    // resolvedContent is the source of truth from the editable text area
-                    const resolvedContent = res.resolvedContent;
-
-                    // Determine the reference cell for metadata (cell_type, outputs, etc.)
-                    // Priority: chosen side > any available cell
-                    let referenceCell: NotebookCell | undefined;
-                    switch (choice) {
-                        case 'base':
-                            referenceCell = baseCell || currentCell || incomingCell;
-                            break;
-                        case 'current':
-                            referenceCell = currentCell || incomingCell || baseCell;
-                            break;
-                        case 'incoming':
-                            referenceCell = incomingCell || currentCell || baseCell;
-                            break;
-                    }
-
-                    // Check if this is a deletion (empty content)
-                    if (resolvedContent !== undefined && resolvedContent === '') {
-                        isDeleted = true;
-                    } else if (resolvedContent !== undefined && resolvedContent.length > 0) {
-                        // Use resolvedContent as the source of truth (editable text area content)
-                        const cellType = referenceCell?.cell_type || 'code';
-                        cellToUse = {
-                            cell_type: cellType,
-                            metadata: referenceCell?.metadata ? JSON.parse(JSON.stringify(referenceCell.metadata)) : {},
-                            source: resolvedContent.split(/(?<=\n)/)
-                        } as NotebookCell;
-                        
-                        // Add execution_count and outputs for code cells
-                        if (cellType === 'code') {
-                            (cellToUse as any).execution_count = null;
-                            (cellToUse as any).outputs = [];
-                        }
-                    } else {
-                        // No resolvedContent provided - use the cell from the chosen side
-                        switch (choice) {
-                            case 'base':
-                                cellToUse = baseCell;
-                                break;
-                            case 'current':
-                                cellToUse = currentCell;
-                                break;
-                            case 'incoming':
-                                cellToUse = incomingCell;
-                                break;
-                        }
-                        
-                        // If the chosen cell doesn't exist, mark as deleted
-                        if (!cellToUse) {
-                            isDeleted = true;
-                        }
-                    }
-                } else {
-                    // No resolution provided - default to current
-                    cellToUse = currentCell;
-                    if (!cellToUse) {
-                        isDeleted = true;
-                    }
+                if (cellType === 'code') {
+                    (cellToUse as any).execution_count = null;
+                    (cellToUse as any).outputs = [];
                 }
             } else {
-                // No conflict in the filtered list - this is either:
-                // 1. An identical cell across versions, or
-                // 2. A cell that was auto-resolved
-                // 
-                // Use auto-resolved version if available (preserves auto-resolutions like cleared outputs),
-                // otherwise use current, fallback to incoming, fallback to base
+                const autoResolvedCell = row.currentCellIndex !== undefined && autoResolvedNotebook
+                    ? autoResolvedNotebook.cells[row.currentCellIndex]
+                    : undefined;
                 cellToUse = autoResolvedCell || currentCell || incomingCell || baseCell;
             }
 
-            // Add the cell to resolved cells if not deleted
-            if (!isDeleted && cellToUse) {
+            if (cellToUse) {
                 resolvedCells.push(JSON.parse(JSON.stringify(cellToUse)));
             }
         }
 
-        // Build the final notebook
-        // Use auto-resolved notebook metadata if available (preserves kernel auto-resolution)
         const metadataSource = autoResolvedNotebook || currentNotebook || incomingNotebook || baseNotebook;
         const templateNotebook = currentNotebook || incomingNotebook || baseNotebook;
         let resolvedNotebook: Notebook = {
@@ -361,7 +317,6 @@ export class NotebookConflictResolver {
             cells: resolvedCells
         };
 
-        // Ask user if they want to renumber execution counts
         const renumber = await vscode.window.showQuickPick(
             ['Yes', 'No'],
             {
@@ -374,9 +329,8 @@ export class NotebookConflictResolver {
             resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
         }
 
-        // Save the resolved notebook
-        await this.saveResolvedNotebook(uri, resolvedNotebook, resolution.markAsResolved);
-        vscode.window.showInformationMessage(`Resolved ${resolutions.size} semantic conflict(s) in ${uri.fsPath}`);
+        await this.saveResolvedNotebook(uri, resolvedNotebook, markAsResolved);
+        vscode.window.showInformationMessage(`Resolved conflicts in ${uri.fsPath}`);
     }
 
     /**

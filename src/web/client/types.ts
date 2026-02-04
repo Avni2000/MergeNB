@@ -71,12 +71,38 @@ export interface ConflictChoice {
 }
 
 /**
+ * Resolved row from the UI - represents the final state after drag/drop and user edits.
+ * This is the source of truth for reconstructing the notebook.
+ */
+export interface ResolvedRow {
+    /** Base cell (may be undefined if cell not present in base) */
+    baseCell?: import('../../types').NotebookCell;
+    /** Current cell (may be undefined if cell not present in current) */
+    currentCell?: import('../../types').NotebookCell;
+    /** Incoming cell (may be undefined if cell not present in incoming) */
+    incomingCell?: import('../../types').NotebookCell;
+    /** Original indices for reliable cell lookup */
+    baseCellIndex?: number;
+    currentCellIndex?: number;
+    incomingCellIndex?: number;
+    /** If this row had a conflict, this is the user's resolution */
+    resolution?: {
+        /** The branch choice that determines outputs, metadata, etc. */
+        choice: 'base' | 'current' | 'incoming' | 'both' | 'delete';
+        /** The resolved content from the text area (source of truth) */
+        resolvedContent: string;
+    };
+}
+
+/**
  * Message sent back to extension with resolution
  */
 export interface ResolutionMessage {
     command: 'resolve';
     type: 'semantic';
     resolutions: ConflictChoice[];
+    /** The complete resolved row structure from the UI (source of truth) */
+    resolvedRows: ResolvedRow[];
     semanticChoice?: 'current' | 'incoming';
     markAsResolved: boolean;
 }

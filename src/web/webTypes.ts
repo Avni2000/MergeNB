@@ -33,15 +33,41 @@ export interface UnifiedConflict {
 }
 
 /**
+ * Resolved row from the UI - represents the final state after drag/drop and user edits.
+ * This is the source of truth for reconstructing the notebook.
+ */
+export interface ResolvedRow {
+    /** Base cell (may be undefined if cell not present in base) */
+    baseCell?: NotebookCell;
+    /** Current cell (may be undefined if cell not present in current) */
+    currentCell?: NotebookCell;
+    /** Incoming cell (may be undefined if cell not present in incoming) */
+    incomingCell?: NotebookCell;
+    /** Original indices for reliable cell lookup */
+    baseCellIndex?: number;
+    currentCellIndex?: number;
+    incomingCellIndex?: number;
+    /** If this row had a conflict, this is the user's resolution */
+    resolution?: {
+        /** The branch choice that determines outputs, metadata, etc. */
+        choice: 'base' | 'current' | 'incoming' | 'both' | 'delete';
+        /** The resolved content from the text area (source of truth) */
+        resolvedContent: string;
+    };
+}
+
+/**
  * Resolution result from the panel.
  * 
- * The resolvedContent field is now the source of truth for the final cell content.
- * It contains the text from the editable resolved text area.
+ * The resolvedRows field is now the primary source of truth - it contains the complete
+ * cell structure after all drag/drop operations and user edits.
  */
 export interface UnifiedResolution {
     type: 'semantic';
     semanticChoice?: 'current' | 'incoming';
     semanticResolutions?: Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>;
+    /** The complete resolved row structure from the UI (source of truth) */
+    resolvedRows?: ResolvedRow[];
     // Whether to mark file as resolved with git add
     markAsResolved: boolean;
 }
@@ -141,6 +167,8 @@ export type BrowserToExtensionMessage =
             choice: string;
             customContent?: string;
         }>;
+        /** The complete resolved row structure from the UI (source of truth) */
+        resolvedRows: ResolvedRow[];
         semanticChoice?: string;
         markAsResolved?: boolean;
     }
