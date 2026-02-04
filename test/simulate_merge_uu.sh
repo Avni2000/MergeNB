@@ -34,7 +34,58 @@ done
 
 cd ~/source/repos/MergeNB
 
-npm run compile
+# Only compile if sources changed since last compilation
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm not found; skipping compilation"
+else
+  if [ ! -d dist ]; then
+    echo "dist/ not found; running npm run compile"
+    npm run compile
+  else
+    newest_src=0
+    # newest tracked source file mtime (exclude dist and node_modules)
+    while IFS= read -r -d '' f; do
+      [ -f "$f" ] || continue
+      m=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
+      [ "$m" -gt "$newest_src" ] && newest_src=$m
+    done < <(git ls-files -z | tr '\n' '\0' | xargs -0 -n1 printf '%s\0' 2>/dev/null | grep -z -E -v '^dist/|^node_modules/' || true)
+
+    newest_dist=0
+    while IFS= read -r -d '' f; do
+      m=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
+      [ "$m" -gt "$newest_dist" ] && newest_dist=$m
+    done < <(find dist -type f -print0 2>/dev/null || true)
+
+    if [ "$newest_dist" -ge "$newest_src" ] && [ "$newest_src" -gt 0 ]; then
+      echo "No source changes since last compile; skipping npm run compile"
+    else
+      echo "Source changes detected (or no compiled files); running npm run compile"
+      npm run compile
+    fi
+  fi
+fi
+
+# Auto-close any running VS Code instances that have open folders/files in /tmp
+# (find processes with "code" in the command line and "/tmp/" in the args,
+# then try graceful TERM, then KILL if needed)
+if command -v ps >/dev/null 2>&1; then
+  mapfile -t _code_pids < <(ps -eo pid=,args= | grep -F 'code' | grep '/tmp/' | awk '{print $1}' | sort -u)
+  if [ "${#_code_pids[@]}" -gt 0 ]; then
+    echo "Closing VS Code instances with open items in /tmp: ${_code_pids[*]}"
+    for _pid in "${_code_pids[@]}"; do
+      kill -TERM "$_pid" 2>/dev/null || true
+    done
+    sleep 2
+    for _pid in "${_code_pids[@]}"; do
+      if kill -0 "$_pid" 2>/dev/null; then
+        echo "Force killing VS Code pid $_pid"
+        kill -KILL "$_pid" 2>/dev/null || true
+      fi
+    done
+  fi
+else
+  echo "ps not available; skipping auto-close of VS Code in /tmp"
+fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMPDIR="$(mktemp -d /tmp/mergeNB-throwaway-XXXXXX)"

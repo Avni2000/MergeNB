@@ -25,6 +25,11 @@ import { exec as execCallback } from 'child_process';
 const exec = promisify(execCallback);
 
 /**
+ * Event fired when a notebook conflict is successfully resolved.
+ */
+export const onDidResolveConflict = new vscode.EventEmitter<vscode.Uri>();
+
+/**
  * Represents a notebook with semantic conflicts (Git UU status)
  */
 export interface ConflictedNotebook {
@@ -343,6 +348,9 @@ export class NotebookConflictResolver {
         if (markAsResolved) {
             await this.markFileAsResolved(uri);
         }
+        
+        // Fire event to notify extension (for status bar, decorations, etc.)
+        onDidResolveConflict.fire(uri);
     }
 
     private async readFile(uri: vscode.Uri): Promise<string> {

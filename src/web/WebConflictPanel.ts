@@ -185,7 +185,7 @@ export class WebConflictPanel {
                             message: 'Conflicts resolved successfully!'
                         });
                         
-                        // Wait a bit to ensure message is delivered before closing connection
+                        // Wait to ensure message is delivered to browser
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
                 } catch (error) {
