@@ -64,9 +64,9 @@ INCOMING_FILE="${CHOICE}_incoming.ipynb"
 echo "Using test set: $CHOICE -> $BASE_FILE, $CURRENT_FILE, $INCOMING_FILE"
 
 # Copy the three provided notebook versions into the temp repo
-cp "$ROOT/src/test/$BASE_FILE" "$TMPDIR/$BASE_FILE"
-cp "$ROOT/src/test/$CURRENT_FILE" "$TMPDIR/$CURRENT_FILE"
-cp "$ROOT/src/test/$INCOMING_FILE" "$TMPDIR/$INCOMING_FILE"
+cp "$ROOT/test/$BASE_FILE" "$TMPDIR/$BASE_FILE"
+cp "$ROOT/test/$CURRENT_FILE" "$TMPDIR/$CURRENT_FILE"
+cp "$ROOT/test/$INCOMING_FILE" "$TMPDIR/$INCOMING_FILE"
 
 cd "$TMPDIR"
 git init -q
