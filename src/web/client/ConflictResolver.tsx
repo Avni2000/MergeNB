@@ -145,7 +145,7 @@ export function ConflictResolver({
     useEffect(() => {
         resizeObserver.current = new ResizeObserver((entries) => {
             setRowHeights(prev => {
-                const newHeights = new Map(prev); 
+                const newHeights = new Map(prev);
                 let hasChanges = false;
 
                 for (const entry of entries) {
@@ -184,7 +184,7 @@ export function ConflictResolver({
             resizeObserver.current?.observe(element);
         }
     }, []);
-    
+
     const getRefCallback = useCallback((index: number) => (element: HTMLDivElement | null) => {
         registerRowRef(index, element);
     }, [registerRowRef]);
@@ -206,15 +206,7 @@ export function ConflictResolver({
             }
 
             // Clean up height measurements for deleted rows
-            setRowHeights(prev => {
-                const newHeights = new Map<number, number>();
-                for (const [idx, height] of prev) {
-                    if (idx < currentLength) {
-                        newHeights.set(idx, height);
-                    }
-                }
-                return newHeights;
-            });
+            setRowHeights(new Map());
         }
 
         previousRowsLength.current = currentLength;
