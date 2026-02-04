@@ -23,24 +23,24 @@
 > merge-nb@0.0.2 compile-tests
 > tsc -p . --outDir out
 
-Created test workspace at: /tmp/mergeNB-integration-2kjdp2
+Created test workspace at: /tmp/mergeNB-integration-w3Uthg
 - Resolving version...
 ✔ Validated version: 1.108.2
 ✔ Found existing install in /home/avni/source/repos/MergeNB/.vscode-test/vscode-linux-x64-1.108.2
-[90m[main 2026-02-04T09:23:10.252Z][0m update#setState disabled
-[90m[main 2026-02-04T09:23:10.253Z][0m update#ctor - updates are disabled by the environment
-[148326:0204/032310.259320:ERROR:media/gpu/vaapi/vaapi_wrapper.cc:1631] vaInitialize failed: unknown libva error
-[148289:0204/032311.247131:ERROR:base/nix/mime_util_xdg.cc:139] Invalid mime.cache file does not contain null prior to ALIAS_LIST_OFFSET=44
-Started local extension host with pid 148470.
+[90m[main 2026-02-04T09:52:13.559Z][0m update#setState disabled
+[90m[main 2026-02-04T09:52:13.561Z][0m update#ctor - updates are disabled by the environment
+[170691:0204/035213.571230:ERROR:media/gpu/vaapi/vaapi_wrapper.cc:1631] vaInitialize failed: unknown libva error
+[170656:0204/035214.539187:ERROR:base/nix/mime_util_xdg.cc:139] Invalid mime.cache file does not contain null prior to ALIAS_LIST_OFFSET=44
+Started local extension host with pid 170837.
 Loading development extension at /home/avni/source/repos/MergeNB
 MCP Registry configured: https://api.mcp.github.com
 Settings Sync: Account status changed from uninitialized to unavailable
 MergeNB extension is now active
 Starting MergeNB VS Code Integration Test...
-Test workspace: /tmp/mergeNB-integration-2kjdp2
+Test workspace: /tmp/mergeNB-integration-w3Uthg
 Executing merge-nb.findConflicts command...
 Waiting for web server to start (checking port file)...
-[MergeNB] detectSemanticConflicts for: /tmp/mergeNB-integration-2kjdp2/conflict.ipynb
+[MergeNB] detectSemanticConflicts for: /tmp/mergeNB-integration-w3Uthg/conflict.ipynb
 [MergeNB] base length: 51829
 [MergeNB] current length: 1992378
 [MergeNB] incoming length: 51463
@@ -51,23 +51,23 @@ Waiting for web server to start (checking port file)...
 [MergeNB] - base has "Key insight": true
 [MergeNB] - current has "Key insight": true
 [MergeNB] - incoming has "Key insight": true
-[MergeNB Web] Server started at http://localhost:40161
-[MergeNB Web] Opening browser to: http://localhost:40161/?session=session-1770196996257-99vpbix3f
-Found server port from file: 40161
-Server verified healthy on port 40161
+[MergeNB Web] Server started at http://localhost:39999
+[MergeNB Web] Opening browser to: http://localhost:39999/?session=session-1770198739464-x20lujr2e
+Found server port from file: 39999
+Server verified healthy on port 39999
 Waiting for session to be registered...
-[MergeNB Web] WebSocket connected for session: session-1770196996257-99vpbix3f
-[MergeNB] [WebConflictPanel] Opened conflict resolver in browser, session: session-1770196996257-99vpbix3f
-[MergeNB Web] Received message from session session-1770196996257-99vpbix3f: ready
-Found session: session-1770196996257-99vpbix3f
+[MergeNB Web] WebSocket connected for session: session-1770198739464-x20lujr2e
+[MergeNB] [WebConflictPanel] Opened conflict resolver in browser, session: session-1770198739464-x20lujr2e
+[MergeNB Web] Received message from session session-1770198739464-x20lujr2e: ready
+Found session: session-1770198739464-x20lujr2e
 Launching Playwright browser...
-Navigating to: http://127.0.0.1:40161/?session=session-1770196996257-99vpbix3f
+Navigating to: http://127.0.0.1:39999/?session=session-1770198739464-x20lujr2e
 [Browser] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
 Waiting for conflict data to load...
-[MergeNB Web] WebSocket connected for session: session-1770196996257-99vpbix3f
-[MergeNB Web] Received message from session session-1770196996257-99vpbix3f: ready
+[MergeNB Web] WebSocket connected for session: session-1770198739464-x20lujr2e
+[MergeNB Web] Received message from session session-1770198739464-x20lujr2e: ready
 [Browser] [MergeNB] WebSocket connected
-[Browser] [MergeNB] Received: {type: connected, sessionId: session-1770196996257-99vpbix3f}
+[Browser] [MergeNB] Received: {type: connected, sessionId: session-1770198739464-x20lujr2e}
 [Browser] [MergeNB] Received: {type: conflict-data, data: Object}
 [Browser] LaTeX-incompatible input and strict mode is set to 'warn': In LaTeX, \\ or \newline does nothing in display mode [newLineInDisplayMode]
 [Browser] LaTeX-incompatible input and strict mode is set to 'warn': In LaTeX, \\ or \newline does nothing in display mode [newLineInDisplayMode]
@@ -1613,13 +1613,86 @@ Renumber execution counts: true
 === APPLYING RESOLUTION ===
 
 Clicking "Apply Resolution"...
-[MergeNB Web] Received message from session session-1770196996257-99vpbix3f: resolve
+[MergeNB Web] Received message from session session-1770198739464-x20lujr2e: resolve
 [Browser] [MergeNB] Received: {type: resolution-success, message: Conflicts resolved successfully!}
-[MergeNB Web] Session closed: session-1770196996257-99vpbix3f
-[MergeNB Web] WebSocket closed for session: session-1770196996257-99vpbix3f
+[MergeNB Web] Session closed: session-1770198739464-x20lujr2e
+[MergeNB Web] WebSocket closed for session: session-1770198739464-x20lujr2e
 [Browser] [MergeNB] WebSocket closed
+
+=== VERIFYING RESOLVED NOTEBOOK ===
+
+Resolved notebook has 71 cells
+
+=== CELL-BY-CELL VERIFICATION ===
+
+✓ Conflict 0 (row 15): MATCH
+  Reason: odd index -> current + divisible by 5
+  Content preview: @title Run this to see the difference in collisions between ...
+✓ Conflict 1 (row 16): MATCH
+  Reason: even index -> incoming
+  Content preview: Why 'collision rate between spectrum pairs'? Above, we compa...
+✓ Conflict 2 (row 19): MATCH
+  Reason: odd index -> current
+  Content preview: Step 1: Spectrum Binning Now we implement the first step of ...
+✓ Conflict 3 (row 20): MATCH
+  Reason: even index -> incoming + divisible by 5
+  Content preview: Step 1: Spectrum Binning Now we implement the first step of ...
+✓ Conflict 4 (row 48): MATCH
+  Reason: even index -> incoming
+  Content preview: b_mz = [ 72.044114, 171.112528, 270.180942, 398.239520, 513....
+✓ Conflict 5 (row 49): MATCH
+  Reason: odd index -> current
+  Content preview: b_mz = [ 72.044114, 171.112528, 270.180942, 398.239520, 513....
+✓ Conflict 6 (row 50): MATCH
+  Reason: even index -> incoming + divisible by 5
+  Content preview: Now that we've visualized this theoretical ion ladder as a '...
+✓ Conflict 7 (row 51): MATCH
+  Reason: odd index -> current
+  Content preview: Now let's plot a real spectrum and use the theoretical ions ...
+✓ Conflict 8 (row 52): MATCH
+  Reason: even index -> incoming
+  Content preview: plot_MS2(get_MS2_object(full_calibrated_mzml_path, 9970, pep...
+✓ Conflict 9 (row 53): MATCH
+  Reason: odd index -> current
+  Content preview: plot_MS2(get_MS2_object(full_calibrated_mzml_path, 9970, pep...
+✓ Conflict 10 (row 55): MATCH
+  Reason: odd index -> current + divisible by 5
+  Content preview: seq = 'AVVQDPALKPLALVYGEATSR' spec_left = get_MS2_object(ful...
+✓ Conflict 11 (row 57): MATCH
+  Reason: odd index -> current
+  Content preview: seq = 'IITHPNFNGNTLDNDIMLIK' spec_left = get_MS2_object(full...
+✓ Conflict 12 (row 58): MATCH
+  Reason: even index -> incoming
+  Content preview: seq = 'RMVNNGHSFNVEYDDSQDK' spec_left = get_MS2_object(full_...
+✓ Conflict 13 (row 60): MATCH
+  Reason: even index -> incoming + divisible by 5
+  Content preview: seq = 'AVVQDPALKPLALVYGEATSR' spec_left = get_MS2_object(ful...
+✓ Conflict 14 (row 61): MATCH
+  Reason: odd index -> incoming (current missing)
+  Content preview: Let's do that once more, but this time annotating the spectr...
+✓ Conflict 15 (row 62): MATCH
+  Reason: even index -> current (incoming missing)
+  Content preview: Now we'll annotate the spectrum of the modified RMVNNGHSFNVE...
+✓ Conflict 16 (row 63): MATCH
+  Reason: odd index -> current
+  Content preview: seq_1= 'RMVNNGHSFNVEYDDSQDK' seq_2 = 'AVVQDPALKPLALVYGEATSR'...
+✓ Conflict 17 (row 66): MATCH
+  Reason: even index -> incoming
+  Content preview: from spectrum_utils.proforma import Modification Example wit...
+✓ Conflict 18 (row 67): MATCH
+  Reason: odd index -> current
+  Content preview: scan_8090 = get_SWT_object( mzml_path=full_calibrated_mzml_p...
+✓ Conflict 19 (row 69): MATCH
+  Reason: odd index -> current
+  Content preview: HASH_BUCKETS = 800 # Target dimensionality def hasher(num: i...
+
+=== VERIFICATION SUMMARY ===
+
+Total conflicts verified: 20
+Matching: 20
+Discrepancies: 0
 
 === TEST PASSED ===
 
-[90m[main 2026-02-04T09:23:39.714Z][0m Extension host with pid 148470 exited with code: 0, signal: unknown.
+[90m[main 2026-02-04T09:52:42.824Z][0m Extension host with pid 170837 exited with code: 0, signal: unknown.
 Exit code:   0

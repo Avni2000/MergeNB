@@ -431,6 +431,172 @@ export async function run(): Promise<void> {
         // Wait a moment for the resolution to be sent to the extension
         await new Promise(r => setTimeout(r, 2000));
         
+        console.log('\n=== VERIFYING RESOLVED NOTEBOOK ===\n');
+        
+        // Read the resolved conflict.ipynb file
+        const resolvedNotebook = JSON.parse(fs.readFileSync(conflictFile, 'utf8'));
+        console.log(`Resolved notebook has ${resolvedNotebook.cells.length} cells`);
+        
+        // Build expected resolutions based on our rules
+        const expectedResolutions: Array<{
+            conflictIndex: number;
+            rowIndex: number;
+            expectedSource: string;
+            reason: string;
+        }> = [];
+        
+        for (let i = 0; i < conflictRows.length; i++) {
+            const capturedRow = conflictRows[i];
+            const rowIndex = capturedRow.rowIndex;
+            const hasBase = capturedRow.base.exists;
+            const hasCurrent = capturedRow.current.exists;
+            const hasIncoming = capturedRow.incoming.exists;
+            
+            let expectedSource: string;
+            let reason: string;
+            
+            if (rowIndex % 2 === 0) {
+                // Even index: prefer incoming
+                if (hasIncoming) {
+                    expectedSource = capturedRow.incoming.content || '';
+                    reason = 'even index -> incoming';
+                } else if (hasCurrent) {
+                    expectedSource = capturedRow.current.content || '';
+                    reason = 'even index -> current (incoming missing)';
+                    expectedSource += '\n(incoming doesn\'t exist)';
+                } else {
+                    expectedSource = capturedRow.base.content || '';
+                    reason = 'even index -> base (both missing)';
+                    expectedSource += '\n(neither current nor incoming exist)';
+                }
+            } else {
+                // Odd index: prefer current
+                if (hasCurrent) {
+                    expectedSource = capturedRow.current.content || '';
+                    reason = 'odd index -> current';
+                } else if (hasIncoming) {
+                    expectedSource = capturedRow.incoming.content || '';
+                    reason = 'odd index -> incoming (current missing)';
+                    expectedSource += '\n(current doesn\'t exist)';
+                } else {
+                    expectedSource = capturedRow.base.content || '';
+                    reason = 'odd index -> base (both missing)';
+                    expectedSource += '\n(neither current nor incoming exist)';
+                }
+            }
+            
+            // Add divisible by 5 marker
+            if (rowIndex % 5 === 0) {
+                expectedSource += '\n(current taken - divisible by 5)';
+                reason += ' + divisible by 5';
+            }
+            
+            expectedResolutions.push({
+                conflictIndex: i,
+                rowIndex,
+                expectedSource: expectedSource.trim(),
+                reason
+            });
+        }
+        
+        // Now verify each conflict was resolved correctly
+        console.log('\n=== CELL-BY-CELL VERIFICATION ===\n');
+        
+        let allMatch = true;
+        let discrepancyCount = 0;
+        
+        for (const expected of expectedResolutions) {
+            // The resolved notebook should have cells in order
+            // We need to find the cell at the conflict row position
+            // Since we have 71 total rows (captured), we need to map rowIndex to actual cell index
+            
+            // For simplicity, let's just verify that the expected content appears somewhere
+            // in the resolved notebook's cells
+            const cellIndex = expected.rowIndex;
+            
+            if (cellIndex >= resolvedNotebook.cells.length) {
+                console.log(`❌ DISCREPANCY: Conflict ${expected.conflictIndex} (row ${expected.rowIndex})`);
+                console.log(`   Cell index ${cellIndex} out of bounds (notebook has ${resolvedNotebook.cells.length} cells)`);
+                allMatch = false;
+                discrepancyCount++;
+                continue;
+            }
+            
+            const actualCell = resolvedNotebook.cells[cellIndex];
+            const actualSource = Array.isArray(actualCell.source) 
+                ? actualCell.source.join('')
+                : actualCell.source;
+            
+            // Normalize whitespace and unicode for comparison
+            const normalizeWhitespace = (text: string) => {
+                return text
+                    .trim()
+                    .replace(/\r\n/g, '\n')  // Normalize line endings
+                    .replace(/\n{3,}/g, '\n\n')  // Collapse multiple blank lines to max 2
+                    .replace(/[ \t]+$/gm, '')  // Remove trailing whitespace on each line
+                    .replace(/^[ \t]+/gm, '')  // Remove leading whitespace on each line
+                    // Normalize markdown syntax
+                    .replace(/^#{1,6}\s+/gm, '')  // Remove markdown headers
+                    .replace(/^---+$/gm, '')  // Remove markdown horizontal rules
+                    .replace(/^[-*+]\s+/gm, '')  // Remove markdown list markers
+                    .replace(/^>\s*/gm, '')  // Remove markdown blockquote markers
+                    .replace(/\|/g, '')  // Remove markdown table pipes
+                    .replace(/[-]{3,}/g, '')  // Remove markdown table separator lines
+                    .replace(/\*\*([^\*]+)\*\*/g, '$1')  // Remove bold
+                    .replace(/\*([^\*]+)\*/g, '$1')  // Remove italic
+                    .replace(/`([^`]+)`/g, '$1')  // Remove inline code
+                    .replace(/\s+/g, ' ')  // Collapse all whitespace to single spaces
+                    .replace(/[''""\u2018\u2019\u201C\u201D]/g, "'")  // Normalize quotes/apostrophes
+                    .replace(/[—–−]/g, '-')  // Normalize dashes (but not table separators)
+                    .replace(/…/g, '...')  // Normalize ellipsis
+                    .normalize('NFKD')  // Unicode normalization
+                    .trim();  // Final trim to remove any leading/trailing spaces
+            };
+            
+            const actualNormalized = normalizeWhitespace(actualSource);
+            const expectedNormalized = normalizeWhitespace(expected.expectedSource);
+            
+            if (actualNormalized === expectedNormalized) {
+                console.log(`✓ Conflict ${expected.conflictIndex} (row ${expected.rowIndex}): MATCH`);
+                console.log(`  Reason: ${expected.reason}`);
+                console.log(`  Content preview: ${actualNormalized.substring(0, 60)}...`);
+            } else {
+                console.log(`❌ DISCREPANCY: Conflict ${expected.conflictIndex} (row ${expected.rowIndex})`);
+                console.log(`  Reason: ${expected.reason}`);
+                console.log(`  Expected (normalized): ${expectedNormalized.substring(0, 100)}...`);
+                console.log(`  Actual (normalized): ${actualNormalized.substring(0, 100)}...`);
+                console.log(`  Expected length: ${expectedNormalized.length}, Actual length: ${actualNormalized.length}`);
+                
+                // Show character-by-character diff for first mismatch
+                let firstDiffIndex = -1;
+                for (let i = 0; i < Math.min(expectedNormalized.length, actualNormalized.length); i++) {
+                    if (expectedNormalized[i] !== actualNormalized[i]) {
+                        firstDiffIndex = i;
+                        break;
+                    }
+                }
+                if (firstDiffIndex !== -1) {
+                    const contextStart = Math.max(0, firstDiffIndex - 20);
+                    const contextEnd = Math.min(expectedNormalized.length, firstDiffIndex + 20);
+                    console.log(`  First difference at index ${firstDiffIndex}:`);
+                    console.log(`    Expected: "${expectedNormalized.substring(contextStart, contextEnd)}"`);
+                    console.log(`    Actual:   "${actualNormalized.substring(contextStart, contextEnd)}"`);
+                }
+                
+                allMatch = false;
+                discrepancyCount++;
+            }
+        }
+        
+        console.log('\n=== VERIFICATION SUMMARY ===\n');
+        console.log(`Total conflicts verified: ${expectedResolutions.length}`);
+        console.log(`Matching: ${expectedResolutions.length - discrepancyCount}`);
+        console.log(`Discrepancies: ${discrepancyCount}`);
+        
+        if (!allMatch) {
+            throw new Error(`Found ${discrepancyCount} discrepancies in resolved notebook`);
+        }
+        
         console.log('\n=== TEST PASSED ===\n');
         
     } finally {
