@@ -11,6 +11,7 @@
  * 6. Stages the resolved file in Git
  */
 
+import * as path from 'path';  
 import * as vscode from 'vscode';
 import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
 import { serializeNotebook, renumberExecutionCounts } from './notebookParser';
@@ -332,7 +333,7 @@ export class NotebookConflictResolver {
         
         // Show success notification (non-blocking, fire and forget)
         vscode.window.showInformationMessage(
-            `Resolved conflicts in ${uri.fsPath.split('/').pop()}`
+            `Resolved conflicts in ${path.basename(uri.fsPath)}`
         );
     }
 
