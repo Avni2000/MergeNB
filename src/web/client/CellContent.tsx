@@ -59,7 +59,7 @@ export function CellContent({
             <div className={cellClasses} data-lazy="true">
                 <div className="cell-content">
                     <div style={{ minHeight: '50px', opacity: 0.3 }}>
-                        <pre>{source.substring(0, LAZY_PREVIEW_LENGTH)}...</pre>
++                      <pre>{source.length > LAZY_PREVIEW_LENGTH ? `${source.substring(0, LAZY_PREVIEW_LENGTH)}...` : source}</pre>  
                     </div>
                 </div>
             </div>
