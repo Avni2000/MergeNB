@@ -288,7 +288,6 @@ export function matchCells(
     }
     
     // Sort mappings to preserve logical cell order
-    // This ensures the resolver and webview see cells in the same order
     return sortMappingsByPosition(mappings);
 }
 

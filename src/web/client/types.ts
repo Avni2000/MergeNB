@@ -1,10 +1,10 @@
 /**
  * @file types.ts
  * @description Shared types for the web client conflict resolver.
- * Re-exports core types and defines client-specific interfaces.
+ * Exports core types and defines client-specific interfaces.
  */
 
-// Re-export core types needed by the client
+// Export core types needed by the client
 export type {
     NotebookCell,
     CellOutput,

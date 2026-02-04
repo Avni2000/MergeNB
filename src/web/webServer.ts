@@ -3,8 +3,7 @@
  * @description HTTP and WebSocket server for web-based conflict resolution.
  * 
  * This module provides a local HTTP server that serves the conflict resolution UI
- * in a web browser instead of VSCode's webview. Communication between the extension
- * and browser is done via WebSocket.
+ * in a web browser. Communication between the extension and browser is done via WebSocket.
  * 
  * Architecture:
  * - HTTP server serves the React-based conflict resolver UI

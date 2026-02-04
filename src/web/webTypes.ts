@@ -16,7 +16,6 @@ import type {
 } from '../types';
 import type { AutoResolveResult } from '../conflictDetector';
 
-// Re-export AutoResolveResult for convenience
 export type { AutoResolveResult } from '../conflictDetector';
 
 /**
@@ -97,7 +96,7 @@ export interface WebConflictData {
 }
 
 /**
- * Web-compatible semantic conflict structure.
+ * Semantic conflict structure.
  */
 export interface WebSemanticConflict {
     filePath: string;
@@ -115,7 +114,7 @@ export interface WebSemanticConflict {
 }
 
 /**
- * Web-compatible individual semantic conflict.
+ * Individual semantic conflict.
  */
 export interface WebSemanticConflictItem {
     type: string;
