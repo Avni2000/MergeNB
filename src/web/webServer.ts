@@ -355,12 +355,36 @@ export class ConflictResolverWebServer {
 
     /**
      * Serve static files from dist/web/.
+     * Validates that the resolved file path stays within the intended directory
+     * to prevent directory traversal attacks.
      */
     private serveStaticFile(res: http.ServerResponse, pathname: string): void {
         const fileName = pathname.replace(/^\//, '');
-        const filePath = this.extensionUri
-            ? path.join(this.extensionUri.fsPath, 'dist', 'web', fileName)
-            : path.join(__dirname, '..', '..', 'dist', 'web', fileName);
+        
+        // Reject pathnames containing ".." to prevent directory traversal
+        if (fileName.includes('..')) {
+            console.warn(`[MergeNB Web] Rejected path with ".." traversal: ${pathname}`);
+            res.writeHead(403, { 'Content-Type': 'text/plain' });
+            res.end('Forbidden');
+            return;
+        }
+
+        const baseDir = this.extensionUri
+            ? path.join(this.extensionUri.fsPath, 'dist', 'web')
+            : path.join(__dirname, '..', '..', 'dist', 'web');
+        
+        const filePath = path.join(baseDir, fileName);
+
+        // Resolve both paths to absolute paths and verify the file is within the base directory
+        const resolvedBasePath = path.resolve(baseDir);
+        const resolvedFilePath = path.resolve(filePath);
+
+        if (!resolvedFilePath.startsWith(resolvedBasePath + path.sep) && resolvedFilePath !== resolvedBasePath) {
+            console.warn(`[MergeNB Web] Path traversal attempt blocked: ${pathname} -> ${resolvedFilePath}`);
+            res.writeHead(403, { 'Content-Type': 'text/plain' });
+            res.end('Forbidden');
+            return;
+        }
 
         const ext = path.extname(fileName).toLowerCase();
         const contentTypes: Record<string, string> = {
