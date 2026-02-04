@@ -1,13 +1,33 @@
 /**
  * @file vscodeIntegration.test.ts
- * @description Integration test that runs INSIDE VS Code extension host.
+ * @description End-to-end integration test that runs INSIDE VS Code extension host.
  * 
- * This test:
+ * This test verifies that the UI content (textareas + unified cell sources) correctly
+ * matches the final notebook written to disk. It does NOT rely on events or intermediary
+ * data structures - it directly compares UI state against the file on disk.
+ * 
+ * Test Flow:
  * 1. Runs inside VS Code with the extension loaded
- * 2. Opens conflict.ipynb which has Git UU status
- * 3. Executes the merge-nb.findConflicts command
- * 4. Waits for the web server to start
- * 5. Uses Playwright to connect to the browser and capture row data
+ * 2. Opens conflict.ipynb which has Git UU status (merge conflict)
+ * 3. Executes the merge-nb.findConflicts command to open the web UI
+ * 4. Uses Playwright to interact with the browser-based conflict resolver
+ * 5. Resolves conflicts using various strategies (current, incoming, base, delete)
+ * 6. Modifies some textarea content to test editing
+ * 7. BEFORE clicking Apply: Captures expected cell sources from UI:
+ *    - Conflict rows: textarea values (the editable resolved content)
+ *    - Unified rows: data-raw-source attribute (the original cell source)
+ *    - Deleted rows: marked for exclusion
+ * 8. Clicks Apply Resolution
+ * 9. AFTER resolution: Reads notebook from disk and verifies:
+ *    - Cell count matches (accounting for deletions)
+ *    - Each cell source matches exactly what was in the UI
+ *    - Cell types match
+ *    - Notebook structure is valid JSON
+ * 
+ * Key Verification:
+ * - This proves the UI content IS the source of truth for the final notebook
+ * - No reliance on events or WebSocket messages as intermediaries
+ * - Direct comparison: UI content === notebook file on disk
  */
 
 import * as vscode from 'vscode';
