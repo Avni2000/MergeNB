@@ -140,8 +140,16 @@ export function MergeRow({
     // For identical rows, show a unified single cell
     if (!isConflict) {
         const cell = row.currentCell || row.incomingCell || row.baseCell;
+        // Compute raw source for testing - this is what will become the cell source in the resolved notebook
+        const rawSource = cell ? normalizeCellSource(cell.source) : '';
+        const cellType = cell?.cell_type || 'code';
         return (
-            <div className="merge-row identical-row">
+            <div 
+                className="merge-row identical-row" 
+                data-testid={testId}
+                data-raw-source={rawSource}
+                data-cell-type={cellType}
+            >
                 <div className="cell-columns">
                     <div className="cell-column" style={{ gridColumn: '1 / -1' }}>
                         <CellContent

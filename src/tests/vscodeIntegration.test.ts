@@ -48,14 +48,6 @@ interface HealthResponse {
     sessionIds: string[];
 }
 
-interface ResolvedConflictDetails {
-    uri: string;
-    resolvedNotebook: any;
-    resolvedRows?: Array<{ resolution?: { choice: string; resolvedContent: string } }>;
-    markAsResolved: boolean;
-    renumberExecutionCounts: boolean;
-}
-
 /** Check if a server is running on a port by hitting the health endpoint */
 function checkHealth(port: number): Promise<boolean> {
     return new Promise((resolve) => {
@@ -72,20 +64,6 @@ function getCellSource(cell: any): string {
         return '';
     }
     return Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
-}
-
-async function waitForResolutionDetails(timeoutMs: number = 20000): Promise<ResolvedConflictDetails> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-        const details = await vscode.commands.executeCommand<ResolvedConflictDetails | undefined>(
-            'merge-nb.getLastResolutionDetails'
-        );
-        if (details?.resolvedNotebook) {
-            return details;
-        }
-        await new Promise(r => setTimeout(r, 500));
-    }
-    throw new Error('Timed out waiting for resolution details event');
 }
 
 /** Get health info including session IDs */
@@ -334,6 +312,7 @@ export async function run(): Promise<void> {
             rowIndex: number;
             expectedContent: string;
             reason: string;
+            isDeleted?: boolean;
         }> = [];
         
         for (let i = 0; i < conflictRows.length; i++) {
@@ -361,8 +340,15 @@ export async function run(): Promise<void> {
                 let buttonToClick: string;
                 let reason: string;
                 let modifications: string[] = [];
+                let isDeleteAction = false;
                 
-                if (rowIndex % 2 === 0) {
+                // Delete cells at row indices divisible by 7 (except 0) to test deletion
+                if (rowIndex > 0 && rowIndex % 7 === 0) {
+                    buttonToClick = '.btn-delete';
+                    reason = 'divisible by 7 -> delete';
+                    isDeleteAction = true;
+                    console.log(`  -> Clicking "Delete Cell" (divisible by 7)`);
+                } else if (rowIndex % 2 === 0) {
                     // Even index: prefer incoming
                     if (hasIncoming) {
                         buttonToClick = '.btn-incoming';
@@ -398,8 +384,8 @@ export async function run(): Promise<void> {
                     }
                 }
                 
-                // If row index is divisible by 5, add that note
-                if (rowIndex % 5 === 0) {
+                // If row index is divisible by 5, add that note (but not for deletions)
+                if (!isDeleteAction && rowIndex % 5 === 0) {
                     modifications.push('(current taken - divisible by 5)');
                     reason += ' + divisible by 5';
                 }
@@ -409,31 +395,48 @@ export async function run(): Promise<void> {
                 await button.waitFor({ timeout: 10000 });
                 await button.click();
                 
-                // Wait for textarea to appear
-                await rowElement.locator('.resolved-content-input').waitFor({ timeout: 5000 });
-                
-                const textarea = rowElement.locator('.resolved-content-input');
-                
-                // Read the actual content from the textarea (this is the raw markdown source)
-                const initialTextareaContent = await textarea.inputValue();
-                console.log(`  -> Textarea populated with ${initialTextareaContent.length} chars`);
-                
-                // Apply modifications if any
-                let finalExpectedContent = initialTextareaContent;
-                if (modifications.length > 0) {
-                    const newValue = initialTextareaContent + '\n' + modifications.join('\n');
-                    await textarea.fill(newValue);
-                    finalExpectedContent = newValue;
-                    console.log(`  -> Modified text with: ${modifications.join(', ')}`);
+                // For deletions, we don't wait for textarea
+                if (isDeleteAction) {
+                    // Wait for the resolved-deleted state
+                    await rowElement.locator('.resolved-deleted').waitFor({ timeout: 5000 });
+                    console.log(`  -> Cell marked for deletion`);
+                    
+                    // Store expected resolution for later verification
+                    expectedResolutions.push({
+                        conflictIndex: i,
+                        rowIndex,
+                        expectedContent: '', // Empty for deletions
+                        reason,
+                        isDeleted: true
+                    });
+                } else {
+                    // Wait for textarea to appear
+                    await rowElement.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+                    
+                    const textarea = rowElement.locator('.resolved-content-input');
+                    
+                    // Read the actual content from the textarea (this is the raw markdown source)
+                    const initialTextareaContent = await textarea.inputValue();
+                    console.log(`  -> Textarea populated with ${initialTextareaContent.length} chars`);
+                    
+                    // Apply modifications if any
+                    let finalExpectedContent = initialTextareaContent;
+                    if (modifications.length > 0) {
+                        const newValue = initialTextareaContent + '\n' + modifications.join('\n');
+                        await textarea.fill(newValue);
+                        finalExpectedContent = newValue;
+                        console.log(`  -> Modified text with: ${modifications.join(', ')}`);
+                    }
+                    
+                    // Store expected resolution for later verification
+                    expectedResolutions.push({
+                        conflictIndex: i,
+                        rowIndex,
+                        expectedContent: finalExpectedContent,
+                        reason,
+                        isDeleted: false
+                    });
                 }
-                
-                // Store expected resolution for later verification
-                expectedResolutions.push({
-                    conflictIndex: i,
-                    rowIndex,
-                    expectedContent: finalExpectedContent,
-                    reason
-                });
                 
                 // Small delay between rows
                 await new Promise(r => setTimeout(r, 200));
@@ -445,9 +448,15 @@ export async function run(): Promise<void> {
         
         console.log('\n=== VERIFYING TEXTAREA CONTENTS BEFORE APPLY ===\n');
         
-        // Re-read all textarea values to verify they match our expectations
+        // Re-read all textarea values to verify they match our expectations (skip deletions)
         let allTextareasMatch = true;
         for (const expected of expectedResolutions) {
+            // Skip deleted rows - they don't have textareas
+            if (expected.isDeleted) {
+                console.log(`✓ Conflict ${expected.conflictIndex}: skipped (deleted)`);
+                continue;
+            }
+            
             const rowElement = page.locator(`[data-testid="${conflictRows[expected.conflictIndex].testId}"]`);
             const textarea = rowElement.locator('.resolved-content-input');
             const actualContent = await textarea.inputValue();
@@ -532,73 +541,310 @@ export async function run(): Promise<void> {
             throw new Error('Apply Resolution button is disabled - not all conflicts may be resolved');
         }
         
-        console.log('Clicking "Apply Resolution"...');
+        // =====================================================================
+        // CRITICAL: Capture expected cell sources from the UI BEFORE clicking apply
+        // This is the source of truth - what's in the UI should be what ends up on disk
+        // =====================================================================
+        console.log('\n=== CAPTURING EXPECTED CELL SOURCES FROM UI ===\n');
+        
+        interface ExpectedCell {
+            rowIndex: number;
+            source: string;
+            cellType: string;
+            isConflict: boolean;
+            isDeleted: boolean;
+        }
+        
+        const expectedCells: ExpectedCell[] = [];
+        const allRowsForCapture = page.locator('.merge-row');
+        const totalRows = await allRowsForCapture.count();
+        
+        for (let i = 0; i < totalRows; i++) {
+            const row = allRowsForCapture.nth(i);
+            const isConflictRow = await row.evaluate(el => el.classList.contains('conflict-row'));
+            const isIdenticalRow = await row.evaluate(el => el.classList.contains('identical-row'));
+            
+            if (isIdenticalRow) {
+                // For unified/identical rows, the raw source is in the data-raw-source attribute
+                const rawSource = await row.getAttribute('data-raw-source');
+                const cellType = await row.getAttribute('data-cell-type') || 'code';
+                
+                if (rawSource !== null) {
+                    expectedCells.push({
+                        rowIndex: i,
+                        source: rawSource,
+                        cellType,
+                        isConflict: false,
+                        isDeleted: false
+                    });
+                    console.log(`Row ${i} (identical): captured ${rawSource.length} chars of ${cellType}`);
+                } else {
+                    // Fallback: try to read from cell-content for code cells
+                    const cellContent = row.locator('.cell-column .notebook-cell .cell-content');
+                    if (await cellContent.count() > 0) {
+                        const textContent = await cellContent.textContent() || '';
+                        const hasCodeClass = await row.locator('.notebook-cell').evaluate(el => el.classList.contains('code-cell'));
+                        expectedCells.push({
+                            rowIndex: i,
+                            source: textContent,
+                            cellType: hasCodeClass ? 'code' : 'markdown',
+                            isConflict: false,
+                            isDeleted: false
+                        });
+                        console.log(`Row ${i} (identical, fallback): captured ${textContent.length} chars`);
+                    }
+                }
+            } else if (isConflictRow) {
+                // For conflict rows, check if it's been resolved
+                const resolvedCell = row.locator('.resolved-cell');
+                const hasResolvedCell = await resolvedCell.count() > 0;
+                
+                if (hasResolvedCell) {
+                    // Check if it's a deletion
+                    const isDeleted = await resolvedCell.evaluate(el => el.classList.contains('resolved-deleted'));
+                    
+                    if (isDeleted) {
+                        expectedCells.push({
+                            rowIndex: i,
+                            source: '',
+                            cellType: 'code',
+                            isConflict: true,
+                            isDeleted: true
+                        });
+                        console.log(`Row ${i} (conflict): DELETED`);
+                    } else {
+                        // Get the textarea content - this is the source of truth
+                        const textarea = row.locator('.resolved-content-input');
+                        if (await textarea.count() > 0) {
+                            const textareaValue = await textarea.inputValue();
+                            // Determine cell type from the original cells
+                            const hasCodeCell = await row.locator('.notebook-cell.code-cell').count() > 0;
+                            expectedCells.push({
+                                rowIndex: i,
+                                source: textareaValue,
+                                cellType: hasCodeCell ? 'code' : 'markdown',
+                                isConflict: true,
+                                isDeleted: false
+                            });
+                            console.log(`Row ${i} (conflict, resolved): captured ${textareaValue.length} chars`);
+                        }
+                    }
+                } else {
+                    console.log(`Row ${i} (conflict): NOT RESOLVED - will fail`);
+                }
+            }
+        }
+        
+        console.log(`\nCaptured ${expectedCells.length} expected cells from UI`);
+        const expectedNonDeletedCells = expectedCells.filter(c => !c.isDeleted && c.source !== '');
+        console.log(`Expected ${expectedNonDeletedCells.length} cells in final notebook (excluding deletions)`);
+        
+        // Now click Apply
+        console.log('\nClicking "Apply Resolution"...');
         await applyButton.click();
         
-        // Wait a moment for the resolution to be sent to the extension
-        await new Promise(r => setTimeout(r, 2000));
-
-        const resolutionDetails = await waitForResolutionDetails();
+        // Wait for the file to be written
+        await new Promise(r => setTimeout(r, 3000));
         
-        console.log('\n=== VERIFYING RESOLVED NOTEBOOK ===\n');
-        
-        // Read the resolved conflict.ipynb file
-        const resolvedNotebook = JSON.parse(fs.readFileSync(conflictFile, 'utf8'));
-        console.log(`Resolved notebook has ${resolvedNotebook.cells.length} cells`);
-
-        const serializedFromEvent = JSON.stringify(resolutionDetails.resolvedNotebook);
-        const serializedFromDisk = JSON.stringify(resolvedNotebook);
-        if (serializedFromEvent !== serializedFromDisk) {
-            throw new Error('Resolved notebook from event does not match the file written to disk');
+        // Wait for the resolution to complete (file should be updated)
+        console.log('Waiting for file to be written...');
+        let fileWritten = false;
+        for (let attempt = 0; attempt < 20; attempt++) {
+            await new Promise(r => setTimeout(r, 500));
+            try {
+                const stat = fs.statSync(conflictFile);
+                // Check if file was modified recently (within last 10 seconds)
+                const mtime = stat.mtimeMs;
+                const now = Date.now();
+                if (now - mtime < 10000) {
+                    fileWritten = true;
+                    console.log('File was written recently, proceeding with verification');
+                    break;
+                }
+            } catch {
+                // File doesn't exist or can't be read
+            }
         }
         
-        // Verify that each resolved row content matches the corresponding cell in the notebook
-        console.log('\n=== VERIFYING CELL SOURCES MATCH RESOLVED ROW CONTENTS ===\n');
+        if (!fileWritten) {
+            console.log('Warning: Could not confirm file was written, proceeding anyway');
+        }
         
-        let cellMismatchCount = 0;
-        const resolvedRows = resolutionDetails.resolvedRows || [];
-        for (let rowIndex = 0; rowIndex < resolvedRows.length; rowIndex++) {
-            const row = resolvedRows[rowIndex];
-            const resolution = row.resolution;
-
-            if (!resolution) {
-                continue;
-            }
-
-            if (resolution.choice === 'delete' || resolution.resolvedContent === '') {
-                continue;
-            }
-
-            const cellIndex = rowIndex;
+        // =====================================================================
+        // VERIFICATION: Compare UI sources directly against notebook on disk
+        // =====================================================================
+        console.log('\n=== VERIFYING UI CONTENT MATCHES NOTEBOOK ON DISK ===\n');
+        
+        // Read and parse the resolved notebook from disk
+        const notebookContent = fs.readFileSync(conflictFile, 'utf8');
+        const resolvedNotebook = JSON.parse(notebookContent);
+        
+        console.log(`Notebook on disk has ${resolvedNotebook.cells.length} cells`);
+        console.log(`Expected ${expectedNonDeletedCells.length} cells from UI`);
+        
+        // First check: cell count must match
+        if (resolvedNotebook.cells.length !== expectedNonDeletedCells.length) {
+            console.log('❌ CELL COUNT MISMATCH');
+            console.log(`   Expected: ${expectedNonDeletedCells.length}`);
+            console.log(`   Actual: ${resolvedNotebook.cells.length}`);
             
-            if (cellIndex >= resolvedNotebook.cells.length) {
-                console.log(`❌ Cell ${cellIndex}: out of bounds (notebook has ${resolvedNotebook.cells.length} cells)`);
-                cellMismatchCount++;
-                continue;
+            // Log expected cells for debugging
+            console.log('\nExpected cells from UI:');
+            for (const cell of expectedNonDeletedCells) {
+                console.log(`  Row ${cell.rowIndex}: ${cell.cellType}, ${cell.source.length} chars, first 50: "${cell.source.substring(0, 50).replace(/\n/g, '\\n')}..."`);
             }
             
-            const cell = resolvedNotebook.cells[cellIndex];
-            const cellSource = getCellSource(cell);
-            const expectedContent = resolution.resolvedContent;
+            console.log('\nActual cells on disk:');
+            for (let i = 0; i < resolvedNotebook.cells.length; i++) {
+                const cellSource = getCellSource(resolvedNotebook.cells[i]);
+                console.log(`  Cell ${i}: ${resolvedNotebook.cells[i].cell_type}, ${cellSource.length} chars, first 50: "${cellSource.substring(0, 50).replace(/\n/g, '\\n')}..."`);
+            }
             
-            // The resolved content should match the cell source exactly
-            if (cellSource === expectedContent) {
-                console.log(`✓ Cell ${cellIndex}: source matches resolved content`);
+            throw new Error(`Cell count mismatch: expected ${expectedNonDeletedCells.length}, got ${resolvedNotebook.cells.length}`);
+        }
+        
+        // Second check: compare each cell source
+        let mismatchCount = 0;
+        const mismatches: Array<{index: number; expected: string; actual: string}> = [];
+        
+        for (let i = 0; i < expectedNonDeletedCells.length; i++) {
+            const expectedCell = expectedNonDeletedCells[i];
+            const actualCell = resolvedNotebook.cells[i];
+            const actualSource = getCellSource(actualCell);
+            
+            if (expectedCell.source === actualSource) {
+                console.log(`✓ Cell ${i} (from row ${expectedCell.rowIndex}): sources match (${actualSource.length} chars)`);
             } else {
-                console.log(`❌ Cell ${cellIndex}: MISMATCH`);
-                console.log(`   Resolved (${expectedContent.length} chars): ${expectedContent.substring(0, 80)}...`);
-                console.log(`   Cell source (${cellSource.length} chars): ${cellSource.substring(0, 80)}...`);
-                cellMismatchCount++;
+                mismatchCount++;
+                mismatches.push({
+                    index: i,
+                    expected: expectedCell.source,
+                    actual: actualSource
+                });
+                console.log(`❌ Cell ${i} (from row ${expectedCell.rowIndex}): MISMATCH`);
+                console.log(`   Expected (${expectedCell.source.length} chars): "${expectedCell.source.substring(0, 100).replace(/\n/g, '\\n')}..."`);
+                console.log(`   Actual (${actualSource.length} chars): "${actualSource.substring(0, 100).replace(/\n/g, '\\n')}..."`);
             }
         }
         
-        if (cellMismatchCount > 0) {
-            throw new Error(`${cellMismatchCount} cells do not match their resolved content`);
+        // If there are mismatches, print detailed diffs
+        if (mismatches.length > 0) {
+            console.log('\n=== DETAILED DIFFS FOR MISMATCHED CELLS ===\n');
+            
+            for (const mismatch of mismatches) {
+                console.log(`--- Cell ${mismatch.index} ---`);
+                
+                // Simple line-by-line diff
+                const expectedLines = mismatch.expected.split('\n');
+                const actualLines = mismatch.actual.split('\n');
+                
+                console.log(`Expected ${expectedLines.length} lines, got ${actualLines.length} lines`);
+                
+                // LCS-based diff
+                const n = expectedLines.length;
+                const m = actualLines.length;
+                const dp: number[][] = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+                for (let i = n - 1; i >= 0; i--) {
+                    for (let j = m - 1; j >= 0; j--) {
+                        dp[i][j] = expectedLines[i] === actualLines[j] 
+                            ? dp[i + 1][j + 1] + 1 
+                            : Math.max(dp[i + 1][j], dp[i][j + 1]);
+                    }
+                }
+                
+                const diffLines: string[] = [];
+                let ei = 0, ai = 0;
+                while (ei < n && ai < m) {
+                    if (expectedLines[ei] === actualLines[ai]) {
+                        diffLines.push(`   ${expectedLines[ei]}`);
+                        ei++; ai++;
+                    } else if (dp[ei + 1][ai] >= dp[ei][ai + 1]) {
+                        diffLines.push(`-  ${expectedLines[ei]}`);
+                        ei++;
+                    } else {
+                        diffLines.push(`+  ${actualLines[ai]}`);
+                        ai++;
+                    }
+                }
+                while (ei < n) { diffLines.push(`-  ${expectedLines[ei++]}`); }
+                while (ai < m) { diffLines.push(`+  ${actualLines[ai++]}`); }
+                
+                for (const line of diffLines) {
+                    console.log(line);
+                }
+                console.log('');
+            }
+            
+            throw new Error(`${mismatchCount} cells have source mismatches between UI and disk`);
         }
+        
+        // Third check: verify cell types match
+        console.log('\n=== VERIFYING CELL TYPES ===\n');
+        let typesMismatchCount = 0;
+        
+        for (let i = 0; i < expectedNonDeletedCells.length; i++) {
+            const expectedCell = expectedNonDeletedCells[i];
+            const actualCell = resolvedNotebook.cells[i];
+            
+            if (expectedCell.cellType === actualCell.cell_type) {
+                console.log(`✓ Cell ${i}: type matches (${actualCell.cell_type})`);
+            } else {
+                typesMismatchCount++;
+                console.log(`❌ Cell ${i}: type mismatch - expected ${expectedCell.cellType}, got ${actualCell.cell_type}`);
+            }
+        }
+        
+        if (typesMismatchCount > 0) {
+            throw new Error(`${typesMismatchCount} cells have type mismatches`);
+        }
+        
+        // Fourth check: verify notebook structure is valid
+        console.log('\n=== VERIFYING NOTEBOOK STRUCTURE ===\n');
+        
+        if (typeof resolvedNotebook.nbformat !== 'number') {
+            throw new Error('Invalid notebook: missing nbformat');
+        }
+        if (typeof resolvedNotebook.nbformat_minor !== 'number') {
+            throw new Error('Invalid notebook: missing nbformat_minor');
+        }
+        if (!resolvedNotebook.metadata || typeof resolvedNotebook.metadata !== 'object') {
+            throw new Error('Invalid notebook: missing or invalid metadata');
+        }
+        if (!Array.isArray(resolvedNotebook.cells)) {
+            throw new Error('Invalid notebook: cells is not an array');
+        }
+        
+        console.log(`✓ nbformat: ${resolvedNotebook.nbformat}`);
+        console.log(`✓ nbformat_minor: ${resolvedNotebook.nbformat_minor}`);
+        console.log(`✓ metadata: valid object`);
+        console.log(`✓ cells: valid array with ${resolvedNotebook.cells.length} cells`);
+        
+        // Verify each cell has required fields
+        for (let i = 0; i < resolvedNotebook.cells.length; i++) {
+            const cell = resolvedNotebook.cells[i];
+            if (!cell.cell_type) {
+                throw new Error(`Cell ${i}: missing cell_type`);
+            }
+            if (cell.source === undefined) {
+                throw new Error(`Cell ${i}: missing source`);
+            }
+            if (!cell.metadata || typeof cell.metadata !== 'object') {
+                throw new Error(`Cell ${i}: missing or invalid metadata`);
+            }
+            if (cell.cell_type === 'code') {
+                if (!Array.isArray(cell.outputs)) {
+                    throw new Error(`Cell ${i}: code cell missing outputs array`);
+                }
+            }
+        }
+        console.log('✓ All cells have required fields');
         
         console.log('\n=== ALL VERIFICATIONS PASSED ===\n');
-        console.log('1. ✓ Button clicking populates textareas correctly');
-        console.log('2. ✓ Resolved row contents are correctly written to notebook file');
+        console.log('✓ Cell count matches between UI and disk');
+        console.log('✓ All cell sources match between UI textareas/data attributes and disk');
+        console.log('✓ All cell types match');
+        console.log('✓ Notebook structure is valid');
+        console.log(`✓ Total: ${expectedNonDeletedCells.length} cells verified`);
         
         console.log('\n=== TEST PASSED ===\n');
         
