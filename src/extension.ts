@@ -14,7 +14,7 @@
  */
 
 import * as vscode from 'vscode';
-import { NotebookConflictResolver, ConflictedNotebook, onDidResolveConflict } from './resolver';
+import { NotebookConflictResolver, ConflictedNotebook, onDidResolveConflict, onDidResolveConflictWithDetails } from './resolver';
 import * as gitIntegration from './gitIntegration';
 import { getWebServer } from './web';
 
@@ -22,6 +22,13 @@ let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
 let currentFileHasConflicts = false;
 let successTimeout: NodeJS.Timeout | undefined;
+let lastResolvedDetails: {
+	uri: string;
+	resolvedNotebook: unknown;
+	resolvedRows?: unknown[];
+	markAsResolved: boolean;
+	renumberExecutionCounts: boolean;
+} | undefined;
 
 // Event emitter to trigger decoration refresh
 const decorationChangeEmitter = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
@@ -101,6 +108,18 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
+	context.subscriptions.push(
+		onDidResolveConflictWithDetails.event((details) => {
+			lastResolvedDetails = {
+				uri: details.uri.fsPath,
+				resolvedNotebook: details.resolvedNotebook,
+				resolvedRows: details.resolvedRows,
+				markAsResolved: details.markAsResolved,
+				renumberExecutionCounts: details.renumberExecutionCounts
+			};
+		})
+	);
+
 	// Command: Find all notebooks with conflicts (semantic / Git UU status)
 	context.subscriptions.push(
 		vscode.commands.registerCommand('merge-nb.findConflicts', async () => {
@@ -147,6 +166,12 @@ export function activate(context: vscode.ExtensionContext) {
 			if (picked) {
 				await resolver.resolveConflicts(picked.uri);
 			}
+		})
+	);
+
+	context.subscriptions.push(
+		vscode.commands.registerCommand('merge-nb.getLastResolutionDetails', () => {
+			return lastResolvedDetails;
 		})
 	);
 

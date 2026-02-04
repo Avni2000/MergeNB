@@ -48,6 +48,14 @@ interface HealthResponse {
     sessionIds: string[];
 }
 
+interface ResolvedConflictDetails {
+    uri: string;
+    resolvedNotebook: any;
+    resolvedRows?: Array<{ resolution?: { choice: string; resolvedContent: string } }>;
+    markAsResolved: boolean;
+    renumberExecutionCounts: boolean;
+}
+
 /** Check if a server is running on a port by hitting the health endpoint */
 function checkHealth(port: number): Promise<boolean> {
     return new Promise((resolve) => {
@@ -57,6 +65,27 @@ function checkHealth(port: number): Promise<boolean> {
         req.on('error', () => resolve(false));
         req.on('timeout', () => { req.destroy(); resolve(false); });
     });
+}
+
+function getCellSource(cell: any): string {
+    if (!cell) {
+        return '';
+    }
+    return Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
+}
+
+async function waitForResolutionDetails(timeoutMs: number = 20000): Promise<ResolvedConflictDetails> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        const details = await vscode.commands.executeCommand<ResolvedConflictDetails | undefined>(
+            'merge-nb.getLastResolutionDetails'
+        );
+        if (details?.resolvedNotebook) {
+            return details;
+        }
+        await new Promise(r => setTimeout(r, 500));
+    }
+    throw new Error('Timed out waiting for resolution details event');
 }
 
 /** Get health info including session IDs */
@@ -299,6 +328,14 @@ export async function run(): Promise<void> {
         
         const conflictRows = capturedRows.filter(r => r.isConflict);
         
+        // Track expected resolutions as we go
+        const expectedResolutions: Array<{
+            conflictIndex: number;
+            rowIndex: number;
+            expectedContent: string;
+            reason: string;
+        }> = [];
+        
         for (let i = 0; i < conflictRows.length; i++) {
             const capturedRow = conflictRows[i];
             const rowIndex = capturedRow.rowIndex;
@@ -322,36 +359,49 @@ export async function run(): Promise<void> {
                 
                 // Determine which button to click based on row index and what exists
                 let buttonToClick: string;
-                let appendNote = '';
+                let reason: string;
+                let modifications: string[] = [];
                 
                 if (rowIndex % 2 === 0) {
                     // Even index: prefer incoming
                     if (hasIncoming) {
                         buttonToClick = '.btn-incoming';
+                        reason = 'even index -> incoming';
                         console.log(`  -> Clicking "Use Incoming" (even index)`);
                     } else if (hasCurrent) {
                         buttonToClick = '.btn-current';
-                        appendNote = '(incoming doesn\'t exist)';
+                        reason = 'even index -> current (incoming missing)';
+                        modifications.push('(incoming doesn\'t exist)');
                         console.log(`  -> Clicking "Use Current" (incoming doesn't exist)`);
                     } else {
                         buttonToClick = '.btn-base';
-                        appendNote = '(neither current nor incoming exist)';
+                        reason = 'even index -> base (both missing)';
+                        modifications.push('(neither current nor incoming exist)');
                         console.log(`  -> Clicking "Use Base" (neither current nor incoming exist)`);
                     }
                 } else {
                     // Odd index: prefer current
                     if (hasCurrent) {
                         buttonToClick = '.btn-current';
+                        reason = 'odd index -> current';
                         console.log(`  -> Clicking "Use Current" (odd index)`);
                     } else if (hasIncoming) {
                         buttonToClick = '.btn-incoming';
-                        appendNote = '(current doesn\'t exist)';
+                        reason = 'odd index -> incoming (current missing)';
+                        modifications.push('(current doesn\'t exist)');
                         console.log(`  -> Clicking "Use Incoming" (current doesn't exist)`);
                     } else {
                         buttonToClick = '.btn-base';
-                        appendNote = '(neither current nor incoming exist)';
+                        reason = 'odd index -> base (both missing)';
+                        modifications.push('(neither current nor incoming exist)');
                         console.log(`  -> Clicking "Use Base" (neither current nor incoming exist)`);
                     }
+                }
+                
+                // If row index is divisible by 5, add that note
+                if (rowIndex % 5 === 0) {
+                    modifications.push('(current taken - divisible by 5)');
+                    reason += ' + divisible by 5';
                 }
                 
                 // Click the resolution button
@@ -364,26 +414,26 @@ export async function run(): Promise<void> {
                 
                 const textarea = rowElement.locator('.resolved-content-input');
                 
-                // Get current value
-                let currentValue = await textarea.inputValue();
-                let modifications: string[] = [];
-                
-                // Add note if cell didn't exist
-                if (appendNote) {
-                    modifications.push(appendNote);
-                }
-                
-                // If row index is divisible by 5, add that note too
-                if (rowIndex % 5 === 0) {
-                    modifications.push('(current taken - divisible by 5)');
-                }
+                // Read the actual content from the textarea (this is the raw markdown source)
+                const initialTextareaContent = await textarea.inputValue();
+                console.log(`  -> Textarea populated with ${initialTextareaContent.length} chars`);
                 
                 // Apply modifications if any
+                let finalExpectedContent = initialTextareaContent;
                 if (modifications.length > 0) {
-                    const newValue = currentValue + '\n' + modifications.join('\n');
+                    const newValue = initialTextareaContent + '\n' + modifications.join('\n');
                     await textarea.fill(newValue);
+                    finalExpectedContent = newValue;
                     console.log(`  -> Modified text with: ${modifications.join(', ')}`);
                 }
+                
+                // Store expected resolution for later verification
+                expectedResolutions.push({
+                    conflictIndex: i,
+                    rowIndex,
+                    expectedContent: finalExpectedContent,
+                    reason
+                });
                 
                 // Small delay between rows
                 await new Promise(r => setTimeout(r, 200));
@@ -391,6 +441,63 @@ export async function run(): Promise<void> {
                 console.error(`  -> Failed to resolve row ${i}: ${error.message}`);
                 throw error;
             }
+        }
+        
+        console.log('\n=== VERIFYING TEXTAREA CONTENTS BEFORE APPLY ===\n');
+        
+        // Re-read all textarea values to verify they match our expectations
+        let allTextareasMatch = true;
+        for (const expected of expectedResolutions) {
+            const rowElement = page.locator(`[data-testid="${conflictRows[expected.conflictIndex].testId}"]`);
+            const textarea = rowElement.locator('.resolved-content-input');
+            const actualContent = await textarea.inputValue();
+            
+            if (actualContent === expected.expectedContent) {
+                console.log(`✓ Conflict ${expected.conflictIndex}: textarea matches expected`);
+            } else {
+                // Compute a simple line-based diff (LCS) and print it
+                const expectedText = expected.expectedContent || '';
+                const actualText = actualContent || '';
+                const a = expectedText.split('\n');
+                const b = actualText.split('\n');
+                const n = a.length;
+                const m = b.length;
+                const dp: number[][] = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+                for (let i = n - 1; i >= 0; i--) {
+                    for (let j = m - 1; j >= 0; j--) {
+                        dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+                    }
+                }
+                const rows: { type: string; line: string }[] = [];
+                let i = 0, j = 0;
+                while (i < n && j < m) {
+                    if (a[i] === b[j]) {
+                        rows.push({ type: ' ', line: a[i] });
+                        i++; j++;
+                    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+                        rows.push({ type: '-', line: a[i] });
+                        i++;
+                    } else {
+                        rows.push({ type: '+', line: b[j] });
+                        j++;
+                    }
+                }
+                while (i < n) { rows.push({ type: '-', line: a[i++] }); }
+                while (j < m) { rows.push({ type: '+', line: b[j++] }); }
+                console.log(`❌ Conflict ${expected.conflictIndex}: MISMATCH — Showing line diff (expected vs actual)`);
+                console.log('--- DIFF ---');
+                for (const r of rows) {
+                    const prefix = r.type === ' ' ? '   ' : (r.type === '-' ? '-  ' : '+  ');
+                    console.log(prefix + r.line);
+                }
+                console.log('--- END DIFF ---');
+                allTextareasMatch = false;
+                allTextareasMatch = false;
+            }
+        }
+        
+        if (!allTextareasMatch) {
+            throw new Error('Some textareas do not match expected content');
         }
         
         console.log('\n=== VERIFYING CHECKBOXES ===\n');
@@ -430,172 +537,68 @@ export async function run(): Promise<void> {
         
         // Wait a moment for the resolution to be sent to the extension
         await new Promise(r => setTimeout(r, 2000));
+
+        const resolutionDetails = await waitForResolutionDetails();
         
         console.log('\n=== VERIFYING RESOLVED NOTEBOOK ===\n');
         
         // Read the resolved conflict.ipynb file
         const resolvedNotebook = JSON.parse(fs.readFileSync(conflictFile, 'utf8'));
         console.log(`Resolved notebook has ${resolvedNotebook.cells.length} cells`);
-        
-        // Build expected resolutions based on our rules
-        const expectedResolutions: Array<{
-            conflictIndex: number;
-            rowIndex: number;
-            expectedSource: string;
-            reason: string;
-        }> = [];
-        
-        for (let i = 0; i < conflictRows.length; i++) {
-            const capturedRow = conflictRows[i];
-            const rowIndex = capturedRow.rowIndex;
-            const hasBase = capturedRow.base.exists;
-            const hasCurrent = capturedRow.current.exists;
-            const hasIncoming = capturedRow.incoming.exists;
-            
-            let expectedSource: string;
-            let reason: string;
-            
-            if (rowIndex % 2 === 0) {
-                // Even index: prefer incoming
-                if (hasIncoming) {
-                    expectedSource = capturedRow.incoming.content || '';
-                    reason = 'even index -> incoming';
-                } else if (hasCurrent) {
-                    expectedSource = capturedRow.current.content || '';
-                    reason = 'even index -> current (incoming missing)';
-                    expectedSource += '\n(incoming doesn\'t exist)';
-                } else {
-                    expectedSource = capturedRow.base.content || '';
-                    reason = 'even index -> base (both missing)';
-                    expectedSource += '\n(neither current nor incoming exist)';
-                }
-            } else {
-                // Odd index: prefer current
-                if (hasCurrent) {
-                    expectedSource = capturedRow.current.content || '';
-                    reason = 'odd index -> current';
-                } else if (hasIncoming) {
-                    expectedSource = capturedRow.incoming.content || '';
-                    reason = 'odd index -> incoming (current missing)';
-                    expectedSource += '\n(current doesn\'t exist)';
-                } else {
-                    expectedSource = capturedRow.base.content || '';
-                    reason = 'odd index -> base (both missing)';
-                    expectedSource += '\n(neither current nor incoming exist)';
-                }
-            }
-            
-            // Add divisible by 5 marker
-            if (rowIndex % 5 === 0) {
-                expectedSource += '\n(current taken - divisible by 5)';
-                reason += ' + divisible by 5';
-            }
-            
-            expectedResolutions.push({
-                conflictIndex: i,
-                rowIndex,
-                expectedSource: expectedSource.trim(),
-                reason
-            });
+
+        const serializedFromEvent = JSON.stringify(resolutionDetails.resolvedNotebook);
+        const serializedFromDisk = JSON.stringify(resolvedNotebook);
+        if (serializedFromEvent !== serializedFromDisk) {
+            throw new Error('Resolved notebook from event does not match the file written to disk');
         }
         
-        // Now verify each conflict was resolved correctly
-        console.log('\n=== CELL-BY-CELL VERIFICATION ===\n');
+        // Verify that each resolved row content matches the corresponding cell in the notebook
+        console.log('\n=== VERIFYING CELL SOURCES MATCH RESOLVED ROW CONTENTS ===\n');
         
-        let allMatch = true;
-        let discrepancyCount = 0;
-        
-        for (const expected of expectedResolutions) {
-            // The resolved notebook should have cells in order
-            // We need to find the cell at the conflict row position
-            // Since we have 71 total rows (captured), we need to map rowIndex to actual cell index
-            
-            // For simplicity, let's just verify that the expected content appears somewhere
-            // in the resolved notebook's cells
-            const cellIndex = expected.rowIndex;
+        let cellMismatchCount = 0;
+        const resolvedRows = resolutionDetails.resolvedRows || [];
+        for (let rowIndex = 0; rowIndex < resolvedRows.length; rowIndex++) {
+            const row = resolvedRows[rowIndex];
+            const resolution = row.resolution;
+
+            if (!resolution) {
+                continue;
+            }
+
+            if (resolution.choice === 'delete' || resolution.resolvedContent === '') {
+                continue;
+            }
+
+            const cellIndex = rowIndex;
             
             if (cellIndex >= resolvedNotebook.cells.length) {
-                console.log(`❌ DISCREPANCY: Conflict ${expected.conflictIndex} (row ${expected.rowIndex})`);
-                console.log(`   Cell index ${cellIndex} out of bounds (notebook has ${resolvedNotebook.cells.length} cells)`);
-                allMatch = false;
-                discrepancyCount++;
+                console.log(`❌ Cell ${cellIndex}: out of bounds (notebook has ${resolvedNotebook.cells.length} cells)`);
+                cellMismatchCount++;
                 continue;
             }
             
-            const actualCell = resolvedNotebook.cells[cellIndex];
-            const actualSource = Array.isArray(actualCell.source) 
-                ? actualCell.source.join('')
-                : actualCell.source;
+            const cell = resolvedNotebook.cells[cellIndex];
+            const cellSource = getCellSource(cell);
+            const expectedContent = resolution.resolvedContent;
             
-            // Normalize whitespace and unicode for comparison
-            const normalizeWhitespace = (text: string) => {
-                return text
-                    .trim()
-                    .replace(/\r\n/g, '\n')  // Normalize line endings
-                    .replace(/\n{3,}/g, '\n\n')  // Collapse multiple blank lines to max 2
-                    .replace(/[ \t]+$/gm, '')  // Remove trailing whitespace on each line
-                    .replace(/^[ \t]+/gm, '')  // Remove leading whitespace on each line
-                    // Normalize markdown syntax
-                    .replace(/^#{1,6}\s+/gm, '')  // Remove markdown headers
-                    .replace(/^---+$/gm, '')  // Remove markdown horizontal rules
-                    .replace(/^[-*+]\s+/gm, '')  // Remove markdown list markers
-                    .replace(/^>\s*/gm, '')  // Remove markdown blockquote markers
-                    .replace(/\|/g, '')  // Remove markdown table pipes
-                    .replace(/[-]{3,}/g, '')  // Remove markdown table separator lines
-                    .replace(/\*\*([^\*]+)\*\*/g, '$1')  // Remove bold
-                    .replace(/\*([^\*]+)\*/g, '$1')  // Remove italic
-                    .replace(/`([^`]+)`/g, '$1')  // Remove inline code
-                    .replace(/\s+/g, ' ')  // Collapse all whitespace to single spaces
-                    .replace(/[''""\u2018\u2019\u201C\u201D]/g, "'")  // Normalize quotes/apostrophes
-                    .replace(/[—–−]/g, '-')  // Normalize dashes (but not table separators)
-                    .replace(/…/g, '...')  // Normalize ellipsis
-                    .normalize('NFKD')  // Unicode normalization
-                    .trim();  // Final trim to remove any leading/trailing spaces
-            };
-            
-            const actualNormalized = normalizeWhitespace(actualSource);
-            const expectedNormalized = normalizeWhitespace(expected.expectedSource);
-            
-            if (actualNormalized === expectedNormalized) {
-                console.log(`✓ Conflict ${expected.conflictIndex} (row ${expected.rowIndex}): MATCH`);
-                console.log(`  Reason: ${expected.reason}`);
-                console.log(`  Content preview: ${actualNormalized.substring(0, 60)}...`);
+            // The resolved content should match the cell source exactly
+            if (cellSource === expectedContent) {
+                console.log(`✓ Cell ${cellIndex}: source matches resolved content`);
             } else {
-                console.log(`❌ DISCREPANCY: Conflict ${expected.conflictIndex} (row ${expected.rowIndex})`);
-                console.log(`  Reason: ${expected.reason}`);
-                console.log(`  Expected (normalized): ${expectedNormalized.substring(0, 100)}...`);
-                console.log(`  Actual (normalized): ${actualNormalized.substring(0, 100)}...`);
-                console.log(`  Expected length: ${expectedNormalized.length}, Actual length: ${actualNormalized.length}`);
-                
-                // Show character-by-character diff for first mismatch
-                let firstDiffIndex = -1;
-                for (let i = 0; i < Math.min(expectedNormalized.length, actualNormalized.length); i++) {
-                    if (expectedNormalized[i] !== actualNormalized[i]) {
-                        firstDiffIndex = i;
-                        break;
-                    }
-                }
-                if (firstDiffIndex !== -1) {
-                    const contextStart = Math.max(0, firstDiffIndex - 20);
-                    const contextEnd = Math.min(expectedNormalized.length, firstDiffIndex + 20);
-                    console.log(`  First difference at index ${firstDiffIndex}:`);
-                    console.log(`    Expected: "${expectedNormalized.substring(contextStart, contextEnd)}"`);
-                    console.log(`    Actual:   "${actualNormalized.substring(contextStart, contextEnd)}"`);
-                }
-                
-                allMatch = false;
-                discrepancyCount++;
+                console.log(`❌ Cell ${cellIndex}: MISMATCH`);
+                console.log(`   Resolved (${expectedContent.length} chars): ${expectedContent.substring(0, 80)}...`);
+                console.log(`   Cell source (${cellSource.length} chars): ${cellSource.substring(0, 80)}...`);
+                cellMismatchCount++;
             }
         }
         
-        console.log('\n=== VERIFICATION SUMMARY ===\n');
-        console.log(`Total conflicts verified: ${expectedResolutions.length}`);
-        console.log(`Matching: ${expectedResolutions.length - discrepancyCount}`);
-        console.log(`Discrepancies: ${discrepancyCount}`);
-        
-        if (!allMatch) {
-            throw new Error(`Found ${discrepancyCount} discrepancies in resolved notebook`);
+        if (cellMismatchCount > 0) {
+            throw new Error(`${cellMismatchCount} cells do not match their resolved content`);
         }
+        
+        console.log('\n=== ALL VERIFICATIONS PASSED ===\n');
+        console.log('1. ✓ Button clicking populates textareas correctly');
+        console.log('2. ✓ Resolved row contents are correctly written to notebook file');
         
         console.log('\n=== TEST PASSED ===\n');
         

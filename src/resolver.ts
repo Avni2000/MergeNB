@@ -31,6 +31,20 @@ const exec = promisify(execCallback);
 export const onDidResolveConflict = new vscode.EventEmitter<vscode.Uri>();
 
 /**
+ * Detailed event fired when a notebook conflict is successfully resolved.
+ * Useful for tests to verify what was written to disk.
+ */
+export interface ResolvedConflictDetails {
+    uri: vscode.Uri;
+    resolvedNotebook: Notebook;
+    resolvedRows?: import('./web/webTypes').ResolvedRow[];
+    markAsResolved: boolean;
+    renumberExecutionCounts: boolean;
+}
+
+export const onDidResolveConflictWithDetails = new vscode.EventEmitter<ResolvedConflictDetails>();
+
+/**
  * Represents a notebook with semantic conflicts (Git UU status)
  */
 export interface ConflictedNotebook {
@@ -158,6 +172,13 @@ export class NotebookConflictResolver {
             }
 
             await this.saveResolvedNotebook(uri, finalNotebook);
+            onDidResolveConflictWithDetails.fire({
+                uri,
+                resolvedNotebook: finalNotebook,
+                resolvedRows: [],
+                markAsResolved: false,
+                renumberExecutionCounts: renumber === 'Yes'
+            });
             vscode.window.showInformationMessage(
                 `All ${semanticConflict.semanticConflicts.length} conflicts were auto-resolved.`
             );
@@ -224,6 +245,13 @@ export class NotebookConflictResolver {
                 }
 
                 await this.saveResolvedNotebook(uri, resolvedNotebook);
+                onDidResolveConflictWithDetails.fire({
+                    uri,
+                    resolvedNotebook,
+                    resolvedRows: [],
+                    markAsResolved: false,
+                    renumberExecutionCounts: renumber === 'Yes'
+                });
                 vscode.window.showInformationMessage(`Resolved conflicts in ${uri.fsPath}`);
             }
             return;
@@ -330,6 +358,13 @@ export class NotebookConflictResolver {
         }
 
         await this.saveResolvedNotebook(uri, resolvedNotebook, markAsResolved);
+        onDidResolveConflictWithDetails.fire({
+            uri,
+            resolvedNotebook,
+            resolvedRows,
+            markAsResolved,
+            renumberExecutionCounts: shouldRenumber
+        });
         
         // Show success notification (non-blocking, fire and forget)
         vscode.window.showInformationMessage(
