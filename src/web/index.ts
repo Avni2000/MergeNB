@@ -2,8 +2,7 @@
  * @file index.ts
  * @description Web module exports for MergeNB browser-based conflict resolution.
  * 
- * This module provides a web-based alternative to the VSCode webview panel.
- * It opens the conflict resolver in the user's default browser, communicating
+ * Opens the conflict resolver in the user's default browser, communicating
  * with the extension via WebSocket.
  * 
  * Main exports:

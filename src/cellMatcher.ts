@@ -16,9 +16,6 @@ import { NotebookCell, Notebook, CellMapping } from './types';
 import { compareByPosition, sortByPosition } from './positionUtils';
 import * as crypto from 'crypto';
 
-// Re-export position utilities for consumers
-export { compareByPosition, sortByPosition } from './positionUtils';
-
 /**
  * Compute a hash of cell content for similarity matching
  */
@@ -291,7 +288,6 @@ export function matchCells(
     }
     
     // Sort mappings to preserve logical cell order
-    // This ensures the resolver and webview see cells in the same order
     return sortMappingsByPosition(mappings);
 }
 

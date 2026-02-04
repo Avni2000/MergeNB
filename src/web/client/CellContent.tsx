@@ -6,8 +6,8 @@
 import React, { useMemo } from 'react';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
-import { renderMarkdown, escapeHtml } from './markdown';
-import { computeLineDiff, getDiffLineClass } from './diff';
+import { renderMarkdown } from './markdown';
+import { computeLineDiff, type DiffLine } from '../../diffUtils';
 import DOMPurify from 'dompurify';
 
 // Performance tuning constants
@@ -112,7 +112,9 @@ interface DiffContentProps {
 }
 
 function DiffContent({ source, compareSource, side }: DiffContentProps): React.ReactElement {
-    const diffLines = computeLineDiff(compareSource, source);
+    const diff = computeLineDiff(compareSource, source);
+    // Use the right side for display (shows the "new" content with change markers)
+    const diffLines = diff.right;
     // Filter out empty alignment lines to avoid unnecessary whitespace
     const visibleLines = diffLines.filter(line => line.type !== 'unchanged' || line.content !== '');
 
@@ -136,6 +138,25 @@ function DiffContent({ source, compareSource, side }: DiffContentProps): React.R
             ))}
         </pre>
     );
+}
+
+/**
+ * Get CSS class for diff line based on type and side.
+ */
+function getDiffLineClass(line: DiffLine, side: 'base' | 'current' | 'incoming'): string {
+    switch (line.type) {
+        case 'unchanged':
+            return 'diff-line';
+        case 'added':
+            return 'diff-line added';
+        case 'removed':
+            return 'diff-line removed';
+        case 'modified':
+            // Modified lines show inline changes
+            return side === 'current' ? 'diff-line modified-old' : 'diff-line modified-new';
+        default:
+            return 'diff-line';
+    }
 }
 
 function getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'base' | 'current' | 'incoming'): string {

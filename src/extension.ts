@@ -6,7 +6,7 @@
  * 1. Checks the active notebook for conflicts (semantic / Git UU status)
  * 2. If none active, scans workspace for all conflicted notebooks
  * 3. Presents a quick-pick menu to select which notebook to resolve
- * 4. Opens the conflict resolution webview panel
+ * 4. Opens the browser-based conflict resolution UI
  * 
  * Also provides:
  * - Status bar button for quick access when viewing conflicted files
