@@ -149,6 +149,7 @@ export function MergeRow({
                 data-testid={testId}
                 data-raw-source={rawSource}
                 data-cell-type={cellType}
+                data-cell={encodeURIComponent(cell ? JSON.stringify(cell) : '')}
             >
                 <div className="cell-columns">
                     <div className="cell-column" style={{ gridColumn: '1 / -1' }}>

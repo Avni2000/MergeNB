@@ -280,10 +280,27 @@ export async function run(): Promise<void> {
             const isIdenticalRow = await row.evaluate(el => el.classList.contains('identical-row'));
             
             if (isIdenticalRow) {
-                // For unified rows, read source from data-raw-source attribute
-                const rawSource = await row.getAttribute('data-raw-source');
+                const cellJson = await row.getAttribute('data-cell');
                 const cellType = await row.getAttribute('data-cell-type') || 'code';
-                
+
+                if (cellJson) {
+                    try {
+                        const cell = JSON.parse(decodeURIComponent(cellJson));
+                        expectedCells.push({
+                            rowIndex: i,
+                            source: getCellSource(cell),
+                            cellType: cell.cell_type || cellType,
+                            isConflict: false,
+                            isDeleted: false
+                        });
+                        continue;
+                    } catch (err) {
+                        console.warn('Failed to parse cell JSON', err);
+                    }
+                }
+
+                // Fallback for cells without data attribute or if parsing fails
+                const rawSource = await row.getAttribute('data-raw-source');
                 if (rawSource !== null) {
                     expectedCells.push({
                         rowIndex: i,
@@ -293,7 +310,6 @@ export async function run(): Promise<void> {
                         isDeleted: false
                     });
                 } else {
-                    // Fallback for cells without data attribute
                     const cellContent = row.locator('.cell-column .notebook-cell .cell-content');
                     if (await cellContent.count() > 0) {
                         const textContent = await cellContent.textContent() || '';

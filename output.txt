@@ -23,17 +23,17 @@
 > merge-nb@0.0.2 compile-tests
 > tsc -p . --outDir out
 
-Created test workspace at: /tmp/mergeNB-integration-iePi5M
-[90m[main 2026-02-04T21:58:49.964Z][0m update#setState disabled
-[90m[main 2026-02-04T21:58:49.965Z][0m update#ctor - updates are disabled by the environment
-Started local extension host with pid 238598.
+Created test workspace at: /tmp/mergeNB-integration-HvsxJn
+[90m[main 2026-02-04T22:18:16.193Z][0m update#setState disabled
+[90m[main 2026-02-04T22:18:16.194Z][0m update#ctor - updates are disabled by the environment
+Started local extension host with pid 253127.
 Loading development extension at /home/avni/source/repos/MergeNB
 MCP Registry configured: https://api.mcp.github.com
 MergeNB extension is now active
 Settings Sync: Account status changed from uninitialized to unavailable
 Starting MergeNB VS Code Integration Test...
 Executing merge-nb.findConflicts command...
-[MergeNB] detectSemanticConflicts for: /tmp/mergeNB-integration-iePi5M/conflict.ipynb
+[MergeNB] detectSemanticConflicts for: /tmp/mergeNB-integration-HvsxJn/conflict.ipynb
 [MergeNB] base length: 51829
 [MergeNB] current length: 1992378
 [MergeNB] incoming length: 51463
@@ -44,13 +44,13 @@ Executing merge-nb.findConflicts command...
 [MergeNB] - base has "Key insight": true
 [MergeNB] - current has "Key insight": true
 [MergeNB] - incoming has "Key insight": true
-[MergeNB Web] Server started at http://localhost:43237
-[MergeNB Web] Opening browser to: http://localhost:43237/?session=session-1770242336171-k8mqrj670
-[MergeNB Web] WebSocket connected for session: session-1770242336171-k8mqrj670
-[MergeNB] [WebConflictPanel] Opened conflict resolver in browser, session: session-1770242336171-k8mqrj670
-[MergeNB Web] Received message from session session-1770242336171-k8mqrj670: ready
-[MergeNB Web] WebSocket connected for session: session-1770242336171-k8mqrj670
-[MergeNB Web] Received message from session session-1770242336171-k8mqrj670: ready
+[MergeNB Web] Server started at http://localhost:35019
+[MergeNB Web] Opening browser to: http://localhost:35019/?session=session-1770243502096-f0ibkhppr
+[MergeNB Web] WebSocket connected for session: session-1770243502096-f0ibkhppr
+[MergeNB] [WebConflictPanel] Opened conflict resolver in browser, session: session-1770243502096-f0ibkhppr
+[MergeNB Web] Received message from session session-1770243502096-f0ibkhppr: ready
+[MergeNB Web] WebSocket connected for session: session-1770243502096-f0ibkhppr
+[MergeNB Web] Received message from session session-1770243502096-f0ibkhppr: ready
 Found 71 merge rows
 Found 20 conflict rows
 
@@ -61,9 +61,9 @@ Captured 71 cells from UI
 Expected 69 cells in final notebook
 
 === Applying resolution ===
-[MergeNB Web] Received message from session session-1770242336171-k8mqrj670: resolve
-[MergeNB Web] Session closed: session-1770242336171-k8mqrj670
-[MergeNB Web] WebSocket closed for session: session-1770242336171-k8mqrj670
+[MergeNB Web] Received message from session session-1770243502096-f0ibkhppr: resolve
+[MergeNB Web] Session closed: session-1770243502096-f0ibkhppr
+[MergeNB Web] WebSocket closed for session: session-1770243502096-f0ibkhppr
 
 === Verifying UI matches disk ===
 Notebook on disk: 69 cells
@@ -74,5 +74,5 @@ Expected from UI: 69 cells
 ✓ All sources match
 ✓ All types match
 ✓ Notebook structure valid
-[90m[main 2026-02-04T21:59:16.791Z][0m Extension host with pid 238598 exited with code: 0, signal: unknown.
+[90m[main 2026-02-04T22:18:47.697Z][0m Extension host with pid 253127 exited with code: 0, signal: unknown.
 Exit code:   0
