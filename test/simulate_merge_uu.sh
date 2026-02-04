@@ -36,7 +36,7 @@ cd ~/source/repos/MergeNB
 
 npm run compile
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMPDIR="$(mktemp -d /tmp/mergeNB-throwaway-XXXXXX)"
 
 echo "Creating throwaway repo at: $TMPDIR"
