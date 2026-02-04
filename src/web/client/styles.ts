@@ -336,6 +336,14 @@ body {
     background: var(--diff-change);
 }
 
+.diff-line.modified-old {
+    background: var(--diff-remove);
+}
+
+.diff-line.modified-new {
+    background: var(--diff-add);
+}
+
 /* Cell outputs */
 .cell-outputs {
     margin-top: 8px;
