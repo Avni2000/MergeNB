@@ -133,6 +133,16 @@ export class ConflictResolverWebServer {
                 if (address && typeof address === 'object') {
                     this.port = address.port;
                     console.log(`[MergeNB Web] Server started at http://${this.host}:${this.port}`);
+                    
+                    // Write port to temp file for integration tests
+                    try {
+                        const tmpDir = process.env.TMPDIR || process.env.TMP || '/tmp';
+                        const portFile = path.join(tmpDir, 'mergenb-server-port');
+                        fs.writeFileSync(portFile, String(this.port), 'utf8');
+                    } catch (e) {
+                        // Ignore errors writing port file
+                    }
+                    
                     resolve(this.port);
                 } else {
                     reject(new Error('Could not get server address'));
@@ -360,7 +370,8 @@ export class ConflictResolverWebServer {
                 status: 'ok', 
                 port: this.port,
                 activeSessions: this.sessions.size,
-                activeConnections: this.connections.size
+                activeConnections: this.connections.size,
+                sessionIds: Array.from(this.sessions.keys())
             }));
         } else {
             // 404 for other paths
