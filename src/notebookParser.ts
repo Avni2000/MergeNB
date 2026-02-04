@@ -11,7 +11,6 @@
  */
 
 import { Notebook, NotebookCell } from './types';
-import { normalizeCellSource } from './notebookUtils';
 
 /**
  * Parse a Jupyter notebook from JSON string.
