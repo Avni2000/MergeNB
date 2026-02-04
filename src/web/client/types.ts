@@ -81,6 +81,10 @@ export interface ResolvedRow {
     currentCell?: import('../../types').NotebookCell;
     /** Incoming cell (may be undefined if cell not present in incoming) */
     incomingCell?: import('../../types').NotebookCell;
+    /** Original indices for reliable cell lookup */
+    baseCellIndex?: number;
+    currentCellIndex?: number;
+    incomingCellIndex?: number;
     /** If this row had a conflict, this is the user's resolution */
     resolution?: {
         /** The branch choice that determines outputs, metadata, etc. */

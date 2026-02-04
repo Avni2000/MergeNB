@@ -297,9 +297,10 @@ export class NotebookConflictResolver {
                     (cellToUse as any).outputs = [];
                 }
             } else {
-                cellToUse = (currentCell && autoResolvedNotebook ? autoResolvedNotebook.cells.find(c => 
-                    c === currentCell || JSON.stringify(c.source) === JSON.stringify(currentCell.source)
-                ) : undefined) || currentCell || incomingCell || baseCell;
+                const autoResolvedCell = row.currentCellIndex !== undefined && autoResolvedNotebook
+                    ? autoResolvedNotebook.cells[row.currentCellIndex]
+                    : undefined;
+                cellToUse = autoResolvedCell || currentCell || incomingCell || baseCell;
             }
 
             if (cellToUse) {
