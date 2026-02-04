@@ -4,45 +4,54 @@
  * 
  * Matches cells across base/current/incoming versions using:
  * - Content hashing for exact matches
- * - Levenshtein distance for similarity scoring
- * - Hungarian algorithm for optimal bipartite matching
+ * - nbdime-style "snaking" algorithm for optimal sequence alignment
+ * - Multilevel comparison predicates (strict to loose)
  * - Position-based fallback for ambiguous cases
+ * 
+ * The snaking algorithm computes "snakes" (contiguous sequences of matching
+ * cells) using LCS, which provides better alignment than simple pairwise
+ * greedy matching.
  * 
  * Also detects cell reordering conflicts where the same cells
  * appear in different orders between branches.
  */
 
 import { NotebookCell, Notebook, CellMapping } from './types';
-import { compareByPosition, sortByPosition } from './positionUtils';
-import * as crypto from 'crypto';
+import { sortByPosition } from './positionUtils';
+
+/** A snake represents a contiguous sequence of matching elements */
+interface Snake {
+    i: number;  // Start index in sequence A
+    j: number;  // Start index in sequence B
+    n: number;  // Length of the contiguous match
+}
+
+/** Comparison function type for cell matching */
+type CellCompare = (a: NotebookCell, b: NotebookCell) => boolean;
 
 /**
- * Compute a hash of cell content for similarity matching
+ * Get normalized source from a cell
  */
-function computeCellHash(cell: NotebookCell): string {
-    const source = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
-    const contentToHash = `${cell.cell_type}:${source}`;
-    return crypto.createHash('sha256').update(contentToHash).digest('hex');
+function getCellSource(cell: NotebookCell): string {
+    return Array.isArray(cell.source) ? cell.source.join('') : cell.source;
 }
 
 /**
- * Compute similarity score between two cells (0-1)
+ * Compute similarity score between two cells (0-1) using line-based comparison.
+ * This is more efficient than character-level Levenshtein for notebook cells.
  */
 function computeCellSimilarity(cell1: NotebookCell, cell2: NotebookCell): number {
-    // Different cell types = no match
     if (cell1.cell_type !== cell2.cell_type) {
         return 0;
     }
 
-    const source1 = Array.isArray(cell1.source) ? cell1.source.join('') : cell1.source;
-    const source2 = Array.isArray(cell2.source) ? cell2.source.join('') : cell2.source;
+    const source1 = getCellSource(cell1);
+    const source2 = getCellSource(cell2);
 
-    // Exact match
     if (source1 === source2) {
         return 1.0;
     }
 
-    // Empty cells
     if (!source1 && !source2) {
         return 1.0;
     }
@@ -50,96 +59,331 @@ function computeCellSimilarity(cell1: NotebookCell, cell2: NotebookCell): number
         return 0;
     }
 
-    // Compute Levenshtein-based similarity
-    const distance = levenshteinDistance(source1, source2);
-    const maxLen = Math.max(source1.length, source2.length);
+    // Use line-based LCS for similarity (faster than char-level Levenshtein)
+    const lines1 = source1.split('\n');
+    const lines2 = source2.split('\n');
+    const lcsLength = computeLCSLength(lines1, lines2);
+    const maxLines = Math.max(lines1.length, lines2.length);
     
-    return 1 - (distance / maxLen);
+    return lcsLength / maxLines;
+}
+
+// ============================================================================
+// nbdime-style Snaking Algorithm
+// ============================================================================
+
+/**
+ * Compute a comparison grid G[i][j] = compare(A[i], B[j])
+ */
+function computeCompareGrid<T>(
+    A: T[],
+    B: T[],
+    compare: (a: T, b: T) => boolean
+): boolean[][] {
+    return A.map(a => B.map(b => compare(a, b)));
 }
 
 /**
- * Compute Levenshtein distance between two strings
+ * Compute the LCS length grid R[x][y] = LCS length of A[0:x] and B[0:y]
+ * given a precomputed comparison grid G.
  */
-function levenshteinDistance(str1: string, str2: string): number {
-    const len1 = str1.length;
-    const len2 = str2.length;
+function computeLCSGrid(G: boolean[][]): number[][] {
+    const N = G.length;
+    const M = N > 0 ? G[0].length : 0;
     
-    // Create 2D array
-    const dp: number[][] = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
+    const R: number[][] = Array(N + 1).fill(null).map(() => Array(M + 1).fill(0));
     
-    // Initialize base cases
-    for (let i = 0; i <= len1; i++) {
-        dp[i][0] = i;
-    }
-    for (let j = 0; j <= len2; j++) {
-        dp[0][j] = j;
-    }
-    
-    // Fill the matrix
-    for (let i = 1; i <= len1; i++) {
-        for (let j = 1; j <= len2; j++) {
-            if (str1[i - 1] === str2[j - 1]) {
-                dp[i][j] = dp[i - 1][j - 1];
+    for (let x = 1; x <= N; x++) {
+        for (let y = 1; y <= M; y++) {
+            if (G[x - 1][y - 1]) {
+                R[x][y] = R[x - 1][y - 1] + 1;
             } else {
-                dp[i][j] = Math.min(
-                    dp[i - 1][j] + 1,     // deletion
-                    dp[i][j - 1] + 1,     // insertion
-                    dp[i - 1][j - 1] + 1  // substitution
-                );
+                R[x][y] = Math.max(R[x - 1][y], R[x][y - 1]);
             }
         }
     }
     
-    return dp[len1][len2];
+    return R;
+}
+
+/**
+ * Compute LCS indices by backtracking through the LCS grid.
+ * Returns parallel arrays of matching indices (A_indices, B_indices).
+ */
+function computeLCSIndices<T>(
+    A: T[],
+    B: T[],
+    G: boolean[][],
+    R: number[][]
+): [number[], number[]] {
+    const N = A.length;
+    const M = B.length;
+    const A_indices: number[] = [];
+    const B_indices: number[] = [];
+    
+    let x = N;
+    let y = M;
+    
+    while (x > 0 && y > 0) {
+        if (G[x - 1][y - 1]) {
+            x--;
+            y--;
+            A_indices.push(x);
+            B_indices.push(y);
+        } else if (R[x - 1][y] >= R[x][y - 1]) {
+            x--;
+        } else {
+            y--;
+        }
+    }
+    
+    A_indices.reverse();
+    B_indices.reverse();
+    
+    return [A_indices, B_indices];
+}
+
+/**
+ * Compute the length of LCS for two arrays (simple version for similarity)
+ */
+function computeLCSLength<T>(arr1: T[], arr2: T[]): number {
+    const m = arr1.length;
+    const n = arr2.length;
+    
+    // Use space-optimized version (only need 2 rows)
+    let prev = Array(n + 1).fill(0);
+    let curr = Array(n + 1).fill(0);
+    
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (arr1[i - 1] === arr2[j - 1]) {
+                curr[j] = prev[j - 1] + 1;
+            } else {
+                curr[j] = Math.max(prev[j], curr[j - 1]);
+            }
+        }
+        [prev, curr] = [curr, prev];
+    }
+    
+    return prev[n];
+}
+
+/**
+ * Compute snakes from LCS indices.
+ * A snake is a tuple (i, j, n) representing n contiguous matching elements
+ * starting at index i in A and index j in B.
+ */
+function computeSnakesFromLCS(
+    A_indices: number[],
+    B_indices: number[]
+): Snake[] {
+    const snakes: Snake[] = [];
+    
+    if (A_indices.length === 0) {
+        return snakes;
+    }
+    
+    let currentSnake: Snake = { i: A_indices[0], j: B_indices[0], n: 1 };
+    
+    for (let k = 1; k < A_indices.length; k++) {
+        const ai = A_indices[k];
+        const bj = B_indices[k];
+        
+        // Check if this extends the current snake (contiguous in both sequences)
+        if (ai === currentSnake.i + currentSnake.n && 
+            bj === currentSnake.j + currentSnake.n) {
+            currentSnake.n++;
+        } else {
+            // Start a new snake
+            snakes.push(currentSnake);
+            currentSnake = { i: ai, j: bj, n: 1 };
+        }
+    }
+    
+    snakes.push(currentSnake);
+    return snakes;
+}
+
+/**
+ * Compute snakes (contiguous matching sequences) using the comparison function.
+ * This is the core of nbdime's snaking algorithm.
+ */
+function computeSnakes<T>(
+    A: T[],
+    B: T[],
+    compare: (a: T, b: T) => boolean
+): Snake[] {
+    if (A.length === 0 || B.length === 0) {
+        return [];
+    }
+    
+    const G = computeCompareGrid(A, B, compare);
+    const R = computeLCSGrid(G);
+    const [A_indices, B_indices] = computeLCSIndices(A, B, G, R);
+    
+    return computeSnakesFromLCS(A_indices, B_indices);
+}
+
+/**
+ * Compute snakes using a multilevel multi-predicate algorithm.
+ * 
+ * This algorithm first finds matches using the strictest predicate (level N),
+ * then recursively fills gaps between matches using looser predicates.
+ * 
+ * @param A - First sequence of cells
+ * @param B - Second sequence of cells
+ * @param compares - Array of comparison predicates, from loosest (0) to strictest (N-1)
+ * @param rect - Optional bounding rectangle [i0, j0, i1, j1]
+ * @param level - Current comparison level (defaults to strictest)
+ */
+function computeSnakesMultilevel(
+    A: NotebookCell[],
+    B: NotebookCell[],
+    compares: CellCompare[],
+    rect?: [number, number, number, number],
+    level?: number
+): Snake[] {
+    if (level === undefined) {
+        level = compares.length - 1;
+    }
+    if (rect === undefined) {
+        rect = [0, 0, A.length, B.length];
+    }
+    
+    const [i0, j0, i1, j1] = rect;
+    
+    // Extract the subrange
+    const subA = A.slice(i0, i1);
+    const subB = B.slice(j0, j1);
+    
+    // Compute initial set of snakes at this level
+    const compare = compares[level];
+    let snakes = computeSnakes(subA, subB, compare);
+    
+    // Offset snakes back to original coordinates
+    snakes = snakes.map(s => ({ i: s.i + i0, j: s.j + j0, n: s.n }));
+    
+    // Base case: at the loosest level, just return what we found
+    if (level === 0) {
+        return snakes;
+    }
+    
+    // Recursive case: fill gaps between snakes with lower-level matches
+    const newSnakes: Snake[] = [];
+    let currentI = i0;
+    let currentJ = j0;
+    
+    // Process each snake and the gap before it
+    for (const snake of [...snakes, { i: i1, j: j1, n: 0 }]) {
+        // Is there a gap before this snake?
+        if (snake.i > currentI && snake.j > currentJ) {
+            // Recurse with looser predicates
+            const subRect: [number, number, number, number] = [currentI, currentJ, snake.i, snake.j];
+            const gapSnakes = computeSnakesMultilevel(A, B, compares, subRect, level - 1);
+            
+            // Merge gap snakes with new snakes
+            for (const gapSnake of gapSnakes) {
+                if (newSnakes.length > 0) {
+                    const last = newSnakes[newSnakes.length - 1];
+                    // Check if we can merge with the last snake
+                    if (last.i + last.n === gapSnake.i && last.j + last.n === gapSnake.j) {
+                        last.n += gapSnake.n;
+                        continue;
+                    }
+                }
+                newSnakes.push({ ...gapSnake });
+            }
+        }
+        
+        // Add the current snake if it has length
+        if (snake.n > 0) {
+            if (newSnakes.length > 0) {
+                const last = newSnakes[newSnakes.length - 1];
+                // Check if we can merge with the last snake
+                if (last.i + last.n === snake.i && last.j + last.n === snake.j) {
+                    last.n += snake.n;
+                } else {
+                    newSnakes.push({ ...snake });
+                }
+            } else {
+                newSnakes.push({ ...snake });
+            }
+        }
+        
+        currentI = snake.i + snake.n;
+        currentJ = snake.j + snake.n;
+    }
+    
+    return newSnakes;
+}
+
+// ============================================================================
+// Comparison predicates for multilevel matching
+// ============================================================================
+
+/**
+ * Exact match: cells have identical type and source
+ */
+function cellsExactMatch(a: NotebookCell, b: NotebookCell): boolean {
+    if (a.cell_type !== b.cell_type) return false;
+    const sourceA = getCellSource(a);
+    const sourceB = getCellSource(b);
+    return sourceA === sourceB;
+}
+
+/**
+ * Similar match: cells have same type and >50% line similarity
+ */
+function cellsSimilarMatch(a: NotebookCell, b: NotebookCell): boolean {
+    if (a.cell_type !== b.cell_type) return false;
+    const similarity = computeCellSimilarity(a, b);
+    return similarity >= 0.5;
+}
+
+/**
+ * Weak match: cells have same type and >30% line similarity
+ */
+function cellsWeakMatch(a: NotebookCell, b: NotebookCell): boolean {
+    if (a.cell_type !== b.cell_type) return false;
+    const similarity = computeCellSimilarity(a, b);
+    return similarity >= 0.3;
 }
 
 
 /**
- * Match cells between base and current/incoming versions
+ * Match cells between base and current/incoming versions using snaking algorithm.
+ * 
+ * Uses nbdime-style multilevel comparison:
+ * - Level 2 (strictest): Exact content match
+ * - Level 1: Similar content (>50% line similarity)
+ * - Level 0 (loosest): Weak match (>30% line similarity)
+ * 
+ * Returns a map from base cell index to other cell index.
  */
 function matchCellsToBase(
     baseCells: NotebookCell[],
-    otherCells: NotebookCell[],
-    threshold: number = 0.7
+    otherCells: NotebookCell[]
 ): Map<number, number> {
     const matches = new Map<number, number>(); // baseIndex -> otherIndex
-    const usedOtherIndices = new Set<number>();
     
-    // Create hash map for exact matches
-    const baseHashes = baseCells.map(cell => computeCellHash(cell));
-    const otherHashes = otherCells.map(cell => computeCellHash(cell));
-    
-    // First pass: exact hash matches
-    for (let baseIdx = 0; baseIdx < baseCells.length; baseIdx++) {
-        const baseHash = baseHashes[baseIdx];
-        const otherIdx = otherHashes.indexOf(baseHash);
-        
-        if (otherIdx !== -1 && !usedOtherIndices.has(otherIdx)) {
-            matches.set(baseIdx, otherIdx);
-            usedOtherIndices.add(otherIdx);
-        }
+    if (baseCells.length === 0 || otherCells.length === 0) {
+        return matches;
     }
     
-    // Second pass: similarity-based matching for unmatched cells
-    for (let baseIdx = 0; baseIdx < baseCells.length; baseIdx++) {
-        if (matches.has(baseIdx)) continue;
-        
-        let bestMatch = -1;
-        let bestScore = threshold;
-        
-        for (let otherIdx = 0; otherIdx < otherCells.length; otherIdx++) {
-            if (usedOtherIndices.has(otherIdx)) continue;
-            
-            const similarity = computeCellSimilarity(baseCells[baseIdx], otherCells[otherIdx]);
-            if (similarity > bestScore) {
-                bestScore = similarity;
-                bestMatch = otherIdx;
-            }
-        }
-        
-        if (bestMatch !== -1) {
-            matches.set(baseIdx, bestMatch);
-            usedOtherIndices.add(bestMatch);
+    // Use multilevel snaking algorithm with comparison predicates
+    // Ordered from loosest (0) to strictest (N-1)
+    const compares: CellCompare[] = [
+        cellsWeakMatch,    // Level 0: >=30% similar
+        cellsSimilarMatch, // Level 1: >=50% similar
+        cellsExactMatch,   // Level 2: exact match
+    ];
+    
+    const snakes = computeSnakesMultilevel(baseCells, otherCells, compares);
+    
+    // Convert snakes to matches
+    for (const snake of snakes) {
+        for (let k = 0; k < snake.n; k++) {
+            matches.set(snake.i + k, snake.j + k);
         }
     }
     
@@ -165,18 +409,16 @@ export function matchCells(
     const currentCells = current?.cells || [];
     const incomingCells = incoming?.cells || [];
     
-    // If no base, match current to incoming directly
+    // If no base, match current to incoming directly using snaking
     if (baseCells.length === 0) {
-        const currentHashes = currentCells.map(cell => computeCellHash(cell));
-        const incomingHashes = incomingCells.map(cell => computeCellHash(cell));
-        
+        // Use snaking for current -> incoming matching
+        const currentToIncoming = matchCellsToBase(currentCells, incomingCells);
         const usedincomingIndices = new Set<number>();
         
         for (let currentIdx = 0; currentIdx < currentCells.length; currentIdx++) {
-            const currentHash = currentHashes[currentIdx];
-            const incomingIdx = incomingHashes.indexOf(currentHash);
+            const incomingIdx = currentToIncoming.get(currentIdx);
             
-            if (incomingIdx !== -1 && !usedincomingIndices.has(incomingIdx)) {
+            if (incomingIdx !== undefined) {
                 mappings.push({
                     currentIndex: currentIdx,
                     incomingIndex: incomingIdx,
@@ -238,52 +480,68 @@ export function matchCells(
     }
     
     // Handle cells that exist in current but not matched to base
+    // Use snaking on remaining unmatched cells for better alignment
+    const unmatchedCurrentCells: NotebookCell[] = [];
+    const unmatchedCurrentIndices: number[] = [];
+    const unmatchedIncomingCells: NotebookCell[] = [];
+    const unmatchedIncomingIndices: number[] = [];
+    
     for (let currentIdx = 0; currentIdx < currentCells.length; currentIdx++) {
-        if (usedcurrentIndices.has(currentIdx)) continue;
-        
-        // Try to match to unmatched incoming cells
-        let bestincomingIdx = -1;
-        let bestScore = 0.7;
-        
-        for (let incomingIdx = 0; incomingIdx < incomingCells.length; incomingIdx++) {
-            if (usedincomingIndices.has(incomingIdx)) continue;
-            
-            const similarity = computeCellSimilarity(currentCells[currentIdx], incomingCells[incomingIdx]);
-            if (similarity > bestScore) {
-                bestScore = similarity;
-                bestincomingIdx = incomingIdx;
-            }
+        if (!usedcurrentIndices.has(currentIdx)) {
+            unmatchedCurrentCells.push(currentCells[currentIdx]);
+            unmatchedCurrentIndices.push(currentIdx);
         }
+    }
+    
+    for (let incomingIdx = 0; incomingIdx < incomingCells.length; incomingIdx++) {
+        if (!usedincomingIndices.has(incomingIdx)) {
+            unmatchedIncomingCells.push(incomingCells[incomingIdx]);
+            unmatchedIncomingIndices.push(incomingIdx);
+        }
+    }
+    
+    // Match unmatched cells using snaking
+    const unmatchedMatches = matchCellsToBase(unmatchedCurrentCells, unmatchedIncomingCells);
+    const newlyMatchedIncoming = new Set<number>();
+    
+    for (let localCurrentIdx = 0; localCurrentIdx < unmatchedCurrentCells.length; localCurrentIdx++) {
+        const localIncomingIdx = unmatchedMatches.get(localCurrentIdx);
+        const globalCurrentIdx = unmatchedCurrentIndices[localCurrentIdx];
         
-        if (bestincomingIdx !== -1) {
+        if (localIncomingIdx !== undefined) {
+            const globalIncomingIdx = unmatchedIncomingIndices[localIncomingIdx];
             mappings.push({
-                currentIndex: currentIdx,
-                incomingIndex: bestincomingIdx,
-                matchConfidence: bestScore,
-                currentCell: currentCells[currentIdx],
-                incomingCell: incomingCells[bestincomingIdx]
+                currentIndex: globalCurrentIdx,
+                incomingIndex: globalIncomingIdx,
+                matchConfidence: computeCellSimilarity(
+                    currentCells[globalCurrentIdx],
+                    incomingCells[globalIncomingIdx]
+                ),
+                currentCell: currentCells[globalCurrentIdx],
+                incomingCell: incomingCells[globalIncomingIdx]
             });
-            usedincomingIndices.add(bestincomingIdx);
+            newlyMatchedIncoming.add(localIncomingIdx);
         } else {
             // current-only cell
             mappings.push({
-                currentIndex: currentIdx,
+                currentIndex: globalCurrentIdx,
                 matchConfidence: 1.0,
-                currentCell: currentCells[currentIdx]
+                currentCell: currentCells[globalCurrentIdx]
             });
         }
         
-        usedcurrentIndices.add(currentIdx);
+        usedcurrentIndices.add(globalCurrentIdx);
     }
     
     // Handle remaining incoming-only cells
-    for (let incomingIdx = 0; incomingIdx < incomingCells.length; incomingIdx++) {
-        if (usedincomingIndices.has(incomingIdx)) continue;
+    for (let localIncomingIdx = 0; localIncomingIdx < unmatchedIncomingCells.length; localIncomingIdx++) {
+        if (newlyMatchedIncoming.has(localIncomingIdx)) continue;
         
+        const globalIncomingIdx = unmatchedIncomingIndices[localIncomingIdx];
         mappings.push({
-            incomingIndex: incomingIdx,
+            incomingIndex: globalIncomingIdx,
             matchConfidence: 1.0,
-            incomingCell: incomingCells[incomingIdx]
+            incomingCell: incomingCells[globalIncomingIdx]
         });
     }
     
