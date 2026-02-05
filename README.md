@@ -54,18 +54,15 @@ See issues tab :)
 
 Your efforts are highly appreciated!
 
-1. You can download the merge-nb-0.0.1.vsix file from the releases page and install it in your VS Code instance with the command "Extensions: Install from VSIX..." in the command palette.
+There exists a single full integration test that does the following:
 
-2. I'm most interested in (a) whether the merge resolution UI is usable and intuitive (make an issue!), and (b) all the "I/O" is right.
+1. Compiles
+2. Opens VSCode
+3. Runs command to open web notebook resolver
+4. Resolves headlessly with playwright, taking incoming/current/deletion and adding modifications based on cell index.
+5. Ensures on-disk file corresponds to the resolved cells + nonconflicted cells that a user sees in the web UI. 
 
-That is, there's 2 places which are most error prone. 
-
-One is whilst creating the conflict resolver UI, wherein cells can be deleted, overly unmatched, overly conflicted, in the wrong spots, etc.
-
-The other is upon resolving each of your conflicts. Here, cells in the original notebook SHOULD maintain the same order as in the webview, and no cells should be duplicated/deleted unless you chose to do so.
-
-For heavily complex notebooks, I am happy to take screen recordings of the notebook before/while resolving/after resolving, if you don't want to track all of that. Feel free to make an issue + add a link to it.
-
+At this point, I'm curious about if very large (100s of cells) notebooks are buggy, if you find any rendering issues moving cells around/deleting cells/scrolling fast, how clean the web UI resolution is, and if you have any suggestions which are not already documented in the issues page. 
 
 ## Development
 
