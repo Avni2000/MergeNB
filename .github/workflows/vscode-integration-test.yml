@@ -1,6 +1,6 @@
 name: VSCode Integration Tests
 
-on: [pull_request]
+on: [pull_request, push]
 
 jobs:
   integration:
@@ -27,11 +27,14 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+
       - name: Cache VSCode test resources
         uses: actions/cache@v4
         with:
-          path: ~/.vscode-test
+          path: .vscode-test
           key: ${{ runner.os }}-vscode-test-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vscode-test-
 
       - name: Install npm deps
         run: npm ci
