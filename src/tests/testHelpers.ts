@@ -51,6 +51,7 @@ export interface TestCaseDefinition {
 export function checkHealth(port: number): Promise<boolean> {
     return new Promise((resolve) => {
         const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 500 }, (res) => {
+            res.resume(); // Drain body to free the socket
             resolve(res.statusCode === 200);
         });
         req.on('error', () => resolve(false));
