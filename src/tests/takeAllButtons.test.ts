@@ -30,6 +30,8 @@ import {
     getResolvedCount,
     ensureCheckboxChecked,
     waitForAllConflictsResolved,
+    getColumnCell,
+    getColumnCellType,
 } from './integrationUtils';
 
 function gitShow(cwd: string, ref: string): string {
@@ -44,6 +46,140 @@ function normalizeCell(cell: any): { source: string; cellType: string; metadata:
     };
 }
 
+function capitalize(word: string): string {
+    return word.charAt(0).toUpperCase() + word.slice(1);
+}
+
+async function selectManualRows(
+    page: import('playwright').Page,
+    manualChoice: MergeSide,
+    manualCount: number
+): Promise<Array<{ index: number; expectedSource: string; expectedCellType: string }>> {
+    const rows = page.locator('.merge-row.conflict-row');
+    const count = await rows.count();
+    const selected: Array<{ index: number; expectedSource: string; expectedCellType: string }> = [];
+    const buttonLabel = `Use ${capitalize(manualChoice)}`;
+
+    for (let i = 0; i < count && selected.length < manualCount; i++) {
+        const row = rows.nth(i);
+        const button = row.locator(`button:has-text("${buttonLabel}")`);
+        if (await button.count() === 0) continue;
+
+        const cell = await getColumnCell(row, manualChoice, i);
+        if (!cell) continue;
+        const expectedSource = getCellSource(cell);
+        const expectedCellType = await getColumnCellType(row, manualChoice);
+
+        await button.click();
+        await row.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+
+        selected.push({ index: i, expectedSource, expectedCellType });
+    }
+
+    if (selected.length < manualCount) {
+        throw new Error(`Could not find ${manualCount} conflict rows with "${buttonLabel}"`);
+    }
+
+    return selected;
+}
+
+async function verifyTakeAllUnresolved(
+    page: import('playwright').Page,
+    action: MergeSide,
+    manualRows: Array<{ index: number; expectedSource: string }>
+): Promise<void> {
+    const rows = page.locator('.merge-row.conflict-row');
+    const count = await rows.count();
+    const manualIndex = new Map(manualRows.map(r => [r.index, r]));
+
+    for (let i = 0; i < count; i++) {
+        const row = rows.nth(i);
+        const manual = manualIndex.get(i);
+
+        if (manual) {
+            const textarea = row.locator('.resolved-content-input');
+            if (await textarea.count() === 0) {
+                throw new Error(`Row ${i}: expected resolved content for manual choice`);
+            }
+            const actualValue = await textarea.inputValue();
+            if (actualValue !== manual.expectedSource) {
+                throw new Error(`Row ${i}: manual choice overwritten by take-all`);
+            }
+            continue;
+        }
+
+        const hasSideCell = await row.locator(`.${action}-column .notebook-cell`).count() > 0;
+        if (!hasSideCell) {
+            const isDeleted = await row.locator('.resolved-cell.resolved-deleted').count() > 0;
+            if (!isDeleted) {
+                throw new Error(`Row ${i}: expected delete for missing ${action} cell`);
+            }
+            continue;
+        }
+
+        const expectedCell = await getColumnCell(row, action, i);
+        if (!expectedCell) {
+            throw new Error(`Row ${i}: could not read ${action} cell data`);
+        }
+        const expectedSource = getCellSource(expectedCell);
+        const textarea = row.locator('.resolved-content-input');
+        if (await textarea.count() === 0) {
+            throw new Error(`Row ${i}: expected resolved content after take-all`);
+        }
+        const actualValue = await textarea.inputValue();
+        if (actualValue !== expectedSource) {
+            throw new Error(`Row ${i}: take-all content mismatch for ${action}`);
+        }
+    }
+}
+
+async function buildExpectedCellsFromUI(
+    page: import('playwright').Page
+): Promise<Array<{ source: string; cellType: string }>> {
+    const rows = page.locator('.merge-row');
+    const count = await rows.count();
+    const expected: Array<{ source: string; cellType: string }> = [];
+
+    for (let i = 0; i < count; i++) {
+        const row = rows.nth(i);
+        const className = await row.getAttribute('class') || '';
+        const isConflict = className.includes('conflict-row');
+        const isIdentical = className.includes('identical-row');
+
+        if (isIdentical) {
+            const rawSource = await row.getAttribute('data-raw-source') || '';
+            const cellType = await row.getAttribute('data-cell-type') || 'code';
+            expected.push({ source: rawSource, cellType });
+            continue;
+        }
+
+        if (isConflict) {
+            const isDeleted = await row.locator('.resolved-cell.resolved-deleted').count() > 0;
+            if (isDeleted) continue;
+
+            const textarea = row.locator('.resolved-content-input');
+            if (await textarea.count() === 0) {
+                throw new Error(`Row ${i}: missing resolved content input`);
+            }
+            const resolvedContent = await textarea.inputValue();
+
+            const selectedButton = row.locator('.btn-resolve.selected');
+            const selectedText = (await selectedButton.textContent()) || '';
+            const normalized = selectedText.toLowerCase();
+            let side: MergeSide | null = null;
+            if (normalized.includes('base')) side = 'base';
+            else if (normalized.includes('current')) side = 'current';
+            else if (normalized.includes('incoming')) side = 'incoming';
+
+            const cellType = side ? await getColumnCellType(row, side) : 'code';
+            expected.push({ source: resolvedContent, cellType });
+            continue;
+        }
+    }
+
+    return expected;
+}
+
 export async function run(): Promise<void> {
     console.log('Starting MergeNB Take-All Buttons Integration Test...');
 
@@ -56,10 +192,13 @@ export async function run(): Promise<void> {
         const config: TestConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
         const action = config.params?.action;
+        const mode = config.params?.mode || 'all';
+        const manualChoice = config.params?.manualChoice as MergeSide | undefined;
+        const manualCount = config.params?.manualCount ?? 2;
         if (action !== 'base' && action !== 'current' && action !== 'incoming') {
             throw new Error(`Invalid or missing action param. Expected 'base'|'current'|'incoming', got '${action}'`);
         }
-        console.log(`Running test variant: Take All ${action.toUpperCase()}`);
+        console.log(`Running test variant: Take All ${action.toUpperCase()} (${mode})`);
 
         const workspacePath = config.workspacePath;
         const conflictFile = path.join(workspacePath, 'conflict.ipynb');
@@ -127,6 +266,15 @@ export async function run(): Promise<void> {
         const initial = await getResolvedCount(p);
         console.log(`Initial resolution state: ${initial.resolved}/${initial.total}`);
 
+        // Resolve a few conflicts manually before take-all if in 'unresolved' mode
+        let manualSelections: Array<{ index: number; expectedSource: string; expectedCellType: string }> = [];
+        if (mode === 'unresolved') {
+            const manualSide = manualChoice || 'incoming';
+            console.log(`Resolving ${manualCount} conflicts manually to "${manualSide}"...`);
+            manualSelections = await selectManualRows(p, manualSide, manualCount);
+            console.log(`Manually resolved rows: ${manualSelections.map(m => m.index).join(', ')}`);
+        }
+
         // ============================================================
         // EXECUTE ACTION
         // ============================================================
@@ -145,13 +293,21 @@ export async function run(): Promise<void> {
         }
 
         // Verify textareas match UI columns
-        const result = await verifyAllConflictsMatchSide(p, action as MergeSide);
-        console.log(`  Matches: ${result.matchCount}, Deletes: ${result.deleteCount}`);
-        if (result.mismatches.length > 0) {
-            for (const m of result.mismatches) console.error(`  MISMATCH: ${m}`);
-            throw new Error(`${result.mismatches.length} mismatches after "${buttonLabel}"`);
+        if (mode === 'unresolved') {
+            await verifyTakeAllUnresolved(p, action as MergeSide, manualSelections);
+            console.log(`  ✓ Take-all respected manual resolutions and applied to unresolved rows only`);
+        } else {
+            const result = await verifyAllConflictsMatchSide(p, action as MergeSide);
+            console.log(`  Matches: ${result.matchCount}, Deletes: ${result.deleteCount}`);
+            if (result.mismatches.length > 0) {
+                for (const m of result.mismatches) console.error(`  MISMATCH: ${m}`);
+                throw new Error(`${result.mismatches.length} mismatches after "${buttonLabel}"`);
+            }
+            console.log(`  ✓ All resolved cells match ${action}-side content in UI`);
         }
-        console.log(`  ✓ All resolved cells match ${action}-side content in UI`);
+
+        // Build expected resolved cells from UI before applying
+        const expectedCellsFromUI = await buildExpectedCellsFromUI(p);
 
         // ============================================================
         // Apply Resolution
@@ -182,45 +338,80 @@ export async function run(): Promise<void> {
         const notebookContent = fs.readFileSync(conflictFile, 'utf8');
         const resolvedNotebook = JSON.parse(notebookContent);
 
-        console.log(`Notebook on disk: ${resolvedNotebook.cells.length} cells`);
-        console.log(`Expected from "${action}": ${targetNotebook.cells.length} cells`);
+        if (mode === 'unresolved') {
+            console.log(`Notebook on disk: ${resolvedNotebook.cells.length} cells`);
+            console.log(`Expected from UI: ${expectedCellsFromUI.length} cells`);
 
-        if (resolvedNotebook.cells.length !== targetNotebook.cells.length) {
-            throw new Error(`Cell count mismatch: expected ${targetNotebook.cells.length}, got ${resolvedNotebook.cells.length}`);
-        }
-
-        let sourceMismatches = 0;
-        let typeMismatches = 0;
-        let metadataMismatches = 0;
-
-        for (let i = 0; i < targetNotebook.cells.length; i++) {
-            const expected = normalizeCell(targetNotebook.cells[i]);
-            const actual = normalizeCell(resolvedNotebook.cells[i]);
-
-            if (expected.source !== actual.source) {
-                sourceMismatches++;
-                console.log(`Source mismatch at cell ${i}:`);
-                console.log(`  Expected: "${expected.source.substring(0, 80).replace(/\\n/g, '\\\\n')}..."`);
-                console.log(`  Actual:   "${actual.source.substring(0, 80).replace(/\\n/g, '\\\\n')}..."`);
+            if (resolvedNotebook.cells.length !== expectedCellsFromUI.length) {
+                throw new Error(`Cell count mismatch: expected ${expectedCellsFromUI.length}, got ${resolvedNotebook.cells.length}`);
             }
-            if (expected.cellType !== actual.cellType) {
-                typeMismatches++;
-                console.log(`Type mismatch at cell ${i}: expected ${expected.cellType}, got ${actual.cellType}`);
-            }
-            if (JSON.stringify(expected.metadata) !== JSON.stringify(actual.metadata)) {
-                metadataMismatches++;
-                console.log(`Metadata mismatch at cell ${i}`);
-            }
-        }
 
-        if (sourceMismatches > 0) {
-            throw new Error(`${sourceMismatches} cells have source mismatches`);
-        }
-        if (typeMismatches > 0) {
-            throw new Error(`${typeMismatches} cells have type mismatches`);
-        }
-        if (metadataMismatches > 0) {
-            throw new Error(`${metadataMismatches} cells have metadata mismatches`);
+            let sourceMismatches = 0;
+            let typeMismatches = 0;
+
+            for (let i = 0; i < expectedCellsFromUI.length; i++) {
+                const expected = expectedCellsFromUI[i];
+                const actual = normalizeCell(resolvedNotebook.cells[i]);
+
+                if (expected.source !== actual.source) {
+                    sourceMismatches++;
+                    console.log(`Source mismatch at cell ${i}:`);
+                    console.log(`  Expected: "${expected.source.substring(0, 80).replace(/\\n/g, '\\\\n')}..."`);
+                    console.log(`  Actual:   "${actual.source.substring(0, 80).replace(/\\n/g, '\\\\n')}..."`);
+                }
+                if (expected.cellType !== actual.cellType) {
+                    typeMismatches++;
+                    console.log(`Type mismatch at cell ${i}: expected ${expected.cellType}, got ${actual.cellType}`);
+                }
+            }
+
+            if (sourceMismatches > 0) {
+                throw new Error(`${sourceMismatches} cells have source mismatches`);
+            }
+            if (typeMismatches > 0) {
+                throw new Error(`${typeMismatches} cells have type mismatches`);
+            }
+        } else {
+            console.log(`Notebook on disk: ${resolvedNotebook.cells.length} cells`);
+            console.log(`Expected from "${action}": ${targetNotebook.cells.length} cells`);
+
+            if (resolvedNotebook.cells.length !== targetNotebook.cells.length) {
+                throw new Error(`Cell count mismatch: expected ${targetNotebook.cells.length}, got ${resolvedNotebook.cells.length}`);
+            }
+
+            let sourceMismatches = 0;
+            let typeMismatches = 0;
+            let metadataMismatches = 0;
+
+            for (let i = 0; i < targetNotebook.cells.length; i++) {
+                const expected = normalizeCell(targetNotebook.cells[i]);
+                const actual = normalizeCell(resolvedNotebook.cells[i]);
+
+                if (expected.source !== actual.source) {
+                    sourceMismatches++;
+                    console.log(`Source mismatch at cell ${i}:`);
+                    console.log(`  Expected: "${expected.source.substring(0, 80).replace(/\\n/g, '\\\\n')}..."`);
+                    console.log(`  Actual:   "${actual.source.substring(0, 80).replace(/\\n/g, '\\\\n')}..."`);
+                }
+                if (expected.cellType !== actual.cellType) {
+                    typeMismatches++;
+                    console.log(`Type mismatch at cell ${i}: expected ${expected.cellType}, got ${actual.cellType}`);
+                }
+                if (JSON.stringify(expected.metadata) !== JSON.stringify(actual.metadata)) {
+                    metadataMismatches++;
+                    console.log(`Metadata mismatch at cell ${i}`);
+                }
+            }
+
+            if (sourceMismatches > 0) {
+                throw new Error(`${sourceMismatches} cells have source mismatches`);
+            }
+            if (typeMismatches > 0) {
+                throw new Error(`${typeMismatches} cells have type mismatches`);
+            }
+            if (metadataMismatches > 0) {
+                throw new Error(`${metadataMismatches} cells have metadata mismatches`);
+            }
         }
 
         // Validate structure

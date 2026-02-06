@@ -25,8 +25,8 @@ export interface ExpectedCell {
     rowIndex: number;
     source: string;
     cellType: string;
-    isConflict: boolean;
-    isDeleted: boolean;
+    isConflict?: boolean;
+    isDeleted?: boolean;
     metadata?: Record<string, unknown>;
     hasOutputs?: boolean;
 }

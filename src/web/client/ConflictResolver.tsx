@@ -275,6 +275,10 @@ export function ConflictResolver({
             conflictRows.forEach(row => {
                 const conflictIdx = row.conflictIndex ?? -1;
                 if (conflictIdx < 0) return;
+                if (next.has(conflictIdx)) {
+                    // Respect any already-resolved conflicts when taking all
+                    return;
+                }
 
                 let cell: NotebookCell | undefined;
                 if (choice === 'base') cell = row.baseCell;

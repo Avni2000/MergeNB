@@ -93,6 +93,12 @@ const TEST_CASES: TestCaseDefinition[] = [
         testModule: './takeAllButtons.test.js',
         params: { action: 'incoming' }
     },
+    {
+        name: '04_takeAllButtons_unresolved_current',
+        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
+        testModule: './takeAllButtons.test.js',
+        params: { action: 'current', mode: 'unresolved', manualChoice: 'incoming', manualCount: 2 }
+    },
 ];
 
 async function main() {
