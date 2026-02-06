@@ -49,7 +49,7 @@ export interface ResolvedRow {
     /** If this row had a conflict, this is the user's resolution */
     resolution?: {
         /** The branch choice that determines outputs, metadata, etc. */
-        choice: 'base' | 'current' | 'incoming' | 'both' | 'delete';
+        choice: ResolutionChoice;
         /** The resolved content from the text area (source of truth) */
         resolvedContent: string;
     };
@@ -64,7 +64,7 @@ export interface ResolvedRow {
 export interface UnifiedResolution {
     type: 'semantic';
     semanticChoice?: 'current' | 'incoming';
-    semanticResolutions?: Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>;
+    semanticResolutions?: Map<number, { choice: ResolutionChoice; resolvedContent: string }>;
     /** The complete resolved row structure from the UI (source of truth) */
     resolvedRows?: ResolvedRow[];
     // Whether to mark file as resolved with git add

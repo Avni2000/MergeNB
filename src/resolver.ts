@@ -290,7 +290,34 @@ export class NotebookConflictResolver {
 
         const resolvedCells: NotebookCell[] = [];
 
-        for (const row of resolvedRows) {
+        // Detect a uniform "take all" action (e.g. all base/current/incoming).
+        // If all non-delete choices are the same side, prefer that side for ordering
+        // and for unmatched non-conflict rows.
+        const nonDeleteChoices = resolvedRows
+            .map(r => r.resolution?.choice)
+            .filter((c): c is 'base' | 'current' | 'incoming' => !!c && c !== 'delete');
+
+        const uniqueChoices = new Set(nonDeleteChoices);
+        const preferredSide = (uniqueChoices.size === 1
+            ? [...uniqueChoices][0]
+            : undefined) as ('base' | 'current' | 'incoming' | undefined);
+
+        let rowsForResolution = resolvedRows;
+        if (preferredSide === 'base' || preferredSide === 'current' || preferredSide === 'incoming') {
+            const indexKey = preferredSide === 'base'
+                ? 'baseCellIndex'
+                : preferredSide === 'current'
+                    ? 'currentCellIndex'
+                    : 'incomingCellIndex';
+
+            const withIndex = resolvedRows
+                .filter(r => (r as any)[indexKey] !== undefined)
+                .sort((a, b) => (a as any)[indexKey] - (b as any)[indexKey]);
+            const withoutIndex = resolvedRows.filter(r => (r as any)[indexKey] === undefined);
+            rowsForResolution = [...withIndex, ...withoutIndex];
+        }
+
+        for (const row of rowsForResolution) {
             const { baseCell, currentCell, incomingCell, resolution: res } = row;
             
             let cellToUse: NotebookCell | undefined;
@@ -309,9 +336,6 @@ export class NotebookConflictResolver {
                         break;
                     case 'incoming':
                         referenceCell = incomingCell || currentCell || baseCell;
-                        break;
-                    case 'both':
-                        referenceCell = currentCell || incomingCell || baseCell;
                         break;
                     case 'delete':
                         continue;
@@ -332,6 +356,11 @@ export class NotebookConflictResolver {
                     (cellToUse as any).execution_count = null;
                     (cellToUse as any).outputs = [];
                 }
+            } else if (preferredSide === 'base' || preferredSide === 'current' || preferredSide === 'incoming') {
+                // For uniform "take all", only include cells that exist on the preferred side.
+                if (preferredSide === 'base') cellToUse = baseCell;
+                else if (preferredSide === 'current') cellToUse = currentCell;
+                else if (preferredSide === 'incoming') cellToUse = incomingCell;
             } else {
                 // For non-conflict (identical) rows, use the original cell directly
                 // Don't use autoResolvedCell here because it may have stripped outputs

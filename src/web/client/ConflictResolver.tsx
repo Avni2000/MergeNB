@@ -14,6 +14,7 @@ import type {
     CellMapping,
     SemanticConflict,
     NotebookCell,
+    ResolutionChoice,
 } from './types';
 import { MergeRow } from './MergeRow';
 
@@ -21,8 +22,6 @@ import { MergeRow } from './MergeRow';
 const INITIAL_VISIBLE_ROWS = 20; // Number of rows to render initially
 const DEFAULT_ROW_HEIGHT = 200; // Default height for unmeasured rows (fallback)
 const VIRTUALIZATION_OVERSCAN_ROWS = 5; // Number of rows to render outside viewport for smooth scrolling
-
-type ResolutionChoice = 'base' | 'current' | 'incoming' | 'both' | 'delete';
 
 /** Resolution state tracking for a cell conflict */
 interface ResolutionState {
@@ -276,6 +275,10 @@ export function ConflictResolver({
             conflictRows.forEach(row => {
                 const conflictIdx = row.conflictIndex ?? -1;
                 if (conflictIdx < 0) return;
+                if (next.has(conflictIdx)) {
+                    // Respect any already-resolved conflicts when taking all
+                    return;
+                }
 
                 let cell: NotebookCell | undefined;
                 if (choice === 'base') cell = row.baseCell;

@@ -10,11 +10,9 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import type { MergeRow as MergeRowType, NotebookCell } from './types';
+import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource } from '../../notebookUtils';
-
-type ResolutionChoice = 'base' | 'current' | 'incoming' | 'both' | 'delete';
 
 /** Data about a cell being dragged */
 interface DraggedCellData {
@@ -87,11 +85,6 @@ export function MergeRow({
     // Get content for a given choice
     const getContentForChoice = useCallback((choice: ResolutionChoice): string => {
         if (choice === 'delete') return '';
-        if (choice === 'both') {
-            const currentContent = row.currentCell ? normalizeCellSource(row.currentCell.source) : '';
-            const incomingContent = row.incomingCell ? normalizeCellSource(row.incomingCell.source) : '';
-            return currentContent + '\n' + incomingContent;
-        }
         const cell = choice === 'base' ? row.baseCell
             : choice === 'current' ? row.currentCell
                 : row.incomingCell;
@@ -328,14 +321,6 @@ export function MergeRow({
                         onClick={() => handleChoiceClick('incoming')}
                     >
                         Use Incoming
-                    </button>
-                )}
-                {hasCurrent && hasIncoming && (
-                    <button
-                        className={`btn-resolve btn-both ${resolutionState?.choice === 'both' ? 'selected' : ''}`}
-                        onClick={() => handleChoiceClick('both')}
-                    >
-                        Use Both
                     </button>
                 )}
                 <button

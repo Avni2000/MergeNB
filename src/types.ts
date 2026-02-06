@@ -108,7 +108,7 @@ export interface NotebookConflict {
  * - both: Include both current and incoming content
  * - delete: Remove the cell entirely
  */
-export type ResolutionChoice = 'base' | 'current' | 'incoming' | 'both' | 'delete';
+export type ResolutionChoice = 'base' | 'current' | 'incoming' | 'delete';
 
 export interface ConflictResolution {
     conflict: CellConflict;
