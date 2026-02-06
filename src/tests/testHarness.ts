@@ -66,7 +66,7 @@ export async function setupConflictResolver(
     await vscode.window.showTextDocument(doc);
     await sleep(1000);
 
-    const tmpDir = process.env.TMPDIR || process.env.TMP || '/tmp';
+    const tmpDir = os.tmpdir();
     const portFilePath = path.join(tmpDir, options.portFileName || 'mergenb-server-port');
     try { fs.unlinkSync(portFilePath); } catch { /* ignore */ }
 
