@@ -167,6 +167,40 @@ export async function run(): Promise<void> {
             throw new Error('Should have at least one conflict row');
         }
         
+        // Count unmatched cells before resolving
+        console.log('\n=== Analyzing unmatched cells ===');
+        let unmatchedCurrentOnly = 0;  // current exists, base doesn't
+        let unmatchedIncomingOnly = 0; // incoming exists, base doesn't
+        let unmatchedBoth = 0;         // both current and incoming exist, but base doesn't
+        let baseMatched = 0;           // base cell was matched (exists in all or some branches)
+        
+        for (let conflictIdx = 0; conflictIdx < conflictCount; conflictIdx++) {
+            const row = conflictRowElements.nth(conflictIdx);
+            const hasBase = await row.locator('.base-column .notebook-cell').count() > 0;
+            const hasCurrent = await row.locator('.current-column .notebook-cell').count() > 0;
+            const hasIncoming = await row.locator('.incoming-column .notebook-cell').count() > 0;
+            
+            if (hasBase) {
+                baseMatched++;
+            } else {
+                // Unmatched from base perspective
+                if (hasCurrent && hasIncoming) {
+                    unmatchedBoth++;
+                } else if (hasCurrent) {
+                    unmatchedCurrentOnly++;
+                } else if (hasIncoming) {
+                    unmatchedIncomingOnly++;
+                }
+            }
+        }
+        
+        console.log(`Unmatched cells (before resolution):`);
+        console.log(`  - Base-matched conflicts: ${baseMatched}`);
+        console.log(`  - Current-only (unmatched): ${unmatchedCurrentOnly}`);
+        console.log(`  - Incoming-only (unmatched): ${unmatchedIncomingOnly}`);
+        console.log(`  - Both current & incoming (unmatched from base): ${unmatchedBoth}`);
+        console.log(`  - Total unmatched: ${unmatchedCurrentOnly + unmatchedIncomingOnly + unmatchedBoth}`);
+        
         // Track resolution choices for cell type determination
         const resolutionChoices: Map<number, { choice: string; chosenCellType: string }> = new Map();
         
