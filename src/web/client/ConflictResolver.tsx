@@ -269,6 +269,34 @@ export function ConflictResolver({
         });
     }, []);
 
+    /** Handle "Accept All" action */
+    const handleAcceptAll = useCallback((choice: 'base' | 'current' | 'incoming') => {
+        setChoices(prev => {
+            const next = new Map(prev);
+            conflictRows.forEach(row => {
+                const conflictIdx = row.conflictIndex ?? -1;
+                if (conflictIdx < 0) return;
+
+                let cell: NotebookCell | undefined;
+                if (choice === 'base') cell = row.baseCell;
+                else if (choice === 'current') cell = row.currentCell;
+                else if (choice === 'incoming') cell = row.incomingCell;
+
+                // If cell exists on the chosen side, use it.
+                // If not (e.g. side deleted the cell), we resolve to "delete" (empty).
+                const effectiveChoice: ResolutionChoice = cell ? choice : 'delete';
+                const content = cell ? normalizeCellSource(cell.source) : '';
+
+                next.set(conflictIdx, {
+                    choice: effectiveChoice,
+                    originalContent: content,
+                    resolvedContent: content
+                });
+            });
+            return next;
+        });
+    }, [conflictRows]);
+
     const handleResolve = useCallback(() => {
         const resolutions: ConflictChoice[] = [];
         for (const [index, state] of choices) {
@@ -430,6 +458,50 @@ export function ConflictResolver({
                     <span className="conflict-counter">
                         {resolvedCount} / {totalConflicts} resolved
                     </span>
+                    <div style={{ display: 'flex', gap: 6, marginRight: 12, paddingRight: 12, borderRight: '1px solid var(--border-color)' }}>
+                        <button
+                            className="btn"
+                            style={{
+                                background: 'var(--base-bg)',
+                                border: '1px solid var(--base-border)',
+                                color: 'var(--text-primary)',
+                                fontSize: 11,
+                                padding: '4px 8px'
+                            }}
+                            title="Accept all base (original) changes"
+                            onClick={() => handleAcceptAll('base')}
+                        >
+                            All Base
+                        </button>
+                        <button
+                            className="btn"
+                            style={{
+                                background: 'var(--current-bg)',
+                                border: '1px solid var(--current-border)',
+                                color: 'var(--text-primary)',
+                                fontSize: 11,
+                                padding: '4px 8px'
+                            }}
+                            title="Accept all current (local) changes"
+                            onClick={() => handleAcceptAll('current')}
+                        >
+                            All Current
+                        </button>
+                        <button
+                            className="btn"
+                            style={{
+                                background: 'var(--incoming-bg)',
+                                border: '1px solid var(--incoming-border)',
+                                color: 'var(--text-primary)',
+                                fontSize: 11,
+                                padding: '4px 8px'
+                            }}
+                            title="Accept all incoming (remote) changes"
+                            onClick={() => handleAcceptAll('incoming')}
+                        >
+                            All Incoming
+                        </button>
+                    </div>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
                         <input
                             type="checkbox"
