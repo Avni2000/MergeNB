@@ -295,12 +295,12 @@ export class NotebookConflictResolver {
         // and for unmatched non-conflict rows.
         const nonDeleteChoices = resolvedRows
             .map(r => r.resolution?.choice)
-            .filter((c): c is 'base' | 'current' | 'incoming' | 'both' => !!c && c !== 'delete');
+            .filter((c): c is 'base' | 'current' | 'incoming' => !!c && c !== 'delete');
 
         const uniqueChoices = new Set(nonDeleteChoices);
         const preferredSide = (uniqueChoices.size === 1
             ? [...uniqueChoices][0]
-            : undefined) as ('base' | 'current' | 'incoming' | 'both' | undefined);
+            : undefined) as ('base' | 'current' | 'incoming' | undefined);
 
         let rowsForResolution = resolvedRows;
         if (preferredSide === 'base' || preferredSide === 'current' || preferredSide === 'incoming') {
@@ -336,9 +336,6 @@ export class NotebookConflictResolver {
                         break;
                     case 'incoming':
                         referenceCell = incomingCell || currentCell || baseCell;
-                        break;
-                    case 'both':
-                        referenceCell = currentCell || incomingCell || baseCell;
                         break;
                     case 'delete':
                         continue;

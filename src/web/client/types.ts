@@ -65,7 +65,7 @@ export interface UnifiedConflictData {
 export interface ConflictChoice {
     index: number;
     /** The base branch the user selected (determines outputs, metadata, etc.) */
-    choice: 'base' | 'current' | 'incoming' | 'both' | 'delete';
+    choice: import('../../types').ResolutionChoice;
     /** The resolved content - always present for resolved cells, serves as source of truth */
     resolvedContent: string;
 }
@@ -88,7 +88,7 @@ export interface ResolvedRow {
     /** If this row had a conflict, this is the user's resolution */
     resolution?: {
         /** The branch choice that determines outputs, metadata, etc. */
-        choice: 'base' | 'current' | 'incoming' | 'both' | 'delete';
+        choice: import('../../types').ResolutionChoice;
         /** The resolved content from the text area (source of truth) */
         resolvedContent: string;
     };

@@ -293,11 +293,6 @@ export async function run(): Promise<void> {
                                 case 'incoming':
                                     referenceCell = await getColumnCell(row, 'incoming', i);
                                     break;
-                                case 'both':
-                                    referenceCell = await getColumnCell(row, 'current', i)
-                                        || await getColumnCell(row, 'incoming', i)
-                                        || await getColumnCell(row, 'base', i);
-                                    break;
                                 case 'delete':
                                     referenceCell = null;
                                     break;
