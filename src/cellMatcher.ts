@@ -275,6 +275,8 @@ function compareOutputApproximate(x: Record<string, unknown>, y: Record<string, 
     return true;
 }
 
+
+
 /**
  * Compare two outputs strictly.
  * Matches nbdime's compare_output_strict.
@@ -284,6 +286,7 @@ function compareOutputStrict(x: Record<string, unknown>, y: Record<string, unkno
     if (x.output_type !== y.output_type) return false;
     
     const xKeys = new Set(Object.keys(x));
+    const yKeys = new Set(Object.keys(y));
     
     const handled = new Set(['output_type', 'data', 'metadata', 'execution_count']);
     
@@ -293,6 +296,12 @@ function compareOutputStrict(x: Record<string, unknown>, y: Record<string, unkno
             return false;
         }
     }
+    for (const k of yKeys) {
+        if (!handled.has(k) && !(k in x)) {
+            return false;
+        }
+    }
+
     
     // Compare data strictly
     const xData = (x.data || {}) as Record<string, unknown>;
