@@ -80,29 +80,34 @@ export async function setupConflictResolver(
     console.log(`Session created: ${sessionId}`);
 
     const browser = await chromium.launch({ headless: options.headless ?? true });
-    const page = await browser.newPage();
+    try {
+        const page = await browser.newPage();
 
-    const sessionUrl = `http://127.0.0.1:${serverPort}/?session=${sessionId}`;
-    await page.goto(sessionUrl);
-    await sleep(options.afterNavigateDelayMs ?? 3000);
+        const sessionUrl = `http://127.0.0.1:${serverPort}/?session=${sessionId}`;
+        await page.goto(sessionUrl);
+        await sleep(options.afterNavigateDelayMs ?? 3000);
 
-    await page.waitForSelector('.header-title', { timeout: 15000 });
-    const title = await page.locator('.header-title').textContent();
-    if (title !== 'MergeNB') {
-        throw new Error(`Expected header 'MergeNB', got '${title}'`);
+        await page.waitForSelector('.header-title', { timeout: 15000 });
+        const title = await page.locator('.header-title').textContent();
+        if (title?.trim() !== 'MergeNB') {
+            throw new Error(`Expected header 'MergeNB', got '${title}'`);
+        }
+
+        await sleep(options.postHeaderDelayMs ?? 1000);
+
+        return {
+            config,
+            workspacePath,
+            conflictFile,
+            serverPort,
+            sessionId,
+            browser,
+            page,
+        };
+    } catch (err) {
+        await browser.close();
+        throw err;
     }
-
-    await sleep(options.postHeaderDelayMs ?? 1000);
-
-    return {
-        config,
-        workspacePath,
-        conflictFile,
-        serverPort,
-        sessionId,
-        browser,
-        page,
-    };
 }
 
 export async function applyResolutionAndReadNotebook(
