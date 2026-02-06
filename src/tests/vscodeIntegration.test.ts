@@ -1,82 +1,26 @@
 /**
  * End-to-end integration test that runs inside VS Code extension host.
  * Verifies that UI content (textareas + unified cell sources) matches the notebook written to disk.
+ * 
+ * Tests per-cell resolution: resolves each conflict individually using alternating
+ * current/incoming choices, with optional deletion, then verifies the written notebook.
  */
 
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import * as http from 'http';
 import { chromium } from 'playwright';
-
-interface HealthResponse {
-    status: string;
-    port: number;
-    activeSessions: number;
-    activeConnections: number;
-    sessionIds: string[];
-}
-
-interface ExpectedCell {
-    rowIndex: number;
-    source: string;
-    cellType: string;
-    isConflict: boolean;
-    isDeleted: boolean;
-    metadata?: Record<string, unknown>;
-    hasOutputs?: boolean; // Whether the cell will have outputs after resolution
-}
-
-function checkHealth(port: number): Promise<boolean> {
-    return new Promise((resolve) => {
-        const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 500 }, (res) => {
-            resolve(res.statusCode === 200);
-        });
-        req.on('error', () => resolve(false));
-        req.on('timeout', () => { req.destroy(); resolve(false); });
-    });
-}
-
-function getCellSource(cell: any): string {
-    if (!cell) return '';
-    return Array.isArray(cell.source) ? cell.source.join('') : (cell.source || '');
-}
-
-function parseCellFromAttribute(cellJson: string | null, context: string): any {
-    if (!cellJson) {
-        console.error(`Missing data-cell attribute for ${context}`);
-        throw new Error(`Missing data-cell attribute for ${context}`);
-    }
-    try {
-        return JSON.parse(decodeURIComponent(cellJson));
-    } catch (err) {
-        console.error(`Failed to parse cell JSON for ${context}`, err);
-        throw new Error(`Failed to parse cell JSON for ${context}`);
-    }
-}
-
-function getHealthInfo(port: number): Promise<HealthResponse | null> {
-    return new Promise((resolve) => {
-        const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 1000 }, (res) => {
-            if (res.statusCode !== 200) {
-                resolve(null);
-                return;
-            }
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                try {
-                    resolve(JSON.parse(data));
-                } catch {
-                    resolve(null);
-                }
-            });
-        });
-        req.on('error', () => resolve(null));
-        req.on('timeout', () => { req.destroy(); resolve(null); });
-    });
-}
+import {
+    type TestConfig,
+    type ExpectedCell,
+    getCellSource,
+    parseCellFromAttribute,
+    waitForServer,
+    waitForSession,
+    waitForFileWrite,
+    validateNotebookStructure,
+} from './testHelpers';
 
 export async function run(): Promise<void> {
     console.log('Starting MergeNB VS Code Integration Test...');
@@ -87,7 +31,7 @@ export async function run(): Promise<void> {
     try {
         // Setup: Read config and open conflict file
         const configPath = path.join(os.tmpdir(), 'mergenb-test-config.json');
-        const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        const config: TestConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
         const workspacePath = config.workspacePath;
         const conflictFile = path.join(workspacePath, 'conflict.ipynb');
         
@@ -104,39 +48,12 @@ export async function run(): Promise<void> {
         console.log('Executing merge-nb.findConflicts command...');
         vscode.commands.executeCommand('merge-nb.findConflicts');
         
-        let serverPort = 0;
-        for (let i = 0; i < 60; i++) {
-            await new Promise(r => setTimeout(r, 500));
-            try {
-                if (fs.existsSync(portFilePath)) {
-                    const portStr = fs.readFileSync(portFilePath, 'utf8').trim();
-                    serverPort = parseInt(portStr, 10);
-                    if (serverPort > 0 && await checkHealth(serverPort)) {
-                        break;
-                    }
-                    serverPort = 0;
-                }
-            } catch { /* continue polling */ }
-        }
-        
-        if (serverPort === 0) {
-            throw new Error('Web server did not start');
-        }
+        const serverPort = await waitForServer(portFilePath, fs);
+        console.log(`Server started on port ${serverPort}`);
         
         // Wait for session
-        let sessionId = '';
-        for (let i = 0; i < 30; i++) {
-            await new Promise(r => setTimeout(r, 500));
-            const healthInfo = await getHealthInfo(serverPort);
-            if (healthInfo && healthInfo.sessionIds.length > 0) {
-                sessionId = healthInfo.sessionIds[0];
-                break;
-            }
-        }
-        
-        if (!sessionId) {
-            throw new Error('No session was created');
-        }
+        const sessionId = await waitForSession(serverPort);
+        console.log(`Session created: ${sessionId}`);
         
         // Launch browser and navigate
         browser = await chromium.launch({ headless: true });
@@ -441,17 +358,7 @@ export async function run(): Promise<void> {
         await new Promise(r => setTimeout(r, 3000));
         
         // Wait for file to be written
-        let fileWritten = false;
-        for (let attempt = 0; attempt < 20; attempt++) {
-            await new Promise(r => setTimeout(r, 500));
-            try {
-                const stat = fs.statSync(conflictFile);
-                if (Date.now() - stat.mtimeMs < 10000) {
-                    fileWritten = true;
-                    break;
-                }
-            } catch { /* continue */ }
-        }
+        const fileWritten = await waitForFileWrite(conflictFile, fs);
         
         if (!fileWritten) {
             console.log('Warning: Could not confirm file write, proceeding anyway');
@@ -541,28 +448,7 @@ export async function run(): Promise<void> {
         }
         
         // Verify notebook structure
-        if (typeof resolvedNotebook.nbformat !== 'number') {
-            throw new Error('Invalid notebook: missing nbformat');
-        }
-        if (typeof resolvedNotebook.nbformat_minor !== 'number') {
-            throw new Error('Invalid notebook: missing nbformat_minor');
-        }
-        if (!resolvedNotebook.metadata || typeof resolvedNotebook.metadata !== 'object') {
-            throw new Error('Invalid notebook: missing metadata');
-        }
-        if (!Array.isArray(resolvedNotebook.cells)) {
-            throw new Error('Invalid notebook: cells not an array');
-        }
-        
-        for (let i = 0; i < resolvedNotebook.cells.length; i++) {
-            const cell = resolvedNotebook.cells[i];
-            if (!cell.cell_type) throw new Error(`Cell ${i}: missing cell_type`);
-            if (cell.source === undefined) throw new Error(`Cell ${i}: missing source`);
-            if (!cell.metadata) throw new Error(`Cell ${i}: missing metadata`);
-            if (cell.cell_type === 'code' && !Array.isArray(cell.outputs)) {
-                throw new Error(`Cell ${i}: code cell missing outputs`);
-            }
-        }
+        validateNotebookStructure(resolvedNotebook);
         
         console.log('\n=== TEST PASSED ===');
         console.log(`✓ ${expectedNonDeletedCells.length} cells verified`);
