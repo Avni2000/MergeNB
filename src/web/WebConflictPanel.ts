@@ -82,21 +82,20 @@ export class WebConflictPanel {
         this._sessionId = server.generateSessionId();
 
         // Open session in browser (we pass a placeholder for htmlContent since we use React now)
-        try {
-            const ws = await server.openSession(
-                this._sessionId,
-                '', // No HTML content needed - server generates shell
-                (message: unknown) => this._handleMessage(message)
-            );
-            
+        // Do not await the WebSocket connection here to avoid deadlocking tests
+        // that need to open the session after the command returns.
+        void server.openSession(
+            this._sessionId,
+            '', // No HTML content needed - server generates shell
+            (message: unknown) => this._handleMessage(message)
+        ).then(() => {
             // Send conflict data to browser once connected
             this._sendConflictData();
-            
             logger.info(`[WebConflictPanel] Opened conflict resolver in browser, session: ${this._sessionId}`);
-        } catch (error) {
+        }).catch((error) => {
             logger.error('[WebConflictPanel] Failed to open browser session:', error);
             vscode.window.showErrorMessage(`Failed to open conflict resolver in browser: ${error}`);
-        }
+        });
     }
 
     /**
