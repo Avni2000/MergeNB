@@ -35,6 +35,7 @@ export interface ExpectedCell {
 export interface TestConfig {
     workspacePath: string;
     testName: string;
+    params?: any;
 }
 
 /** Definition of a test case used by the runner */
@@ -45,6 +46,8 @@ export interface TestCaseDefinition {
     notebooks: [string, string, string];
     /** Path to the compiled test module (.js) relative to out/tests/ */
     testModule: string;
+    /** Optional parameters to pass to the test via config */
+    params?: any;
 }
 
 /** Check if the web server is up */
