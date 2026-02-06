@@ -1,7 +1,9 @@
 name: VSCode Integration Tests
 
-on: [push, pull_request]
-
+on:
+  pull_request:
+  push:
+    branches: [main]
 jobs:
   integration:
     runs-on: ubuntu-latest
@@ -13,9 +15,28 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-
       - name: Install apt deps (Xvfb)
         run: sudo apt-get update && sudo apt-get install -y xvfb
+      - name: Cache npm deps
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Cache VSCode test resources
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test
+          key: ${{ runner.os }}-vscode-test-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vscode-test-
 
       - name: Install npm deps
         run: npm ci
