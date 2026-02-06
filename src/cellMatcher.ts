@@ -3,9 +3,11 @@
  * @description Cell matching algorithm for three-way notebook merge.
  * 
  * Matches cells across base/current/incoming versions using:
- * - Content hashing for exact matches
  * - nbdime-style "snaking" algorithm for optimal sequence alignment
- * - Multilevel comparison predicates (strict to loose)
+ * - Multilevel comparison predicates (strict to loose) following nbdime
+ * - Cell ID matching (strictest level)
+ * - SequenceMatcher-like string similarity
+ * - Output comparison for code cells
  * - Position-based fallback for ambiguous cases
  * 
  * The snaking algorithm computes "snakes" (contiguous sequences of matching
@@ -29,6 +31,10 @@ interface Snake {
 /** Comparison function type for cell matching */
 type CellCompare = (a: NotebookCell, b: NotebookCell) => boolean;
 
+// ============================================================================
+// String Similarity (SequenceMatcher-like)
+// ============================================================================
+
 /**
  * Get normalized source from a cell
  */
@@ -37,8 +43,167 @@ function getCellSource(cell: NotebookCell): string {
 }
 
 /**
- * Compute similarity score between two cells (0-1) using line-based comparison.
- * This is more efficient than character-level Levenshtein for notebook cells.
+ * Find the longest contiguous matching substring.
+ * Returns [aStart, bStart, length].
+ * Uses hash-based element lookup similar to Python's difflib.SequenceMatcher.
+ */
+function findLongestMatch(
+    a: string, b: string,
+    aLo: number, aHi: number,
+    bLo: number, bHi: number
+): [number, number, number] {
+    // Build index: char -> positions in b[bLo:bHi]
+    const b2j = new Map<string, number[]>();
+    for (let j = bLo; j < bHi; j++) {
+        const ch = b[j];
+        let arr = b2j.get(ch);
+        if (!arr) {
+            arr = [];
+            b2j.set(ch, arr);
+        }
+        arr.push(j);
+    }
+
+    let bestI = aLo, bestJ = bLo, bestSize = 0;
+    // j2len[j] = length of longest match ending at a[..], b[j]
+    let j2len = new Map<number, number>();
+    
+    for (let i = aLo; i < aHi; i++) {
+        const newJ2len = new Map<number, number>();
+        const positions = b2j.get(a[i]);
+        if (positions) {
+            for (const j of positions) {
+                const k = (j2len.get(j - 1) || 0) + 1;
+                newJ2len.set(j, k);
+                if (k > bestSize) {
+                    bestI = i - k + 1;
+                    bestJ = j - k + 1;
+                    bestSize = k;
+                }
+            }
+        }
+        j2len = newJ2len;
+    }
+    
+    return [bestI, bestJ, bestSize];
+}
+
+/**
+ * Count total matching characters using matching blocks (SequenceMatcher algorithm).
+ * Recursively finds longest contiguous matches and counts their total length.
+ */
+function countMatchingChars(a: string, b: string): number {
+    const queue: [number, number, number, number][] = [[0, a.length, 0, b.length]];
+    let total = 0;
+    
+    while (queue.length > 0) {
+        const [aLo, aHi, bLo, bHi] = queue.pop()!;
+        const [i, j, k] = findLongestMatch(a, b, aLo, aHi, bLo, bHi);
+        if (k > 0) {
+            total += k;
+            if (aLo < i && bLo < j) {
+                queue.push([aLo, i, bLo, j]);
+            }
+            if (i + k < aHi && j + k < bHi) {
+                queue.push([i + k, aHi, j + k, bHi]);
+            }
+        }
+    }
+    
+    return total;
+}
+
+/**
+ * Compute the ratio of matching characters between two strings.
+ * Equivalent to Python's difflib.SequenceMatcher.ratio().
+ * Returns 2.0 * M / T where M = matching chars, T = total chars in both strings.
+ */
+function sequenceMatcherRatio(a: string, b: string): number {
+    if (a === b) return 1.0;
+    const la = a.length, lb = b.length;
+    if (!la && !lb) return 1.0;
+    if (!la || !lb) return 0;
+    
+    const matches = countMatchingChars(a, b);
+    return 2.0 * matches / (la + lb);
+}
+
+/**
+ * Quick upper-bound ratio estimate based on character frequency overlap.
+ * Equivalent to Python's difflib.SequenceMatcher.quick_ratio().
+ */
+function quickRatio(a: string, b: string): number {
+    const la = a.length, lb = b.length;
+    if (!la && !lb) return 1.0;
+    if (!la || !lb) return 0;
+    
+    // Count character frequencies in both strings
+    const freqA = new Map<string, number>();
+    const freqB = new Map<string, number>();
+    for (const ch of a) freqA.set(ch, (freqA.get(ch) || 0) + 1);
+    for (const ch of b) freqB.set(ch, (freqB.get(ch) || 0) + 1);
+    
+    // Sum minimum frequencies = upper bound on matching chars
+    let avail = 0;
+    for (const [ch, count] of freqA) {
+        avail += Math.min(count, freqB.get(ch) || 0);
+    }
+    
+    return 2.0 * avail / (la + lb);
+}
+
+/**
+ * Fastest upper-bound ratio estimate based on lengths only.
+ * Equivalent to Python's difflib.SequenceMatcher.real_quick_ratio().
+ */
+function realQuickRatio(a: string, b: string): number {
+    const la = a.length, lb = b.length;
+    if (!la && !lb) return 1.0;
+    if (!la || !lb) return 0;
+    return 2.0 * Math.min(la, lb) / (la + lb);
+}
+
+/**
+ * Compare two strings approximately, using SequenceMatcher-like ratio.
+ * Equivalent to nbdime's compare_strings_approximate.
+ * Uses fast cutoffs: real_quick_ratio -> quick_ratio -> full ratio.
+ * 
+ * @param a - First string
+ * @param b - Second string
+ * @param threshold - Minimum ratio to consider strings similar (default 0.7)
+ * @param maxlen - Maximum length for detailed comparison (skip if both exceed)
+ */
+function compareStringsApproximate(
+    a: string, b: string,
+    threshold: number = 0.7,
+    maxlen?: number
+): boolean {
+    // Fast cutoff: one empty, other not
+    if ((!a) !== (!b)) return false;
+    
+    // Fast exact equality check
+    if (a.length === b.length && a === b) return true;
+    
+    // Fast cutoff based on lengths
+    if (realQuickRatio(a, b) < threshold) return false;
+    
+    // Moderate cutoff based on character frequencies
+    if (quickRatio(a, b) < threshold) return false;
+    
+    // Max length cutoff (for very long strings that aren't exactly equal)
+    if (maxlen !== undefined && a.length > maxlen && b.length > maxlen) return false;
+    
+    // Full ratio computation
+    return sequenceMatcherRatio(a, b) > threshold;
+}
+
+// ============================================================================
+// Cell Similarity
+// ============================================================================
+
+/**
+ * Compute similarity score between two cells (0-1) using SequenceMatcher ratio.
+ * This replaces line-based LCS with character-level matching blocks.
  */
 function computeCellSimilarity(cell1: NotebookCell, cell2: NotebookCell): number {
     if (cell1.cell_type !== cell2.cell_type) {
@@ -59,13 +224,105 @@ function computeCellSimilarity(cell1: NotebookCell, cell2: NotebookCell): number
         return 0;
     }
 
-    // Use line-based LCS for similarity (faster than char-level Levenshtein)
-    const lines1 = source1.split('\n');
-    const lines2 = source2.split('\n');
-    const lcsLength = computeLCSLength(lines1, lines2);
-    const maxLines = Math.max(lines1.length, lines2.length);
+    return sequenceMatcherRatio(source1, source2);
+}
+
+// ============================================================================
+// Output Comparison (for code cells)
+// ============================================================================
+
+/**
+ * Compare two outputs approximately.
+ * Matches nbdime's compare_output_approximate.
+ */
+function compareOutputApproximate(x: Record<string, unknown>, y: Record<string, unknown>): boolean {
+    if (!x || !y) return x === y;
+    if (x.output_type !== y.output_type) return false;
     
-    return lcsLength / maxLines;
+    // Skip metadata and execution count
+    if (x.output_type === 'stream') {
+        if (x.name !== y.name) return false;
+        const xText = Array.isArray(x.text) ? (x.text as string[]).join('') : String(x.text || '');
+        const yText = Array.isArray(y.text) ? (y.text as string[]).join('') : String(y.text || '');
+        return compareStringsApproximate(xText, yText, 0.7, 1000);
+    }
+    
+    if (x.output_type === 'error') {
+        return x.ename === y.ename && x.evalue === y.evalue;
+    }
+    
+    if (x.output_type === 'display_data' || x.output_type === 'execute_result') {
+        const xData = (x.data || {}) as Record<string, unknown>;
+        const yData = (y.data || {}) as Record<string, unknown>;
+        const xKeys = new Set(Object.keys(xData));
+        const yKeys = new Set(Object.keys(yData));
+        if (xKeys.size !== yKeys.size) return false;
+        for (const k of xKeys) {
+            if (!yKeys.has(k)) return false;
+        }
+        for (const key of xKeys) {
+            if (key.startsWith('text/')) {
+                const xVal = Array.isArray(xData[key]) ? (xData[key] as string[]).join('') : String(xData[key]);
+                const yVal = Array.isArray(yData[key]) ? (yData[key] as string[]).join('') : String(yData[key]);
+                if (!compareStringsApproximate(xVal, yVal, 0.7, 10000)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+    
+    return true;
+}
+
+/**
+ * Compare two outputs strictly.
+ * Matches nbdime's compare_output_strict.
+ */
+function compareOutputStrict(x: Record<string, unknown>, y: Record<string, unknown>): boolean {
+    if (!x || !y) return x === y;
+    if (x.output_type !== y.output_type) return false;
+    
+    const xKeys = new Set(Object.keys(x));
+    
+    const handled = new Set(['output_type', 'data', 'metadata', 'execution_count']);
+    
+    // Strict match on all keys we don't otherwise handle
+    for (const k of xKeys) {
+        if (!handled.has(k) && JSON.stringify(x[k]) !== JSON.stringify(y[k])) {
+            return false;
+        }
+    }
+    
+    // Compare data strictly
+    const xData = (x.data || {}) as Record<string, unknown>;
+    const yData = (y.data || {}) as Record<string, unknown>;
+    const xDataKeys = new Set(Object.keys(xData));
+    const yDataKeys = new Set(Object.keys(yData));
+    if (xDataKeys.size !== yDataKeys.size) return false;
+    for (const k of xDataKeys) {
+        if (!yDataKeys.has(k)) return false;
+        const xVal = Array.isArray(xData[k]) ? (xData[k] as string[]).join('') : String(xData[k]);
+        const yVal = Array.isArray(yData[k]) ? (yData[k] as string[]).join('') : String(yData[k]);
+        if (!compareStringsApproximate(xVal, yVal, 0.95, 10000)) {
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+/**
+ * Compare sequences of outputs approximately.
+ */
+function compareOutputsApproximate(xOutputs: Record<string, unknown>[], yOutputs: Record<string, unknown>[]): boolean {
+    if (xOutputs.length !== yOutputs.length) return false;
+    for (let i = 0; i < xOutputs.length; i++) {
+        if (!compareOutputApproximate(xOutputs[i], yOutputs[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 // ============================================================================
@@ -141,31 +398,6 @@ function computeLCSIndices<T>(
     B_indices.reverse();
     
     return [A_indices, B_indices];
-}
-
-/**
- * Compute the length of LCS for two arrays (simple version for similarity)
- */
-function computeLCSLength<T>(arr1: T[], arr2: T[]): number {
-    const m = arr1.length;
-    const n = arr2.length;
-    
-    // Use space-optimized version (only need 2 rows)
-    let prev = Array(n + 1).fill(0);
-    let curr = Array(n + 1).fill(0);
-    
-    for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-            if (arr1[i - 1] === arr2[j - 1]) {
-                curr[j] = prev[j - 1] + 1;
-            } else {
-                curr[j] = Math.max(prev[j], curr[j - 1]);
-            }
-        }
-        [prev, curr] = [curr, prev];
-    }
-    
-    return prev[n];
 }
 
 /**
@@ -298,7 +530,7 @@ function computeSnakesMultilevel(
     }
     
     // Pop empty snake from beginning if it wasn't extended inside the loop
-    if (newSnakes[0].n === 0) {
+    if (newSnakes.length > 0 && newSnakes[0].n === 0) {
         newSnakes.shift();
     }
     
@@ -306,45 +538,109 @@ function computeSnakesMultilevel(
 }
 
 // ============================================================================
-// Comparison predicates for multilevel matching
+// Comparison predicates for multilevel matching (following nbdime)
 // ============================================================================
 
 /**
- * Exact match: cells have identical type and source
+ * Level 3 (strictest): Cell ID match.
+ * Only considers cells equal if both have IDs and they match.
+ * Matches nbdime's compare_cell_by_ids.
  */
-function cellsExactMatch(a: NotebookCell, b: NotebookCell): boolean {
+function cellsMatchByIds(a: NotebookCell, b: NotebookCell): boolean {
+    return !!a.id && !!b.id && a.id === b.id;
+}
+
+/**
+ * Level 2: Strict match.
+ * Cells have same type, very similar source (>=0.95 ratio), and strict output match.
+ * Matches nbdime's compare_cell_strict.
+ */
+function cellsStrictMatch(a: NotebookCell, b: NotebookCell): boolean {
     if (a.cell_type !== b.cell_type) return false;
+    
     const sourceA = getCellSource(a);
     const sourceB = getCellSource(b);
-    return sourceA === sourceB;
+    if (!compareStringsApproximate(sourceA, sourceB, 0.95)) return false;
+    
+    // Compare outputs for code cells
+    if (a.cell_type === 'code') {
+        const aOutputs = (a.outputs || []) as unknown as Record<string, unknown>[];
+        const bOutputs = (b.outputs || []) as unknown as Record<string, unknown>[];
+        // Be strict on number of outputs
+        if (aOutputs.length !== bOutputs.length) return false;
+        // Be strict on content
+        for (let i = 0; i < aOutputs.length; i++) {
+            if (!compareOutputStrict(aOutputs[i], bOutputs[i])) {
+                return false;
+            }
+        }
+    }
+    
+    return true;
 }
 
 /**
- * Similar match: cells have same type and >=50% line similarity
+ * Level 1: Moderate match.
+ * Cells have same type and moderately similar source (>=0.7 ratio).
+ * For code cells, also requires similar outputs.
+ * Matches nbdime's compare_cell_moderate.
  */
-function cellsSimilarMatch(a: NotebookCell, b: NotebookCell): boolean {
+function cellsModerateMatch(a: NotebookCell, b: NotebookCell): boolean {
     if (a.cell_type !== b.cell_type) return false;
-    const similarity = computeCellSimilarity(a, b);
-    return similarity >= 0.5;
+    
+    const sourceA = getCellSource(a);
+    const sourceB = getCellSource(b);
+    if (!compareStringsApproximate(sourceA, sourceB, 0.7)) return false;
+    
+    // Compare outputs for code cells
+    if (a.cell_type === 'code') {
+        const aOutputs = (a.outputs || []) as unknown as Record<string, unknown>[];
+        const bOutputs = (b.outputs || []) as unknown as Record<string, unknown>[];
+        if (!!aOutputs.length !== !!bOutputs.length) return false;
+        if (aOutputs.length > 0 && bOutputs.length > 0) {
+            if (!compareOutputsApproximate(aOutputs, bOutputs)) {
+                return false;
+            }
+        }
+    }
+    
+    return true;
 }
 
 /**
- * Weak match: cells have same type and >=30% line similarity
+ * Level 0 (loosest): Approximate match.
+ * Cells have same type and approximately similar source.
+ * Short strings (< 10 chars) are always considered matching.
+ * Matches nbdime's compare_cell_approximate.
  */
-function cellsWeakMatch(a: NotebookCell, b: NotebookCell): boolean {
+function cellsApproximateMatch(a: NotebookCell, b: NotebookCell): boolean {
     if (a.cell_type !== b.cell_type) return false;
-    const similarity = computeCellSimilarity(a, b);
-    return similarity >= 0.3;
+    
+    const sourceA = getCellSource(a);
+    const sourceB = getCellSource(b);
+    
+    // Fast cutoff when one is empty and other isn't
+    if ((!sourceA) !== (!sourceB)) return false;
+    
+    // Short string optimization (from nbdime's compare_text_approximate):
+    // Allow aligning short strings without detailed comparison
+    const shortLen = 10;
+    if (sourceA.length < shortLen && sourceB.length < shortLen) {
+        return true;
+    }
+    
+    return compareStringsApproximate(sourceA, sourceB, 0.7);
 }
 
 
 /**
  * Match cells between base and current/incoming versions using snaking algorithm.
  * 
- * Uses nbdime-style multilevel comparison:
- * - Level 2 (strictest): Exact content match
- * - Level 1: Similar content (>=50% line similarity)
- * - Level 0 (loosest): Weak match (>=30% line similarity)
+ * Uses nbdime-style multilevel comparison with 4 levels:
+ * - Level 3 (strictest): Cell ID match
+ * - Level 2: Strict source (>=0.95) + strict output match
+ * - Level 1: Moderate source (>=0.7) + approximate output match
+ * - Level 0 (loosest): Approximate source (>=0.7, short-string optimization)
  * 
  * Returns a map from base cell index to other cell index.
  */
@@ -359,11 +655,12 @@ function matchCellsToBase(
     }
     
     // Use multilevel snaking algorithm with comparison predicates
-    // Ordered from loosest (0) to strictest (N-1)
+    // Ordered from loosest (0) to strictest (N-1), following nbdime
     const compares: CellCompare[] = [
-        cellsWeakMatch,    // Level 0: >=30% similar
-        cellsSimilarMatch, // Level 1: >=50% similar
-        cellsExactMatch,   // Level 2: exact match
+        cellsApproximateMatch, // Level 0: >=0.7 similar, short-string opt
+        cellsModerateMatch,    // Level 1: >=0.7 similar + output match
+        cellsStrictMatch,      // Level 2: >=0.95 similar + strict outputs
+        cellsMatchByIds,       // Level 3: cell ID match
     ];
     
     const snakes = computeSnakesMultilevel(baseCells, otherCells, compares);

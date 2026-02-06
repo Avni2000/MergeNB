@@ -15,6 +15,7 @@ export interface NotebookCell {
     metadata: Record<string, unknown>;
     execution_count?: number | null;
     outputs?: CellOutput[];
+    id?: string;
 }
 
 export interface CellOutput {
