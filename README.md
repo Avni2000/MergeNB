@@ -63,9 +63,13 @@ There exists a single full integration test that does the following:
 5. Ensures on-disk file corresponds to the resolved cells + nonconflicted cells that a user sees in the web UI. 
 
 At this point, I'm curious about:
-a) How well it works when you radically change a cell in one branch, and try to merge them together 
+
+a) How well it works when you radically change cells in one branch, and try to merge them together. 
+
 b) If very large (100s of cells) notebooks are buggy
+
 c) if you find any rendering issues moving cells around or deleting cells or scrolling fast
+
 d) How well made the web UI resolver/vscode integration is
 
 Any other suggestions you might have that aren't documented!
