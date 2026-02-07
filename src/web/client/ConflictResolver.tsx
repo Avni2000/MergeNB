@@ -116,7 +116,8 @@ export function ConflictResolver({
         setRenumberExecutionCounts(snapshot.renumberExecutionCounts);
     }, []);
 
-    /** Push an undoable action: save current state, then apply the mutation */
+    /** Push an undoable action: save current (pre-mutation) state, then apply the mutation.
+     *  On undo, the saved pre-mutation state is restored. */
     const pushUndoable = useCallback((label: string, mutation: () => void) => {
         undoRedo.pushAction(label, getCurrentSnapshot());
         mutation();
@@ -361,7 +362,13 @@ export function ConflictResolver({
 
     /** Debounced version: push undo for content edits after user stops typing */
     const contentEditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const preEditSnapshotRef = useRef<UndoableSnapshot | null>(null);
     const handleUpdateContentWithUndo = useCallback((index: number, resolvedContent: string) => {
+        // Capture pre-edit snapshot before the first keystroke in this debounce window
+        if (!contentEditTimerRef.current) {
+            preEditSnapshotRef.current = getCurrentSnapshot();
+        }
+
         // Immediately update the content for responsive typing
         handleUpdateContent(index, resolvedContent);
 
@@ -370,7 +377,10 @@ export function ConflictResolver({
             clearTimeout(contentEditTimerRef.current);
         }
         contentEditTimerRef.current = setTimeout(() => {
-            undoRedo.pushAction(`Edit content (row ${index})`, getCurrentSnapshot());
+            if (preEditSnapshotRef.current) {
+                undoRedo.pushAction(`Edit content (row ${index})`, preEditSnapshotRef.current);
+                preEditSnapshotRef.current = null;
+            }
             contentEditTimerRef.current = null;
         }, 1000);
     }, [handleUpdateContent, undoRedo, getCurrentSnapshot]);
@@ -589,7 +599,10 @@ export function ConflictResolver({
                             title={`Undo${enableUndoRedoShortcuts ? ' (Ctrl+Z)' : ''}`}
                             data-testid="undo-btn"
                         >
-                            ↩
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="1 4 1 10 7 10" />
+                                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                            </svg>
                         </button>
                         <button
                             className="btn btn-icon"
@@ -598,7 +611,10 @@ export function ConflictResolver({
                             title={`Redo${enableUndoRedoShortcuts ? ' (Ctrl+Shift+Z)' : ''}`}
                             data-testid="redo-btn"
                         >
-                            ↪
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="23 4 23 10 17 10" />
+                                <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10" />
+                            </svg>
                         </button>
                         <button
                             className="btn btn-icon btn-history-toggle"
@@ -606,7 +622,9 @@ export function ConflictResolver({
                             title="Action history"
                             data-testid="history-toggle-btn"
                         >
-                            ▾
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M7 10l5 5 5-5z" />
+                            </svg>
                         </button>
                         {showHistoryDropdown && (
                             <div className="history-dropdown" data-testid="history-dropdown">
