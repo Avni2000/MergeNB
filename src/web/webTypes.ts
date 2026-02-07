@@ -29,6 +29,8 @@ export interface UnifiedConflict {
     autoResolveResult?: AutoResolveResult;
     /** Whether to hide outputs for non-conflicted cells */
     hideNonConflictOutputs?: boolean;
+    /** Whether to enable undo/redo keyboard shortcuts */
+    enableUndoRedoShortcuts?: boolean;
 }
 
 /**

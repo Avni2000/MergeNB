@@ -80,6 +80,7 @@ export function App(): React.ReactElement {
             conflict={conflictData}
             onResolve={handleResolve}
             onCancel={handleCancel}
+            enableUndoRedoShortcuts={conflictData.enableUndoRedoShortcuts ?? true}
         />
     );
 }

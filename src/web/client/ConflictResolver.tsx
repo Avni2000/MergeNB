@@ -17,21 +17,12 @@ import type {
     ResolutionChoice,
 } from './types';
 import { MergeRow } from './MergeRow';
+import { useUndoRedo, type ResolutionState, type UndoableSnapshot } from './useUndoRedo';
 
 // Virtualization constants
 const INITIAL_VISIBLE_ROWS = 20; // Number of rows to render initially
 const DEFAULT_ROW_HEIGHT = 200; // Default height for unmeasured rows (fallback)
 const VIRTUALIZATION_OVERSCAN_ROWS = 5; // Number of rows to render outside viewport for smooth scrolling
-
-/** Resolution state tracking for a cell conflict */
-interface ResolutionState {
-    /** The branch choice that determines outputs, metadata, etc. */
-    choice: ResolutionChoice;
-    /** The original content from the chosen branch (for detecting modifications) */
-    originalContent: string;
-    /** The current resolved content (may be edited by user) */
-    resolvedContent: string;
-}
 
 /** Data about a cell being dragged */
 interface DraggedCellData {
@@ -50,12 +41,14 @@ interface ConflictResolverProps {
     conflict: UnifiedConflictData;
     onResolve: (resolutions: ConflictChoice[], markAsResolved: boolean, renumberExecutionCounts: boolean, resolvedRows: import('./types').ResolvedRow[]) => void;
     onCancel: () => void;
+    enableUndoRedoShortcuts?: boolean;
 }
 
 export function ConflictResolver({
     conflict,
     onResolve,
     onCancel,
+    enableUndoRedoShortcuts = true,
 }: ConflictResolverProps): React.ReactElement {
     const [choices, setChoices] = useState<Map<number, ResolutionState>>(new Map());
     const [markAsResolved, setMarkAsResolved] = useState(true);
@@ -66,6 +59,10 @@ export function ConflictResolver({
         }
         return [];
     });
+
+    // History dropdown state
+    const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+    const historyDropdownRef = useRef<HTMLDivElement>(null);
 
     // Virtualization state
     const mainContentRef = useRef<HTMLDivElement>(null);
@@ -90,6 +87,97 @@ export function ConflictResolver({
     const totalConflicts = conflictRows.length;
     const resolvedCount = choices.size;
     const allResolved = resolvedCount === totalConflicts;
+
+    // Initialize undo/redo with the initial state
+    const initialSnapshot = useMemo((): UndoableSnapshot => ({
+        choices: new Map(),
+        rows: conflict.type === 'semantic' && conflict.semanticConflict
+            ? buildMergeRowsFromSemantic(conflict.semanticConflict)
+            : [],
+        markAsResolved: true,
+        renumberExecutionCounts: true,
+    }), [conflict]);
+
+    const undoRedo = useUndoRedo(initialSnapshot);
+
+    /** Get a snapshot of the current state */
+    const getCurrentSnapshot = useCallback((): UndoableSnapshot => ({
+        choices,
+        rows,
+        markAsResolved,
+        renumberExecutionCounts,
+    }), [choices, rows, markAsResolved, renumberExecutionCounts]);
+
+    /** Restore state from a snapshot */
+    const restoreSnapshot = useCallback((snapshot: UndoableSnapshot) => {
+        setChoices(snapshot.choices);
+        setRows(snapshot.rows);
+        setMarkAsResolved(snapshot.markAsResolved);
+        setRenumberExecutionCounts(snapshot.renumberExecutionCounts);
+    }, []);
+
+    /** Push an undoable action: save current state, then apply the mutation */
+    const pushUndoable = useCallback((label: string, mutation: () => void) => {
+        undoRedo.pushAction(label, getCurrentSnapshot());
+        mutation();
+    }, [undoRedo, getCurrentSnapshot]);
+
+    // Handle undo
+    const handleUndo = useCallback(() => {
+        const snapshot = undoRedo.undo();
+        if (snapshot) restoreSnapshot(snapshot);
+    }, [undoRedo, restoreSnapshot]);
+
+    // Handle redo
+    const handleRedo = useCallback(() => {
+        const snapshot = undoRedo.redo();
+        if (snapshot) restoreSnapshot(snapshot);
+    }, [undoRedo, restoreSnapshot]);
+
+    // Handle jump to history entry
+    const handleJumpTo = useCallback((index: number) => {
+        const snapshot = undoRedo.jumpTo(index);
+        if (snapshot) restoreSnapshot(snapshot);
+        setShowHistoryDropdown(false);
+    }, [undoRedo, restoreSnapshot]);
+
+    // Keyboard shortcuts for undo/redo
+    useEffect(() => {
+        if (!enableUndoRedoShortcuts) return;
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Don't intercept when typing in a textarea or input
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') return;
+
+            const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+            if (!isCtrlOrMeta) return;
+
+            if (e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                handleUndo();
+            } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+                e.preventDefault();
+                handleRedo();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [enableUndoRedoShortcuts, handleUndo, handleRedo]);
+
+    // Close history dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (historyDropdownRef.current && !historyDropdownRef.current.contains(e.target as Node)) {
+                setShowHistoryDropdown(false);
+            }
+        };
+        if (showHistoryDropdown) {
+            document.addEventListener('mousedown', handleClickOutside);
+            return () => document.removeEventListener('mousedown', handleClickOutside);
+        }
+    }, [showHistoryDropdown]);
 
     // Helper to get row height (actual or default)
     const getRowHeight = useCallback((index: number): number => {
@@ -246,16 +334,19 @@ export function ConflictResolver({
 
     /** Handle user selecting a branch choice (sets both choice and initial content) */
     const handleSelectChoice = useCallback((index: number, choice: ResolutionChoice, resolvedContent: string) => {
-        setChoices(prev => {
-            const next = new Map(prev);
-            next.set(index, {
-                choice,
-                originalContent: resolvedContent,
-                resolvedContent
+        const choiceLabel = choice === 'delete' ? 'Delete cell' : `Use ${choice}`;
+        pushUndoable(`${choiceLabel} (row ${index})`, () => {
+            setChoices(prev => {
+                const next = new Map(prev);
+                next.set(index, {
+                    choice,
+                    originalContent: resolvedContent,
+                    resolvedContent
+                });
+                return next;
             });
-            return next;
         });
-    }, []);
+    }, [pushUndoable]);
 
     /** Handle user editing the resolved content (just updates the text) */
     const handleUpdateContent = useCallback((index: number, resolvedContent: string) => {
@@ -268,37 +359,55 @@ export function ConflictResolver({
         });
     }, []);
 
+    /** Debounced version: push undo for content edits after user stops typing */
+    const contentEditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const handleUpdateContentWithUndo = useCallback((index: number, resolvedContent: string) => {
+        // Immediately update the content for responsive typing
+        handleUpdateContent(index, resolvedContent);
+
+        // Debounce the undo snapshot push
+        if (contentEditTimerRef.current) {
+            clearTimeout(contentEditTimerRef.current);
+        }
+        contentEditTimerRef.current = setTimeout(() => {
+            undoRedo.pushAction(`Edit content (row ${index})`, getCurrentSnapshot());
+            contentEditTimerRef.current = null;
+        }, 1000);
+    }, [handleUpdateContent, undoRedo, getCurrentSnapshot]);
+
     /** Handle "Accept All" action */
     const handleAcceptAll = useCallback((choice: 'base' | 'current' | 'incoming') => {
-        setChoices(prev => {
-            const next = new Map(prev);
-            conflictRows.forEach(row => {
-                const conflictIdx = row.conflictIndex ?? -1;
-                if (conflictIdx < 0) return;
-                if (next.has(conflictIdx)) {
-                    // Respect any already-resolved conflicts when taking all
-                    return;
-                }
+        pushUndoable(`Accept all ${choice}`, () => {
+            setChoices(prev => {
+                const next = new Map(prev);
+                conflictRows.forEach(row => {
+                    const conflictIdx = row.conflictIndex ?? -1;
+                    if (conflictIdx < 0) return;
+                    if (next.has(conflictIdx)) {
+                        // Respect any already-resolved conflicts when taking all
+                        return;
+                    }
 
-                let cell: NotebookCell | undefined;
-                if (choice === 'base') cell = row.baseCell;
-                else if (choice === 'current') cell = row.currentCell;
-                else if (choice === 'incoming') cell = row.incomingCell;
+                    let cell: NotebookCell | undefined;
+                    if (choice === 'base') cell = row.baseCell;
+                    else if (choice === 'current') cell = row.currentCell;
+                    else if (choice === 'incoming') cell = row.incomingCell;
 
-                // If cell exists on the chosen side, use it.
-                // If not (e.g. side deleted the cell), we resolve to "delete" (empty).
-                const effectiveChoice: ResolutionChoice = cell ? choice : 'delete';
-                const content = cell ? normalizeCellSource(cell.source) : '';
+                    // If cell exists on the chosen side, use it.
+                    // If not (e.g. side deleted the cell), we resolve to "delete" (empty).
+                    const effectiveChoice: ResolutionChoice = cell ? choice : 'delete';
+                    const content = cell ? normalizeCellSource(cell.source) : '';
 
-                next.set(conflictIdx, {
-                    choice: effectiveChoice,
-                    originalContent: content,
-                    resolvedContent: content
+                    next.set(conflictIdx, {
+                        choice: effectiveChoice,
+                        originalContent: content,
+                        resolvedContent: content
+                    });
                 });
+                return next;
             });
-            return next;
         });
-    }, [conflictRows]);
+    }, [conflictRows, pushUndoable]);
 
     const handleResolve = useCallback(() => {
         const resolutions: ConflictChoice[] = [];
@@ -369,49 +478,51 @@ export function ConflictResolver({
         if (draggedCell.rowIndex === targetRowIndex) return;
 
         // Move cell from source row to target row
-        setRows(prevRows => {
-            const newRows = [...prevRows];
-            const sourceRow = { ...newRows[draggedCell.rowIndex] };
-            const targetRow = { ...newRows[targetRowIndex] };
+        pushUndoable(`Move cell to row ${targetRowIndex}`, () => {
+            setRows(prevRows => {
+                const newRows = [...prevRows];
+                const sourceRow = { ...newRows[draggedCell.rowIndex] };
+                const targetRow = { ...newRows[targetRowIndex] };
 
-            // Set the cell in target row
-            if (targetSide === 'base') {
-                targetRow.baseCell = draggedCell.cell;
-            } else if (targetSide === 'current') {
-                targetRow.currentCell = draggedCell.cell;
-            } else {
-                targetRow.incomingCell = draggedCell.cell;
-            }
+                // Set the cell in target row
+                if (targetSide === 'base') {
+                    targetRow.baseCell = draggedCell.cell;
+                } else if (targetSide === 'current') {
+                    targetRow.currentCell = draggedCell.cell;
+                } else {
+                    targetRow.incomingCell = draggedCell.cell;
+                }
 
-            // Remove cell from source row
-            if (draggedCell.side === 'base') {
-                sourceRow.baseCell = undefined;
-            } else if (draggedCell.side === 'current') {
-                sourceRow.currentCell = undefined;
-            } else {
-                sourceRow.incomingCell = undefined;
-            }
+                // Remove cell from source row
+                if (draggedCell.side === 'base') {
+                    sourceRow.baseCell = undefined;
+                } else if (draggedCell.side === 'current') {
+                    sourceRow.currentCell = undefined;
+                } else {
+                    sourceRow.incomingCell = undefined;
+                }
 
-            // Update row type based on new cell configuration
-            const sourceHasCells = sourceRow.baseCell || sourceRow.currentCell || sourceRow.incomingCell;
-            const targetCellCount = [targetRow.baseCell, targetRow.currentCell, targetRow.incomingCell].filter(Boolean).length;
+                // Update row type based on new cell configuration
+                const sourceHasCells = sourceRow.baseCell || sourceRow.currentCell || sourceRow.incomingCell;
+                const targetCellCount = [targetRow.baseCell, targetRow.currentCell, targetRow.incomingCell].filter(Boolean).length;
 
-            // Mark target as conflict if it now has cells from multiple sides
-            if (targetCellCount > 1) {
-                targetRow.type = 'conflict';
-            }
-            targetRow.isUnmatched = targetCellCount < 3 && targetCellCount > 0;
+                // Mark target as conflict if it now has cells from multiple sides
+                if (targetCellCount > 1) {
+                    targetRow.type = 'conflict';
+                }
+                targetRow.isUnmatched = targetCellCount < 3 && targetCellCount > 0;
 
-            newRows[draggedCell.rowIndex] = sourceRow;
-            newRows[targetRowIndex] = targetRow;
+                newRows[draggedCell.rowIndex] = sourceRow;
+                newRows[targetRowIndex] = targetRow;
 
-            // Filter out rows with no cells
-            return newRows.filter(r => r.baseCell || r.currentCell || r.incomingCell);
+                // Filter out rows with no cells
+                return newRows.filter(r => r.baseCell || r.currentCell || r.incomingCell);
+            });
         });
 
         setDraggedCell(null);
         setDropTarget(null);
-    }, [draggedCell]);
+    }, [draggedCell, pushUndoable]);
 
     // Row reorder handlers
     const handleRowDragStart = useCallback((index: number) => {
@@ -439,16 +550,27 @@ export function ConflictResolver({
             return;
         }
 
-        const newRows = [...rows];
-        const [draggedRow] = newRows.splice(draggedRowIndex, 1);
-        newRows.splice(targetIndex, 0, draggedRow);
-        setRows(newRows);
+        pushUndoable(`Reorder row ${draggedRowIndex} → ${targetIndex}`, () => {
+            const newRows = [...rows];
+            const [draggedRow] = newRows.splice(draggedRowIndex, 1);
+            newRows.splice(targetIndex, 0, draggedRow);
+            setRows(newRows);
+        });
         setDraggedRowIndex(null);
         setDropRowIndex(null);
-    }, [draggedRowIndex, rows]);
+    }, [draggedRowIndex, rows, pushUndoable]);
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
     const allowCellDrag = true;
+
+    /** Format a timestamp relative to now */
+    const formatTime = (timestamp: number): string => {
+        const diff = Math.floor((Date.now() - timestamp) / 1000);
+        if (diff < 5) return 'just now';
+        if (diff < 60) return `${diff}s ago`;
+        if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+        return `${Math.floor(diff / 3600)}h ago`;
+    };
 
     return (
         <div className="app-container">
@@ -458,6 +580,54 @@ export function ConflictResolver({
                     <span className="file-path">{fileName}</span>
                 </div>
                 <div className="header-right">
+                    {/* Undo/Redo controls */}
+                    <div className="undo-redo-group" ref={historyDropdownRef}>
+                        <button
+                            className="btn btn-icon"
+                            onClick={handleUndo}
+                            disabled={!undoRedo.canUndo}
+                            title={`Undo${enableUndoRedoShortcuts ? ' (Ctrl+Z)' : ''}`}
+                            data-testid="undo-btn"
+                        >
+                            ↩
+                        </button>
+                        <button
+                            className="btn btn-icon"
+                            onClick={handleRedo}
+                            disabled={!undoRedo.canRedo}
+                            title={`Redo${enableUndoRedoShortcuts ? ' (Ctrl+Shift+Z)' : ''}`}
+                            data-testid="redo-btn"
+                        >
+                            ↪
+                        </button>
+                        <button
+                            className="btn btn-icon btn-history-toggle"
+                            onClick={() => setShowHistoryDropdown(prev => !prev)}
+                            title="Action history"
+                            data-testid="history-toggle-btn"
+                        >
+                            ▾
+                        </button>
+                        {showHistoryDropdown && (
+                            <div className="history-dropdown" data-testid="history-dropdown">
+                                <div className="history-dropdown-header">History</div>
+                                <div className="history-dropdown-list">
+                                    {undoRedo.history.map((entry, i) => (
+                                        <button
+                                            key={i}
+                                            className={`history-entry ${i === undoRedo.currentIndex ? 'active' : ''} ${i > undoRedo.currentIndex ? 'undone' : ''}`}
+                                            onClick={() => handleJumpTo(i)}
+                                            data-testid={`history-entry-${i}`}
+                                        >
+                                            <span className="history-entry-label">{entry.label}</span>
+                                            <span className="history-entry-time">{formatTime(entry.timestamp)}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     <span className="conflict-counter">
                         {resolvedCount} / {totalConflicts} resolved
                     </span>
@@ -509,7 +679,12 @@ export function ConflictResolver({
                         <input
                             type="checkbox"
                             checked={renumberExecutionCounts}
-                            onChange={e => setRenumberExecutionCounts(e.target.checked)}
+                            onChange={e => {
+                                const checked = e.target.checked;
+                                pushUndoable(checked ? 'Enable renumber execution counts' : 'Disable renumber execution counts', () => {
+                                    setRenumberExecutionCounts(checked);
+                                });
+                            }}
                         />
                         Renumber execution counts
                     </label>
@@ -517,7 +692,12 @@ export function ConflictResolver({
                         <input
                             type="checkbox"
                             checked={markAsResolved}
-                            onChange={e => setMarkAsResolved(e.target.checked)}
+                            onChange={e => {
+                                const checked = e.target.checked;
+                                pushUndoable(checked ? 'Enable mark as resolved' : 'Disable mark as resolved', () => {
+                                    setMarkAsResolved(checked);
+                                });
+                            }}
                         />
                         Mark as resolved (git add)
                     </label>
@@ -605,7 +785,7 @@ export function ConflictResolver({
                                         conflictIndex={conflictIdx}
                                         resolutionState={resolutionState}
                                         onSelectChoice={handleSelectChoice}
-                                        onUpdateContent={handleUpdateContent}
+                                        onUpdateContent={handleUpdateContentWithUndo}
                                         isDragging={draggedRowIndex === i || draggedCell?.rowIndex === i}
                                         showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
                                         enableCellDrag={allowCellDrag}

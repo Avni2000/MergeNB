@@ -113,6 +113,7 @@ export class WebConflictPanel {
             semanticConflict: this._conflict.semanticConflict,
             autoResolveResult: this._conflict.autoResolveResult,
             hideNonConflictOutputs: this._conflict.hideNonConflictOutputs,
+            enableUndoRedoShortcuts: this._conflict.enableUndoRedoShortcuts,
             currentBranch: this._conflict.semanticConflict?.currentBranch,
             incomingBranch: this._conflict.semanticConflict?.incomingBranch,
         };

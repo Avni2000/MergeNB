@@ -24,6 +24,7 @@ export interface MergeNBSettings {
     autoResolveKernelVersion: boolean;
     stripOutputs: boolean;
     hideNonConflictOutputs: boolean;
+    undoRedoKeyboardShortcuts: boolean;
 }
 
 /** Default settings used in headless mode */
@@ -31,7 +32,8 @@ const DEFAULT_SETTINGS: MergeNBSettings = {
     autoResolveExecutionCount: true,
     autoResolveKernelVersion: true,
     stripOutputs: true,
-    hideNonConflictOutputs: true
+    hideNonConflictOutputs: true,
+    undoRedoKeyboardShortcuts: true,
 };
 
 /**
@@ -50,6 +52,7 @@ export function getSettings(): MergeNBSettings {
         autoResolveKernelVersion: config.get<boolean>('autoResolve.kernelVersion', true),
         stripOutputs: config.get<boolean>('autoResolve.stripOutputs', true),
         hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', true),
+        undoRedoKeyboardShortcuts: config.get<boolean>('ui.undoRedoKeyboardShortcuts', true),
     };
 }
 

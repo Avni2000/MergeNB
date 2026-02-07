@@ -863,6 +863,125 @@ body {
     border-radius: 2px;
     text-decoration: line-through;
 }
+
+/* Undo/Redo controls */
+.undo-redo-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-right: 12px;
+    padding-right: 12px;
+    border-right: 1px solid var(--border-color);
+    position: relative;
+}
+
+.btn-icon {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    font-size: 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+}
+
+.btn-icon:hover:not(:disabled) {
+    background: #3c3c3c;
+}
+
+.btn-icon:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.btn-history-toggle {
+    font-size: 10px;
+    width: 20px;
+}
+
+/* History dropdown */
+.history-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 6px;
+    width: 280px;
+    max-height: 320px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.history-dropdown-header {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+}
+
+.history-dropdown-list {
+    overflow-y: auto;
+    flex: 1;
+}
+
+.history-entry {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    background: none;
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.1s;
+    border-bottom: 1px solid rgba(60, 60, 60, 0.5);
+}
+
+.history-entry:hover {
+    background: var(--bg-tertiary);
+}
+
+.history-entry.active {
+    background: rgba(0, 122, 204, 0.2);
+    border-left: 3px solid var(--accent-blue);
+    padding-left: 9px;
+}
+
+.history-entry.undone {
+    opacity: 0.45;
+}
+
+.history-entry-label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-right: 8px;
+}
+
+.history-entry-time {
+    font-size: 10px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
 `;
 
 export function injectStyles(): void {
