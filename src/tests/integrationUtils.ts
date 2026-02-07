@@ -131,6 +131,46 @@ export async function waitForAllConflictsResolved(
     return last;
 }
 
+export async function waitForResolvedCount(
+    page: Page,
+    expectedResolved: number,
+    timeoutMs = 5000,
+    pollMs = 200,
+): Promise<{ resolved: number; total: number }> {
+    const start = Date.now();
+    let last = await getResolvedCount(page);
+    while (Date.now() - start < timeoutMs) {
+        last = await getResolvedCount(page);
+        if (last.resolved === expectedResolved) {
+            return last;
+        }
+        await new Promise(r => setTimeout(r, pollMs));
+    }
+    return last;
+}
+
+export async function clickHistoryUndo(page: Page): Promise<void> {
+    const button = page.locator('[data-testid="history-undo"]');
+    await button.waitFor({ timeout: 5000 });
+    await button.click();
+}
+
+export async function clickHistoryRedo(page: Page): Promise<void> {
+    const button = page.locator('[data-testid="history-redo"]');
+    await button.waitFor({ timeout: 5000 });
+    await button.click();
+}
+
+export async function getHistoryEntries(page: Page): Promise<string[]> {
+    const items = page.locator('[data-testid="history-item"]');
+    const count = await items.count();
+    const entries: string[] = [];
+    for (let i = 0; i < count; i++) {
+        entries.push((await items.nth(i).textContent())?.trim() || '');
+    }
+    return entries;
+}
+
 export async function collectExpectedCellsFromUI(
     page: Page,
     options: {

@@ -86,6 +86,61 @@ body {
     border-radius: 12px;
 }
 
+/* History panel */
+.history-panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+}
+
+.history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.history-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.history-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.history-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 120px;
+    overflow-y: auto;
+}
+
+.history-item {
+    font-size: 12px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.history-item.current {
+    border: 1px solid var(--accent-blue);
+    background: rgba(0, 122, 204, 0.15);
+}
+
+.history-item.future {
+    opacity: 0.55;
+}
+
 /* Buttons */
 .btn {
     padding: 6px 14px;

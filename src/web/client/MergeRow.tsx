@@ -43,6 +43,7 @@ interface MergeRowProps {
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onUpdateContent: (index: number, resolvedContent: string) => void;
+    onCommitContent: (index: number) => void;
     isDragging?: boolean;
     showOutputs?: boolean;
     enableCellDrag?: boolean;
@@ -64,6 +65,7 @@ export function MergeRow({
     resolutionState,
     onSelectChoice,
     onUpdateContent,
+    onCommitContent,
     isDragging = false,
     showOutputs = true,
     enableCellDrag = true,
@@ -345,6 +347,7 @@ export function MergeRow({
                         className="resolved-content-input"
                         value={resolutionState.resolvedContent}
                         onChange={handleContentChange}
+                        onBlur={() => onCommitContent(conflictIndex)}
                         placeholder="Enter cell content..."
                         rows={Math.max(5, resolutionState.resolvedContent.split('\n').length + 1)}
                     />
