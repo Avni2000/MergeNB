@@ -20,9 +20,12 @@ import {
     verifyAllConflictsMatchSide,
     getResolvedCount,
     waitForAllConflictsResolved,
+    waitForResolvedCount,
     getColumnCell,
     getColumnCellType,
     collectExpectedCellsFromUI,
+    clickHistoryUndo,
+    clickHistoryRedo,
 } from './integrationUtils';
 import {
     readTestConfig,
@@ -123,6 +126,37 @@ async function verifyTakeAllUnresolved(
     }
 }
 
+async function verifyManualSelectionsAfterUndo(
+    page: import('playwright').Page,
+    manualRows: Array<{ index: number; expectedSource: string }>
+): Promise<void> {
+    const rows = page.locator('.merge-row.conflict-row');
+    const count = await rows.count();
+    const manualIndex = new Map(manualRows.map(r => [r.index, r]));
+
+    for (let i = 0; i < count; i++) {
+        const row = rows.nth(i);
+        const manual = manualIndex.get(i);
+        const textarea = row.locator('.resolved-content-input');
+        const deleted = row.locator('.resolved-cell.resolved-deleted');
+
+        if (manual) {
+            if (await textarea.count() === 0) {
+                throw new Error(`Row ${i}: expected manual resolution after undo`);
+            }
+            const actualValue = await textarea.inputValue();
+            if (actualValue !== manual.expectedSource) {
+                throw new Error(`Row ${i}: manual resolution mismatch after undo`);
+            }
+            continue;
+        }
+
+        if (await textarea.count() > 0 || await deleted.count() > 0) {
+            throw new Error(`Row ${i}: expected unresolved state after undo`);
+        }
+    }
+}
+
 export async function run(): Promise<void> {
     console.log('Starting MergeNB Take-All Buttons Integration Test...');
 
@@ -137,6 +171,7 @@ export async function run(): Promise<void> {
         const mode = config.params?.mode || 'all';
         const manualChoice = config.params?.manualChoice as MergeSide | undefined;
         const manualCount = config.params?.manualCount ?? 2;
+        const undoRedo = config.params?.undoRedo ?? false;
         if (action !== 'base' && action !== 'current' && action !== 'incoming') {
             throw new Error(`Invalid or missing action param. Expected 'base'|'current'|'incoming', got '${action}'`);
         }
@@ -215,6 +250,36 @@ export async function run(): Promise<void> {
                 throw new Error(`${result.mismatches.length} mismatches after "${buttonLabel}"`);
             }
             console.log(`  ✓ All resolved cells match ${action}-side content in UI`);
+        }
+
+        if (undoRedo) {
+            console.log('\n=== Undo/Redo Take-All ===');
+            const expectedResolvedBefore = mode === 'unresolved' ? manualSelections.length : initial.resolved;
+
+            await clickHistoryUndo(p);
+            const afterUndo = await waitForResolvedCount(p, expectedResolvedBefore, 7000);
+            if (afterUndo.resolved !== expectedResolvedBefore) {
+                throw new Error(`Undo expected ${expectedResolvedBefore} resolved, got ${afterUndo.resolved}`);
+            }
+
+            if (mode === 'unresolved') {
+                await verifyManualSelectionsAfterUndo(p, manualSelections.map(m => ({
+                    index: m.index,
+                    expectedSource: m.expectedSource,
+                })));
+            }
+
+            await clickHistoryRedo(p);
+            await waitForAllConflictsResolved(p, 7000);
+
+            if (mode === 'unresolved') {
+                await verifyTakeAllUnresolved(p, action as MergeSide, manualSelections);
+            } else {
+                const redoResult = await verifyAllConflictsMatchSide(p, action as MergeSide);
+                if (redoResult.mismatches.length > 0) {
+                    throw new Error(`Redo mismatches after "${buttonLabel}"`);
+                }
+            }
         }
 
         // Build expected resolved cells from UI before applying

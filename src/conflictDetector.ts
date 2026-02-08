@@ -81,32 +81,6 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
             console.warn('Failed to parse incoming notebook:', error);
         }
 
-        // Debug: Check parsed notebooks
-        if (baseNotebook && currentNotebook && incomingNotebook) {
-            const baseLegoCell = baseNotebook.cells.find(c => {
-                const src = Array.isArray(c.source) ? c.source.join('') : c.source;
-                return src.includes('2.3 The Lego Analogy');
-            });
-            const currentLegoCell = currentNotebook.cells.find(c => {
-                const src = Array.isArray(c.source) ? c.source.join('') : c.source;
-                return src.includes('2.3 The Lego Analogy');
-            });
-            const incomingLegoCell = incomingNotebook.cells.find(c => {
-                const src = Array.isArray(c.source) ? c.source.join('') : c.source;
-                return src.includes('2.3 The Lego Analogy');
-            });
-            
-            if (baseLegoCell) {
-                const baseSrc = Array.isArray(baseLegoCell.source) ? baseLegoCell.source.join('') : baseLegoCell.source;
-                const currentSrc = currentLegoCell ? (Array.isArray(currentLegoCell.source) ? currentLegoCell.source.join('') : currentLegoCell.source) : '';
-                const incomingSrc = incomingLegoCell ? (Array.isArray(incomingLegoCell.source) ? incomingLegoCell.source.join('') : incomingLegoCell.source) : '';
-                
-                console.log('[MergeNB] LEGO CELL PARSED:');
-                console.log('[MergeNB] - base has "Key insight":', baseSrc.includes('Key insight'));
-                console.log('[MergeNB] - current has "Key insight":', currentSrc.includes('Key insight'));
-                console.log('[MergeNB] - incoming has "Key insight":', incomingSrc.includes('Key insight'));
-            }
-        }
 
         // If we couldn't parse at least current and incoming, can't detect semantic conflicts
         if (!currentNotebook && !incomingNotebook) {

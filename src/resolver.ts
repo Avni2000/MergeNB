@@ -196,7 +196,8 @@ export class NotebookConflictResolver {
             type: 'semantic',
             semanticConflict: filteredSemanticConflict,
             autoResolveResult: autoResolveResult,
-            hideNonConflictOutputs: settings.hideNonConflictOutputs
+            hideNonConflictOutputs: settings.hideNonConflictOutputs,
+            enableUndoRedoHotkeys: settings.enableUndoRedoHotkeys
         };
 
         const resolutionCallback = async (resolution: UnifiedResolution): Promise<void> => {

@@ -7,6 +7,7 @@
  * - autoResolveKernelVersion: Use current kernel/Python version (default: true)  
  * - stripOutputs: Clear cell outputs during merge (default: true)
  * - hideNonConflictOutputs: Hide outputs for non-conflicted cells in UI (default: true)
+ * - enableUndoRedoHotkeys: Enable Ctrl+Z / Ctrl+Shift+Z in web UI (default: true)
  * 
  * These reduce manual conflict resolution for common non-semantic differences.
  */
@@ -24,6 +25,7 @@ export interface MergeNBSettings {
     autoResolveKernelVersion: boolean;
     stripOutputs: boolean;
     hideNonConflictOutputs: boolean;
+    enableUndoRedoHotkeys: boolean;
 }
 
 /** Default settings used in headless mode */
@@ -31,7 +33,8 @@ const DEFAULT_SETTINGS: MergeNBSettings = {
     autoResolveExecutionCount: true,
     autoResolveKernelVersion: true,
     stripOutputs: true,
-    hideNonConflictOutputs: true
+    hideNonConflictOutputs: true,
+    enableUndoRedoHotkeys: true
 };
 
 /**
@@ -50,6 +53,7 @@ export function getSettings(): MergeNBSettings {
         autoResolveKernelVersion: config.get<boolean>('autoResolve.kernelVersion', true),
         stripOutputs: config.get<boolean>('autoResolve.stripOutputs', true),
         hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', true),
+        enableUndoRedoHotkeys: config.get<boolean>('ui.enableUndoRedoHotkeys', true),
     };
 }
 
