@@ -33,11 +33,6 @@ MergeNB aims to fix all of that. It features, in no particular order:
 ![Unmatched cell Example](readme-assets/two_unmatched.png)
 *This cell should be matched, but it is >30% different from the other two. This requires manual resolution*
 
-(d) Action History: Resolution steps are tracked with a history panel, including undo/redo controls.
-
-![History panel with undo/redo](readme-assets/history-panel.png)
-
-
 ## Extension Settings
 
 - mergeNB.autoResolve.executionCount: Automatically resolve execution count differences by setting `execution_count` to `null`. Default = true

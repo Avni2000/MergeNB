@@ -29,6 +29,8 @@ export interface UnifiedConflict {
     autoResolveResult?: AutoResolveResult;
     /** Whether to hide outputs for non-conflicted cells */
     hideNonConflictOutputs?: boolean;
+    /** Whether undo/redo hotkeys are enabled in the web UI */
+    enableUndoRedoHotkeys?: boolean;
 }
 
 /**

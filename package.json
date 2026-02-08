@@ -91,6 +91,11 @@
           "type": "boolean",
           "default": false,
           "description": "Show cell type, execution count, and cell index in the conflict resolution view"
+        },
+        "mergeNB.ui.enableUndoRedoHotkeys": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Ctrl+Z / Ctrl+Shift+Z undo and redo shortcuts in the conflict resolution web UI"
         }
       }
     }

@@ -76,6 +76,11 @@ const TEST_CASES: TestCaseDefinition[] = [
         testModule: './vscodeIntegration.test.js',
     },
     {
+        name: '02_undoRedoActions',
+        notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
+        testModule: './undoRedoActions.test.js',
+    },
+    {
         name: '04_takeAllButtons_base',
         notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
         testModule: './takeAllButtons.test.js',
