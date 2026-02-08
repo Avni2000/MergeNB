@@ -192,12 +192,7 @@ export async function run(): Promise<void> {
         // Action 5: move unmatched cell + undo/redo
         console.log('\n=== Undo/Redo: Move Unmatched Cell ===');
 
-        // Listen for browser errors
-        const browserErrors: string[] = [];
-        page.on('pageerror', err => browserErrors.push(err.message));
-
         const movePair = await findCellMovePair(page);
-        console.log(`  Move pair: side=${movePair.side}, source=${movePair.sourceRowId}, target=${movePair.targetRowId}`);
         const sourceRow = page.locator(`[data-testid="${movePair.sourceRowId}"]`);
         const targetRow = page.locator(`[data-testid="${movePair.targetRowId}"]`);
 
@@ -210,7 +205,6 @@ export async function run(): Promise<void> {
         if (!sourceCellData) {
             throw new Error('Could not read source cell data before move');
         }
-        console.log(`  Source cell data length: ${sourceCellData.length}`);
 
         // Use programmatic drag-and-drop via page.evaluate to ensure events fire correctly
         const sourceSelector = `[data-testid="${movePair.sourceRowId}"] .${movePair.side}-column .notebook-cell`;
@@ -241,31 +235,22 @@ export async function run(): Promise<void> {
                 bubbles: true, cancelable: true,
             }));
         }, { src: sourceSelector, tgt: targetSelector });
-        console.log('  Drag events dispatched');
 
         // Wait for React to process the state update
         await page.waitForTimeout(500);
 
-        if (browserErrors.length > 0) {
-            console.log(`  Browser errors: ${browserErrors.join('; ')}`);
-        }
-
         const movedCell = targetRow.locator(`.${movePair.side}-column .notebook-cell`).first();
         await movedCell.waitFor({ timeout: 5000 });
-        console.log('  Moved cell found in target');
         const movedCellData = await movedCell.getAttribute('data-cell');
         if (movedCellData !== sourceCellData) {
             throw new Error('Moved cell data did not match source cell data');
         }
 
         await clickHistoryUndo(page);
-        console.log('  Undo clicked, waiting for source cell...');
         await sourceRow.locator(`.${movePair.side}-column .notebook-cell`).first().waitFor({ timeout: 5000 });
-        console.log('  Source cell restored, waiting for target placeholder...');
         await targetRow.locator(`.${movePair.side}-column .cell-placeholder`).first().waitFor({ timeout: 5000 });
 
         await clickHistoryRedo(page);
-        console.log('  Redo clicked, waiting for target cell...');
         await targetRow.locator(`.${movePair.side}-column .notebook-cell`).first().waitFor({ timeout: 5000 });
         console.log('  ✓ Undo/redo restored moved cell');
 
