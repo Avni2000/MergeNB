@@ -13,6 +13,9 @@ import {
     getColumnCellType,
     ensureCheckboxChecked,
     collectExpectedCellsFromUI,
+    clickHistoryUndo,
+    clickHistoryRedo,
+    getHistoryEntries,
     type ConflictChoice,
 } from './integrationUtils';
 import {
@@ -47,6 +50,11 @@ export async function run(): Promise<void> {
 
         if (conflictCount === 0) {
             throw new Error('Should have at least one conflict row');
+        }
+
+        const initialHistoryEntries = await getHistoryEntries(page);
+        if (initialHistoryEntries.length === 0 || !initialHistoryEntries[0].toLowerCase().includes('initial')) {
+            throw new Error('History panel should start with initial state');
         }
 
         // Count unmatched cells before resolving
@@ -154,11 +162,27 @@ export async function run(): Promise<void> {
             await button.waitFor({ timeout: 10000 });
             await button.click();
 
-            if (isDeleteAction) {
-                await row.locator('.resolved-deleted').waitFor({ timeout: 5000 });
-            } else {
-                await row.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+            const resolvedSelector = isDeleteAction ? '.resolved-deleted' : '.resolved-content-input';
+            await row.locator(resolvedSelector).waitFor({ timeout: 5000 });
 
+            if (conflictIdx === 0) {
+                const updatedHistory = await getHistoryEntries(page);
+                if (updatedHistory.length <= initialHistoryEntries.length) {
+                    throw new Error('Expected history panel to record the first resolution action');
+                }
+                const lastEntry = updatedHistory[updatedHistory.length - 1].toLowerCase();
+                if (!lastEntry.includes('resolve conflict 1')) {
+                    throw new Error(`Unexpected history entry for first resolution: ${lastEntry}`);
+                }
+
+                await clickHistoryUndo(page);
+                await row.locator(resolvedSelector).waitFor({ state: 'detached', timeout: 5000 });
+
+                await clickHistoryRedo(page);
+                await row.locator(resolvedSelector).waitFor({ timeout: 5000 });
+            }
+
+            if (!isDeleteAction) {
                 // Modify textarea content to append choice indicator
                 const textarea = row.locator('.resolved-content-input');
                 const originalContent = await textarea.inputValue();

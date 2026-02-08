@@ -43,10 +43,14 @@ interface MergeRowProps {
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onUpdateContent: (index: number, resolvedContent: string) => void;
+    onCommitContent: (index: number) => void;
     isDragging?: boolean;
     showOutputs?: boolean;
     enableCellDrag?: boolean;
     isVisible?: boolean; // For lazy rendering optimization
+    rowDragEnabled?: boolean;
+    onRowDragStart?: (rowIndex: number) => void;
+    onRowDragEnd?: () => void;
     // Cell drag props
     draggedCell: DraggedCellData | null;
     dropTarget: DropTarget | null;
@@ -64,10 +68,14 @@ export function MergeRow({
     resolutionState,
     onSelectChoice,
     onUpdateContent,
+    onCommitContent,
     isDragging = false,
     showOutputs = true,
     enableCellDrag = true,
     isVisible = true,
+    rowDragEnabled = true,
+    onRowDragStart,
+    onRowDragEnd,
     draggedCell,
     dropTarget,
     onCellDragStart,
@@ -130,6 +138,24 @@ export function MergeRow({
         onUpdateContent(conflictIndex, e.target.value);
     };
 
+    const canDragRow = rowDragEnabled && Boolean(onRowDragStart);
+    const rowDragHandle = canDragRow ? (
+        <div
+            className="row-drag-handle"
+            draggable={true}
+            onDragStart={(e) => {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', 'row');
+                onRowDragStart?.(rowIndex);
+            }}
+            onDragEnd={() => onRowDragEnd?.()}
+            title="Drag to reorder row"
+            data-testid="row-drag-handle"
+        >
+            :::
+        </div>
+    ) : null;
+
     // For identical rows, show a unified single cell
     if (!isConflict) {
         const cell = row.currentCell || row.incomingCell || row.baseCell;
@@ -144,6 +170,7 @@ export function MergeRow({
                 data-cell-type={cellType}
                 data-cell={encodeURIComponent(cell ? JSON.stringify(cell) : '')}
             >
+                {rowDragHandle}
                 <div className="cell-columns">
                     <div className="cell-column" style={{ gridColumn: '1 / -1' }}>
                         <CellContent
@@ -190,9 +217,9 @@ export function MergeRow({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
-
     return (
         <div className={rowClasses} data-testid={testId}>
+            {rowDragHandle}
             {/* Warning modal for branch change */}
             {showWarning && (
                 <div className="warning-modal-overlay">
@@ -345,6 +372,7 @@ export function MergeRow({
                         className="resolved-content-input"
                         value={resolutionState.resolvedContent}
                         onChange={handleContentChange}
+                        onBlur={() => onCommitContent(conflictIndex)}
                         placeholder="Enter cell content..."
                         rows={Math.max(5, resolutionState.resolvedContent.split('\n').length + 1)}
                     />

@@ -54,6 +54,7 @@ export interface UnifiedConflictData {
     hideNonConflictOutputs?: boolean;
     currentBranch?: string;
     incomingBranch?: string;
+    enableUndoRedoHotkeys?: boolean;
 }
 
 /**
