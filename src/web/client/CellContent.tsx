@@ -54,10 +54,19 @@ export function CellContent({
         isConflict && 'has-conflict'
     ].filter(Boolean).join(' ');
 
-    // For non-visible cells, render a minimal placeholder to maintain layout
+    // For non-visible cells, render a minimal placeholder to maintain layout.
+    // Keep data attributes + drag handlers so tests and drag/drop remain stable.
     if (!isVisible && cellType === 'markdown') {
         return (
-            <div className={cellClasses} data-lazy="true">
+            <div
+                className={cellClasses}
+                data-lazy="true"
+                draggable={Boolean(isConflict && onDragStart)}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                data-cell={encodedCell}
+                data-cell-type={cellType}
+            >
                 <div className="cell-content">
                     <div style={{ minHeight: '50px', opacity: 0.3 }}>
                         <pre>{source.length > LAZY_PREVIEW_LENGTH ? `${source.substring(0, LAZY_PREVIEW_LENGTH)}...` : source}</pre>

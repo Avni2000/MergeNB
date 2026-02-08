@@ -61,7 +61,7 @@ async function findCellMovePair(page: Page): Promise<{
             const hasSideCell = await row.locator(`.${side}-column .notebook-cell`).count() > 0;
             const hasSidePlaceholder = await row.locator(`.${side}-column .cell-placeholder`).count() > 0;
 
-            if (hasSideCell && cellCount > 1) {
+            if (hasSideCell && cellCount >= 1) {
                 sources.push({ rowId, cellCount });
             }
             if (hasSidePlaceholder) {
@@ -191,7 +191,13 @@ export async function run(): Promise<void> {
 
         // Action 5: move unmatched cell + undo/redo
         console.log('\n=== Undo/Redo: Move Unmatched Cell ===');
+
+        // Listen for browser errors
+        const browserErrors: string[] = [];
+        page.on('pageerror', err => browserErrors.push(err.message));
+
         const movePair = await findCellMovePair(page);
+        console.log(`  Move pair: side=${movePair.side}, source=${movePair.sourceRowId}, target=${movePair.targetRowId}`);
         const sourceRow = page.locator(`[data-testid="${movePair.sourceRowId}"]`);
         const targetRow = page.locator(`[data-testid="${movePair.targetRowId}"]`);
 
@@ -204,21 +210,62 @@ export async function run(): Promise<void> {
         if (!sourceCellData) {
             throw new Error('Could not read source cell data before move');
         }
+        console.log(`  Source cell data length: ${sourceCellData.length}`);
 
-        await sourceCell.dragTo(targetPlaceholder);
+        // Use programmatic drag-and-drop via page.evaluate to ensure events fire correctly
+        const sourceSelector = `[data-testid="${movePair.sourceRowId}"] .${movePair.side}-column .notebook-cell`;
+        const targetSelector = `[data-testid="${movePair.targetRowId}"] .${movePair.side}-column .cell-placeholder`;
+        await page.evaluate(({ src, tgt }) => {
+            const sourceEl = document.querySelector(src) as HTMLElement;
+            const targetEl = document.querySelector(tgt) as HTMLElement;
+            if (!sourceEl || !targetEl) {
+                throw new Error(`Elements not found: src=${!!sourceEl}, tgt=${!!targetEl}`);
+            }
+
+            const dataTransfer = new DataTransfer();
+            dataTransfer.effectAllowed = 'move';
+
+            sourceEl.dispatchEvent(new DragEvent('dragstart', {
+                bubbles: true, cancelable: true, dataTransfer,
+            }));
+
+            targetEl.dispatchEvent(new DragEvent('dragover', {
+                bubbles: true, cancelable: true, dataTransfer,
+            }));
+
+            targetEl.dispatchEvent(new DragEvent('drop', {
+                bubbles: true, cancelable: true, dataTransfer,
+            }));
+
+            sourceEl.dispatchEvent(new DragEvent('dragend', {
+                bubbles: true, cancelable: true,
+            }));
+        }, { src: sourceSelector, tgt: targetSelector });
+        console.log('  Drag events dispatched');
+
+        // Wait for React to process the state update
+        await page.waitForTimeout(500);
+
+        if (browserErrors.length > 0) {
+            console.log(`  Browser errors: ${browserErrors.join('; ')}`);
+        }
 
         const movedCell = targetRow.locator(`.${movePair.side}-column .notebook-cell`).first();
         await movedCell.waitFor({ timeout: 5000 });
+        console.log('  Moved cell found in target');
         const movedCellData = await movedCell.getAttribute('data-cell');
         if (movedCellData !== sourceCellData) {
             throw new Error('Moved cell data did not match source cell data');
         }
 
         await clickHistoryUndo(page);
+        console.log('  Undo clicked, waiting for source cell...');
         await sourceRow.locator(`.${movePair.side}-column .notebook-cell`).first().waitFor({ timeout: 5000 });
+        console.log('  Source cell restored, waiting for target placeholder...');
         await targetRow.locator(`.${movePair.side}-column .cell-placeholder`).first().waitFor({ timeout: 5000 });
 
         await clickHistoryRedo(page);
+        console.log('  Redo clicked, waiting for target cell...');
         await targetRow.locator(`.${movePair.side}-column .notebook-cell`).first().waitFor({ timeout: 5000 });
         console.log('  ✓ Undo/redo restored moved cell');
 
@@ -237,8 +284,41 @@ export async function run(): Promise<void> {
 
         await rowA.scrollIntoViewIfNeeded();
         await rowB.scrollIntoViewIfNeeded();
-        const rowDragHandle = rowA.locator('[data-testid="row-drag-handle"]').first();
-        await rowDragHandle.dragTo(rowB);
+
+        // Use programmatic drag events for row reorder (same approach as cell drag)
+        const handleSelector = `[data-testid="${rowAId}"] [data-testid="row-drag-handle"]`;
+        const rowBSelector = `[data-testid="${rowBId}"]`;
+        await page.evaluate(({ src, tgt }) => {
+            const sourceEl = document.querySelector(src) as HTMLElement;
+            const targetEl = document.querySelector(tgt) as HTMLElement;
+            if (!sourceEl || !targetEl) {
+                throw new Error(`Elements not found: src=${!!sourceEl}, tgt=${!!targetEl}`);
+            }
+
+            const dataTransfer = new DataTransfer();
+            dataTransfer.effectAllowed = 'move';
+            dataTransfer.setData('text/plain', 'row');
+
+            sourceEl.dispatchEvent(new DragEvent('dragstart', {
+                bubbles: true, cancelable: true, dataTransfer,
+            }));
+
+            // Drop on the target row's wrapper (parent)
+            const targetWrapper = targetEl.parentElement || targetEl;
+            targetWrapper.dispatchEvent(new DragEvent('dragover', {
+                bubbles: true, cancelable: true, dataTransfer,
+            }));
+
+            targetWrapper.dispatchEvent(new DragEvent('drop', {
+                bubbles: true, cancelable: true, dataTransfer,
+            }));
+
+            sourceEl.dispatchEvent(new DragEvent('dragend', {
+                bubbles: true, cancelable: true,
+            }));
+        }, { src: handleSelector, tgt: rowBSelector });
+
+        await page.waitForTimeout(500);
 
         const newFirstId = await conflictRows.nth(0).getAttribute('data-testid');
         if (newFirstId === rowAId) {

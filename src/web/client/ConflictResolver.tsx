@@ -123,10 +123,12 @@ export function ConflictResolver({
 
     // Cell-level drag state (for dragging cells between/into rows)
     const [draggedCell, setDraggedCell] = useState<DraggedCellData | null>(null);
+    const draggedCellRef = useRef<DraggedCellData | null>(null);
     const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
     // Row-level drag state (for reordering rows)
     const [draggedRowIndex, setDraggedRowIndex] = useState<number | null>(null);
+    const draggedRowIndexRef = useRef<number | null>(null);
     const [dropRowIndex, setDropRowIndex] = useState<number | null>(null);
 
     const choicesRef = useRef(choices);
@@ -179,6 +181,7 @@ export function ConflictResolver({
         setRows(cloneRows(snapshot.rows));
         setMarkAsResolved(snapshot.markAsResolved);
         setRenumberExecutionCounts(snapshot.renumberExecutionCounts);
+        draggedCellRef.current = null;
         setDraggedCell(null);
         setDropTarget(null);
         setDraggedRowIndex(null);
@@ -556,10 +559,13 @@ export function ConflictResolver({
 
     // Cell drag handlers
     const handleCellDragStart = useCallback((rowIndex: number, side: 'base' | 'current' | 'incoming', cell: NotebookCell) => {
-        setDraggedCell({ rowIndex, side, cell });
+        const data = { rowIndex, side, cell };
+        draggedCellRef.current = data;
+        setDraggedCell(data);
     }, []);
 
     const handleCellDragEnd = useCallback(() => {
+        draggedCellRef.current = null;
         setDraggedCell(null);
         setDropTarget(null);
     }, []);
@@ -568,13 +574,14 @@ export function ConflictResolver({
         e.preventDefault();
         e.stopPropagation();
 
-        if (!draggedCell) return;
+        const dragged = draggedCellRef.current;
+        if (!dragged) return;
 
         // Only allow dropping in the same column (same side)
-        if (draggedCell.side !== side) return;
+        if (dragged.side !== side) return;
 
         // Don't allow dropping on itself
-        if (draggedCell.rowIndex === rowIndex) return;
+        if (dragged.rowIndex === rowIndex) return;
 
         // Only update if the drop target actually changed (prevent excessive re-renders)
         setDropTarget(prev => {
@@ -583,90 +590,104 @@ export function ConflictResolver({
             }
             return { rowIndex, side };
         });
-    }, [draggedCell]);
+    }, []);
 
     const handleCellDrop = useCallback((targetRowIndex: number, targetSide: 'base' | 'current' | 'incoming') => {
-        if (!draggedCell) return;
-        if (draggedCell.side !== targetSide) return;
-        if (draggedCell.rowIndex === targetRowIndex) return;
+        const dragged = draggedCellRef.current;
+        if (!dragged) return;
+        if (dragged.side !== targetSide) return;
+        if (dragged.rowIndex === targetRowIndex) return;
 
         // Move cell from source row to target row
         const newRows = [...rowsRef.current];
-        const sourceRow = { ...newRows[draggedCell.rowIndex] };
+        const sourceRow = { ...newRows[dragged.rowIndex] };
         const targetRow = { ...newRows[targetRowIndex] };
 
         // Set the cell in target row
         if (targetSide === 'base') {
-            targetRow.baseCell = draggedCell.cell;
+            targetRow.baseCell = dragged.cell;
         } else if (targetSide === 'current') {
-            targetRow.currentCell = draggedCell.cell;
+            targetRow.currentCell = dragged.cell;
         } else {
-            targetRow.incomingCell = draggedCell.cell;
+            targetRow.incomingCell = dragged.cell;
         }
 
         // Remove cell from source row
-        if (draggedCell.side === 'base') {
+        if (dragged.side === 'base') {
             sourceRow.baseCell = undefined;
-        } else if (draggedCell.side === 'current') {
+        } else if (dragged.side === 'current') {
             sourceRow.currentCell = undefined;
         } else {
             sourceRow.incomingCell = undefined;
         }
 
-        // Update row type based on new cell configuration
+        // Update target row status
         const targetCellCount = [targetRow.baseCell, targetRow.currentCell, targetRow.incomingCell].filter(Boolean).length;
-
-        // Mark target as conflict if it now has cells from multiple sides
         if (targetCellCount > 1) {
             targetRow.type = 'conflict';
         }
         targetRow.isUnmatched = targetCellCount < 3 && targetCellCount > 0;
 
-        newRows[draggedCell.rowIndex] = sourceRow;
+        // Update source row status
+        const sourceCellCount = [sourceRow.baseCell, sourceRow.currentCell, sourceRow.incomingCell].filter(Boolean).length;
+        if (sourceCellCount > 1) {
+            sourceRow.type = 'conflict';
+        }
+        // If count <= 1, keep existing type (preserves conflict view for unmatched leftovers, maintaining test selectors)
+        sourceRow.isUnmatched = sourceCellCount < 3 && sourceCellCount > 0;
+
+        newRows[dragged.rowIndex] = sourceRow;
         newRows[targetRowIndex] = targetRow;
 
         // Filter out rows with no cells
         const filteredRows = newRows.filter(r => r.baseCell || r.currentCell || r.incomingCell);
         setRows(filteredRows);
         recordHistory(`Move ${targetSide} cell`, choicesRef.current, filteredRows);
+        draggedCellRef.current = null;
         setDraggedCell(null);
         setDropTarget(null);
-    }, [draggedCell, recordHistory]);
+    }, [recordHistory]);
 
     // Row reorder handlers
     const handleRowDragStart = useCallback((index: number) => {
+        draggedRowIndexRef.current = index;
         setDraggedRowIndex(index);
     }, []);
 
     const handleRowDragEnd = useCallback(() => {
+        draggedRowIndexRef.current = null;
         setDraggedRowIndex(null);
         setDropRowIndex(null);
     }, []);
 
     const handleRowDragOver = useCallback((e: React.DragEvent, targetIndex: number) => {
         e.preventDefault();
-        if (draggedRowIndex === null || draggedRowIndex === targetIndex) {
+        const dragged = draggedRowIndexRef.current;
+        if (dragged === null || dragged === targetIndex) {
             return;
         }
         // Only update if target changed (prevent excessive re-renders)
         setDropRowIndex(prev => prev === targetIndex ? prev : targetIndex);
-    }, [draggedRowIndex]);
+    }, []);
 
     const handleRowDrop = useCallback((targetIndex: number) => {
-        if (draggedRowIndex === null || draggedRowIndex === targetIndex) {
+        const dragged = draggedRowIndexRef.current;
+        if (dragged === null || dragged === targetIndex) {
+            draggedRowIndexRef.current = null;
             setDraggedRowIndex(null);
             setDropRowIndex(null);
             return;
         }
 
         const newRows = [...rowsRef.current];
-        const [draggedRow] = newRows.splice(draggedRowIndex, 1);
+        const [draggedRow] = newRows.splice(dragged, 1);
         newRows.splice(targetIndex, 0, draggedRow);
         setRows(newRows);
-        recordHistory(`Reorder row ${draggedRowIndex + 1}`, choicesRef.current, newRows);
+        recordHistory(`Reorder row ${dragged + 1}`, choicesRef.current, newRows);
+        draggedRowIndexRef.current = null;
         setDraggedRowIndex(null);
         setDropRowIndex(null);
-    }, [draggedRowIndex, recordHistory]);
+    }, [recordHistory]);
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
     const allowCellDrag = true;
@@ -902,9 +923,9 @@ export function ConflictResolver({
                                     ref={getRefCallback(i)}
                                     data-row-index={i}
                                     style={{ width: '100%' }}
-                                    onDragOver={draggedRowIndex !== null ? (e) => handleRowDragOver(e, i) : undefined}
-                                    onDrop={draggedRowIndex !== null ? () => handleRowDrop(i) : undefined}
-                                    onDragLeave={draggedRowIndex !== null ? () => setDropRowIndex(null) : undefined}
+                                    onDragOver={(e) => { if (draggedRowIndexRef.current !== null) handleRowDragOver(e, i); }}
+                                    onDrop={() => { if (draggedRowIndexRef.current !== null) handleRowDrop(i); }}
+                                    onDragLeave={() => { if (draggedRowIndexRef.current !== null) setDropRowIndex(null); }}
                                 >
                                     <MergeRow
                                         row={row}
@@ -928,7 +949,7 @@ export function ConflictResolver({
                                         onCellDragEnd={handleCellDragEnd}
                                         onCellDragOver={handleCellDragOver}
                                         onCellDrop={handleCellDrop}
-                                        data-testid={row.type === 'conflict' ? `conflict-row-${conflictIdx}` : `row-${i}`}
+                                        data-testid={conflictIdx >= 0 ? `conflict-row-${conflictIdx}` : `row-${i}`}
                                     />
                                 </div>
 
