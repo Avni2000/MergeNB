@@ -38,18 +38,6 @@ export interface TestConfig {
     params?: any;
 }
 
-/** Definition of a test case used by the runner */
-export interface TestCaseDefinition {
-    /** Unique test name, used to dispatch to the right test module */
-    name: string;
-    /** Notebook files relative to test/ dir: [base, current, incoming] */
-    notebooks: [string, string, string];
-    /** Path to the compiled test module (.js) relative to out/tests/ */
-    testModule: string;
-    /** Optional parameters to pass to the test via config */
-    params?: any;
-}
-
 /** Check if the web server is up */
 export function checkHealth(port: number): Promise<boolean> {
     return new Promise((resolve) => {

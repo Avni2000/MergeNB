@@ -50,4 +50,4 @@ jobs:
           npx playwright install
 
       - name: Run VS Code integration tests under Xvfb
-        run: xvfb-run -a npm run test:vscode
+        run: xvfb-run -a npm run test:integration:all
