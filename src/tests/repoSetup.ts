@@ -18,7 +18,12 @@ function git(cwd: string, ...args: string[]): string {
     try {
         return execSync(cmd, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
     } catch (error: any) {
-        return error.stdout || '';
+        if(args[0] === 'merge') {
+            // Merge conflicts are expected, so return the output even on non-zero exit.
+            return error.stdout || '';
+        }
+        // For other git commands, rethrow the error.
+        throw new Error(`Git command failed: ${cmd}\n${error.stderr || error.message}`);
     }
 }
 
