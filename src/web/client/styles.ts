@@ -456,7 +456,9 @@ body {
     background: var(--bg-secondary);
     border: 1px dashed var(--border-color);
     border-radius: 4px;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
+    font-family: "SF Mono", Monaco, "Cascadia Code", "Courier New", monospace;
+    white-space: pre-wrap;
+    font-size: 12px;
 }
 
 /* Auto-resolve banner */

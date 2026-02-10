@@ -248,12 +248,12 @@ function OutputItem({ output }: { output: CellOutput }): React.ReactElement | nu
 function ImagePlaceholder({ mimeType }: { mimeType: string }): React.ReactElement {
     const placeholderText = `![Image: ${mimeType}]`;
     return (
-        <pre 
+        <div 
             className="image-placeholder"
             role="img"
             aria-label={`Image output of type ${mimeType}`}
         >
             {placeholderText}
-        </pre>
+        </div>
     );
 }
