@@ -456,11 +456,7 @@ body {
     background: var(--bg-secondary);
     border: 1px dashed var(--border-color);
     border-radius: 4px;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-}
-
-.error-output {
-    color: #f48771;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
 }
 
 /* Auto-resolve banner */
