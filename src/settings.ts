@@ -52,16 +52,30 @@ export function getSettings(): MergeNBSettings {
         return { ...DEFAULT_SETTINGS };
     }
 
+    if (process.env.MERGENB_TEST_MODE === 'true') {
+        return { ...DEFAULT_SETTINGS };
+    }
+
+    const defaults: MergeNBSettings = {
+        autoResolveExecutionCount: true,
+        autoResolveKernelVersion: true,
+        stripOutputs: true,
+        autoResolveWhitespace: true,
+        hideNonConflictOutputs: true,
+        enableUndoRedoHotkeys: true,
+        showBaseColumn: false,
+    };
+
     const config = vscode.workspace.getConfiguration('mergeNB');
 
     return {
-        autoResolveExecutionCount: config.get<boolean>('autoResolve.executionCount', true),
-        autoResolveKernelVersion: config.get<boolean>('autoResolve.kernelVersion', true),
-        stripOutputs: config.get<boolean>('autoResolve.stripOutputs', true),
-        autoResolveWhitespace: config.get<boolean>('autoResolve.whitespace', true),
-        hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', true),
-        enableUndoRedoHotkeys: config.get<boolean>('ui.enableUndoRedoHotkeys', true),
-        showBaseColumn: config.get<boolean>('ui.showBaseColumn', false),
+        autoResolveExecutionCount: config.get<boolean>('autoResolve.executionCount', defaults.autoResolveExecutionCount),
+        autoResolveKernelVersion: config.get<boolean>('autoResolve.kernelVersion', defaults.autoResolveKernelVersion),
+        stripOutputs: config.get<boolean>('autoResolve.stripOutputs', defaults.stripOutputs),
+        autoResolveWhitespace: config.get<boolean>('autoResolve.whitespace', defaults.autoResolveWhitespace),
+        hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', defaults.hideNonConflictOutputs),
+        enableUndoRedoHotkeys: config.get<boolean>('ui.enableUndoRedoHotkeys', defaults.enableUndoRedoHotkeys),
+        showBaseColumn: config.get<boolean>('ui.showBaseColumn', defaults.showBaseColumn),
     };
 }
 
