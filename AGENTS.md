@@ -8,7 +8,7 @@ This extension provides a rich UI for notebook-aware conflict resolution. Instea
 
 - **Always parse raw JSON**: Conflicts may be in `cells[].source`, `cells[].outputs`, or `metadata`—never assume they're only in code
 - **Preserve notebook validity**: Resolved output must be valid `.ipynb` JSON with proper cell structure
-- **Handle execution counts**: Git nullifies `execution_count`; optionally restore or renumber after resolution
+- **Handle execution counts**: nbdime nullifies `execution_count`; optionally restore or renumber after resolution
 - **Cell-level diffing**: Show side-by-side or inline diffs for conflicting cells, not raw JSON lines
 
 ## Tech Stack
@@ -41,7 +41,28 @@ Single unified command:
 
 ## Testing
 
-`npm run test:integration` 
+Integration tests use `@vscode/test-electron` to launch VS Code with merge-conflict repos. Tests are organized into groups in `src/tests/registry.ts`.
 
-Test files in `src/test/`:
-- `02_base.ipynb`, `02_current.ipynb`, `02_incoming.ipynb` - three-way semantic conflict test case
+```bash
+npm run test:integration              # Interactive TUI picker to select tests
+npm run test:integration:all          # Run all tests at once
+npm run test:integration:list         # List all available test groups and tests
+node out/tests/runIntegrationTest.js --all              # Direct: run all (skip build)
+node out/tests/runIntegrationTest.js --group takeAll    # Direct: run one group
+node out/tests/runIntegrationTest.js --test takeAll_base    # Direct: run single test
+node out/tests/runIntegrationTest.js --list             # Direct: list all tests
+```
+
+### Key Test Files:
+
+- `src/tests/registry.ts` - Test groups and definitions (add new tests here)
+- `src/tests/repoSetup.ts` - Git merge-conflict repo creation
+- `src/tests/runIntegrationTest.ts` - CLI + TUI runner
+- `src/tests/testHarness.ts` - VS Code extension host setup, browser automation
+- `src/tests/integrationUtils.ts` - Playwright helpers for conflict UI interaction
+
+### Notebook Fixtures Available:
+
+- `test/02_*.ipynb`
+- `test/03_*.ipynb`
+- `test/04_*.ipynb`

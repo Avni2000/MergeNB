@@ -1,195 +1,332 @@
 /**
  * @file runIntegrationTest.ts
- * @description Generic runner that iterates over test cases sequentially.
- * 
- * Each test case:
- * 1. Creates a git repo with merge conflicts from specified notebook triplets
- * 2. Writes a config file with the workspace path and test name
- * 3. Launches VS Code with the extension and the specified test module
- * 4. Cleans up the temporary repo
+ * @description Integration test runner with interactive TUI picker and CLI flags.
+ *
+ * Usage:
+ *   node out/tests/runIntegrationTest.js                  # Interactive TUI picker
+ *   node out/tests/runIntegrationTest.js --all             # Run every test
+ *   node out/tests/runIntegrationTest.js --group takeAll   # Run one group
+ *   node out/tests/runIntegrationTest.js --group takeAll --group undoRedo
+ *   node out/tests/runIntegrationTest.js --test takeAll_base
+ *   node out/tests/runIntegrationTest.js --test takeAll_base --test perCell_02
+ *   node out/tests/runIntegrationTest.js --list            # Print groups & tests
+ *
+ * npm scripts (see package.json):
+ *   npm run test:integration              # Interactive picker
+ *   npm run test:integration -- --all     # Run all
+ *   npm run test:integration -- --list    # List available tests
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
-import { execSync } from 'child_process';
 import { runTests } from '@vscode/test-electron';
-import type { TestCaseDefinition } from './testHelpers';
+import pc from 'picocolors';
+import {
+    TEST_GROUPS,
+    allTests,
+    resolveTests,
+    type TestDef,
+} from './registry';
+import {
+    createMergeConflictRepo,
+    writeTestConfig,
+    cleanup,
+} from './repoSetup';
 
-/** Helper to run git commands */
-function git(cwd: string, ...args: string[]): string {
-    const cmd = `git ${args.join(' ')}`;
-    try {
-        return execSync(cmd, { cwd, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] });
-    } catch (error: any) {
-        // Some git commands exit non-zero but are still useful (e.g., merge with conflicts)
-        return error.stdout || '';
+// @clack/prompts is ESM-only, so we load it lazily via dynamic import.
+let _clack: any;
+async function clack(): Promise<any> {
+    if (!_clack) _clack = await import('@clack/prompts');
+    return _clack;
+}
+
+// ─── CLI arg parsing ────────────────────────────────────────────────────────
+
+interface CliArgs {
+    all: boolean;
+    list: boolean;
+    groups: string[];
+    tests: string[];
+}
+
+function parseArgs(argv: string[]): CliArgs {
+    const args: CliArgs = { all: false, list: false, groups: [], tests: [] };
+    let i = 2; // skip node + script
+    while (i < argv.length) {
+        const arg = argv[i];
+        if (arg === '--all') {
+            args.all = true;
+        } else if (arg === '--list' || arg === '-l') {
+            args.list = true;
+        } else if (arg === '--group' || arg === '-g') {
+            i++;
+            if (i < argv.length) args.groups.push(argv[i]);
+        } else if (arg === '--test' || arg === '-t') {
+            i++;
+            if (i < argv.length) args.tests.push(argv[i]);
+        }
+        i++;
     }
+    return args;
 }
 
-/**
- * Create a temporary git repo with merge conflicts from a notebook triplet.
- * @param baseFile  Absolute path to the base notebook
- * @param currentFile  Absolute path to the current-branch notebook
- * @param incomingFile  Absolute path to the incoming-branch notebook
- */
-function createMergeConflictRepo(baseFile: string, currentFile: string, incomingFile: string): string {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergeNB-integration-'));
+// ─── List command ───────────────────────────────────────────────────────────
 
-    // Initialize git repo
-    git(tmpDir, 'init');
-    git(tmpDir, 'config', 'user.email', '"test@mergenb.test"');
-    git(tmpDir, 'config', 'user.name', '"MergeNB Test"');
+function printTestList(): void {
+    console.log();
+    console.log(pc.bold('Available integration tests'));
+    console.log(pc.dim('─'.repeat(60)));
 
-    // Create base commit
-    fs.copyFileSync(baseFile, path.join(tmpDir, 'conflict.ipynb'));
-    git(tmpDir, 'add', 'conflict.ipynb');
-    git(tmpDir, 'commit', '-m', '"base"');
+    for (const group of TEST_GROUPS) {
+        console.log();
+        console.log(
+            `  ${pc.cyan(pc.bold(group.id))}  ${pc.dim('·')}  ${group.name}`,
+        );
+        console.log(`  ${pc.dim(group.description)}`);
 
-    const baseBranch = git(tmpDir, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
+        for (const test of group.tests) {
+            console.log(
+                `    ${pc.yellow(test.id.padEnd(32))} ${pc.dim(test.description)}`,
+            );
+        }
+    }
 
-    // Create current branch
-    git(tmpDir, 'checkout', '-b', 'current');
-    fs.copyFileSync(currentFile, path.join(tmpDir, 'conflict.ipynb'));
-    git(tmpDir, 'add', 'conflict.ipynb');
-    git(tmpDir, 'commit', '-m', '"current"');
-
-    // Create incoming branch
-    git(tmpDir, 'checkout', baseBranch);
-    git(tmpDir, 'checkout', '-b', 'incoming');
-    fs.copyFileSync(incomingFile, path.join(tmpDir, 'conflict.ipynb'));
-    git(tmpDir, 'add', 'conflict.ipynb');
-    git(tmpDir, 'commit', '-m', '"incoming"');
-
-    // Merge to create conflict
-    git(tmpDir, 'checkout', 'current');
-    git(tmpDir, 'merge', 'incoming');
-
-    return tmpDir;
+    console.log();
+    console.log(pc.dim('─'.repeat(60)));
+    console.log(
+        `  ${pc.dim('Total:')} ${allTests().length} tests in ${TEST_GROUPS.length} groups`,
+    );
+    console.log();
 }
 
-/** All test cases to run sequentially */
-const TEST_CASES: TestCaseDefinition[] = [
-    {
-        name: '02_perCellResolution',
-        notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
-        testModule: './vscodeIntegration.test.js',
-    },
-    {
-        name: '02_undoRedoActions',
-        notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
-        testModule: './undoRedoActions.test.js',
-    },
-    {
-        name: '04_takeAllButtons_base',
-        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
-        testModule: './takeAllButtons.test.js',
-        params: { action: 'base' }
-    },
-    {
-        name: '04_takeAllButtons_current',
-        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
-        testModule: './takeAllButtons.test.js',
-        params: { action: 'current' }
-    },
-    {
-        name: '04_takeAllButtons_incoming',
-        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
-        testModule: './takeAllButtons.test.js',
-        params: { action: 'incoming' }
-    },
-    {
-        name: '04_takeAllButtons_current_undoRedo',
-        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
-        testModule: './takeAllButtons.test.js',
-        params: { action: 'current', undoRedo: true }
-    },
-    {
-        name: '04_takeAllButtons_unresolved_current',
-        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
-        testModule: './takeAllButtons.test.js',
-        params: { action: 'current', mode: 'unresolved', manualChoice: 'incoming', manualCount: 2 }
-    },
-];
+// ─── TUI picker ─────────────────────────────────────────────────────────────
 
-async function main() {
+async function pickTestsInteractively(): Promise<TestDef[]> {
+    const c = await clack();
+    c.intro(pc.bgCyan(pc.black(' MergeNB Integration Tests ')));
+
+    const mode = await c.select({
+        message: 'What do you want to run?',
+        options: [
+            { value: 'all', label: 'Run all tests', hint: `${allTests().length} tests` },
+            { value: 'group', label: 'Pick test group(s)' },
+            { value: 'test', label: 'Pick individual test(s)' },
+        ],
+    });
+
+    if (c.isCancel(mode)) {
+        c.cancel('Cancelled.');
+        process.exit(0);
+    }
+
+    if (mode === 'all') {
+        return allTests();
+    }
+
+    if (mode === 'group') {
+        const selectedGroups = await c.multiselect({
+            message: 'Select group(s) to run',
+            options: TEST_GROUPS.map(g => ({
+                value: g.id,
+                label: g.name,
+                hint: `${g.tests.length} test${g.tests.length > 1 ? 's' : ''} — ${g.description}`,
+            })),
+            required: true,
+        });
+
+        if (c.isCancel(selectedGroups)) {
+            c.cancel('Cancelled.');
+            process.exit(0);
+        }
+
+        return resolveTests(selectedGroups as string[]);
+    }
+
+    // mode === 'test'
+    // Show tests organized under group headers
+    const options: Array<{ value: string; label: string; hint?: string }> = [];
+    for (const group of TEST_GROUPS) {
+        for (const test of group.tests) {
+            options.push({
+                value: test.id,
+                label: test.description,
+                hint: pc.dim(group.name),
+            });
+        }
+    }
+
+    const selectedTests = await c.multiselect({
+        message: 'Select test(s) to run',
+        options,
+        required: true,
+    });
+
+    if (c.isCancel(selectedTests)) {
+        c.cancel('Cancelled.');
+        process.exit(0);
+    }
+
+    return resolveTests(selectedTests as string[]);
+}
+
+// ─── Runner ─────────────────────────────────────────────────────────────────
+
+interface RunResult {
+    test: TestDef;
+    passed: boolean;
+    error?: Error;
+    durationMs: number;
+}
+
+async function runTest(test: TestDef): Promise<RunResult> {
+    const start = Date.now();
     const extensionDevelopmentPath = path.resolve(__dirname, '../..');
     const testDir = path.resolve(__dirname, '../../test');
-    const configPath = path.join(os.tmpdir(), 'mergenb-test-config.json');
+    let workspacePath: string | undefined;
 
-    let failures = 0;
+    try {
+        const [baseFile, currentFile, incomingFile] = test.notebooks.map(n =>
+            path.join(testDir, n),
+        );
 
-    for (const testCase of TEST_CASES) {
-        let testWorkspacePath: string | undefined;
+        for (const f of [baseFile, currentFile, incomingFile]) {
+            if (!fs.existsSync(f)) {
+                throw new Error(`Notebook not found: ${f}`);
+            }
+        }
 
-        console.log(`\n${'='.repeat(60)}`);
-        console.log(`Running test case: ${testCase.name}`);
-        console.log(`  Notebooks: ${testCase.notebooks.join(', ')}`);
-        console.log(`${'='.repeat(60)}\n`);
+        workspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile);
+        const configPath = writeTestConfig(workspacePath, test.id, test.params);
+
+        const extensionTestsPath = path.resolve(__dirname, test.testModule);
 
         try {
-            // Resolve notebook file paths
-            const [baseFile, currentFile, incomingFile] = testCase.notebooks.map(
-                n => path.join(testDir, n)
-            );
-
-            // Verify all notebook files exist
-            for (const f of [baseFile, currentFile, incomingFile]) {
-                if (!fs.existsSync(f)) {
-                    throw new Error(`Notebook file not found: ${f}`);
-                }
-            }
-
-            // Create the merge conflict repo
-            testWorkspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile);
-            console.log(`Created test workspace at: ${testWorkspacePath}`);
-
-            // Write config for the test to read
-            fs.writeFileSync(configPath, JSON.stringify({
-                workspacePath: testWorkspacePath,
-                testName: testCase.name,
-                params: testCase.params
-            }));
-
-            // Resolve test module path
-            const extensionTestsPath = path.resolve(__dirname, testCase.testModule);
-
             await runTests({
                 extensionDevelopmentPath,
                 extensionTestsPath,
                 launchArgs: [
-                    testWorkspacePath,
+                    workspacePath,
                     '--disable-extensions',
                     '--skip-welcome',
                     '--skip-release-notes',
                 ],
             });
-
-            console.log(`\n✓ Test case "${testCase.name}" PASSED\n`);
-
-        } catch (err) {
-            console.error(`\n✗ Test case "${testCase.name}" FAILED:`, err);
-            failures++;
         } finally {
-            // Cleanup
-            if (testWorkspacePath) {
-                try {
-                    fs.rmSync(testWorkspacePath, { recursive: true, force: true });
-                } catch { /* ignore */ }
+            cleanup(configPath);
+        }
+
+        return { test, passed: true, durationMs: Date.now() - start };
+    } catch (err) {
+        return {
+            test,
+            passed: false,
+            error: err instanceof Error ? err : new Error(String(err)),
+            durationMs: Date.now() - start,
+        };
+    } finally {
+        if (workspacePath) cleanup(workspacePath);
+    }
+}
+
+function formatDuration(ms: number): string {
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+}
+
+async function runAll(tests: TestDef[]): Promise<void> {
+    const totalStart = Date.now();
+    const results: RunResult[] = [];
+
+    console.log();
+    console.log(pc.bold(`Running ${tests.length} test${tests.length > 1 ? 's' : ''}…`));
+    console.log(pc.dim('─'.repeat(60)));
+
+    for (let i = 0; i < tests.length; i++) {
+        const test = tests[i];
+        const prefix = pc.dim(`[${i + 1}/${tests.length}]`);
+        console.log(`\n${prefix} ${pc.cyan(test.id)} ${pc.dim('·')} ${test.description}`);
+
+        const result = await runTest(test);
+        results.push(result);
+
+        if (result.passed) {
+            console.log(
+                `${prefix} ${pc.green('✓ PASS')} ${pc.dim(formatDuration(result.durationMs))}`,
+            );
+        } else {
+            console.log(
+                `${prefix} ${pc.red('✗ FAIL')} ${pc.dim(formatDuration(result.durationMs))}`,
+            );
+            if (result.error) {
+                console.log(`  ${pc.red(result.error.message)}`);
             }
-            try {
-                fs.unlinkSync(configPath);
-            } catch { /* ignore */ }
         }
     }
 
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`Results: ${TEST_CASES.length - failures}/${TEST_CASES.length} passed`);
-    console.log(`${'='.repeat(60)}\n`);
+    // Summary
+    const passed = results.filter(r => r.passed).length;
+    const failed = results.filter(r => !r.passed).length;
+    const totalDuration = Date.now() - totalStart;
 
-    if (failures > 0) {
+    console.log();
+    console.log(pc.dim('─'.repeat(60)));
+    console.log(
+        pc.bold('Results: ') +
+            pc.green(`${passed} passed`) +
+            (failed > 0 ? `, ${pc.red(`${failed} failed`)}` : '') +
+            pc.dim(` (${formatDuration(totalDuration)})`),
+    );
+
+    if (failed > 0) {
+        console.log();
+        console.log(pc.red(pc.bold('Failed tests:')));
+        for (const r of results.filter(r => !r.passed)) {
+            console.log(`  ${pc.red('✗')} ${r.test.id}: ${r.error?.message ?? 'unknown error'}`);
+        }
+    }
+
+    console.log();
+
+    if (failed > 0) {
         process.exit(1);
     }
 }
 
-main();
+// ─── Main ───────────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+    const cli = parseArgs(process.argv);
+
+    // --list
+    if (cli.list) {
+        printTestList();
+        return;
+    }
+
+    // --all
+    if (cli.all) {
+        return runAll(allTests());
+    }
+
+    // --group / --test (can be combined)
+    if (cli.groups.length > 0 || cli.tests.length > 0) {
+        const tests = resolveTests([...cli.groups, ...cli.tests]);
+        if (tests.length === 0) {
+            console.error(
+                pc.red('No tests matched the given --group / --test flags.'),
+            );
+            console.error(pc.dim('Run with --list to see available ids.'));
+            process.exit(1);
+        }
+        return runAll(tests);
+    }
+
+    // Interactive TUI picker (default when no flags)
+    const tests = await pickTestsInteractively();
+    return runAll(tests);
+}
+
+main().catch(err => {
+    console.error(pc.red('Fatal error:'), err);
+    process.exit(1);
+});
