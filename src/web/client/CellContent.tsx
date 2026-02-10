@@ -244,6 +244,8 @@ function OutputItem({ output }: { output: CellOutput }): React.ReactElement | nu
 /**
  * Renders a text placeholder for an image output.
  * Uses markdown-style format to provide a consistent, stable representation.
+ * 
+ * @param mimeType - Currently only 'image/png' or 'image/jpeg' are supported and passed by OutputItem
  */
 function ImagePlaceholder({ mimeType }: { mimeType: string }): React.ReactElement {
     const placeholderText = `![Image: ${mimeType}]`;
