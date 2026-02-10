@@ -119,6 +119,7 @@ export class WebConflictPanel {
             incomingBranch: this._conflict.semanticConflict?.incomingBranch,
         };
 
+        logger.debug(`[WebConflictPanel] Sending conflict data with showBaseColumn=${this._conflict.showBaseColumn}`);
         server.sendConflictData(this._sessionId, data);
     }
 
