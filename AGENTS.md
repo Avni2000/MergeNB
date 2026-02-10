@@ -8,7 +8,7 @@ This extension provides a rich UI for notebook-aware conflict resolution. Instea
 
 - **Always parse raw JSON**: Conflicts may be in `cells[].source`, `cells[].outputs`, or `metadata`—never assume they're only in code
 - **Preserve notebook validity**: Resolved output must be valid `.ipynb` JSON with proper cell structure
-- **Handle execution counts**: Git nullifies `execution_count`; optionally restore or renumber after resolution
+- **Handle execution counts**: nbdime nullifies `execution_count`; optionally restore or renumber after resolution
 - **Cell-level diffing**: Show side-by-side or inline diffs for conflicting cells, not raw JSON lines
 
 ## Tech Stack
@@ -51,11 +51,6 @@ node out/tests/runIntegrationTest.js --all              # Direct: run all (skip 
 node out/tests/runIntegrationTest.js --group takeAll    # Direct: run one group
 node out/tests/runIntegrationTest.js --test takeAll_base    # Direct: run single test
 node out/tests/runIntegrationTest.js --list             # Direct: list all tests
-```
-npm run test:integration -- --list    # List available groups & tests
-npm run test:integration -- --group takeAll            # Run a group
-npm run test:integration -- --test takeAll_base        # Run a single test
-npm run test:integration -- --group perCell --group undoRedo  # Multiple groups
 ```
 
 ### Key Test Files:
