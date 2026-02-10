@@ -20,12 +20,14 @@ import { parseNotebook } from './notebookParser';
 import { getSettings, MergeNBSettings } from './settings';
 
 function stripAllWhitespace(text: string): string {
-    return text.replace(/\s+/g, '');
+    return text.replace(/\r\n/g, '\n');
 }
 
 function isWhitespaceOnlyDifference(left: string, right: string): boolean {
     if (left === right) return false;
-    return stripAllWhitespace(left) === stripAllWhitespace(right);
+    const normalizeLines = (s: string) =>
+        s.replace(/\r\n/g, '\n').split('\n').map(l => l.trimEnd()).join('\n');
+    return normalizeLines(left) === normalizeLines(right);
 }
 
 /**
