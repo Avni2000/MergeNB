@@ -115,7 +115,6 @@ export function ConflictResolver({
     // Virtualization state
     const mainContentRef = useRef<HTMLDivElement>(null);
     const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_VISIBLE_ROWS });
-    const [scrollTop, setScrollTop] = useState(0);
 
     // Track actual row heights using ResizeObserver
     const [rowHeights, setRowHeights] = useState<Map<number, number>>(new Map());
@@ -326,8 +325,16 @@ export function ConflictResolver({
         }
     }, []);
 
-    const getRefCallback = useCallback((index: number) => (element: HTMLDivElement | null) => {
-        registerRowRef(index, element);
+    const refCallbackCache = useRef(new Map<number, (el: HTMLDivElement | null) => void>());
+    const getRefCallback = useCallback((index: number): (el: HTMLDivElement | null) => void => {
+        let cb = refCallbackCache.current.get(index);
+        if (!cb) {
+            cb = (element: HTMLDivElement | null) => {
+                registerRowRef(index, element);
+            };
+            refCallbackCache.current.set(index, cb);
+        }
+        return cb;
     }, [registerRowRef]);
 
     // Adjust scroll position when rows are deleted to prevent "black spots"
@@ -371,7 +378,6 @@ export function ConflictResolver({
             const endIndex = Math.min(rows.length, rawEndIndex + VIRTUALIZATION_OVERSCAN_ROWS + 1);
 
             setVisibleRange({ start: startIndex, end: endIndex });
-            setScrollTop(currentScrollTop);
         };
 
         const element = mainContentRef.current;

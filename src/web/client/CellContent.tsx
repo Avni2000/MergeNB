@@ -25,7 +25,7 @@ interface CellContentProps {
     isVisible?: boolean; // For lazy rendering optimization
 }
 
-export function CellContent({
+export function CellContentInner({
     cell,
     cellIndex,
     side,
@@ -46,7 +46,8 @@ export function CellContent({
 
     const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
-    const encodedCell = encodeURIComponent(JSON.stringify(cell));
+    // Memoize expensive JSON serialization
+    const encodedCell = useMemo(() => encodeURIComponent(JSON.stringify(cell)), [cell]);
 
     const cellClasses = [
         'notebook-cell',
@@ -124,7 +125,8 @@ interface DiffContentProps {
 }
 
 function DiffContent({ source, compareSource, side }: DiffContentProps): React.ReactElement {
-    const diff = computeLineDiff(compareSource, source);
+    // Memoize expensive LCS-based diff computation
+    const diff = useMemo(() => computeLineDiff(compareSource, source), [compareSource, source]);
     // Use the right side for display (shows the "new" content with change markers)
     const diffLines = diff.right;
     // Filter out empty alignment lines to avoid unnecessary whitespace
@@ -262,3 +264,25 @@ function ImagePlaceholder({ mimeType }: { mimeType: string }): React.ReactElemen
         </div>
     );
 }
+
+/**
+ * Custom comparator for React.memo.
+ * Compares props that affect rendered output, treating drag handler reference
+ * changes as equal if their defined/undefined status hasn't changed.
+ */
+function areCellContentPropsEqual(prev: CellContentProps, next: CellContentProps): boolean {
+    if (prev.cell !== next.cell) return false;
+    if (prev.cellIndex !== next.cellIndex) return false;
+    if (prev.side !== next.side) return false;
+    if (prev.isConflict !== next.isConflict) return false;
+    if (prev.compareCell !== next.compareCell) return false;
+    if (prev.showOutputs !== next.showOutputs) return false;
+    if (prev.isVisible !== next.isVisible) return false;
+    // Drag handlers: only care if defined/undefined changed (affects draggable attribute),
+    // not about reference identity (the actual handler logic is stable)
+    if (Boolean(prev.onDragStart) !== Boolean(next.onDragStart)) return false;
+    if (Boolean(prev.onDragEnd) !== Boolean(next.onDragEnd)) return false;
+    return true;
+}
+
+export const CellContent = React.memo(CellContentInner, areCellContentPropsEqual);

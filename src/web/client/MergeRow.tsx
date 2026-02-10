@@ -9,7 +9,7 @@
  * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource } from '../../notebookUtils';
@@ -61,7 +61,7 @@ interface MergeRowProps {
     'data-testid'?: string;
 }
 
-export function MergeRow({
+export function MergeRowInner({
     row,
     rowIndex,
     conflictIndex,
@@ -134,9 +134,36 @@ export function MergeRow({
     };
 
     // Handle content editing in the resolved text area
-    const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const handleContentChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
         onUpdateContent(conflictIndex, e.target.value);
-    };
+    }, [conflictIndex, onUpdateContent]);
+
+    // Commit content to history on blur
+    const handleBlur = useCallback(() => {
+        onCommitContent(conflictIndex);
+    }, [conflictIndex, onCommitContent]);
+
+    // Memoized cell drag handlers to prevent CellContent re-renders
+    const handleBaseCellDragStart = useCallback((e: React.DragEvent) => {
+        e.dataTransfer.effectAllowed = 'move';
+        const src = row.baseCell?.source;
+        e.dataTransfer.setData('text/plain', src ? (Array.isArray(src) ? src.join('') : src) : '');
+        if (row.baseCell) onCellDragStart(rowIndex, 'base', row.baseCell);
+    }, [onCellDragStart, rowIndex, row.baseCell]);
+
+    const handleCurrentCellDragStart = useCallback((e: React.DragEvent) => {
+        e.dataTransfer.effectAllowed = 'move';
+        const src = row.currentCell?.source;
+        e.dataTransfer.setData('text/plain', src ? (Array.isArray(src) ? src.join('') : src) : '');
+        if (row.currentCell) onCellDragStart(rowIndex, 'current', row.currentCell);
+    }, [onCellDragStart, rowIndex, row.currentCell]);
+
+    const handleIncomingCellDragStart = useCallback((e: React.DragEvent) => {
+        e.dataTransfer.effectAllowed = 'move';
+        const src = row.incomingCell?.source;
+        e.dataTransfer.setData('text/plain', src ? (Array.isArray(src) ? src.join('') : src) : '');
+        if (row.incomingCell) onCellDragStart(rowIndex, 'incoming', row.incomingCell);
+    }, [onCellDragStart, rowIndex, row.incomingCell]);
 
     const canDragRow = rowDragEnabled && Boolean(onRowDragStart);
     const rowDragHandle = canDragRow ? (
@@ -251,12 +278,8 @@ export function MergeRow({
                             compareCell={row.currentCell || row.incomingCell}
                             showOutputs={showOutputs}
                             isVisible={isVisible}
-                            onDragStart={canDragCell ? (e) => {
-                                e.dataTransfer.effectAllowed = 'move';
-                                e.dataTransfer.setData('text/plain', Array.isArray(row.baseCell!.source) ? row.baseCell!.source.join('') : row.baseCell!.source);
-                                onCellDragStart(rowIndex, 'base', row.baseCell!);
-                            } : undefined}
-                            onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
+                            onDragStart={canDragCell ? handleBaseCellDragStart : undefined}
+                            onDragEnd={canDragCell ? onCellDragEnd : undefined}
                         />
                     ) : (
                         <div
@@ -278,12 +301,8 @@ export function MergeRow({
                             compareCell={row.incomingCell || row.baseCell}
                             showOutputs={showOutputs}
                             isVisible={isVisible}
-                            onDragStart={canDragCell ? (e) => {
-                                e.dataTransfer.effectAllowed = 'move';
-                                e.dataTransfer.setData('text/plain', Array.isArray(row.currentCell!.source) ? row.currentCell!.source.join('') : row.currentCell!.source);
-                                onCellDragStart(rowIndex, 'current', row.currentCell!);
-                            } : undefined}
-                            onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
+                            onDragStart={canDragCell ? handleCurrentCellDragStart : undefined}
+                            onDragEnd={canDragCell ? onCellDragEnd : undefined}
                         />
                     ) : (
                         <div
@@ -305,12 +324,8 @@ export function MergeRow({
                             compareCell={row.currentCell || row.baseCell}
                             showOutputs={showOutputs}
                             isVisible={isVisible}
-                            onDragStart={canDragCell ? (e) => {
-                                e.dataTransfer.effectAllowed = 'move';
-                                e.dataTransfer.setData('text/plain', Array.isArray(row.incomingCell!.source) ? row.incomingCell!.source.join('') : row.incomingCell!.source);
-                                onCellDragStart(rowIndex, 'incoming', row.incomingCell!);
-                            } : undefined}
-                            onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
+                            onDragStart={canDragCell ? handleIncomingCellDragStart : undefined}
+                            onDragEnd={canDragCell ? onCellDragEnd : undefined}
                         />
                     ) : (
                         <div
@@ -372,7 +387,7 @@ export function MergeRow({
                         className="resolved-content-input"
                         value={resolutionState.resolvedContent}
                         onChange={handleContentChange}
-                        onBlur={() => onCommitContent(conflictIndex)}
+                        onBlur={handleBlur}
                         placeholder="Enter cell content..."
                         rows={Math.max(5, resolutionState.resolvedContent.split('\n').length + 1)}
                     />
@@ -391,3 +406,37 @@ export function MergeRow({
         </div>
     );
 }
+
+/**
+ * Custom comparator for React.memo.
+ * Avoids re-rendering rows not affected by drag operations or state changes.
+ */
+function areMergeRowPropsEqual(prev: MergeRowProps, next: MergeRowProps): boolean {
+    // Core content & identity
+    if (prev.row !== next.row) return false;
+    if (prev.rowIndex !== next.rowIndex) return false;
+    if (prev.conflictIndex !== next.conflictIndex) return false;
+    if (prev.resolutionState !== next.resolutionState) return false;
+
+    // Display flags
+    if (prev.isDragging !== next.isDragging) return false;
+    if (prev.showOutputs !== next.showOutputs) return false;
+    if (prev.isVisible !== next.isVisible) return false;
+    if (prev.enableCellDrag !== next.enableCellDrag) return false;
+    if (prev.rowDragEnabled !== next.rowDragEnabled) return false;
+
+    // Drop target: only re-render if THIS row's drop target status changed
+    const prevIsTarget = prev.dropTarget?.rowIndex === prev.rowIndex;
+    const nextIsTarget = next.dropTarget?.rowIndex === next.rowIndex;
+    if (prevIsTarget !== nextIsTarget) return false;
+    if (nextIsTarget && prev.dropTarget?.side !== next.dropTarget?.side) return false;
+
+    // Callbacks (should be stable via useCallback, but verify)
+    if (prev.onSelectChoice !== next.onSelectChoice) return false;
+    if (prev.onUpdateContent !== next.onUpdateContent) return false;
+    if (prev.onCommitContent !== next.onCommitContent) return false;
+
+    return true;
+}
+
+export const MergeRow = React.memo(MergeRowInner, areMergeRowPropsEqual);
