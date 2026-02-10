@@ -19,6 +19,15 @@ import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
 import { getSettings, MergeNBSettings } from './settings';
 
+function stripAllWhitespace(text: string): string {
+    return text.replace(/\s+/g, '');
+}
+
+function isWhitespaceOnlyDifference(left: string, right: string): boolean {
+    if (left === right) return false;
+    return stripAllWhitespace(left) === stripAllWhitespace(right);
+}
+
 /**
  * Result of auto-resolution preprocessing
  */
@@ -370,6 +379,38 @@ export function applyAutoResolutions(
                 autoResolved = true;
                 autoResolvedCount++;
                 autoResolvedDescriptions.push(`Outputs cleared (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
+            }
+        }
+
+        // Auto-resolve whitespace-only differences when enabled
+        if (!autoResolved && effectiveSettings.autoResolveWhitespace) {
+            if (conflict.type === 'cell-modified') {
+                const currentSource = conflict.currentContent?.source;
+                const incomingSource = conflict.incomingContent?.source;
+
+                const currentSourceStr = Array.isArray(currentSource) ? currentSource.join('') : (currentSource || '');
+                const incomingSourceStr = Array.isArray(incomingSource) ? incomingSource.join('') : (incomingSource || '');
+
+                if (isWhitespaceOnlyDifference(currentSourceStr, incomingSourceStr)) {
+                    autoResolved = true;
+                    autoResolvedCount++;
+                    autoResolvedDescriptions.push(`Whitespace-only change resolved (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
+                }
+            }
+
+            if (!autoResolved && conflict.type === 'cell-added' && conflict.currentContent && conflict.incomingContent) {
+                const currentSource = Array.isArray(conflict.currentContent.source)
+                    ? conflict.currentContent.source.join('')
+                    : conflict.currentContent.source;
+                const incomingSource = Array.isArray(conflict.incomingContent.source)
+                    ? conflict.incomingContent.source.join('')
+                    : conflict.incomingContent.source;
+
+                if (isWhitespaceOnlyDifference(currentSource, incomingSource)) {
+                    autoResolved = true;
+                    autoResolvedCount++;
+                    autoResolvedDescriptions.push(`Whitespace-only added cell resolved (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
+                }
             }
         }
 

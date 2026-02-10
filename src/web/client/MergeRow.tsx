@@ -219,6 +219,8 @@ export function MergeRow({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
+    // Always use conflict diffing mode for consistent red highlighting of divergence
+    const diffMode = 'conflict';
     return (
         <div className={rowClasses} data-testid={testId}>
             {rowDragHandle}
@@ -252,6 +254,7 @@ export function MergeRow({
                                 side="base"
                                 isConflict={true}
                                 compareCell={row.currentCell || row.incomingCell}
+                                diffMode={diffMode}
                                 showOutputs={showOutputs}
                                 isVisible={isVisible}
                                 onDragStart={canDragCell ? (e) => {
@@ -280,6 +283,8 @@ export function MergeRow({
                             side="current"
                             isConflict={true}
                             compareCell={row.incomingCell || row.baseCell}
+                            baseCell={row.baseCell}
+                            diffMode={diffMode}
                             showOutputs={showOutputs}
                             isVisible={isVisible}
                             onDragStart={canDragCell ? (e) => {
@@ -307,6 +312,8 @@ export function MergeRow({
                             side="incoming"
                             isConflict={true}
                             compareCell={row.currentCell || row.baseCell}
+                            baseCell={row.baseCell}
+                            diffMode={diffMode}
                             showOutputs={showOutputs}
                             isVisible={isVisible}
                             onDragStart={canDragCell ? (e) => {

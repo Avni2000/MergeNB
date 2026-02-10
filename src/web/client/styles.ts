@@ -15,8 +15,10 @@ export const styles = `
     --accent-green: #4ec9b0;
     --current-bg: rgba(64, 164, 223, 0.15);
     --current-border: #40a4df;
+    --current-rgb: 64, 164, 223;
     --incoming-bg: rgba(78, 201, 176, 0.15);
     --incoming-border: #4ec9b0;
+    --incoming-rgb: 78, 201, 176;
     --base-bg: rgba(128, 128, 128, 0.15);
     --base-border: #808080;
     --diff-add: rgba(78, 201, 176, 0.3);
@@ -973,22 +975,46 @@ body {
     font-weight: 600;
 }
 
-/* Enhanced inline diff highlighting for word-level changes */
+/* Enhanced inline diff highlighting - branch-based coloring */
+/* The color tells you which branch the content comes from, not whether it's added/removed */
 .diff-inline-unchanged {
     color: var(--text-primary);
 }
 
-.diff-inline-added {
-    background: var(--diff-add);
+/* Conflict-focused red highlight (current vs incoming) */
+.diff-line-conflict {
+    background: rgba(244, 135, 113, 0.2);
+    border-left: 3px solid rgba(244, 135, 113, 0.85);
+}
+
+.diff-inline-conflict {
+    background: rgba(244, 135, 113, 0.35);
     padding: 0 2px;
     border-radius: 2px;
 }
 
-.diff-inline-removed {
-    background: var(--diff-remove);
+/* Current branch highlights (green) */
+.diff-line-current {
+    background: rgba(var(--current-rgb), 0.18);
+    border-left: 3px solid rgba(var(--current-rgb), 0.7);
+}
+
+.diff-inline-current {
+    background: rgba(var(--current-rgb), 0.35);
     padding: 0 2px;
     border-radius: 2px;
-    text-decoration: line-through;
+}
+
+/* Incoming branch highlights (blue) */
+.diff-line-incoming {
+    background: rgba(var(--incoming-rgb), 0.18);
+    border-left: 3px solid rgba(var(--incoming-rgb), 0.7);
+}
+
+.diff-inline-incoming {
+    background: rgba(var(--incoming-rgb), 0.35);
+    padding: 0 2px;
+    border-radius: 2px;
 }
 `;
 

@@ -87,6 +87,11 @@
           "default": true,
           "description": "Automatically strip outputs from cells with conflicts"
         },
+        "mergeNB.autoResolve.whitespace": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically resolve conflicts when source differences are whitespace-only"
+        },
         "mergeNB.ui.showCellHeaders": {
           "type": "boolean",
           "default": false,
