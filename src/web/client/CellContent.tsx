@@ -213,10 +213,10 @@ function OutputItem({ output }: { output: CellOutput }): React.ReactElement | nu
         // This prevents browser decoding overhead, ResizeObserver feedback loops,
         // and flickering from invalid/broken image data.
         if (data['image/png']) {
-            return <pre className="image-placeholder">![Image: image/png]</pre>;
+            return <ImagePlaceholder mimeType="image/png" />;
         }
         if (data['image/jpeg']) {
-            return <pre className="image-placeholder">![Image: image/jpeg]</pre>;
+            return <ImagePlaceholder mimeType="image/jpeg" />;
         }
 
         // HTML
@@ -239,4 +239,21 @@ function OutputItem({ output }: { output: CellOutput }): React.ReactElement | nu
     }
 
     return null;
+}
+
+/**
+ * Renders a text placeholder for an image output.
+ * Uses markdown-style format to provide a consistent, stable representation.
+ */
+function ImagePlaceholder({ mimeType }: { mimeType: string }): React.ReactElement {
+    const placeholderText = `![Image: ${mimeType}]`;
+    return (
+        <pre 
+            className="image-placeholder"
+            role="img"
+            aria-label={`Image output of type ${mimeType}`}
+        >
+            {placeholderText}
+        </pre>
+    );
 }
