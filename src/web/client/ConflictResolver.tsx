@@ -22,6 +22,8 @@ import { MergeRow } from './MergeRow';
 const INITIAL_VISIBLE_ROWS = 20; // Number of rows to render initially
 const DEFAULT_ROW_HEIGHT = 200; // Default height for unmeasured rows (fallback)
 const VIRTUALIZATION_OVERSCAN_ROWS = 5; // Number of rows to render outside viewport for smooth scrolling
+const RESIZE_OBSERVER_DEBOUNCE_MS = 150; // Debounce ResizeObserver updates to prevent rapid state changes
+const HEIGHT_CHANGE_THRESHOLD = 5; // Minimum height change (in pixels) to trigger an update
 const INITIAL_MARK_AS_RESOLVED = true;
 const INITIAL_RENUMBER_EXECUTION_COUNTS = true;
 
@@ -260,29 +262,51 @@ export function ConflictResolver({
 
     // Setup ResizeObserver to track actual row heights
     useEffect(() => {
-        resizeObserver.current = new ResizeObserver((entries) => {
-            setRowHeights(prev => {
-                const newHeights = new Map(prev);
-                let hasChanges = false;
+        let debounceTimer: NodeJS.Timeout | null = null;
+        let pendingUpdates = new Map<number, number>();
 
-                for (const entry of entries) {
-                    const element = entry.target as HTMLDivElement;
-                    const rowIndex = parseInt(element.dataset.rowIndex ?? '-1', 10);
-                    if (rowIndex >= 0) {
-                        const newHeight = entry.contentRect.height;
+        resizeObserver.current = new ResizeObserver((entries) => {
+            // Collect all pending updates
+            for (const entry of entries) {
+                const element = entry.target as HTMLDivElement;
+                const rowIndex = parseInt(element.dataset.rowIndex ?? '-1', 10);
+                if (rowIndex >= 0) {
+                    const newHeight = entry.contentRect.height;
+                    if (newHeight > 0) {
+                        pendingUpdates.set(rowIndex, newHeight);
+                    }
+                }
+            }
+
+            // Clear existing timer and set a new one
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
+
+            debounceTimer = setTimeout(() => {
+                setRowHeights(prev => {
+                    const newHeights = new Map(prev);
+                    let hasChanges = false;
+
+                    for (const [rowIndex, newHeight] of pendingUpdates.entries()) {
                         const currentHeight = newHeights.get(rowIndex);
-                        if (currentHeight !== newHeight && newHeight > 0) {
+                        // Only update if the height change is significant (above threshold)
+                        if (currentHeight === undefined || Math.abs(currentHeight - newHeight) >= HEIGHT_CHANGE_THRESHOLD) {
                             newHeights.set(rowIndex, newHeight);
                             hasChanges = true;
                         }
                     }
-                }
 
-                return hasChanges ? newHeights : prev;
-            });
+                    pendingUpdates.clear();
+                    return hasChanges ? newHeights : prev;
+                });
+            }, RESIZE_OBSERVER_DEBOUNCE_MS);
         });
 
         return () => {
+            if (debounceTimer) {
+                clearTimeout(debounceTimer);
+            }
             resizeObserver.current?.disconnect();
         };
     }, []); // Only create observer once

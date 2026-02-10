@@ -190,17 +190,10 @@ interface CellOutputsProps {
 }
 
 function CellOutputs({ outputs, isVisible = true }: CellOutputsProps): React.ReactElement {
-    // For non-visible outputs, render minimal placeholder
-    if (!isVisible && outputs.length > 0) {
-        return (
-            <div className="cell-outputs" style={{ minHeight: '30px', opacity: 0.3 }}>
-                <pre>({outputs.length} output{outputs.length > 1 ? 's' : ''})</pre>
-            </div>
-        );
-    }
-
+    // Always render the actual outputs to prevent size changes that cause flickering.
+    // Use CSS visibility/opacity for performance optimization instead of conditional rendering.
     return (
-        <div className="cell-outputs">
+        <div className="cell-outputs" style={{ opacity: isVisible ? 1 : 0.3 }}>
             {outputs.map((output, i) => (
                 <OutputItem key={i} output={output} />
             ))}
