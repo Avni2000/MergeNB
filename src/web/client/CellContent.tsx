@@ -247,11 +247,15 @@ function OutputItem({ output }: { output: CellOutput }): React.ReactElement | nu
  */
 function ImagePlaceholder({ mimeType }: { mimeType: string }): React.ReactElement {
     const placeholderText = `![Image: ${mimeType}]`;
+    // Convert MIME type to user-friendly label for screen readers
+    const imageType = mimeType === 'image/png' ? 'PNG' : 
+                     mimeType === 'image/jpeg' ? 'JPEG' : 
+                     mimeType.replace('image/', '').toUpperCase();
     return (
         <div 
             className="image-placeholder"
             role="img"
-            aria-label={`Image output of type ${mimeType}`}
+            aria-label={`${imageType} image output`}
         >
             {placeholderText}
         </div>
