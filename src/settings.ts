@@ -8,6 +8,7 @@
  * - stripOutputs: Clear cell outputs during merge (default: true)
  * - hideNonConflictOutputs: Hide outputs for non-conflicted cells in UI (default: true)
  * - enableUndoRedoHotkeys: Enable Ctrl+Z / Ctrl+Shift+Z in web UI (default: true)
+ * - showBaseColumn: Show base branch column in 3-column view (default: false, true in headless/testing)
  * 
  * These reduce manual conflict resolution for common non-semantic differences.
  */
@@ -26,6 +27,7 @@ export interface MergeNBSettings {
     stripOutputs: boolean;
     hideNonConflictOutputs: boolean;
     enableUndoRedoHotkeys: boolean;
+    showBaseColumn: boolean;
 }
 
 /** Default settings used in headless mode */
@@ -34,7 +36,8 @@ const DEFAULT_SETTINGS: MergeNBSettings = {
     autoResolveKernelVersion: true,
     stripOutputs: true,
     hideNonConflictOutputs: true,
-    enableUndoRedoHotkeys: true
+    enableUndoRedoHotkeys: true,
+    showBaseColumn: true
 };
 
 /**
@@ -45,15 +48,16 @@ export function getSettings(): MergeNBSettings {
     if (!vscode) {
         return { ...DEFAULT_SETTINGS };
     }
-    
+
     const config = vscode.workspace.getConfiguration('mergeNB');
-    
+
     return {
         autoResolveExecutionCount: config.get<boolean>('autoResolve.executionCount', true),
         autoResolveKernelVersion: config.get<boolean>('autoResolve.kernelVersion', true),
         stripOutputs: config.get<boolean>('autoResolve.stripOutputs', true),
         hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', true),
         enableUndoRedoHotkeys: config.get<boolean>('ui.enableUndoRedoHotkeys', true),
+        showBaseColumn: config.get<boolean>('ui.showBaseColumn', false),
     };
 }
 

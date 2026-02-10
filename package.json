@@ -96,6 +96,11 @@
           "type": "boolean",
           "default": true,
           "description": "Enable Ctrl+Z / Ctrl+Shift+Z undo and redo shortcuts in the conflict resolution web UI"
+        },
+        "mergeNB.ui.showBaseColumn": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show the base (common ancestor) branch column in the conflict resolution view. When false, only current and incoming columns are shown."
         }
       }
     }
