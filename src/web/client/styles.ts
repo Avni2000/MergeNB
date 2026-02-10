@@ -230,6 +230,10 @@ body {
     z-index: 50;
 }
 
+.column-labels.two-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .column-label {
     text-align: center;
     font-size: 12px;
@@ -266,6 +270,10 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1px;
     background: var(--border-color);
+}
+
+.cell-columns.two-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .cell-column {
