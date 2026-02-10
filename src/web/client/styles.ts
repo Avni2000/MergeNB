@@ -980,42 +980,6 @@ body {
 .diff-inline-unchanged {
     color: var(--text-primary);
 }
-
-/* Conflict-focused red highlight (current vs incoming) */
-.diff-line-conflict {
-    background: rgba(244, 135, 113, 0.2);
-    border-left: 3px solid rgba(244, 135, 113, 0.85);
-}
-
-.diff-inline-conflict {
-    background: rgba(244, 135, 113, 0.35);
-    padding: 0 2px;
-    border-radius: 2px;
-}
-
-/* Current branch highlights (green) */
-.diff-line-current {
-    background: rgba(var(--current-rgb), 0.18);
-    border-left: 3px solid rgba(var(--current-rgb), 0.7);
-}
-
-.diff-inline-current {
-    background: rgba(var(--current-rgb), 0.35);
-    padding: 0 2px;
-    border-radius: 2px;
-}
-
-/* Incoming branch highlights (blue) */
-.diff-line-incoming {
-    background: rgba(var(--incoming-rgb), 0.18);
-    border-left: 3px solid rgba(var(--incoming-rgb), 0.7);
-}
-
-.diff-inline-incoming {
-    background: rgba(var(--incoming-rgb), 0.35);
-    padding: 0 2px;
-    border-radius: 2px;
-}
 `;
 
 export function injectStyles(): void {
