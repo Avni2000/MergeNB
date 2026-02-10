@@ -95,7 +95,7 @@ export function CellContent({
                 )}
             </div>
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
-                <CellOutputs outputs={cell.outputs} />
+                <CellOutputs outputs={cell.outputs} isVisible={isVisible} />
             )}
         </div>
     );
@@ -186,13 +186,14 @@ function getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'ba
 
 interface CellOutputsProps {
     outputs: CellOutput[];
+    isVisible?: boolean;
 }
 
-function CellOutputs({ outputs }: CellOutputsProps): React.ReactElement {
-    // Always render outputs consistently without CSS changes that trigger ResizeObserver.
-    // Using text placeholders for images prevents browser decoding and size oscillation.
+function CellOutputs({ outputs, isVisible = true }: CellOutputsProps): React.ReactElement {
+    // Text placeholders for images prevent ResizeObserver feedback loops.
+    // Opacity optimization improves performance for off-screen cells without triggering dimension changes.
     return (
-        <div className="cell-outputs">
+        <div className="cell-outputs" style={{ opacity: isVisible ? 1 : 0.3 }}>
             {outputs.map((output, i) => (
                 <OutputItem key={i} output={output} />
             ))}
