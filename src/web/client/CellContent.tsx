@@ -95,7 +95,7 @@ export function CellContent({
                 )}
             </div>
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
-                <CellOutputs outputs={cell.outputs} isVisible={isVisible} />
+                <CellOutputs outputs={cell.outputs} />
             )}
         </div>
     );
@@ -186,14 +186,13 @@ function getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'ba
 
 interface CellOutputsProps {
     outputs: CellOutput[];
-    isVisible?: boolean;
 }
 
-function CellOutputs({ outputs, isVisible = true }: CellOutputsProps): React.ReactElement {
-    // Always render the actual outputs to prevent size changes that cause flickering.
-    // Use CSS visibility/opacity for performance optimization instead of conditional rendering.
+function CellOutputs({ outputs }: CellOutputsProps): React.ReactElement {
+    // Always render outputs consistently without CSS changes that trigger ResizeObserver.
+    // Using text placeholders for images prevents browser decoding and size oscillation.
     return (
-        <div className="cell-outputs" style={{ opacity: isVisible ? 1 : 0.3 }}>
+        <div className="cell-outputs">
             {outputs.map((output, i) => (
                 <OutputItem key={i} output={output} />
             ))}
@@ -210,12 +209,14 @@ function OutputItem({ output }: { output: CellOutput }): React.ReactElement | nu
     if ((output.output_type === 'display_data' || output.output_type === 'execute_result') && output.data) {
         const data = output.data;
 
-        // Try image first
+        // Use text placeholders for images instead of rendering actual <img> tags.
+        // This prevents browser decoding overhead, ResizeObserver feedback loops,
+        // and flickering from invalid/broken image data.
         if (data['image/png']) {
-            return <img src={`data:image/png;base64,${data['image/png']}`} alt="output" />;
+            return <pre className="image-placeholder">![Image: image/png]</pre>;
         }
         if (data['image/jpeg']) {
-            return <img src={`data:image/jpeg;base64,${data['image/jpeg']}`} alt="output" />;
+            return <pre className="image-placeholder">![Image: image/jpeg]</pre>;
         }
 
         // HTML

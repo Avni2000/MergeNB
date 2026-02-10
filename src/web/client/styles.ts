@@ -449,6 +449,20 @@ body {
     height: auto;
 }
 
+.image-placeholder {
+    color: var(--text-secondary);
+    font-style: italic;
+    padding: 8px;
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-color);
+    border-radius: 4px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+.error-output {
+    color: #f48771;
+}
+
 /* Auto-resolve banner */
 .auto-resolve-banner {
     background: rgba(78, 201, 176, 0.1);
