@@ -90,20 +90,6 @@ export function MergeRowInner({
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
     const [showWarning, setShowWarning] = useState(false);
 
-    // Local textarea state: keystrokes stay here, only pushed to parent on blur.
-    // This prevents the parent from re-rendering all rows on every keystroke.
-    const [localContent, setLocalContent] = useState(resolutionState?.resolvedContent ?? '');
-    const lastPushedContent = useRef(resolutionState?.resolvedContent ?? '');
-
-    // Sync from parent when content changes externally (branch switch, undo/redo)
-    useEffect(() => {
-        const parentContent = resolutionState?.resolvedContent ?? '';
-        if (parentContent !== lastPushedContent.current) {
-            setLocalContent(parentContent);
-            lastPushedContent.current = parentContent;
-        }
-    }, [resolutionState?.resolvedContent]);
-
     // Get content for a given choice
     const getContentForChoice = useCallback((choice: ResolutionChoice): string => {
         if (choice === 'delete') return '';
@@ -113,9 +99,9 @@ export function MergeRowInner({
         return cell ? normalizeCellSource(cell.source) : '';
     }, [row]);
 
-    // Check if content has been modified from the original (use local content for immediate feedback)
+    // Check if content has been modified from the original
     const isContentModified = resolutionState
-        ? localContent !== resolutionState.originalContent
+        ? resolutionState.resolvedContent !== resolutionState.originalContent
         : false;
 
     // Handle branch selection
@@ -147,19 +133,15 @@ export function MergeRowInner({
         setPendingChoice(null);
     };
 
-    // Handle content editing in the resolved text area (local state only, no parent re-render)
+    // Handle content editing in the resolved text area
     const handleContentChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        setLocalContent(e.target.value);
-    }, []);
+        onUpdateContent(conflictIndex, e.target.value);
+    }, [conflictIndex, onUpdateContent]);
 
-    // Push content to parent on blur
+    // Commit content to history on blur
     const handleBlur = useCallback(() => {
-        if (resolutionState && localContent !== resolutionState.resolvedContent) {
-            lastPushedContent.current = localContent;
-            onUpdateContent(conflictIndex, localContent);
-        }
         onCommitContent(conflictIndex);
-    }, [resolutionState, localContent, onUpdateContent, onCommitContent, conflictIndex]);
+    }, [conflictIndex, onCommitContent]);
 
     // Memoized cell drag handlers to prevent CellContent re-renders
     const handleBaseCellDragStart = useCallback((e: React.DragEvent) => {
@@ -403,11 +385,11 @@ export function MergeRowInner({
                     </div>
                     <textarea
                         className="resolved-content-input"
-                        value={localContent}
+                        value={resolutionState.resolvedContent}
                         onChange={handleContentChange}
                         onBlur={handleBlur}
                         placeholder="Enter cell content..."
-                        rows={Math.max(5, localContent.split('\n').length + 1)}
+                        rows={Math.max(5, resolutionState.resolvedContent.split('\n').length + 1)}
                     />
                 </div>
             )}
