@@ -90,20 +90,13 @@ export function CellContent({
             data-cell-type={cellType}
         >
             <div className="cell-content">
-                {cellType === 'markdown' ? (
+                {cellType === 'markdown' && !isConflict ? (
                     <MarkdownContent source={source} />
-                ) : isConflict && compareCell ? (
-                    // Highlight divergence in red
+                ) : isConflict && (compareCell || baseCell) ? (
+                    // Show conflict diffs as raw text (no markdown rendering)
                     <DiffContent
                         source={source}
-                        compareSource={normalizeCellSource(compareCell.source)}
-                        diffMode={diffMode}
-                    />
-                ) : isConflict && baseCell ? (
-                    // Fallback: diff against base if compare cell not available
-                    <DiffContent
-                        source={source}
-                        compareSource={normalizeCellSource(baseCell.source)}
+                        compareSource={normalizeCellSource((compareCell ?? baseCell)!.source)}
                         diffMode={diffMode}
                     />
                 ) : (
