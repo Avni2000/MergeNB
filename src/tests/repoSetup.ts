@@ -44,13 +44,6 @@ export function createMergeConflictRepo(
 ): string {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergeNB-integration-'));
 
-    const vscodeDir = path.join(tmpDir, '.vscode');
-    fs.mkdirSync(vscodeDir, { recursive: true });
-    const settingsPath = path.join(vscodeDir, 'settings.json');
-    fs.writeFileSync(settingsPath, JSON.stringify({
-        'mergeNB.ui.showBaseColumn': true
-    }, null, 4));
-
     git(tmpDir, 'init');
     git(tmpDir, 'config', 'user.email', '"test@mergenb.test"');
     git(tmpDir, 'config', 'user.name', '"MergeNB Test"');
