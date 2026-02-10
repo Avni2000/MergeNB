@@ -46,6 +46,7 @@ interface MergeRowProps {
     onCommitContent: (index: number) => void;
     isDragging?: boolean;
     showOutputs?: boolean;
+    showBaseColumn?: boolean;
     enableCellDrag?: boolean;
     isVisible?: boolean; // For lazy rendering optimization
     rowDragEnabled?: boolean;
@@ -71,6 +72,7 @@ export function MergeRow({
     onCommitContent,
     isDragging = false,
     showOutputs = true,
+    showBaseColumn = true,
     enableCellDrag = true,
     isVisible = true,
     rowDragEnabled = true,
@@ -163,8 +165,8 @@ export function MergeRow({
         const rawSource = cell ? normalizeCellSource(cell.source) : '';
         const cellType = cell?.cell_type || 'code';
         return (
-            <div 
-                className="merge-row identical-row" 
+            <div
+                className="merge-row identical-row"
                 data-testid={testId}
                 data-raw-source={rawSource}
                 data-cell-type={cellType}
@@ -217,6 +219,8 @@ export function MergeRow({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
+    // Always use conflict diffing mode for consistent red highlighting of divergence
+    const diffMode = 'conflict';
     return (
         <div className={rowClasses} data-testid={testId}>
             {rowDragHandle}
@@ -240,34 +244,37 @@ export function MergeRow({
             )}
 
             {/* Three-way diff view */}
-            <div className="cell-columns">
-                <div className="cell-column base-column">
-                    {row.baseCell ? (
-                        <CellContent
-                            cell={row.baseCell}
-                            cellIndex={row.baseCellIndex}
-                            side="base"
-                            isConflict={true}
-                            compareCell={row.currentCell || row.incomingCell}
-                            showOutputs={showOutputs}
-                            isVisible={isVisible}
-                            onDragStart={canDragCell ? (e) => {
-                                e.dataTransfer.effectAllowed = 'move';
-                                e.dataTransfer.setData('text/plain', Array.isArray(row.baseCell!.source) ? row.baseCell!.source.join('') : row.baseCell!.source);
-                                onCellDragStart(rowIndex, 'base', row.baseCell!);
-                            } : undefined}
-                            onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
-                        />
-                    ) : (
-                        <div
-                            className={`cell-placeholder cell-deleted ${isDropTargetCell('base') ? 'drop-target' : ''}`}
-                            onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'base'); } : undefined}
-                            onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'base') : undefined}
-                        >
-                            <span className="placeholder-text">{getPlaceholderText('base')}</span>
-                        </div>
-                    )}
-                </div>
+            <div className={`cell-columns${showBaseColumn ? '' : ' two-column'}`}>
+                {showBaseColumn && (
+                    <div className="cell-column base-column">
+                        {row.baseCell ? (
+                            <CellContent
+                                cell={row.baseCell}
+                                cellIndex={row.baseCellIndex}
+                                side="base"
+                                isConflict={true}
+                                compareCell={row.currentCell || row.incomingCell}
+                                diffMode={diffMode}
+                                showOutputs={showOutputs}
+                                isVisible={isVisible}
+                                onDragStart={canDragCell ? (e) => {
+                                    e.dataTransfer.effectAllowed = 'move';
+                                    e.dataTransfer.setData('text/plain', Array.isArray(row.baseCell!.source) ? row.baseCell!.source.join('') : row.baseCell!.source);
+                                    onCellDragStart(rowIndex, 'base', row.baseCell!);
+                                } : undefined}
+                                onDragEnd={canDragCell ? () => onCellDragEnd() : undefined}
+                            />
+                        ) : (
+                            <div
+                                className={`cell-placeholder cell-deleted ${isDropTargetCell('base') ? 'drop-target' : ''}`}
+                                onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'base'); } : undefined}
+                                onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'base') : undefined}
+                            >
+                                <span className="placeholder-text">{getPlaceholderText('base')}</span>
+                            </div>
+                        )}
+                    </div>
+                )}
                 <div className="cell-column current-column">
                     {row.currentCell ? (
                         <CellContent
@@ -276,6 +283,8 @@ export function MergeRow({
                             side="current"
                             isConflict={true}
                             compareCell={row.incomingCell || row.baseCell}
+                            baseCell={row.baseCell}
+                            diffMode={diffMode}
                             showOutputs={showOutputs}
                             isVisible={isVisible}
                             onDragStart={canDragCell ? (e) => {
@@ -303,6 +312,8 @@ export function MergeRow({
                             side="incoming"
                             isConflict={true}
                             compareCell={row.currentCell || row.baseCell}
+                            baseCell={row.baseCell}
+                            diffMode={diffMode}
                             showOutputs={showOutputs}
                             isVisible={isVisible}
                             onDragStart={canDragCell ? (e) => {
@@ -326,7 +337,7 @@ export function MergeRow({
 
             {/* Resolution bar - select which branch to use as base */}
             <div className="resolution-bar">
-                {hasBase && (
+                {showBaseColumn && hasBase && (
                     <button
                         className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
                         onClick={() => handleChoiceClick('base')}

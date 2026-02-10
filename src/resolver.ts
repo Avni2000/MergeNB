@@ -11,7 +11,7 @@
  * 6. Stages the resolved file in Git
  */
 
-import * as path from 'path';  
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
 import { serializeNotebook, renumberExecutionCounts } from './notebookParser';
@@ -56,7 +56,7 @@ export interface ConflictedNotebook {
  * Main service for handling notebook merge conflict resolution.
  */
 export class NotebookConflictResolver {
-    constructor(private readonly extensionUri: vscode.Uri) {}
+    constructor(private readonly extensionUri: vscode.Uri) { }
 
     /**
      * Check if a file has semantic conflicts (Git UU status).
@@ -75,7 +75,7 @@ export class NotebookConflictResolver {
     async hasAnyConflicts(uri: vscode.Uri): Promise<ConflictedNotebook | null> {
         try {
             const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
-            
+
             if (isUnmerged) {
                 return {
                     uri,
@@ -94,24 +94,24 @@ export class NotebookConflictResolver {
      */
     async findNotebooksWithConflicts(): Promise<ConflictedNotebook[]> {
         const withConflicts: ConflictedNotebook[] = [];
-        
+
         // Get unmerged files from Git status
         const unmergedFiles = await gitIntegration.getUnmergedFiles();
-        
+
         for (const file of unmergedFiles) {
             // Only process .ipynb files
             if (!file.path.endsWith('.ipynb')) {
                 continue;
             }
-            
+
             const uri = vscode.Uri.file(file.path);
-            
+
             withConflicts.push({
                 uri,
                 hasSemanticConflicts: true
             });
         }
-        
+
         return withConflicts;
     }
 
@@ -134,7 +134,7 @@ export class NotebookConflictResolver {
      */
     async resolveSemanticConflicts(uri: vscode.Uri): Promise<void> {
         const semanticConflict = await detectSemanticConflicts(uri.fsPath);
-        
+
         if (!semanticConflict) {
             vscode.window.showInformationMessage('No semantic conflicts detected.');
             return;
@@ -197,7 +197,8 @@ export class NotebookConflictResolver {
             semanticConflict: filteredSemanticConflict,
             autoResolveResult: autoResolveResult,
             hideNonConflictOutputs: settings.hideNonConflictOutputs,
-            enableUndoRedoHotkeys: settings.enableUndoRedoHotkeys
+            enableUndoRedoHotkeys: settings.enableUndoRedoHotkeys,
+            showBaseColumn: settings.showBaseColumn
         };
 
         const resolutionCallback = async (resolution: UnifiedResolution): Promise<void> => {
@@ -227,12 +228,12 @@ export class NotebookConflictResolver {
         }
 
         const resolvedRows = resolution.resolvedRows;
-        
+
         if (!resolvedRows || resolvedRows.length === 0) {
             // No resolutions provided
             if (autoResolveResult) {
                 let resolvedNotebook = autoResolveResult.resolvedNotebook;
-                
+
                 const renumber = await vscode.window.showQuickPick(
                     ['Yes', 'No'],
                     {
@@ -259,9 +260,9 @@ export class NotebookConflictResolver {
         }
 
         await this.applySemanticResolutionsFromRows(
-            uri, 
-            semanticConflict, 
-            resolvedRows, 
+            uri,
+            semanticConflict,
+            resolvedRows,
             resolution.markAsResolved,
             resolution.renumberExecutionCounts,
             autoResolveResult
@@ -320,7 +321,7 @@ export class NotebookConflictResolver {
 
         for (const row of rowsForResolution) {
             const { baseCell, currentCell, incomingCell, resolution: res } = row;
-            
+
             let cellToUse: NotebookCell | undefined;
 
             if (res) {
@@ -352,7 +353,7 @@ export class NotebookConflictResolver {
                     metadata: referenceCell?.metadata ? JSON.parse(JSON.stringify(referenceCell.metadata)) : {},
                     source: resolvedContent.split(/(?<=\n)/)
                 } as NotebookCell;
-                
+
                 if (cellType === 'code') {
                     (cellToUse as any).execution_count = null;
                     (cellToUse as any).outputs = [];
@@ -394,7 +395,7 @@ export class NotebookConflictResolver {
             markAsResolved,
             renumberExecutionCounts: shouldRenumber
         });
-        
+
         // Show success notification (non-blocking, fire and forget)
         vscode.window.showInformationMessage(
             `Resolved conflicts in ${path.basename(uri.fsPath)}`
@@ -408,12 +409,12 @@ export class NotebookConflictResolver {
         const content = serializeNotebook(notebook);
         const encoder = new TextEncoder();
         await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
-        
+
         // Mark as resolved with git add if requested
         if (markAsResolved) {
             await this.markFileAsResolved(uri);
         }
-        
+
         // Fire event to notify extension (for status bar, decorations, etc.)
         onDidResolveConflict.fire(uri);
     }
@@ -433,7 +434,7 @@ export class NotebookConflictResolver {
                 vscode.window.showWarningMessage('Cannot mark file as resolved: not in a workspace');
                 return;
             }
-            
+
             const relativePath = vscode.workspace.asRelativePath(uri, false);
             await exec(`git add "${relativePath}"`, { cwd: workspaceFolder.uri.fsPath });
             vscode.window.showInformationMessage(`Marked ${relativePath} as resolved`);

@@ -15,8 +15,10 @@ export const styles = `
     --accent-green: #4ec9b0;
     --current-bg: rgba(64, 164, 223, 0.15);
     --current-border: #40a4df;
+    --current-rgb: 64, 164, 223;
     --incoming-bg: rgba(78, 201, 176, 0.15);
     --incoming-border: #4ec9b0;
+    --incoming-rgb: 78, 201, 176;
     --base-bg: rgba(128, 128, 128, 0.15);
     --base-border: #808080;
     --diff-add: rgba(78, 201, 176, 0.3);
@@ -230,6 +232,10 @@ body {
     z-index: 50;
 }
 
+.column-labels.two-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .column-label {
     text-align: center;
     font-size: 12px;
@@ -266,6 +272,10 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1px;
     background: var(--border-color);
+}
+
+.cell-columns.two-column {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .cell-column {
@@ -965,22 +975,10 @@ body {
     font-weight: 600;
 }
 
-/* Enhanced inline diff highlighting for word-level changes */
+/* Enhanced inline diff highlighting - branch-based coloring */
+/* The color tells you which branch the content comes from, not whether it's added/removed */
 .diff-inline-unchanged {
     color: var(--text-primary);
-}
-
-.diff-inline-added {
-    background: var(--diff-add);
-    padding: 0 2px;
-    border-radius: 2px;
-}
-
-.diff-inline-removed {
-    background: var(--diff-remove);
-    padding: 0 2px;
-    border-radius: 2px;
-    text-decoration: line-through;
 }
 `;
 

@@ -28,7 +28,7 @@ import { UnifiedConflict, UnifiedResolution, ResolvedRow } from './webTypes';
  */
 export class WebConflictPanel {
     public static currentPanel: WebConflictPanel | undefined;
-    
+
     private readonly _extensionUri: vscode.Uri;
     private _conflict: UnifiedConflict | undefined;
     private _onResolutionComplete: ((resolution: UnifiedResolution) => Promise<void>) | undefined;
@@ -47,7 +47,7 @@ export class WebConflictPanel {
 
         const panel = new WebConflictPanel(extensionUri, conflict, onResolutionComplete);
         WebConflictPanel.currentPanel = panel;
-        
+
         await panel._openInBrowser();
     }
 
@@ -72,7 +72,7 @@ export class WebConflictPanel {
     private async _openInBrowser(): Promise<void> {
         const server = getWebServer();
         server.setExtensionUri(this._extensionUri);
-        
+
         // Start server if not running
         if (!server.isRunning()) {
             await server.start();
@@ -105,7 +105,7 @@ export class WebConflictPanel {
         if (!this._sessionId || !this._conflict) return;
 
         const server = getWebServer();
-        
+
         // Build the data payload for the React app
         const data = {
             filePath: this._conflict.filePath,
@@ -114,25 +114,27 @@ export class WebConflictPanel {
             autoResolveResult: this._conflict.autoResolveResult,
             hideNonConflictOutputs: this._conflict.hideNonConflictOutputs,
             enableUndoRedoHotkeys: this._conflict.enableUndoRedoHotkeys,
+            showBaseColumn: this._conflict.showBaseColumn,
             currentBranch: this._conflict.semanticConflict?.currentBranch,
             incomingBranch: this._conflict.semanticConflict?.incomingBranch,
         };
 
+        logger.debug(`[WebConflictPanel] Sending conflict data with showBaseColumn=${this._conflict.showBaseColumn}`);
         server.sendConflictData(this._sessionId, data);
     }
 
     private _handleMessage(message: unknown): void {
         if (this._isDisposed) return;
-        
-        const msg = message as { 
-            command?: string; 
-            type?: string; 
-            resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>; 
+
+        const msg = message as {
+            command?: string;
+            type?: string;
+            resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>;
             resolvedRows?: ResolvedRow[];
-            semanticChoice?: string; 
-            markAsResolved?: boolean 
+            semanticChoice?: string;
+            markAsResolved?: boolean
         };
-        
+
         logger.debug('[WebConflictPanel] Received message:', msg.command || msg.type);
 
         switch (msg.command) {
@@ -150,11 +152,11 @@ export class WebConflictPanel {
         }
     }
 
-    private async _handleResolution(message: { 
-        type?: string; 
-        resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>; 
+    private async _handleResolution(message: {
+        type?: string;
+        resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>;
         resolvedRows?: ResolvedRow[];
-        semanticChoice?: string; 
+        semanticChoice?: string;
         markAsResolved?: boolean;
         renumberExecutionCounts?: boolean;
     }): Promise<void> {
@@ -176,7 +178,7 @@ export class WebConflictPanel {
                         markAsResolved: message.markAsResolved ?? false,
                         renumberExecutionCounts: message.renumberExecutionCounts ?? false
                     });
-                    
+
                     // Send success message to browser
                     if (this._sessionId) {
                         const server = getWebServer();
@@ -184,14 +186,14 @@ export class WebConflictPanel {
                             type: 'resolution-success',
                             message: 'Conflicts resolved successfully!'
                         });
-                        
+
                         // Wait to ensure message is delivered to browser
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
                 } catch (error) {
                     logger.error('[WebConflictPanel] Error applying semantic resolutions:', error);
                     vscode.window.showErrorMessage(`Failed to apply resolutions: ${error}`);
-                    
+
                     // Send error message to browser
                     if (this._sessionId) {
                         const server = getWebServer();
@@ -210,14 +212,14 @@ export class WebConflictPanel {
     public dispose(): void {
         if (this._isDisposed) return;
         this._isDisposed = true;
-        
+
         WebConflictPanel.currentPanel = undefined;
-        
+
         if (this._sessionId) {
             const server = getWebServer();
             server.closeSession(this._sessionId);
         }
-        
+
         logger.debug('[WebConflictPanel] Disposed');
     }
 }

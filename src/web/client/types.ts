@@ -18,7 +18,7 @@ export type {
     NotebookSemanticConflict,
     ResolutionChoice,
 } from '../../types';
-import type { AutoResolveResult } from  '../webTypes';
+import type { AutoResolveResult } from '../webTypes';
 export type { AutoResolveResult } from '../webTypes';
 
 /**
@@ -55,6 +55,7 @@ export interface UnifiedConflictData {
     currentBranch?: string;
     incomingBranch?: string;
     enableUndoRedoHotkeys?: boolean;
+    showBaseColumn?: boolean;
 }
 
 /**

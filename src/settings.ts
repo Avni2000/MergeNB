@@ -6,8 +6,10 @@
  * - autoResolveExecutionCount: Set execution_count to null (default: true)
  * - autoResolveKernelVersion: Use current kernel/Python version (default: true)  
  * - stripOutputs: Clear cell outputs during merge (default: true)
+ * - autoResolveWhitespace: Auto-resolve whitespace-only source diffs (default: true)
  * - hideNonConflictOutputs: Hide outputs for non-conflicted cells in UI (default: true)
  * - enableUndoRedoHotkeys: Enable Ctrl+Z / Ctrl+Shift+Z in web UI (default: true)
+ * - showBaseColumn: Show base branch column in 3-column view (default: false, true in headless/testing)
  * 
  * These reduce manual conflict resolution for common non-semantic differences.
  */
@@ -24,8 +26,10 @@ export interface MergeNBSettings {
     autoResolveExecutionCount: boolean;
     autoResolveKernelVersion: boolean;
     stripOutputs: boolean;
+    autoResolveWhitespace: boolean;
     hideNonConflictOutputs: boolean;
     enableUndoRedoHotkeys: boolean;
+    showBaseColumn: boolean;
 }
 
 /** Default settings used in headless mode */
@@ -33,8 +37,10 @@ const DEFAULT_SETTINGS: MergeNBSettings = {
     autoResolveExecutionCount: true,
     autoResolveKernelVersion: true,
     stripOutputs: true,
+    autoResolveWhitespace: true,
     hideNonConflictOutputs: true,
-    enableUndoRedoHotkeys: true
+    enableUndoRedoHotkeys: true,
+    showBaseColumn: true
 };
 
 /**
@@ -45,15 +51,17 @@ export function getSettings(): MergeNBSettings {
     if (!vscode) {
         return { ...DEFAULT_SETTINGS };
     }
-    
+
     const config = vscode.workspace.getConfiguration('mergeNB');
-    
+
     return {
         autoResolveExecutionCount: config.get<boolean>('autoResolve.executionCount', true),
         autoResolveKernelVersion: config.get<boolean>('autoResolve.kernelVersion', true),
         stripOutputs: config.get<boolean>('autoResolve.stripOutputs', true),
+        autoResolveWhitespace: config.get<boolean>('autoResolve.whitespace', true),
         hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', true),
         enableUndoRedoHotkeys: config.get<boolean>('ui.enableUndoRedoHotkeys', true),
+        showBaseColumn: config.get<boolean>('ui.showBaseColumn', false),
     };
 }
 
