@@ -7,30 +7,42 @@ jobs:
   integration:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        # vscode-version: ['1.60.0', 'stable']
+        include:
+          - os: ubuntu-latest
+            vscode-version: stable
+            playwright-version: default
+          - os: ubuntu-22.04
+            vscode-version: '1.80.0'
+            playwright-version: '1.44.0'
+          - os: windows-latest
+            vscode-version: stable
+            playwright-version: default
+          - os: macos-latest
+            vscode-version: stable
+            playwright-version: default
     runs-on: ${{ matrix.os }}
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
-    
+      VSCODE_VERSION: ${{ matrix.vscode-version }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        
+
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          
+
       - name: Install apt deps (Xvfb)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb
-        
+
       - name: Get npm cache directory
         id: npm-cache-dir
         shell: bash
         run: echo "dir=$(npm config get cache)" >> "$GITHUB_OUTPUT"
-        
+
       - name: Cache npm deps
         uses: actions/cache@v4
         with:
@@ -38,23 +50,28 @@ jobs:
           key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-npm-
-            
+
       - name: Cache node_modules
         id: node-modules-cache
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-modules-vscode-${{ matrix.vscode-version }}-pw-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
           restore-keys: |
+            ${{ runner.os }}-modules-vscode-${{ matrix.vscode-version }}-pw-${{ matrix.playwright-version }}-
             ${{ runner.os }}-modules-
-          
+
       - name: Install npm deps
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
         run: npm ci
-        
+
+      - name: Override Playwright for legacy VS Code runtime
+        if: matrix.playwright-version != 'default'
+        run: npm install --no-save --no-package-lock @playwright/test@${{ matrix.playwright-version }} playwright@${{ matrix.playwright-version }}
+
       - name: Build
         run: npm run compile
-        
+
       # Cache Playwright browsers
       - name: Cache Playwright browsers (Linux)
         if: runner.os == 'Linux'
@@ -62,47 +79,65 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
           restore-keys: |
+            ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-
             ${{ runner.os }}-playwright-
-          
+
       - name: Cache Playwright browsers (Windows)
         if: runner.os == 'Windows'
         id: playwright-cache-windows
         uses: actions/cache@v4
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
           restore-keys: |
+            ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-
             ${{ runner.os }}-playwright-
-          
+
+      - name: Cache Playwright browsers (macOS)
+        if: runner.os == 'macOS'
+        id: playwright-cache-macos
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-
+            ${{ runner.os }}-playwright-
+
       # Cache VS Code test resources
       - name: Cache VS Code test resources
         uses: actions/cache@v4
         with:
           path: .vscode-test
-          key: ${{ runner.os }}-vscode-test-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-vscode-${{ matrix.vscode-version }}-${{ hashFiles('package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-vscode-test-
-          
+            ${{ runner.os }}-vscode-${{ matrix.vscode-version }}-
+            ${{ runner.os }}-vscode-
+
       # Install Playwright - canonical pattern
       - name: Install Playwright browsers and deps (Linux - cache miss)
         if: runner.os == 'Linux' && steps.playwright-cache-linux.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps
-        
+
       - name: Install Playwright OS deps only (Linux - cache hit)
         if: runner.os == 'Linux' && steps.playwright-cache-linux.outputs.cache-hit == 'true'
         run: npx playwright install-deps
-        
+
       - name: Install Playwright browsers (Windows - cache miss)
         if: runner.os == 'Windows' && steps.playwright-cache-windows.outputs.cache-hit != 'true'
         run: npx playwright install
-        
+
+      - name: Install Playwright browsers (macOS - cache miss)
+        if: runner.os == 'macOS' && steps.playwright-cache-macos.outputs.cache-hit != 'true'
+        run: npx playwright install
+
       # Run tests
       - name: Run VS Code integration tests under Xvfb
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:integration:all
-        
+
       - name: Run VS Code integration tests
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' || runner.os == 'macOS'
         run: npm run test:integration:all

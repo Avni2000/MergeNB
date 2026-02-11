@@ -184,6 +184,7 @@ async function runTest(test: TestDef): Promise<RunResult> {
     const testDir = path.resolve(__dirname, '../../test');
     let workspacePath: string | undefined;
     const testEnv = { ...process.env, MERGENB_TEST_MODE: 'true' };
+    const vscodeVersion = process.env.VSCODE_VERSION?.trim();
     process.env.MERGENB_TEST_MODE = 'true';
 
     try {
@@ -207,6 +208,7 @@ async function runTest(test: TestDef): Promise<RunResult> {
                 extensionDevelopmentPath,
                 extensionTestsPath,
                 extensionTestsEnv: testEnv,
+                ...(vscodeVersion && vscodeVersion !== 'stable' ? { version: vscodeVersion } : {}),
                 launchArgs: [
                     workspacePath,
                     '--disable-extensions',

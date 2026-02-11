@@ -84,6 +84,7 @@ export async function run(): Promise<void> {
 
     let browser;
     let page: Page | undefined;
+    const primaryModifier = process.platform === 'darwin' ? 'Meta' : 'Control';
 
     try {
         const config = readTestConfig();
@@ -108,11 +109,11 @@ export async function run(): Promise<void> {
         await firstRow.locator('.resolved-content-input').waitFor({ timeout: 5000 });
 
         await page.click('.header-title');
-        await page.keyboard.press('Control+Z');
+        await page.keyboard.press(`${primaryModifier}+Z`);
         await firstRow.locator('.resolved-content-input').waitFor({ state: 'detached', timeout: 5000 });
 
         await page.click('.header-title');
-        await page.keyboard.press('Control+Shift+Z');
+        await page.keyboard.press(`${primaryModifier}+Shift+Z`);
         await firstRow.locator('.resolved-content-input').waitFor({ timeout: 5000 });
         console.log('  ✓ Keyboard undo/redo toggled branch selection');
 
