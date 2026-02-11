@@ -3,15 +3,12 @@
  * @description React component for rendering notebook cell content.
  */
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { renderMarkdown } from './markdown';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
 import DOMPurify from 'dompurify';
-
-// Performance tuning constants
-const LAZY_PREVIEW_LENGTH = 100; // Characters to show in lazy-loaded markdown preview
 
 interface CellContentProps {
     cell: NotebookCell | undefined;
@@ -22,7 +19,6 @@ interface CellContentProps {
     showOutputs?: boolean;
     onDragStart?: (e: React.DragEvent) => void;
     onDragEnd?: () => void;
-    isVisible?: boolean; // For lazy rendering optimization
 }
 
 export function CellContentInner({
@@ -34,7 +30,6 @@ export function CellContentInner({
     showOutputs = true,
     onDragStart,
     onDragEnd,
-    isVisible = true,
 }: CellContentProps): React.ReactElement {
     if (!cell) {
         return (
@@ -46,36 +41,13 @@ export function CellContentInner({
 
     const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
-    // Memoize expensive JSON serialization
-    const encodedCell = useMemo(() => encodeURIComponent(JSON.stringify(cell)), [cell]);
+    const encodedCell = encodeURIComponent(JSON.stringify(cell));
 
     const cellClasses = [
         'notebook-cell',
         `${cellType}-cell`,
         isConflict && 'has-conflict'
     ].filter(Boolean).join(' ');
-
-    // For non-visible cells, render a minimal placeholder to maintain layout.
-    // Keep data attributes + drag handlers so tests and drag/drop remain stable.
-    if (!isVisible && cellType === 'markdown') {
-        return (
-            <div
-                className={cellClasses}
-                data-lazy="true"
-                draggable={Boolean(isConflict && onDragStart)}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                data-cell={encodedCell}
-                data-cell-type={cellType}
-            >
-                <div className="cell-content">
-                    <div style={{ minHeight: '50px', opacity: 0.3 }}>
-                        <pre>{source.length > LAZY_PREVIEW_LENGTH ? `${source.substring(0, LAZY_PREVIEW_LENGTH)}...` : source}</pre>
-                    </div>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <div
@@ -96,7 +68,7 @@ export function CellContentInner({
                 )}
             </div>
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
-                <CellOutputs outputs={cell.outputs} isVisible={isVisible} />
+                <CellOutputs outputs={cell.outputs} />
             )}
         </div>
     );
@@ -107,8 +79,7 @@ interface MarkdownContentProps {
 }
 
 function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
-    // Memoize HTML rendering to avoid re-parsing on every render
-    const html = useMemo(() => renderMarkdown(source), [source]);
+    const html = renderMarkdown(source);
 
     return (
         <div
@@ -125,8 +96,7 @@ interface DiffContentProps {
 }
 
 function DiffContent({ source, compareSource, side }: DiffContentProps): React.ReactElement {
-    // Memoize expensive LCS-based diff computation
-    const diff = useMemo(() => computeLineDiff(compareSource, source), [compareSource, source]);
+    const diff = computeLineDiff(compareSource, source);
     // Use the right side for display (shows the "new" content with change markers)
     const diffLines = diff.right;
     // Filter out empty alignment lines to avoid unnecessary whitespace
@@ -188,14 +158,11 @@ function getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'ba
 
 interface CellOutputsProps {
     outputs: CellOutput[];
-    isVisible?: boolean;
 }
 
-function CellOutputs({ outputs, isVisible = true }: CellOutputsProps): React.ReactElement {
-    // Text placeholders for images prevent ResizeObserver feedback loops.
-    // Opacity optimization improves performance for off-screen cells without triggering dimension changes.
+function CellOutputs({ outputs }: CellOutputsProps): React.ReactElement {
     return (
-        <div className="cell-outputs" style={{ opacity: isVisible ? 1 : 0.3 }}>
+        <div className="cell-outputs">
             {outputs.map((output, i) => (
                 <OutputItem key={i} output={output} />
             ))}
@@ -265,24 +232,4 @@ function ImagePlaceholder({ mimeType }: { mimeType: string }): React.ReactElemen
     );
 }
 
-/**
- * Custom comparator for React.memo.
- * Compares props that affect rendered output, treating drag handler reference
- * changes as equal if their defined/undefined status hasn't changed.
- */
-function areCellContentPropsEqual(prev: CellContentProps, next: CellContentProps): boolean {
-    if (prev.cell !== next.cell) return false;
-    if (prev.cellIndex !== next.cellIndex) return false;
-    if (prev.side !== next.side) return false;
-    if (prev.isConflict !== next.isConflict) return false;
-    if (prev.compareCell !== next.compareCell) return false;
-    if (prev.showOutputs !== next.showOutputs) return false;
-    if (prev.isVisible !== next.isVisible) return false;
-    // Drag handlers: only care if defined/undefined changed (affects draggable attribute),
-    // not about reference identity (the actual handler logic is stable)
-    if (Boolean(prev.onDragStart) !== Boolean(next.onDragStart)) return false;
-    if (Boolean(prev.onDragEnd) !== Boolean(next.onDragEnd)) return false;
-    return true;
-}
-
-export const CellContent = React.memo(CellContentInner, areCellContentPropsEqual);
+export const CellContent = CellContentInner;

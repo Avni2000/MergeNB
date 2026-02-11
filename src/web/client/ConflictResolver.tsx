@@ -3,7 +3,7 @@
  * @description Main React component for the conflict resolution UI.
  */
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { sortByPosition } from '../../positionUtils';
 import { normalizeCellSource } from '../../notebookUtils';
 import type {
@@ -18,12 +18,6 @@ import type {
 } from './types';
 import { MergeRow } from './MergeRow';
 
-// Virtualization constants
-const INITIAL_VISIBLE_ROWS = 20; // Number of rows to render initially
-const DEFAULT_ROW_HEIGHT = 200; // Default height for unmeasured rows (fallback)
-const VIRTUALIZATION_OVERSCAN_ROWS = 5; // Number of rows to render outside viewport for smooth scrolling
-const RESIZE_OBSERVER_DEBOUNCE_MS = 150; // Debounce ResizeObserver updates to prevent rapid state changes
-const HEIGHT_CHANGE_THRESHOLD = 5; // Minimum height change (in pixels) to trigger an update
 const INITIAL_MARK_AS_RESOLVED = true;
 const INITIAL_RENUMBER_EXECUTION_COUNTS = true;
 
@@ -86,12 +80,9 @@ export function ConflictResolver({
     onResolve,
     onCancel,
 }: ConflictResolverProps): React.ReactElement {
-    const initialRows = useMemo(() => {
-        if (conflict.type === 'semantic' && conflict.semanticConflict) {
-            return buildMergeRowsFromSemantic(conflict.semanticConflict);
-        }
-        return [];
-    }, [conflict]);
+    const initialRows = conflict.type === 'semantic' && conflict.semanticConflict
+        ? buildMergeRowsFromSemantic(conflict.semanticConflict)
+        : [];
 
     const [choices, setChoices] = useState<Map<number, ResolutionState>>(new Map());
     const [markAsResolved, setMarkAsResolved] = useState(INITIAL_MARK_AS_RESOLVED);
@@ -111,16 +102,6 @@ export function ConflictResolver({
     }));
     const [historyOpen, setHistoryOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);
-
-    // Virtualization state
-    const mainContentRef = useRef<HTMLDivElement>(null);
-    const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_VISIBLE_ROWS });
-
-    // Track actual row heights using ResizeObserver
-    const [rowHeights, setRowHeights] = useState<Map<number, number>>(new Map());
-    const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-    const resizeObserver = useRef<ResizeObserver | null>(null);
-    const previousRowsLength = useRef<number>(rows.length);
 
     // Cell-level drag state (for dragging cells between/into rows)
     const [draggedCell, setDraggedCell] = useState<DraggedCellData | null>(null);
@@ -153,7 +134,7 @@ export function ConflictResolver({
         renumberExecutionCountsRef.current = renumberExecutionCounts;
     }, [renumberExecutionCounts]);
 
-    const recordHistory = useCallback((
+    const recordHistory = (
         label: string,
         nextChoices: Map<number, ResolutionState>,
         nextRows: MergeRowType[],
@@ -175,9 +156,9 @@ export function ConflictResolver({
             });
             return { entries, index: entries.length - 1 };
         });
-    }, []);
+    };
 
-    const applySnapshot = useCallback((snapshot: ResolverSnapshot) => {
+    const applySnapshot = (snapshot: ResolverSnapshot) => {
         setChoices(cloneChoices(snapshot.choices));
         setRows(cloneRows(snapshot.rows));
         setMarkAsResolved(snapshot.markAsResolved);
@@ -187,209 +168,26 @@ export function ConflictResolver({
         setDropTarget(null);
         setDraggedRowIndex(null);
         setDropRowIndex(null);
-    }, []);
+    };
 
-    const isEditableTarget = useCallback((target: EventTarget | null): boolean => {
+    const isEditableTarget = (target: EventTarget | null): boolean => {
         if (!target || !(target as HTMLElement).closest) return false;
         const element = target as HTMLElement;
         if (element.tagName === 'TEXTAREA' || element.tagName === 'INPUT') return true;
         if (element.isContentEditable) return true;
         return Boolean(element.closest('[contenteditable="true"]'));
-    }, []);
+    };
 
-    const conflictRows = useMemo(() => rows.filter(r => r.type === 'conflict'), [rows]);
+    const conflictRows = rows.filter(r => r.type === 'conflict');
     const totalConflicts = conflictRows.length;
     const resolvedCount = choices.size;
     const allResolved = resolvedCount === totalConflicts;
     const canUndo = history.index > 0;
     const canRedo = history.index < history.entries.length - 1;
     const enableUndoRedoHotkeys = conflict.enableUndoRedoHotkeys ?? true;
-    const isMac = useMemo(() => /Mac|iPod|iPhone|iPad/.test(navigator.platform), []);
+    const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform);
     const undoShortcutLabel = isMac ? 'Cmd+Z' : 'Ctrl+Z';
     const redoShortcutLabel = isMac ? 'Cmd+Shift+Z' : 'Ctrl+Shift+Z';
-
-    // Helper to get row height (actual or default)
-    const getRowHeight = useCallback((index: number): number => {
-        return rowHeights.get(index) ?? DEFAULT_ROW_HEIGHT;
-    }, [rowHeights]);
-
-    // Pre-calculate cumulative heights to optimize scrolling performance (O(1) lookups vs O(N))
-    // cumulativeHeights[i] = cumulative height BEFORE row i starts (i.e. top position of row i)
-    // cumulativeHeights[rows.length] = total height
-    const cumulativeHeights = useMemo(() => {
-        const heights = new Array(rows.length + 1).fill(0);
-        let current = 0;
-        for (let i = 0; i < rows.length; i++) {
-            heights[i] = current;
-            current += (rowHeights.get(i) ?? DEFAULT_ROW_HEIGHT);
-        }
-        heights[rows.length] = current;
-        return heights;
-    }, [rows.length, rowHeights]);
-
-    // Get total content height
-    const getTotalHeight = useCallback((): number => {
-        return cumulativeHeights[rows.length];
-    }, [cumulativeHeights, rows.length]);
-
-    // Find row index at a given scroll position using binary search
-    const getRowIndexAtPosition = useCallback((scrollPos: number): number => {
-        if (rows.length === 0) return 0;
-
-        // Binary search for the row where cumulativeHeights[i] <= scrollPos < cumulativeHeights[i+1]
-        let low = 0;
-        let high = rows.length - 1;
-
-        while (low <= high) {
-            const mid = Math.floor((low + high) / 2);
-            const rowTop = cumulativeHeights[mid];
-            const rowBottom = cumulativeHeights[mid + 1];
-
-            if (scrollPos >= rowTop && scrollPos < rowBottom) {
-                return mid;
-            } else if (scrollPos < rowTop) {
-                high = mid - 1;
-            } else {
-                low = mid + 1;
-            }
-        }
-
-        // Fallback for out of bounds (should return last row if scrolled way past)
-        if (scrollPos >= cumulativeHeights[rows.length]) return rows.length - 1;
-        return 0;
-    }, [cumulativeHeights, rows.length]);
-
-    // Setup ResizeObserver to track actual row heights
-    useEffect(() => {
-        let debounceTimer: NodeJS.Timeout | null = null;
-        let pendingUpdates = new Map<number, number>();
-
-        resizeObserver.current = new ResizeObserver((entries) => {
-            // Collect all pending updates
-            for (const entry of entries) {
-                const element = entry.target as HTMLDivElement;
-                const rowIndex = parseInt(element.dataset.rowIndex ?? '-1', 10);
-                if (rowIndex >= 0) {
-                    const newHeight = entry.contentRect.height;
-                    if (newHeight > 0) {
-                        pendingUpdates.set(rowIndex, newHeight);
-                    }
-                }
-            }
-
-            // Clear existing timer and set a new one
-            if (debounceTimer) {
-                clearTimeout(debounceTimer);
-            }
-
-            debounceTimer = setTimeout(() => {
-                setRowHeights(prev => {
-                    const newHeights = new Map(prev);
-                    let hasChanges = false;
-
-                    for (const [rowIndex, newHeight] of pendingUpdates.entries()) {
-                        const currentHeight = newHeights.get(rowIndex);
-                        // Only update if the height change is significant (above threshold)
-                        if (currentHeight === undefined || Math.abs(currentHeight - newHeight) >= HEIGHT_CHANGE_THRESHOLD) {
-                            newHeights.set(rowIndex, newHeight);
-                            hasChanges = true;
-                        }
-                    }
-
-                    pendingUpdates.clear();
-                    return hasChanges ? newHeights : prev;
-                });
-            }, RESIZE_OBSERVER_DEBOUNCE_MS);
-        });
-
-        return () => {
-            if (debounceTimer) {
-                clearTimeout(debounceTimer);
-            }
-            resizeObserver.current?.disconnect();
-        };
-    }, []); // Only create observer once
-
-    // Callback to register row refs with ResizeObserver
-    const registerRowRef = useCallback((index: number, element: HTMLDivElement | null) => {
-        const prevElement = rowRefs.current.get(index);
-
-        if (prevElement && prevElement !== element) {
-            resizeObserver.current?.unobserve(prevElement);
-            rowRefs.current.delete(index);
-        }
-
-        if (element) {
-            rowRefs.current.set(index, element);
-            resizeObserver.current?.observe(element);
-        }
-    }, []);
-
-    const refCallbackCache = useRef(new Map<number, (el: HTMLDivElement | null) => void>());
-    const getRefCallback = useCallback((index: number): (el: HTMLDivElement | null) => void => {
-        let cb = refCallbackCache.current.get(index);
-        if (!cb) {
-            cb = (element: HTMLDivElement | null) => {
-                registerRowRef(index, element);
-            };
-            refCallbackCache.current.set(index, cb);
-        }
-        return cb;
-    }, [registerRowRef]);
-
-    // Adjust scroll position when rows are deleted to prevent "black spots"
-    useEffect(() => {
-        const prevLength = previousRowsLength.current;
-        const currentLength = rows.length;
-
-        if (currentLength < prevLength && mainContentRef.current) {
-            // Rows were deleted - adjust scroll position
-            const element = mainContentRef.current;
-            const viewportHeight = element.clientHeight;
-            const totalHeight = getTotalHeight();
-
-            // If scroll position is now beyond content, scroll to end
-            if (element.scrollTop > totalHeight - viewportHeight) {
-                element.scrollTop = Math.max(0, totalHeight - viewportHeight);
-            }
-
-            // Clean up height measurements for deleted rows
-            setRowHeights(new Map());
-        }
-
-        previousRowsLength.current = currentLength;
-    }, [rows.length, getTotalHeight]);
-
-    // Handle scroll for virtualization using actual heights
-    useEffect(() => {
-        const handleScroll = () => {
-            if (!mainContentRef.current) return;
-
-            const currentScrollTop = mainContentRef.current.scrollTop;
-            const viewportHeight = mainContentRef.current.clientHeight;
-
-            // Find start index using actual heights
-            const rawStartIndex = getRowIndexAtPosition(currentScrollTop);
-            const startIndex = Math.max(0, rawStartIndex - VIRTUALIZATION_OVERSCAN_ROWS);
-
-            // Find end index using actual heights
-            const viewportEndPos = currentScrollTop + viewportHeight;
-            const rawEndIndex = getRowIndexAtPosition(viewportEndPos);
-            const endIndex = Math.min(rows.length, rawEndIndex + VIRTUALIZATION_OVERSCAN_ROWS + 1);
-
-            setVisibleRange({ start: startIndex, end: endIndex });
-        };
-
-        const element = mainContentRef.current;
-        if (element) {
-            element.addEventListener('scroll', handleScroll);
-            // Initial calculation
-            handleScroll();
-
-            return () => element.removeEventListener('scroll', handleScroll);
-        }
-    }, [rows.length, getRowIndexAtPosition]);
-
     useEffect(() => {
         if (!historyOpen) return;
 
@@ -417,7 +215,7 @@ export function ConflictResolver({
 
 
     /** Handle user selecting a branch choice (sets both choice and initial content) */
-    const handleSelectChoice = useCallback((index: number, choice: ResolutionChoice, resolvedContent: string) => {
+    const handleSelectChoice = (index: number, choice: ResolutionChoice, resolvedContent: string) => {
         const next = new Map(choicesRef.current);
         next.set(index, {
             choice,
@@ -426,10 +224,10 @@ export function ConflictResolver({
         });
         setChoices(next);
         recordHistory(`Resolve conflict ${index + 1} (${choice})`, next, rowsRef.current);
-    }, [recordHistory]);
+    };
 
     /** Handle user editing the resolved content (just updates the text) */
-    const handleUpdateContent = useCallback((index: number, resolvedContent: string) => {
+    const handleUpdateContent = (index: number, resolvedContent: string) => {
         setChoices(prev => {
             const existing = prev.get(index);
             if (!existing || existing.resolvedContent === resolvedContent) return prev;
@@ -437,9 +235,9 @@ export function ConflictResolver({
             next.set(index, { ...existing, resolvedContent });
             return next;
         });
-    }, []);
+    };
 
-    const handleCommitContent = useCallback((index: number) => {
+    const handleCommitContent = (index: number) => {
         const current = choicesRef.current.get(index);
         if (!current) return;
         const lastSnapshot = history.entries[history.index]?.snapshot;
@@ -448,10 +246,10 @@ export function ConflictResolver({
             return;
         }
         recordHistory(`Edit conflict ${index + 1}`, choicesRef.current, rowsRef.current);
-    }, [history, recordHistory]);
+    };
 
     /** Handle "Accept All" action */
-    const handleAcceptAll = useCallback((choice: 'base' | 'current' | 'incoming') => {
+    const handleAcceptAll = (choice: 'base' | 'current' | 'incoming') => {
         const next = new Map(choicesRef.current);
         let didChange = false;
         conflictRows.forEach(row => {
@@ -482,9 +280,9 @@ export function ConflictResolver({
         if (!didChange) return;
         setChoices(next);
         recordHistory(`Accept all ${choice}`, next, rowsRef.current);
-    }, [conflictRows, recordHistory]);
+    };
 
-    const handleToggleRenumberExecutionCounts = useCallback((checked: boolean) => {
+    const handleToggleRenumberExecutionCounts = (checked: boolean) => {
         if (checked === renumberExecutionCountsRef.current) return;
         setRenumberExecutionCounts(checked);
         recordHistory(
@@ -493,9 +291,9 @@ export function ConflictResolver({
             rowsRef.current,
             { renumberExecutionCounts: checked }
         );
-    }, [recordHistory]);
+    };
 
-    const handleToggleMarkAsResolved = useCallback((checked: boolean) => {
+    const handleToggleMarkAsResolved = (checked: boolean) => {
         if (checked === markAsResolvedRef.current) return;
         setMarkAsResolved(checked);
         recordHistory(
@@ -504,34 +302,34 @@ export function ConflictResolver({
             rowsRef.current,
             { markAsResolved: checked }
         );
-    }, [recordHistory]);
+    };
 
-    const handleJumpToHistory = useCallback((targetIndex: number) => {
+    const handleJumpToHistory = (targetIndex: number) => {
         setHistory(prev => {
             if (targetIndex === prev.index) return prev;
             if (targetIndex < 0 || targetIndex >= prev.entries.length) return prev;
             applySnapshot(prev.entries[targetIndex].snapshot);
             return { ...prev, index: targetIndex };
         });
-    }, [applySnapshot]);
+    };
 
-    const handleUndo = useCallback(() => {
+    const handleUndo = () => {
         setHistory(prev => {
             if (prev.index === 0) return prev;
             const nextIndex = prev.index - 1;
             applySnapshot(prev.entries[nextIndex].snapshot);
             return { ...prev, index: nextIndex };
         });
-    }, [applySnapshot]);
+    };
 
-    const handleRedo = useCallback(() => {
+    const handleRedo = () => {
         setHistory(prev => {
             if (prev.index >= prev.entries.length - 1) return prev;
             const nextIndex = prev.index + 1;
             applySnapshot(prev.entries[nextIndex].snapshot);
             return { ...prev, index: nextIndex };
         });
-    }, [applySnapshot]);
+    };
 
     useEffect(() => {
         if (!enableUndoRedoHotkeys) return;
@@ -553,9 +351,9 @@ export function ConflictResolver({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [enableUndoRedoHotkeys, handleRedo, handleUndo, isEditableTarget, isMac]);
+    }, [enableUndoRedoHotkeys, handleRedo, handleUndo, isMac, isEditableTarget]);
 
-    const handleResolve = useCallback(() => {
+    const handleResolve = () => {
         const resolutions: ConflictChoice[] = [];
         for (const [index, state] of choices) {
             resolutions.push({
@@ -585,22 +383,22 @@ export function ConflictResolver({
         });
 
         onResolve(resolutions, markAsResolved, renumberExecutionCounts, resolvedRows);
-    }, [choices, markAsResolved, renumberExecutionCounts, onResolve, rows]);
+    };
 
     // Cell drag handlers
-    const handleCellDragStart = useCallback((rowIndex: number, side: 'base' | 'current' | 'incoming', cell: NotebookCell) => {
+    const handleCellDragStart = (rowIndex: number, side: 'base' | 'current' | 'incoming', cell: NotebookCell) => {
         const data = { rowIndex, side, cell };
         draggedCellRef.current = data;
         setDraggedCell(data);
-    }, []);
+    };
 
-    const handleCellDragEnd = useCallback(() => {
+    const handleCellDragEnd = () => {
         draggedCellRef.current = null;
         setDraggedCell(null);
         setDropTarget(null);
-    }, []);
+    };
 
-    const handleCellDragOver = useCallback((e: React.DragEvent, rowIndex: number, side: 'base' | 'current' | 'incoming') => {
+    const handleCellDragOver = (e: React.DragEvent, rowIndex: number, side: 'base' | 'current' | 'incoming') => {
         e.preventDefault();
         e.stopPropagation();
 
@@ -620,9 +418,9 @@ export function ConflictResolver({
             }
             return { rowIndex, side };
         });
-    }, []);
+    };
 
-    const handleCellDrop = useCallback((targetRowIndex: number, targetSide: 'base' | 'current' | 'incoming') => {
+    const handleCellDrop = (targetRowIndex: number, targetSide: 'base' | 'current' | 'incoming') => {
         const dragged = draggedCellRef.current;
         if (!dragged) return;
         if (dragged.side !== targetSide) return;
@@ -676,21 +474,21 @@ export function ConflictResolver({
         draggedCellRef.current = null;
         setDraggedCell(null);
         setDropTarget(null);
-    }, [recordHistory]);
+    };
 
     // Row reorder handlers
-    const handleRowDragStart = useCallback((index: number) => {
+    const handleRowDragStart = (index: number) => {
         draggedRowIndexRef.current = index;
         setDraggedRowIndex(index);
-    }, []);
+    };
 
-    const handleRowDragEnd = useCallback(() => {
+    const handleRowDragEnd = () => {
         draggedRowIndexRef.current = null;
         setDraggedRowIndex(null);
         setDropRowIndex(null);
-    }, []);
+    };
 
-    const handleRowDragOver = useCallback((e: React.DragEvent, targetIndex: number) => {
+    const handleRowDragOver = (e: React.DragEvent, targetIndex: number) => {
         e.preventDefault();
         const dragged = draggedRowIndexRef.current;
         if (dragged === null || dragged === targetIndex) {
@@ -698,9 +496,9 @@ export function ConflictResolver({
         }
         // Only update if target changed (prevent excessive re-renders)
         setDropRowIndex(prev => prev === targetIndex ? prev : targetIndex);
-    }, []);
+    };
 
-    const handleRowDrop = useCallback((targetIndex: number) => {
+    const handleRowDrop = (targetIndex: number) => {
         const dragged = draggedRowIndexRef.current;
         if (dragged === null || dragged === targetIndex) {
             draggedRowIndexRef.current = null;
@@ -717,7 +515,7 @@ export function ConflictResolver({
         draggedRowIndexRef.current = null;
         setDraggedRowIndex(null);
         setDropRowIndex(null);
-    }, [recordHistory]);
+    };
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
     const allowCellDrag = true;
@@ -889,7 +687,7 @@ export function ConflictResolver({
                 </div>
             </header>
 
-            <main className="main-content" ref={mainContentRef}>
+            <main className="main-content">
                 {conflict.autoResolveResult && conflict.autoResolveResult.autoResolvedCount > 0 && (
                     <div className="auto-resolve-banner">
                         <span className="icon">✓</span>
@@ -913,29 +711,10 @@ export function ConflictResolver({
                     </div>
                 </div>
 
-                {/* 
-                    Virtualization Strategy: Content Windowing
-                    
-                    We render ALL row wrapper divs in the normal document flow here. 
-                    This allows the browser to calculate the correct document height and scrollbar natively,
-                    and allows ResizeObserver to measure the actual height of every row (even "off-screen" ones).
-                    
-                    True virtualization (removing nodes) would require absolute positioning and estimating heights,
-                    which breaks the sticky headers and variable-height content flow.
-                    
-                    Optimization comes from passing `isVisible` to the MergeRow component.
-                    When `isVisible` is false, MergeRow skips rendering expensive content (like syntax highlighting 
-                    and diffs), rendering lightweight placeholders instead.
-                */}
-                <div style={{ position: 'relative', minHeight: getTotalHeight() }}>
+                <div>
                     {rows.map((row, i) => {
                         const conflictIdx = row.conflictIndex ?? -1;
                         const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
-                        const isDropTargetRow = dropRowIndex === i;
-
-                        // Check if row is in visible range
-                        const isVisible = i >= visibleRange.start && i < visibleRange.end;
-
                         return (
                             <React.Fragment key={i}>
                                 {/* Drop zone before first row */}
@@ -948,10 +727,7 @@ export function ConflictResolver({
                                     />
                                 )}
 
-                                {/* Row wrapper for height measurement */}
                                 <div
-                                    ref={getRefCallback(i)}
-                                    data-row-index={i}
                                     style={{ width: '100%' }}
                                     onDragOver={(e) => { if (draggedRowIndexRef.current !== null) handleRowDragOver(e, i); }}
                                     onDrop={() => { if (draggedRowIndexRef.current !== null) handleRowDrop(i); }}
@@ -971,7 +747,6 @@ export function ConflictResolver({
                                         rowDragEnabled={allowRowDrag}
                                         onRowDragStart={allowRowDrag ? handleRowDragStart : undefined}
                                         onRowDragEnd={allowRowDrag ? handleRowDragEnd : undefined}
-                                        isVisible={isVisible}
                                         // Cell drag props
                                         draggedCell={draggedCell}
                                         dropTarget={dropTarget}
