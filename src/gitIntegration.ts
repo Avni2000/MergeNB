@@ -60,6 +60,59 @@ function gitRelativePath(gitRoot: string, filePath: string): string {
     return toGitPath(path.relative(resolveRealPath(gitRoot), resolveRealPath(filePath)));
 }
 
+function normalizeForComparison(filePath: string): string {
+    const normalized = toGitPath(path.normalize(filePath));
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+function splitPathSegments(filePath: string): string[] {
+    return normalizeForComparison(filePath)
+        .split('/')
+        .filter(Boolean);
+}
+
+function pathHasSuffix(targetPath: string, suffixPath: string): boolean {
+    const targetSegments = splitPathSegments(targetPath);
+    const suffixSegments = splitPathSegments(suffixPath);
+
+    if (suffixSegments.length === 0 || suffixSegments.length > targetSegments.length) {
+        return false;
+    }
+
+    for (let i = 1; i <= suffixSegments.length; i++) {
+        if (targetSegments[targetSegments.length - i] !== suffixSegments[suffixSegments.length - i]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function pathsLikelySameFile(firstPath: string, secondPath: string, repoPath?: string): boolean {
+    const firstReal = normalizeForComparison(resolveRealPath(firstPath));
+    const secondReal = normalizeForComparison(resolveRealPath(secondPath));
+    if (firstReal === secondReal) {
+        return true;
+    }
+
+    const firstNorm = normalizeForComparison(firstPath);
+    const secondNorm = normalizeForComparison(secondPath);
+    if (firstNorm === secondNorm) {
+        return true;
+    }
+
+    if (!repoPath) {
+        return false;
+    }
+
+    const repoNorm = normalizeForComparison(repoPath);
+    return pathHasSuffix(firstNorm, repoNorm) && pathHasSuffix(secondNorm, repoNorm);
+}
+
+function isUnmergedStatus(status: string): boolean {
+    return status === 'UU' || status === 'AA' || status === 'DD';
+}
+
 function normalizeStatusPath(statusPath: string): string {
     let normalized = statusPath.trim();
 
@@ -72,8 +125,37 @@ function normalizeStatusPath(statusPath: string): string {
 
 export interface GitFileStatus {
     path: string;
+    repoPath?: string;
     status: string; // 'UU' = unmerged, both modified
     isUnmerged: boolean;
+}
+
+async function resolveStatusPathForFile(gitRoot: string, filePath: string): Promise<string | null> {
+    const unmergedFiles = await getUnmergedFiles(gitRoot);
+
+    for (const file of unmergedFiles) {
+        if (pathsLikelySameFile(file.path, filePath, file.repoPath)) {
+            return file.repoPath || null;
+        }
+    }
+
+    return null;
+}
+
+async function resolveGitPathForFile(gitRoot: string, filePath: string): Promise<string | null> {
+    const relativePath = gitRelativePath(gitRoot, filePath);
+    if (relativePath && relativePath !== '.' && !relativePath.startsWith('..')) {
+        return relativePath;
+    }
+
+    const statusPath = await resolveStatusPathForFile(gitRoot, filePath);
+    if (statusPath) {
+        console.log(`[GitIntegration] Resolved git-relative path from status entries: ${statusPath}`);
+        return statusPath;
+    }
+
+    console.warn(`[GitIntegration] Could not resolve git-relative path for ${filePath}`);
+    return null;
 }
 
 /**
@@ -101,27 +183,12 @@ export async function isUnmergedFile(filePath: string): Promise<boolean> {
             return false;
         }
 
-        const relativePath = gitRelativePath(gitRoot, filePath);
-        console.log(`[GitIntegration] Relative path: ${relativePath}`);
-        
-        const { stdout } = await execAsync('git status --porcelain', { cwd: gitRoot });
-        console.log(`[GitIntegration] Git status output:\n${stdout}`);
-        
-        const lines = stdout.split('\n');
-        for (const line of lines) {
-            if (line.trim()) {
-                const status = line.substring(0, 2);
-                const statusPath = normalizeStatusPath(line.substring(3));
-                console.log(`[GitIntegration]   Line: "${line}" -> status="${status}" path="${statusPath}"`);
-                
-                // Format: "UU filename" for unmerged, both modified
-                if ((status === 'UU' || status === 'AA' || status === 'DD')
-                    && statusPath === relativePath) {
-                    console.log(`[GitIntegration] MATCHED: ${filePath} is unmerged!`);
-                    return true;
-                }
-            }
+        const statusPath = await resolveStatusPathForFile(gitRoot, filePath);
+        if (statusPath) {
+            console.log(`[GitIntegration] MATCHED: ${filePath} is unmerged at ${statusPath}`);
+            return true;
         }
+
         console.log(`[GitIntegration] No unmerged status found for ${filePath}`);
         return false;
     } catch (error) {
@@ -167,11 +234,12 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
             const filePath = normalizeStatusPath(line.substring(3));
             console.log(`[GitIntegration]   Line: "${line}" -> status="${status}" path="${filePath}"`);
             
-            if (status === 'UU' || status === 'AA' || status === 'DD') {
+            if (isUnmergedStatus(status)) {
                 const fullPath = path.join(gitRoot, filePath);
                 console.log(`[GitIntegration]   -> UNMERGED: ${fullPath}`);
                 unmergedFiles.push({
                     path: fullPath,
+                    repoPath: filePath,
                     status,
                     isUnmerged: true
                 });
@@ -194,7 +262,8 @@ export async function getBaseVersion(filePath: string): Promise<string | null> {
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
 
-        const relativePath = gitRelativePath(gitRoot, filePath);
+        const relativePath = await resolveGitPathForFile(gitRoot, filePath);
+        if (!relativePath) return null;
         const { stdout } = await execAsync(`git show :1:"${relativePath}"`, { 
             cwd: gitRoot,
             encoding: 'utf8',
@@ -217,7 +286,8 @@ export async function getcurrentVersion(filePath: string): Promise<string | null
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
 
-        const relativePath = gitRelativePath(gitRoot, filePath);
+        const relativePath = await resolveGitPathForFile(gitRoot, filePath);
+        if (!relativePath) return null;
         const { stdout } = await execAsync(`git show :2:"${relativePath}"`, { 
             cwd: gitRoot,
             encoding: 'utf8',
@@ -239,7 +309,8 @@ export async function getincomingVersion(filePath: string): Promise<string | nul
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
 
-        const relativePath = gitRelativePath(gitRoot, filePath);
+        const relativePath = await resolveGitPathForFile(gitRoot, filePath);
+        if (!relativePath) return null;
         const { stdout } = await execAsync(`git show :3:"${relativePath}"`, { 
             cwd: gitRoot,
             encoding: 'utf8',
@@ -260,16 +331,15 @@ export async function getThreeWayVersions(filePath: string): Promise<{
     current: string | null;
     incoming: string | null;
 } | null> {
-    const isUnmerged = await isUnmergedFile(filePath);
-    if (!isUnmerged) {
-        return null;
-    }
-
     const [base, current, incoming] = await Promise.all([
         getBaseVersion(filePath),
         getcurrentVersion(filePath),
         getincomingVersion(filePath)
     ]);
+
+    if (base === null && current === null && incoming === null) {
+        return null;
+    }
 
     return { base, current, incoming };
 }
