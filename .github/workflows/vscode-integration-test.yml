@@ -11,7 +11,7 @@ jobs:
           - os: ubuntu-latest
             vscode-version: stable
             playwright-version: default
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             vscode-version: '1.80.0'
             playwright-version: '1.44.0'
           - os: windows-latest
