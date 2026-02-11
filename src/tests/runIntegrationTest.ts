@@ -183,6 +183,8 @@ async function runTest(test: TestDef): Promise<RunResult> {
     const extensionDevelopmentPath = path.resolve(__dirname, '../..');
     const testDir = path.resolve(__dirname, '../../test');
     let workspacePath: string | undefined;
+    const testEnv = { ...process.env, MERGENB_TEST_MODE: 'true' };
+    process.env.MERGENB_TEST_MODE = 'true';
 
     try {
         const [baseFile, currentFile, incomingFile] = test.notebooks.map(n =>
@@ -204,6 +206,7 @@ async function runTest(test: TestDef): Promise<RunResult> {
             await runTests({
                 extensionDevelopmentPath,
                 extensionTestsPath,
+                extensionTestsEnv: testEnv,
                 launchArgs: [
                     workspacePath,
                     '--disable-extensions',

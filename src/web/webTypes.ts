@@ -7,12 +7,12 @@
  * 
  */
 
-import type { 
-    NotebookCell, 
-    Notebook, 
-    CellMapping, 
+import type {
+    NotebookCell,
+    Notebook,
+    CellMapping,
     NotebookSemanticConflict,
-    ResolutionChoice 
+    ResolutionChoice
 } from '../types';
 import type { AutoResolveResult } from '../conflictDetector';
 
@@ -31,6 +31,8 @@ export interface UnifiedConflict {
     hideNonConflictOutputs?: boolean;
     /** Whether undo/redo hotkeys are enabled in the web UI */
     enableUndoRedoHotkeys?: boolean;
+    /** Whether to show the base column in the 3-way merge view */
+    showBaseColumn?: boolean;
 }
 
 /**
@@ -83,17 +85,17 @@ export interface WebConflictData {
     filePath: string;
     fileName: string;
     type: 'semantic';
-    
+
     // For semantic conflicts
     semanticConflict?: WebSemanticConflict;
-    
+
     // Auto-resolution result if any
     autoResolveResult?: AutoResolveResult;
-    
+
     // Display options
     hideNonConflictOutputs?: boolean;
     showCellHeaders?: boolean;
-    
+
     // Branch information
     currentBranch?: string;
     incomingBranch?: string;
@@ -106,12 +108,12 @@ export interface WebSemanticConflict {
     filePath: string;
     semanticConflicts: WebSemanticConflictItem[];
     cellMappings: CellMapping[];
-    
+
     // Full notebook versions
     base?: Notebook;
     current?: Notebook;
     incoming?: Notebook;
-    
+
     // Branch information
     currentBranch?: string;
     incomingBranch?: string;
@@ -152,7 +154,7 @@ export interface WebMergeRow {
 /**
  * Messages sent from the extension to the browser.
  */
-export type ExtensionToBrowserMessage = 
+export type ExtensionToBrowserMessage =
     | { type: 'connected'; sessionId: string }
     | { type: 'conflict-data'; data: WebConflictData }
     | { type: 'error'; message: string }
@@ -162,8 +164,8 @@ export type ExtensionToBrowserMessage =
  * Messages sent from the browser to the extension.
  */
 export type BrowserToExtensionMessage =
-    | { 
-        command: 'resolve'; 
+    | {
+        command: 'resolve';
         type: 'semantic';
         resolutions: Array<{
             index: number;

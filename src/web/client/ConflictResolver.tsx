@@ -192,6 +192,7 @@ export function ConflictResolver({
     const canUndo = history.index > 0;
     const canRedo = history.index < history.entries.length - 1;
     const enableUndoRedoHotkeys = conflict.enableUndoRedoHotkeys ?? true;
+    const showBaseColumn = conflict.showBaseColumn ?? false;
     const isMac = useMemo(() => /Mac|iPod|iPhone|iPad/.test(navigator.platform), []);
     const undoShortcutLabel = isMac ? 'Cmd+Z' : 'Ctrl+Z';
     const redoShortcutLabel = isMac ? 'Cmd+Shift+Z' : 'Ctrl+Shift+Z';
@@ -630,20 +631,22 @@ export function ConflictResolver({
                         </div>
                     </div>
                     <div style={{ display: 'flex', gap: 6, marginRight: 12, paddingRight: 12, borderRight: '1px solid var(--border-color)' }}>
-                        <button
-                            className="btn"
-                            style={{
-                                background: 'var(--base-bg)',
-                                border: '1px solid var(--base-border)',
-                                color: 'var(--text-primary)',
-                                fontSize: 11,
-                                padding: '4px 8px'
-                            }}
-                            title="Accept all base (original) changes"
-                            onClick={() => handleAcceptAll('base')}
-                        >
-                            All Base
-                        </button>
+                        {showBaseColumn && (
+                            <button
+                                className="btn"
+                                style={{
+                                    background: 'var(--base-bg)',
+                                    border: '1px solid var(--base-border)',
+                                    color: 'var(--text-primary)',
+                                    fontSize: 11,
+                                    padding: '4px 8px'
+                                }}
+                                title="Accept all base (original) changes"
+                                onClick={() => handleAcceptAll('base')}
+                            >
+                                All Base
+                            </button>
+                        )}
                         <button
                             className="btn"
                             style={{
@@ -714,10 +717,12 @@ export function ConflictResolver({
                     </div>
                 )}
 
-                <div className="column-labels">
-                    <div className="column-label base">
-                        Base
-                    </div>
+                <div className={`column-labels${showBaseColumn ? '' : ' two-column'}`}>
+                    {showBaseColumn && (
+                        <div className="column-label base">
+                            Base
+                        </div>
+                    )}
                     <div className="column-label current">
                         Current {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
                     </div>
@@ -780,6 +785,7 @@ export function ConflictResolver({
                                         onCommitContent={handleCommitContent}
                                         isDragging={draggedRowIndex === i || draggedCell?.rowIndex === i}
                                         showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
+                                        showBaseColumn={showBaseColumn}
                                         enableCellDrag={allowCellDrag}
                                         rowDragEnabled={allowRowDrag}
                                         onRowDragStart={allowRowDrag ? handleRowDragStart : undefined}

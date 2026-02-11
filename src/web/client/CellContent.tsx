@@ -16,6 +16,8 @@ interface CellContentProps {
     side: 'base' | 'current' | 'incoming';
     isConflict?: boolean;
     compareCell?: NotebookCell;
+    baseCell?: NotebookCell;
+    diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
     onDragStart?: (e: React.DragEvent) => void;
     onDragEnd?: () => void;
@@ -27,6 +29,8 @@ export function CellContentInner({
     side,
     isConflict = false,
     compareCell,
+    baseCell,
+    diffMode = 'base',
     showOutputs = true,
     onDragStart,
     onDragEnd,
@@ -59,10 +63,15 @@ export function CellContentInner({
             data-cell-type={cellType}
         >
             <div className="cell-content">
-                {cellType === 'markdown' ? (
+                {cellType === 'markdown' && !isConflict ? (
                     <MarkdownContent source={source} />
-                ) : isConflict && compareCell ? (
-                    <DiffContent source={source} compareSource={normalizeCellSource(compareCell.source)} side={side} />
+                ) : isConflict && (compareCell || baseCell) ? (
+                    // Show conflict diffs as raw text (no markdown rendering)
+                    <DiffContent
+                        source={source}
+                        compareSource={normalizeCellSource((compareCell ?? baseCell)!.source)}
+                        diffMode={diffMode}
+                    />
                 ) : (
                     <pre>{source}</pre>
                 )}
@@ -92,7 +101,8 @@ function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
 interface DiffContentProps {
     source: string;
     compareSource: string;
-    side: 'base' | 'current' | 'incoming';
+    side?: 'base' | 'current' | 'incoming';
+    diffMode: 'base' | 'conflict';
 }
 
 function DiffContent({ source, compareSource, side }: DiffContentProps): React.ReactElement {
@@ -104,56 +114,96 @@ function DiffContent({ source, compareSource, side }: DiffContentProps): React.R
 
     return (
         <pre>
-            {visibleLines.map((line, i) => (
-                <React.Fragment key={i}>
-                    <span className={getDiffLineClass(line, side)}>
-                        {line.inlineChanges ? (
-                            line.inlineChanges.map((change, j) => (
-                                <span key={j} className={getInlineChangeClass(change.type, side)}>
-                                    {change.text}
-                                </span>
-                            ))
-                        ) : (
-                            line.content
-                        )}
-                    </span>
-                    {i < visibleLines.length - 1 ? '\n' : ''}
-                </React.Fragment>
-            ))}
+            {visibleLines.map((line, i) => {
+                const whitespaceOnly = isWhitespaceOnlyLineChange(line);
+                return (
+                    <React.Fragment key={i}>
+                        <span className={getDiffLineClass(line, side ?? 'current', diffMode, whitespaceOnly)}>
+                            {line.inlineChanges ? (
+                                line.inlineChanges.map((change, j) => (
+                                    <span key={j} className={getInlineChangeClass(change.type, side ?? 'current', diffMode, whitespaceOnly)}>
+                                        {change.text}
+                                    </span>
+                                ))
+                            ) : (
+                                line.content
+                            )}
+                        </span>
+                        {i < visibleLines.length - 1 ? '\n' : ''}
+                    </React.Fragment>
+                );
+            })}
         </pre>
     );
 }
 
 /**
  * Get CSS class for diff line based on type and side.
+ * Branch-based coloring: green for current, blue for incoming.
  */
-function getDiffLineClass(line: DiffLine, side: 'base' | 'current' | 'incoming'): string {
+function getDiffLineClass(
+    line: DiffLine,
+    side: 'base' | 'current' | 'incoming',
+    diffMode: 'base' | 'conflict',
+    isWhitespaceOnly: boolean
+): string {
     switch (line.type) {
         case 'unchanged':
             return 'diff-line';
         case 'added':
-            return 'diff-line added';
         case 'removed':
-            return 'diff-line removed';
         case 'modified':
-            // Modified lines show inline changes
-            return side === 'current' ? 'diff-line modified-old' : 'diff-line modified-new';
+            if (diffMode === 'conflict' || isWhitespaceOnly) {
+                return 'diff-line diff-line-conflict';
+            }
+            // Use branch-based coloring: the color tells you which branch the content comes from
+            return side === 'current' ? 'diff-line diff-line-current' : 'diff-line diff-line-incoming';
         default:
             return 'diff-line';
     }
 }
 
-function getInlineChangeClass(type: 'unchanged' | 'added' | 'removed', side: 'base' | 'current' | 'incoming'): string {
+function getInlineChangeClass(
+    type: 'unchanged' | 'added' | 'removed',
+    side: 'base' | 'current' | 'incoming',
+    diffMode: 'base' | 'conflict',
+    isWhitespaceOnly: boolean
+): string {
     switch (type) {
         case 'unchanged':
             return 'diff-inline-unchanged';
         case 'added':
-            return 'diff-inline-added';
         case 'removed':
-            return 'diff-inline-removed';
+            if (diffMode === 'conflict' || isWhitespaceOnly) {
+                return 'diff-inline-conflict';
+            }
+            // Use branch-based coloring for inline changes too
+            return side === 'current' ? 'diff-inline-current' : 'diff-inline-incoming';
         default:
             return '';
     }
+}
+
+function isWhitespaceOnlyLineChange(line: DiffLine): boolean {
+    if (line.type === 'unchanged') return false;
+
+    if (line.inlineChanges && line.inlineChanges.length > 0) {
+        let hasChange = false;
+        for (const change of line.inlineChanges) {
+            if (change.type === 'unchanged') continue;
+            if (change.text.trim() !== '') {
+                return false;
+            }
+            hasChange = true;
+        }
+        return hasChange;
+    }
+
+    if (line.type === 'added' || line.type === 'removed') {
+        return line.content.trim() === '' && line.content.length > 0;
+    }
+
+    return false;
 }
 
 interface CellOutputsProps {

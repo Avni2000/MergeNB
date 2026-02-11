@@ -33,6 +33,7 @@ interface MergeRowProps {
     onCommitContent: (index: number) => void;
     isDragging?: boolean;
     showOutputs?: boolean;
+    showBaseColumn?: boolean;
     enableCellDrag?: boolean;
     rowDragEnabled?: boolean;
     onRowDragStart?: (rowIndex: number) => void;
@@ -61,6 +62,7 @@ export function MergeRowInner({
     onCommitContent,
     isDragging = false,
     showOutputs = true,
+    showBaseColumn = true,
     enableCellDrag = true,
     rowDragEnabled = true,
     onRowDragStart,
@@ -182,8 +184,8 @@ export function MergeRowInner({
         const rawSource = cell ? normalizeCellSource(cell.source) : '';
         const cellType = cell?.cell_type || 'code';
         return (
-            <div 
-                className="merge-row identical-row" 
+            <div
+                className="merge-row identical-row"
                 data-testid={testId}
                 data-raw-source={rawSource}
                 data-cell-type={cellType}
@@ -235,6 +237,8 @@ export function MergeRowInner({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
+    // Always use conflict diffing mode for consistent red highlighting of divergence
+    const diffMode = 'conflict';
     return (
         <div className={rowClasses} data-testid={testId}>
             {rowDragHandle}
@@ -289,6 +293,8 @@ export function MergeRowInner({
                             side="current"
                             isConflict={true}
                             compareCell={row.incomingCell || row.baseCell}
+                            baseCell={row.baseCell}
+                            diffMode={diffMode}
                             showOutputs={showOutputs}
                             onDragStart={canDragCell ? handleCurrentCellDragStart : undefined}
                             onDragEnd={canDragCell ? onCellDragEnd : undefined}
@@ -311,6 +317,8 @@ export function MergeRowInner({
                             side="incoming"
                             isConflict={true}
                             compareCell={row.currentCell || row.baseCell}
+                            baseCell={row.baseCell}
+                            diffMode={diffMode}
                             showOutputs={showOutputs}
                             onDragStart={canDragCell ? handleIncomingCellDragStart : undefined}
                             onDragEnd={canDragCell ? onCellDragEnd : undefined}
@@ -329,7 +337,7 @@ export function MergeRowInner({
 
             {/* Resolution bar - select which branch to use as base */}
             <div className="resolution-bar">
-                {hasBase && (
+                {showBaseColumn && hasBase && (
                     <button
                         className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
                         onClick={() => handleChoiceClick('base')}
