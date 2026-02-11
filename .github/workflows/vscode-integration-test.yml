@@ -11,7 +11,7 @@ jobs:
           - os: ubuntu-latest
             vscode-version: stable
           - os: ubuntu-latest
-            vscode-version: '1.60.0'
+            vscode-version: '1.80.0'
           - os: windows-latest
             vscode-version: stable
           - os: macos-latest
