@@ -106,32 +106,36 @@ export function parseCellFromAttribute(cellJson: string | null, context: string)
 }
 
 /** Wait for the web server to start and return its port. Throws if not found within timeout. */
-export async function waitForServer(portFilePath: string, fs: typeof import('fs'), timeoutMs = 30000): Promise<number> {
-    console.log(`[TestHelpers] Waiting for server: polling ${portFilePath} (timeout: ${timeoutMs}ms)`);
+export async function waitForServer(
+    getPort: () => Promise<number | undefined> | number | undefined,
+    timeoutMs = 30000
+): Promise<number> {
+    console.log(`[TestHelpers] Waiting for server startup (timeout: ${timeoutMs}ms)`);
     const maxAttempts = Math.ceil(timeoutMs / 500);
     for (let i = 0; i < maxAttempts; i++) {
         await new Promise(r => setTimeout(r, 500));
+        let serverPort = 0;
         try {
-            if (fs.existsSync(portFilePath)) {
-                const portStr = fs.readFileSync(portFilePath, 'utf8').trim();
-                const serverPort = parseInt(portStr, 10);
-                console.log(`[TestHelpers] Found port in file: ${serverPort} (attempt ${i + 1}/${maxAttempts})`);
-                if (serverPort > 0) {
-                    const isHealthy = await checkHealth(serverPort);
-                    if (isHealthy) {
-                        console.log(`[TestHelpers] Server health check passed on port ${serverPort}`);
-                        return serverPort;
-                    } else {
-                        console.log(`[TestHelpers] Server health check failed on port ${serverPort}, retrying...`);
-                    }
-                }
-            } else {
-                if (i % 10 === 0) {
-                    console.log(`[TestHelpers] Port file not found yet: ${portFilePath} (attempt ${i + 1}/${maxAttempts})`);
-                }
+            const port = await Promise.resolve(getPort());
+            serverPort = typeof port === 'number' ? port : 0;
+        } catch (error) {
+            if (i % 10 === 0) {
+                console.log(`[TestHelpers] Failed to query server port yet (attempt ${i + 1}/${maxAttempts}): ${error}`);
             }
-        } catch (e) {
-            console.log(`[TestHelpers] Error reading port file: ${e}`);
+            continue;
+        }
+        if (serverPort > 0) {
+            console.log(`[TestHelpers] Found running server on port ${serverPort} (attempt ${i + 1}/${maxAttempts})`);
+            const isHealthy = await checkHealth(serverPort);
+            if (isHealthy) {
+                console.log(`[TestHelpers] Server health check passed on port ${serverPort}`);
+                return serverPort;
+            }
+            if (i % 10 === 0) {
+                console.log(`[TestHelpers] Server port present but health not ready yet: ${serverPort} (attempt ${i + 1}/${maxAttempts})`);
+            }
+        } else if (i % 10 === 0) {
+            console.log(`[TestHelpers] Server not started yet (attempt ${i + 1}/${maxAttempts})`);
         }
     }
     throw new Error('Web server did not start within timeout');

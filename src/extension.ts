@@ -83,6 +83,7 @@ async function updateStatusBar(): Promise<void> {
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('MergeNB extension is now active');
+	const isTestMode = process.env.MERGENB_TEST_MODE === 'true';
 
 	resolver = new NotebookConflictResolver(context.extensionUri);
 
@@ -182,6 +183,15 @@ export function activate(context: vscode.ExtensionContext) {
 			return lastResolvedDetails;
 		})
 	);
+
+	if (isTestMode) {
+		context.subscriptions.push(
+			vscode.commands.registerCommand('merge-nb.getWebServerPort', () => {
+				const webServer = getWebServer();
+				return webServer.isRunning() ? webServer.getPort() : 0;
+			})
+		);
+	}
 
 	// Register file decoration for notebooks with conflicts
 	const decorationProvider = vscode.window.registerFileDecorationProvider({
