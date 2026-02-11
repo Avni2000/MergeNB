@@ -68,7 +68,7 @@ export class ConflictResolverWebServer {
     private httpServer: http.Server | undefined;
     private wss: WebSocket.Server | undefined;
     private port: number = 0;
-    private host: string = 'localhost';
+    private host: string = '127.0.0.1';
     
     // Active WebSocket connections by session ID
     private connections: Map<string, WebSocket> = new Map();
@@ -109,7 +109,8 @@ export class ConflictResolverWebServer {
             return this.port;
         }
 
-        this.host = options.host || 'localhost';
+        // Use IPv4 loopback by default to avoid IPv6-only binding on Windows.
+        this.host = options.host || '127.0.0.1';
 
         return new Promise((resolve, reject) => {
             this.httpServer = http.createServer((req, res) => {
