@@ -70,12 +70,17 @@ export class WebConflictPanel {
     }
 
     private async _openInBrowser(): Promise<void> {
+        console.log('[WebConflictPanel] Opening conflict resolver in browser...');
         const server = getWebServer();
         server.setExtensionUri(this._extensionUri);
 
         // Start server if not running
         if (!server.isRunning()) {
+            console.log('[WebConflictPanel] Server not running, starting...');
             await server.start();
+            console.log('[WebConflictPanel] Server started');
+        } else {
+            console.log('[WebConflictPanel] Server already running');
         }
 
         // Generate session ID

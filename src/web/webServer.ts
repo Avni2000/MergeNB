@@ -140,9 +140,11 @@ export class ConflictResolverWebServer {
                     try {
                         const tmpDir = os.tmpdir();
                         const portFile = path.join(tmpDir, 'mergenb-server-port');
+                        console.log(`[MergeNB Web] Writing port to file: ${portFile}`);
                         fs.writeFileSync(portFile, String(this.port), 'utf8');
+                        console.log(`[MergeNB Web] Successfully wrote port ${this.port} to ${portFile}`);
                     } catch (e) {
-                        // Ignore errors writing port file
+                        console.error(`[MergeNB Web] Failed to write port file: ${e}`);
                     }
                     
                     resolve(this.port);

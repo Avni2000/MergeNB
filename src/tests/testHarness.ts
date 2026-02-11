@@ -68,13 +68,16 @@ export async function setupConflictResolver(
 
     const tmpDir = os.tmpdir();
     const portFilePath = path.join(tmpDir, options.portFileName || 'mergenb-server-port');
+    console.log(`[TestHarness] Port file path: ${portFilePath}`);
     try { fs.unlinkSync(portFilePath); } catch { /* ignore */ }
 
-    console.log('Executing merge-nb.findConflicts command...');
+    console.log('[TestHarness] Executing merge-nb.findConflicts command...');
     await vscode.commands.executeCommand('merge-nb.findConflicts');
+    console.log('[TestHarness] merge-nb.findConflicts command executed');
 
+    console.log('[TestHarness] Waiting for server to start...');
     const serverPort = await waitForServer(portFilePath, fs, options.serverTimeoutMs);
-    console.log(`Server started on port ${serverPort}`);
+    console.log(`[TestHarness] Server started on port ${serverPort}`);
 
     const sessionId = await waitForSession(serverPort, options.sessionTimeoutMs);
     console.log(`Session created: ${sessionId}`);

@@ -30,7 +30,11 @@ try {
 const execAsync = promisify(exec);
 
 function toGitPath(filePath: string): string {
-    return filePath.replace(/\\/g, '/');
+    const converted = filePath.replace(/\\/g, '/');
+    if (converted !== filePath) {
+        console.log(`[GitIntegration] Path conversion: '${filePath}' -> '${converted}'`);
+    }
+    return converted;
 }
 
 function normalizeStatusPath(statusPath: string): string {
@@ -68,21 +72,37 @@ export async function getGitRoot(filePath: string): Promise<string | null> {
 export async function isUnmergedFile(filePath: string): Promise<boolean> {
     try {
         const gitRoot = await getGitRoot(filePath);
-        if (!gitRoot) return false;
+        console.log(`[GitIntegration] Checking if unmerged: ${filePath} (gitRoot: ${gitRoot})`);
+        if (!gitRoot) {
+            console.log(`[GitIntegration] No git root found for ${filePath}`);
+            return false;
+        }
 
         const relativePath = toGitPath(path.relative(gitRoot, filePath));
+        console.log(`[GitIntegration] Relative path: ${relativePath}`);
+        
         const { stdout } = await execAsync('git status --porcelain', { cwd: gitRoot });
+        console.log(`[GitIntegration] Git status output:\n${stdout}`);
         
         const lines = stdout.split('\n');
         for (const line of lines) {
-            // Format: "UU filename" for unmerged, both modified
-            if ((line.startsWith('UU ') || line.startsWith('AA ') || line.startsWith('DD '))
-                && normalizeStatusPath(line.substring(3)) === relativePath) {
-                return true;
+            if (line.trim()) {
+                const status = line.substring(0, 2);
+                const statusPath = normalizeStatusPath(line.substring(3));
+                console.log(`[GitIntegration]   Line: "${line}" -> status="${status}" path="${statusPath}"`);
+                
+                // Format: "UU filename" for unmerged, both modified
+                if ((status === 'UU' || status === 'AA' || status === 'DD')
+                    && statusPath === relativePath) {
+                    console.log(`[GitIntegration] MATCHED: ${filePath} is unmerged!`);
+                    return true;
+                }
             }
         }
+        console.log(`[GitIntegration] No unmerged status found for ${filePath}`);
         return false;
     } catch (error) {
+        console.error(`[GitIntegration] Error in isUnmergedFile: ${error}`);
         return false;
     }
 }
@@ -106,20 +126,29 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
             gitRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
         }
         
-        if (!gitRoot) return [];
+        console.log(`[GitIntegration] getUnmergedFiles: gitRoot = ${gitRoot}`);
+        if (!gitRoot) {
+            console.log(`[GitIntegration] getUnmergedFiles: no gitRoot, returning empty`);
+            return [];
+        }
 
         const { stdout } = await execAsync('git status --porcelain', { cwd: gitRoot });
+        console.log(`[GitIntegration] getUnmergedFiles git status output:\n${stdout}`);
         
         const unmergedFiles: GitFileStatus[] = [];
         const lines = stdout.split('\n').filter(line => line.trim());
+        console.log(`[GitIntegration] getUnmergedFiles: ${lines.length} non-empty lines`);
         
         for (const line of lines) {
             const status = line.substring(0, 2);
             const filePath = normalizeStatusPath(line.substring(3));
+            console.log(`[GitIntegration]   Line: "${line}" -> status="${status}" path="${filePath}"`);
             
             if (status === 'UU' || status === 'AA' || status === 'DD') {
+                const fullPath = path.join(gitRoot, filePath);
+                console.log(`[GitIntegration]   -> UNMERGED: ${fullPath}`);
                 unmergedFiles.push({
-                    path: path.join(gitRoot, filePath),
+                    path: fullPath,
                     status,
                     isUnmerged: true
                 });
