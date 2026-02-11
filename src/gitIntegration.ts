@@ -16,7 +16,6 @@
  */
 
 import * as path from 'path';
-import * as fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -46,19 +45,6 @@ function normalizeStatusPath(statusPath: string): string {
     }
 
     return toGitPath(normalized);
-}
-
-async function resolveRealPathMaybe(filePath: string): Promise<string> {
-    try {
-        return await fs.promises.realpath(filePath);
-    } catch {
-        return filePath;
-    }
-}
-
-function normalizeForComparison(filePath: string): string {
-    const normalized = toGitPath(filePath);
-    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
 export interface GitFileStatus {
@@ -92,17 +78,8 @@ export async function isUnmergedFile(filePath: string): Promise<boolean> {
             return false;
         }
 
-        const [realGitRoot, realFilePath] = await Promise.all([
-            resolveRealPathMaybe(gitRoot),
-            resolveRealPathMaybe(filePath)
-        ]);
-
-        const relativePath = toGitPath(path.relative(realGitRoot, realFilePath));
-        const fallbackRelativePath = toGitPath(path.relative(gitRoot, filePath));
+        const relativePath = toGitPath(path.relative(gitRoot, filePath));
         console.log(`[GitIntegration] Relative path: ${relativePath}`);
-        if (fallbackRelativePath !== relativePath) {
-            console.log(`[GitIntegration] Relative path (fallback): ${fallbackRelativePath}`);
-        }
         
         const { stdout } = await execAsync('git status --porcelain', { cwd: gitRoot });
         console.log(`[GitIntegration] Git status output:\n${stdout}`);
@@ -115,13 +92,8 @@ export async function isUnmergedFile(filePath: string): Promise<boolean> {
                 console.log(`[GitIntegration]   Line: "${line}" -> status="${status}" path="${statusPath}"`);
                 
                 // Format: "UU filename" for unmerged, both modified
-                const normalizedStatusPath = normalizeForComparison(statusPath);
-                const normalizedRelativePath = normalizeForComparison(relativePath);
-                const normalizedFallbackPath = normalizeForComparison(fallbackRelativePath);
-
                 if ((status === 'UU' || status === 'AA' || status === 'DD')
-                    && (normalizedStatusPath === normalizedRelativePath
-                        || normalizedStatusPath === normalizedFallbackPath)) {
+                    && statusPath === relativePath) {
                     console.log(`[GitIntegration] MATCHED: ${filePath} is unmerged!`);
                     return true;
                 }
