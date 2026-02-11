@@ -29,6 +29,20 @@ try {
 
 const execAsync = promisify(exec);
 
+function toGitPath(filePath: string): string {
+    return filePath.replace(/\\/g, '/');
+}
+
+function normalizeStatusPath(statusPath: string): string {
+    let normalized = statusPath.trim();
+
+    if (normalized.startsWith('"') && normalized.endsWith('"')) {
+        normalized = normalized.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    }
+
+    return toGitPath(normalized);
+}
+
 export interface GitFileStatus {
     path: string;
     status: string; // 'UU' = unmerged, both modified
@@ -56,13 +70,14 @@ export async function isUnmergedFile(filePath: string): Promise<boolean> {
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return false;
 
-        const relativePath = path.relative(gitRoot, filePath);
+        const relativePath = toGitPath(path.relative(gitRoot, filePath));
         const { stdout } = await execAsync('git status --porcelain', { cwd: gitRoot });
         
         const lines = stdout.split('\n');
         for (const line of lines) {
             // Format: "UU filename" for unmerged, both modified
-            if (line.startsWith('UU ') && line.substring(3).trim() === relativePath) {
+            if ((line.startsWith('UU ') || line.startsWith('AA ') || line.startsWith('DD '))
+                && normalizeStatusPath(line.substring(3)) === relativePath) {
                 return true;
             }
         }
@@ -100,7 +115,7 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
         
         for (const line of lines) {
             const status = line.substring(0, 2);
-            const filePath = line.substring(3).trim();
+            const filePath = normalizeStatusPath(line.substring(3));
             
             if (status === 'UU' || status === 'AA' || status === 'DD') {
                 unmergedFiles.push({
@@ -127,7 +142,7 @@ export async function getBaseVersion(filePath: string): Promise<string | null> {
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
 
-        const relativePath = path.relative(gitRoot, filePath);
+        const relativePath = toGitPath(path.relative(gitRoot, filePath));
         const { stdout } = await execAsync(`git show :1:"${relativePath}"`, { 
             cwd: gitRoot,
             encoding: 'utf8',
@@ -150,7 +165,7 @@ export async function getcurrentVersion(filePath: string): Promise<string | null
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
 
-        const relativePath = path.relative(gitRoot, filePath);
+        const relativePath = toGitPath(path.relative(gitRoot, filePath));
         const { stdout } = await execAsync(`git show :2:"${relativePath}"`, { 
             cwd: gitRoot,
             encoding: 'utf8',
@@ -172,7 +187,7 @@ export async function getincomingVersion(filePath: string): Promise<string | nul
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
 
-        const relativePath = path.relative(gitRoot, filePath);
+        const relativePath = toGitPath(path.relative(gitRoot, filePath));
         const { stdout } = await execAsync(`git show :3:"${relativePath}"`, { 
             cwd: gitRoot,
             encoding: 'utf8',
