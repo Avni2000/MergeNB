@@ -105,7 +105,7 @@ interface DiffContentProps {
     diffMode: 'base' | 'conflict';
 }
 
-function DiffContent({ source, compareSource, side }: DiffContentProps): React.ReactElement {
+function DiffContent({ source, compareSource, side, diffMode }: DiffContentProps): React.ReactElement {
     const diff = useMemo(() => computeLineDiff(compareSource, source), [compareSource, source]);
     // Use the right side for display (shows the "new" content with change markers)
     const diffLines = diff.right;
