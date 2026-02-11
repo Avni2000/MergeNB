@@ -16,6 +16,7 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import WebSocket, { WebSocketServer } from 'ws';
 
 // VSCode is optional - only needed for openExternal
@@ -134,9 +135,9 @@ export class ConflictResolverWebServer {
                     this.port = address.port;
                     console.log(`[MergeNB Web] Server started at http://${this.host}:${this.port}`);
                     
-                    // Write port to temp file for integration tests
+                    // Write port to temp file for integration tests (use os.tmpdir() for cross-platform consistency)
                     try {
-                        const tmpDir = process.env.TMPDIR || process.env.TMP || '/tmp';
+                        const tmpDir = os.tmpdir();
                         const portFile = path.join(tmpDir, 'mergenb-server-port');
                         fs.writeFileSync(portFile, String(this.port), 'utf8');
                     } catch (e) {
