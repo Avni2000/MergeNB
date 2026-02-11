@@ -95,7 +95,7 @@ export function createMergeConflictRepo(
     }
 
     return tmpDir;
-}}
+}
 
 /** Write the test config that the VS Code test module reads at runtime. */
 export function writeTestConfig(
