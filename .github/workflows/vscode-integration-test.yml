@@ -10,12 +10,16 @@ jobs:
         include:
           - os: ubuntu-latest
             vscode-version: stable
+            playwright-version: default
           - os: ubuntu-latest
             vscode-version: '1.80.0'
+            playwright-version: '1.44.0'
           - os: windows-latest
             vscode-version: stable
+            playwright-version: default
           - os: macos-latest
             vscode-version: stable
+            playwright-version: default
     runs-on: ${{ matrix.os }}
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
@@ -52,13 +56,18 @@ jobs:
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-modules-vscode-${{ matrix.vscode-version }}-pw-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
           restore-keys: |
+            ${{ runner.os }}-modules-vscode-${{ matrix.vscode-version }}-pw-${{ matrix.playwright-version }}-
             ${{ runner.os }}-modules-
 
       - name: Install npm deps
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
         run: npm ci
+
+      - name: Override Playwright for legacy VS Code runtime
+        if: matrix.playwright-version != 'default'
+        run: npm install --no-save --no-package-lock @playwright/test@${{ matrix.playwright-version }} playwright@${{ matrix.playwright-version }}
 
       - name: Build
         run: npm run compile
@@ -70,8 +79,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
           restore-keys: |
+            ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-
             ${{ runner.os }}-playwright-
 
       - name: Cache Playwright browsers (Windows)
@@ -80,8 +90,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
           restore-keys: |
+            ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-
             ${{ runner.os }}-playwright-
 
       - name: Cache Playwright browsers (macOS)
@@ -90,8 +101,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
-          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
           restore-keys: |
+            ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-
             ${{ runner.os }}-playwright-
 
       # Cache VS Code test resources
