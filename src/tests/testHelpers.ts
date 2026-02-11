@@ -41,12 +41,24 @@ export interface TestConfig {
 /** Check if the web server is up */
 export function checkHealth(port: number): Promise<boolean> {
     return new Promise((resolve) => {
-        const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 500 }, (res) => {
+        const url = `http://127.0.0.1:${port}/health`;
+        const req = http.get(url, { timeout: 500 }, (res) => {
             res.resume(); // Drain body to free the socket
-            resolve(res.statusCode === 200);
+            const isHealthy = res.statusCode === 200;
+            if (!isHealthy) {
+                console.log(`[TestHelpers] Health check failed: got status ${res.statusCode} from ${url}`);
+            }
+            resolve(isHealthy);
         });
-        req.on('error', () => resolve(false));
-        req.on('timeout', () => { req.destroy(); resolve(false); });
+        req.on('error', (err) => {
+            console.log(`[TestHelpers] Health check error on ${url}: ${err.message}`);
+            resolve(false);
+        });
+        req.on('timeout', () => {
+            console.log(`[TestHelpers] Health check timeout on ${url}`);
+            req.destroy();
+            resolve(false);
+        });
     });
 }
 
@@ -94,19 +106,37 @@ export function parseCellFromAttribute(cellJson: string | null, context: string)
 }
 
 /** Wait for the web server to start and return its port. Throws if not found within timeout. */
-export async function waitForServer(portFilePath: string, fs: typeof import('fs'), timeoutMs = 30000): Promise<number> {
+export async function waitForServer(
+    getPort: () => Promise<number | undefined> | number | undefined,
+    timeoutMs = 30000
+): Promise<number> {
+    console.log(`[TestHelpers] Waiting for server startup (timeout: ${timeoutMs}ms)`);
     const maxAttempts = Math.ceil(timeoutMs / 500);
     for (let i = 0; i < maxAttempts; i++) {
         await new Promise(r => setTimeout(r, 500));
+        let serverPort = 0;
         try {
-            if (fs.existsSync(portFilePath)) {
-                const portStr = fs.readFileSync(portFilePath, 'utf8').trim();
-                const serverPort = parseInt(portStr, 10);
-                if (serverPort > 0 && await checkHealth(serverPort)) {
-                    return serverPort;
-                }
+            const port = await Promise.resolve(getPort());
+            serverPort = typeof port === 'number' ? port : 0;
+        } catch (error) {
+            if (i % 10 === 0) {
+                console.log(`[TestHelpers] Failed to query server port yet (attempt ${i + 1}/${maxAttempts}): ${error}`);
             }
-        } catch { /* continue polling */ }
+            continue;
+        }
+        if (serverPort > 0) {
+            console.log(`[TestHelpers] Found running server on port ${serverPort} (attempt ${i + 1}/${maxAttempts})`);
+            const isHealthy = await checkHealth(serverPort);
+            if (isHealthy) {
+                console.log(`[TestHelpers] Server health check passed on port ${serverPort}`);
+                return serverPort;
+            }
+            if (i % 10 === 0) {
+                console.log(`[TestHelpers] Server port present but health not ready yet: ${serverPort} (attempt ${i + 1}/${maxAttempts})`);
+            }
+        } else if (i % 10 === 0) {
+            console.log(`[TestHelpers] Server not started yet (attempt ${i + 1}/${maxAttempts})`);
+        }
     }
     throw new Error('Web server did not start within timeout');
 }

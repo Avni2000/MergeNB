@@ -14,8 +14,8 @@
  */
 
 import * as http from 'http';
-import * as fs from 'fs';
 import * as path from 'path';
+import * as fs from 'fs';
 import WebSocket, { WebSocketServer } from 'ws';
 
 // VSCode is optional - only needed for openExternal
@@ -67,7 +67,7 @@ export class ConflictResolverWebServer {
     private httpServer: http.Server | undefined;
     private wss: WebSocket.Server | undefined;
     private port: number = 0;
-    private host: string = 'localhost';
+    private host: string = '127.0.0.1';
     
     // Active WebSocket connections by session ID
     private connections: Map<string, WebSocket> = new Map();
@@ -108,7 +108,8 @@ export class ConflictResolverWebServer {
             return this.port;
         }
 
-        this.host = options.host || 'localhost';
+        // Use IPv4 loopback by default to avoid IPv6-only binding on Windows.
+        this.host = options.host || '127.0.0.1';
 
         return new Promise((resolve, reject) => {
             this.httpServer = http.createServer((req, res) => {
@@ -133,16 +134,6 @@ export class ConflictResolverWebServer {
                 if (address && typeof address === 'object') {
                     this.port = address.port;
                     console.log(`[MergeNB Web] Server started at http://${this.host}:${this.port}`);
-                    
-                    // Write port to temp file for integration tests
-                    try {
-                        const tmpDir = process.env.TMPDIR || process.env.TMP || '/tmp';
-                        const portFile = path.join(tmpDir, 'mergenb-server-port');
-                        fs.writeFileSync(portFile, String(this.port), 'utf8');
-                    } catch (e) {
-                        // Ignore errors writing port file
-                    }
-                    
                     resolve(this.port);
                 } else {
                     reject(new Error('Could not get server address'));

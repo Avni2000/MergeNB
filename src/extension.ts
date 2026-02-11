@@ -83,6 +83,7 @@ async function updateStatusBar(): Promise<void> {
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('MergeNB extension is now active');
+	const isTestMode = process.env.MERGENB_TEST_MODE === 'true';
 
 	resolver = new NotebookConflictResolver(context.extensionUri);
 
@@ -123,19 +124,27 @@ export function activate(context: vscode.ExtensionContext) {
 	// Command: Find all notebooks with conflicts (semantic / Git UU status)
 	context.subscriptions.push(
 		vscode.commands.registerCommand('merge-nb.findConflicts', async () => {
+			console.log('[Extension] merge-nb.findConflicts command triggered');
 			// First check if current notebook has conflicts
 			const activeUri = getActiveNotebookFileUri();
+			console.log(`[Extension] Active URI: ${activeUri?.fsPath}`);
 			if (activeUri) {
+				console.log(`[Extension] Checking if ${activeUri.fsPath} is unmerged...`);
 				const isUnmerged = await gitIntegration.isUnmergedFile(activeUri.fsPath);
+				console.log(`[Extension] isUnmerged result: ${isUnmerged}`);
 				if (isUnmerged) {
+					console.log(`[Extension] Resolving conflicts in active file`);
 					await resolver.resolveConflicts(activeUri);
 					return;
 				}
 			}
 
 			// Find all notebooks with conflicts (fast - only queries git status)
+			console.log('[Extension] Scanning workspace for conflicts...');
 			const files = await resolver.findNotebooksWithConflicts();
+			console.log(`[Extension] Found ${files.length} conflicted notebook(s)`);
 			if (files.length === 0) {
+				console.log('[Extension] No conflicts found');
 				vscode.window.showInformationMessage('No notebooks with merge conflicts found in workspace.');
 				return;
 			}
@@ -174,6 +183,15 @@ export function activate(context: vscode.ExtensionContext) {
 			return lastResolvedDetails;
 		})
 	);
+
+	if (isTestMode) {
+		context.subscriptions.push(
+			vscode.commands.registerCommand('merge-nb.getWebServerPort', () => {
+				const webServer = getWebServer();
+				return webServer.isRunning() ? webServer.getPort() : 0;
+			})
+		);
+	}
 
 	// Register file decoration for notebooks with conflicts
 	const decorationProvider = vscode.window.registerFileDecorationProvider({

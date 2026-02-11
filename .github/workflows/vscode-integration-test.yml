@@ -1,53 +1,108 @@
 name: VSCode Integration Tests
-
 on:
   pull_request:
   push:
     branches: [main]
 jobs:
   integration:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        # vscode-version: ['1.60.0', 'stable']
+    runs-on: ${{ matrix.os }}
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
+    
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
-
+        uses: actions/checkout@v4
+        
       - name: Use Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 18
+          
       - name: Install apt deps (Xvfb)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb
+        
+      - name: Get npm cache directory
+        id: npm-cache-dir
+        shell: bash
+        run: echo "dir=$(npm config get cache)" >> "$GITHUB_OUTPUT"
+        
       - name: Cache npm deps
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          path: ${{ steps.npm-cache-dir.outputs.dir }}
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-node-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v5
+            ${{ runner.os }}-npm-
+            
+      - name: Cache node_modules
+        id: node-modules-cache
+        uses: actions/cache@v4
         with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
-
-      - name: Cache VSCode test resources
-        uses: actions/cache@v5
-        with:
-          path: .vscode-test
-          key: ${{ runner.os }}-vscode-test-${{ hashFiles('**/package-lock.json') }}
+          path: node_modules
+          key: ${{ runner.os }}-modules-${{ hashFiles('package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-vscode-test-
-
+            ${{ runner.os }}-modules-
+          
       - name: Install npm deps
+        if: steps.node-modules-cache.outputs.cache-hit != 'true'
         run: npm ci
-
+        
       - name: Build
         run: npm run compile
-
-      - name: Install Playwright deps and browsers
-        run: |
-          npx playwright install-deps
-          npx playwright install
-
+        
+      # Cache Playwright browsers
+      - name: Cache Playwright browsers (Linux)
+        if: runner.os == 'Linux'
+        id: playwright-cache-linux
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+          
+      - name: Cache Playwright browsers (Windows)
+        if: runner.os == 'Windows'
+        id: playwright-cache-windows
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+          
+      # Cache VS Code test resources
+      - name: Cache VS Code test resources
+        uses: actions/cache@v4
+        with:
+          path: .vscode-test
+          key: ${{ runner.os }}-vscode-test-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vscode-test-
+          
+      # Install Playwright - canonical pattern
+      - name: Install Playwright browsers and deps (Linux - cache miss)
+        if: runner.os == 'Linux' && steps.playwright-cache-linux.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+        
+      - name: Install Playwright OS deps only (Linux - cache hit)
+        if: runner.os == 'Linux' && steps.playwright-cache-linux.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
+        
+      - name: Install Playwright browsers (Windows - cache miss)
+        if: runner.os == 'Windows' && steps.playwright-cache-windows.outputs.cache-hit != 'true'
+        run: npx playwright install
+        
+      # Run tests
       - name: Run VS Code integration tests under Xvfb
+        if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:integration:all
+        
+      - name: Run VS Code integration tests
+        if: runner.os == 'Windows'
+        run: npm run test:integration:all
