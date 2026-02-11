@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { sortByPosition } from '../../positionUtils';
 import { normalizeCellSource } from '../../notebookUtils';
 import type {
@@ -102,6 +103,7 @@ export function ConflictResolver({
     }));
     const [historyOpen, setHistoryOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);
+    const mainContentRef = useRef<HTMLDivElement>(null);
 
     // Cell-level drag state (for dragging cells between/into rows)
     const [draggedCell, setDraggedCell] = useState<DraggedCellData | null>(null);
@@ -520,6 +522,13 @@ export function ConflictResolver({
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
     const allowCellDrag = true;
     const allowRowDrag = true;
+    const rowVirtualizer = useVirtualizer({
+        count: rows.length,
+        getScrollElement: () => mainContentRef.current,
+        estimateSize: () => 240,
+        overscan: 6,
+    });
+    const virtualRows = rowVirtualizer.getVirtualItems();
 
     return (
         <div className="app-container">
@@ -687,7 +696,7 @@ export function ConflictResolver({
                 </div>
             </header>
 
-            <main className="main-content">
+            <main className="main-content" ref={mainContentRef}>
                 {conflict.autoResolveResult && conflict.autoResolveResult.autoResolvedCount > 0 && (
                     <div className="auto-resolve-banner">
                         <span className="icon">✓</span>
@@ -711,12 +720,34 @@ export function ConflictResolver({
                     </div>
                 </div>
 
-                <div>
-                    {rows.map((row, i) => {
-                        const conflictIdx = row.conflictIndex ?? -1;
+                <div
+                    style={{
+                        height: rowVirtualizer.getTotalSize(),
+                        position: 'relative',
+                    }}
+                >
+                    {virtualRows.map((virtualRow) => {
+                        const i = virtualRow.index;
+                        const row = rows[i];
+                        const conflictIdx = row?.conflictIndex ?? -1;
                         const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+
+                        if (!row) return null;
+
                         return (
-                            <React.Fragment key={i}>
+                            <div
+                                key={virtualRow.key}
+                                data-index={virtualRow.index}
+                                ref={rowVirtualizer.measureElement}
+                                className="virtual-row"
+                                style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    transform: `translateY(${virtualRow.start}px)`,
+                                }}
+                            >
                                 {/* Drop zone before first row */}
                                 {i === 0 && draggedRowIndex !== null && (
                                     <div
@@ -767,7 +798,7 @@ export function ConflictResolver({
                                         onDragLeave={() => setDropRowIndex(null)}
                                     />
                                 )}
-                            </React.Fragment>
+                            </div>
                         );
                     })}
                 </div>
