@@ -16,6 +16,7 @@
  */
 
 import * as path from 'path';
+import * as fs from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -35,6 +36,28 @@ function toGitPath(filePath: string): string {
         console.log(`[GitIntegration] Path conversion: '${filePath}' -> '${converted}'`);
     }
     return converted;
+}
+
+/**
+ * Resolve a path to its canonical form, expanding Windows 8.3 short names
+ * (e.g. RUNNER~1 → runneradmin) so that path.relative() works correctly
+ * when comparing paths from different sources (os.tmpdir vs git output).
+ */
+function resolveRealPath(p: string): string {
+    try {
+        return fs.realpathSync(p);
+    } catch {
+        return p;
+    }
+}
+
+/**
+ * Compute the git-relative path for a file, handling Windows short-path mismatches.
+ * Both gitRoot (from `git rev-parse`) and filePath (from VSCode/os.tmpdir) are
+ * resolved to their canonical long-name forms before computing the relative path.
+ */
+function gitRelativePath(gitRoot: string, filePath: string): string {
+    return toGitPath(path.relative(resolveRealPath(gitRoot), resolveRealPath(filePath)));
 }
 
 function normalizeStatusPath(statusPath: string): string {
@@ -78,7 +101,7 @@ export async function isUnmergedFile(filePath: string): Promise<boolean> {
             return false;
         }
 
-        const relativePath = toGitPath(path.relative(gitRoot, filePath));
+        const relativePath = gitRelativePath(gitRoot, filePath);
         console.log(`[GitIntegration] Relative path: ${relativePath}`);
         
         const { stdout } = await execAsync('git status --porcelain', { cwd: gitRoot });
@@ -171,7 +194,7 @@ export async function getBaseVersion(filePath: string): Promise<string | null> {
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
 
-        const relativePath = toGitPath(path.relative(gitRoot, filePath));
+        const relativePath = gitRelativePath(gitRoot, filePath);
         const { stdout } = await execAsync(`git show :1:"${relativePath}"`, { 
             cwd: gitRoot,
             encoding: 'utf8',
@@ -194,7 +217,7 @@ export async function getcurrentVersion(filePath: string): Promise<string | null
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
 
-        const relativePath = toGitPath(path.relative(gitRoot, filePath));
+        const relativePath = gitRelativePath(gitRoot, filePath);
         const { stdout } = await execAsync(`git show :2:"${relativePath}"`, { 
             cwd: gitRoot,
             encoding: 'utf8',
@@ -216,7 +239,7 @@ export async function getincomingVersion(filePath: string): Promise<string | nul
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
 
-        const relativePath = toGitPath(path.relative(gitRoot, filePath));
+        const relativePath = gitRelativePath(gitRoot, filePath);
         const { stdout } = await execAsync(`git show :3:"${relativePath}"`, { 
             cwd: gitRoot,
             encoding: 'utf8',
