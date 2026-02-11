@@ -4,9 +4,13 @@ on:
   pull_request:
   push:
     branches: [main]
+
 jobs:
   integration:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -15,8 +19,11 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 18
+
       - name: Install apt deps (Xvfb)
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y xvfb
+
       - name: Cache npm deps
         uses: actions/cache@v5
         with:
@@ -24,6 +31,7 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
+
       - name: Cache Playwright browsers
         uses: actions/cache@v5
         with:
@@ -50,4 +58,9 @@ jobs:
           npx playwright install
 
       - name: Run VS Code integration tests under Xvfb
+        if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:integration:all
+
+      - name: Run VS Code integration tests
+        if: runner.os == 'Windows'
+        run: npm run test:integration:all
