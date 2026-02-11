@@ -252,7 +252,7 @@ body {
 
 /* Merge rows */
 .merge-row {
-    margin-bottom: 16px;
+    margin-bottom: 0;
     border-radius: 6px;
     overflow: hidden;
     position: relative;
@@ -457,6 +457,18 @@ body {
 .cell-outputs img {
     max-width: 100%;
     height: auto;
+}
+
+.image-placeholder {
+    color: var(--text-secondary);
+    font-style: italic;
+    padding: 8px;
+    background: var(--bg-secondary);
+    border: 1px dashed var(--border-color);
+    border-radius: 4px;
+    font-family: "SF Mono", Monaco, "Cascadia Code", "Courier New", monospace;
+    white-space: pre-wrap;
+    font-size: 12px;
 }
 
 /* Auto-resolve banner */
@@ -876,7 +888,6 @@ body {
 .merge-row.conflict-row {
     background: rgba(244, 135, 113, 0.05);
     border-left: 4px solid #f48771;
-    margin: 8px 0;
     border-radius: 4px;
 }
 
@@ -884,7 +895,6 @@ body {
 .merge-row.unmatched-row {
     background: rgba(255, 193, 7, 0.08);
     border-left: 4px solid #ffc107;
-    margin: 8px 0;
     border-radius: 4px;
 }
 
@@ -900,6 +910,10 @@ body {
 .merge-row.conflict-row.unmatched-row {
     border-left-color: #ff9800;
     background: rgba(255, 152, 0, 0.08);
+}
+
+.virtual-row {
+    padding-bottom: 16px;
 }
 
 /* Drop zones for drag and drop */

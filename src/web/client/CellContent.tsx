@@ -10,9 +10,6 @@ import { renderMarkdown } from './markdown';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
 import DOMPurify from 'dompurify';
 
-// Performance tuning constants
-const LAZY_PREVIEW_LENGTH = 100; // Characters to show in lazy-loaded markdown preview
-
 interface CellContentProps {
     cell: NotebookCell | undefined;
     cellIndex?: number;
@@ -24,10 +21,9 @@ interface CellContentProps {
     showOutputs?: boolean;
     onDragStart?: (e: React.DragEvent) => void;
     onDragEnd?: () => void;
-    isVisible?: boolean; // For lazy rendering optimization
 }
 
-export function CellContent({
+export function CellContentInner({
     cell,
     cellIndex,
     side,
@@ -38,7 +34,6 @@ export function CellContent({
     showOutputs = true,
     onDragStart,
     onDragEnd,
-    isVisible = true,
 }: CellContentProps): React.ReactElement {
     if (!cell) {
         return (
@@ -50,35 +45,13 @@ export function CellContent({
 
     const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
-    const encodedCell = encodeURIComponent(JSON.stringify(cell));
+    const encodedCell = useMemo(() => encodeURIComponent(JSON.stringify(cell)), [cell]);
 
     const cellClasses = [
         'notebook-cell',
         `${cellType}-cell`,
         isConflict && 'has-conflict'
     ].filter(Boolean).join(' ');
-
-    // For non-visible cells, render a minimal placeholder to maintain layout.
-    // Keep data attributes + drag handlers so tests and drag/drop remain stable.
-    if (!isVisible && cellType === 'markdown') {
-        return (
-            <div
-                className={cellClasses}
-                data-lazy="true"
-                draggable={Boolean(isConflict && onDragStart)}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                data-cell={encodedCell}
-                data-cell-type={cellType}
-            >
-                <div className="cell-content">
-                    <div style={{ minHeight: '50px', opacity: 0.3 }}>
-                        <pre>{source.length > LAZY_PREVIEW_LENGTH ? `${source.substring(0, LAZY_PREVIEW_LENGTH)}...` : source}</pre>
-                    </div>
-                </div>
-            </div>
-        );
-    }
 
     return (
         <div
@@ -104,7 +77,7 @@ export function CellContent({
                 )}
             </div>
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
-                <CellOutputs outputs={cell.outputs} isVisible={isVisible} />
+                <CellOutputs outputs={cell.outputs} />
             )}
         </div>
     );
@@ -115,7 +88,6 @@ interface MarkdownContentProps {
 }
 
 function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
-    // Memoize HTML rendering to avoid re-parsing on every render
     const html = useMemo(() => renderMarkdown(source), [source]);
 
     return (
@@ -134,7 +106,7 @@ interface DiffContentProps {
 }
 
 function DiffContent({ source, compareSource, side, diffMode }: DiffContentProps): React.ReactElement {
-    const diff = computeLineDiff(compareSource, source);
+    const diff = useMemo(() => computeLineDiff(compareSource, source), [compareSource, source]);
     // Use the right side for display (shows the "new" content with change markers)
     const diffLines = diff.right;
     // Filter out empty alignment lines to avoid unnecessary whitespace
@@ -236,14 +208,11 @@ function isWhitespaceOnlyLineChange(line: DiffLine): boolean {
 
 interface CellOutputsProps {
     outputs: CellOutput[];
-    isVisible?: boolean;
 }
 
-function CellOutputs({ outputs, isVisible = true }: CellOutputsProps): React.ReactElement {
-    // Always render the actual outputs to prevent size changes that cause flickering.
-    // Use CSS visibility/opacity for performance optimization instead of conditional rendering.
+function CellOutputs({ outputs }: CellOutputsProps): React.ReactElement {
     return (
-        <div className="cell-outputs" style={{ opacity: isVisible ? 1 : 0.3 }}>
+        <div className="cell-outputs">
             {outputs.map((output, i) => (
                 <OutputItem key={i} output={output} />
             ))}
@@ -260,12 +229,14 @@ function OutputItem({ output }: { output: CellOutput }): React.ReactElement | nu
     if ((output.output_type === 'display_data' || output.output_type === 'execute_result') && output.data) {
         const data = output.data;
 
-        // Try image first
+        // Use text placeholders for images instead of rendering actual <img> tags.
+        // This prevents browser decoding overhead, ResizeObserver feedback loops,
+        // and flickering from invalid/broken image data.
         if (data['image/png']) {
-            return <img src={`data:image/png;base64,${data['image/png']}`} alt="output" />;
+            return <ImagePlaceholder mimeType="image/png" />;
         }
         if (data['image/jpeg']) {
-            return <img src={`data:image/jpeg;base64,${data['image/jpeg']}`} alt="output" />;
+            return <ImagePlaceholder mimeType="image/jpeg" />;
         }
 
         // HTML
@@ -289,3 +260,26 @@ function OutputItem({ output }: { output: CellOutput }): React.ReactElement | nu
 
     return null;
 }
+
+/**
+ * Renders a text placeholder for an image output.
+ * Uses markdown-style format to provide a consistent, stable representation.
+ * 
+ * @param mimeType - Currently only 'image/png' or 'image/jpeg' are supported and passed by OutputItem
+ */
+function ImagePlaceholder({ mimeType }: { mimeType: string }): React.ReactElement {
+    const placeholderText = `![Image: ${mimeType}]`;
+    // Convert MIME type to user-friendly label for screen readers
+    const imageType = mimeType === 'image/png' ? 'PNG' : 'JPEG';
+    return (
+        <div 
+            className="image-placeholder"
+            role="img"
+            aria-label={`${imageType} image output`}
+        >
+            {placeholderText}
+        </div>
+    );
+}
+
+export const CellContent = React.memo(CellContentInner);
