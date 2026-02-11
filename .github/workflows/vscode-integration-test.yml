@@ -10,6 +10,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         # vscode-version: ['1.60.0', 'stable']
     runs-on: ${{ matrix.os }}
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/ms-playwright
     
     steps:
       - name: Checkout
@@ -33,7 +35,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }}
-          key: ${{ runner.os }}-npm-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-npm-
             
@@ -42,7 +44,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: node_modules
-          key: ${{ runner.os }}-modules-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-modules-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-modules-
           
       - name: Install npm deps
         if: steps.node-modules-cache.outputs.cache-hit != 'true'
@@ -57,23 +61,29 @@ jobs:
         id: playwright-cache-linux
         uses: actions/cache@v4
         with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
           
       - name: Cache Playwright browsers (Windows)
         if: runner.os == 'Windows'
         id: playwright-cache-windows
         uses: actions/cache@v4
         with:
-          path: ${{ env.USERPROFILE }}\AppData\Local\ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
           
       # Cache VS Code test resources
       - name: Cache VS Code test resources
         uses: actions/cache@v4
         with:
           path: .vscode-test
-          key: ${{ runner.os }}-vscode-test-${{ hashFiles('**/package-lock.json') }}
+          key: ${{ runner.os }}-vscode-test-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vscode-test-
           
       # Install Playwright - canonical pattern
       - name: Install Playwright browsers and deps (Linux - cache miss)
