@@ -8,6 +8,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+        # vscode-version: ['1.60.0', 'stable']
     runs-on: ${{ matrix.os }}
     
     steps:
