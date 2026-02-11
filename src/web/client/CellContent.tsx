@@ -3,7 +3,7 @@
  * @description React component for rendering notebook cell content.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { renderMarkdown } from './markdown';
@@ -41,7 +41,7 @@ export function CellContentInner({
 
     const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
-    const encodedCell = encodeURIComponent(JSON.stringify(cell));
+    const encodedCell = useMemo(() => encodeURIComponent(JSON.stringify(cell)), [cell]);
 
     const cellClasses = [
         'notebook-cell',
@@ -79,7 +79,7 @@ interface MarkdownContentProps {
 }
 
 function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
-    const html = renderMarkdown(source);
+    const html = useMemo(() => renderMarkdown(source), [source]);
 
     return (
         <div
@@ -96,7 +96,7 @@ interface DiffContentProps {
 }
 
 function DiffContent({ source, compareSource, side }: DiffContentProps): React.ReactElement {
-    const diff = computeLineDiff(compareSource, source);
+    const diff = useMemo(() => computeLineDiff(compareSource, source), [compareSource, source]);
     // Use the right side for display (shows the "new" content with change markers)
     const diffLines = diff.right;
     // Filter out empty alignment lines to avoid unnecessary whitespace
@@ -232,4 +232,4 @@ function ImagePlaceholder({ mimeType }: { mimeType: string }): React.ReactElemen
     );
 }
 
-export const CellContent = CellContentInner;
+export const CellContent = React.memo(CellContentInner);

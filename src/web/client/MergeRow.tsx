@@ -9,23 +9,10 @@
  * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource } from '../../notebookUtils';
-
-/** Data about a cell being dragged */
-interface DraggedCellData {
-    rowIndex: number;
-    side: 'base' | 'current' | 'incoming';
-    cell: NotebookCell;
-}
-
-/** Data about a potential drop target */
-interface DropTarget {
-    rowIndex: number;
-    side: 'base' | 'current' | 'incoming';
-}
 
 /** Resolution state for a cell */
 interface ResolutionState {
@@ -50,9 +37,13 @@ interface MergeRowProps {
     rowDragEnabled?: boolean;
     onRowDragStart?: (rowIndex: number) => void;
     onRowDragEnd?: () => void;
-    // Cell drag props
-    draggedCell: DraggedCellData | null;
-    dropTarget: DropTarget | null;
+    // Cell drag state (primitives for stable memo comparison)
+    cellDragActive: boolean;
+    cellDragSide?: 'base' | 'current' | 'incoming';
+    cellDragSourceRow?: number;
+    isRowDropTarget: boolean;
+    rowDropTargetSide?: 'base' | 'current' | 'incoming';
+    // Cell drag callbacks
     onCellDragStart: (rowIndex: number, side: 'base' | 'current' | 'incoming', cell: NotebookCell) => void;
     onCellDragEnd: () => void;
     onCellDragOver: (e: React.DragEvent, rowIndex: number, side: 'base' | 'current' | 'incoming') => void;
@@ -74,8 +65,11 @@ export function MergeRowInner({
     rowDragEnabled = true,
     onRowDragStart,
     onRowDragEnd,
-    draggedCell,
-    dropTarget,
+    cellDragActive,
+    cellDragSide,
+    cellDragSourceRow,
+    isRowDropTarget,
+    rowDropTargetSide,
     onCellDragStart,
     onCellDragEnd,
     onCellDragOver,
@@ -141,27 +135,27 @@ export function MergeRowInner({
         onCommitContent(conflictIndex);
     };
 
-    // Memoized cell drag handlers to prevent CellContent re-renders
-    const handleBaseCellDragStart = (e: React.DragEvent) => {
+    // Stable drag handlers - useCallback keeps references stable for CellContent memo
+    const handleBaseCellDragStart = useCallback((e: React.DragEvent) => {
         e.dataTransfer.effectAllowed = 'move';
         const src = row.baseCell?.source;
         e.dataTransfer.setData('text/plain', src ? (Array.isArray(src) ? src.join('') : src) : '');
         if (row.baseCell) onCellDragStart(rowIndex, 'base', row.baseCell);
-    };
+    }, [onCellDragStart, rowIndex, row.baseCell]);
 
-    const handleCurrentCellDragStart = (e: React.DragEvent) => {
+    const handleCurrentCellDragStart = useCallback((e: React.DragEvent) => {
         e.dataTransfer.effectAllowed = 'move';
         const src = row.currentCell?.source;
         e.dataTransfer.setData('text/plain', src ? (Array.isArray(src) ? src.join('') : src) : '');
         if (row.currentCell) onCellDragStart(rowIndex, 'current', row.currentCell);
-    };
+    }, [onCellDragStart, rowIndex, row.currentCell]);
 
-    const handleIncomingCellDragStart = (e: React.DragEvent) => {
+    const handleIncomingCellDragStart = useCallback((e: React.DragEvent) => {
         e.dataTransfer.effectAllowed = 'move';
         const src = row.incomingCell?.source;
         e.dataTransfer.setData('text/plain', src ? (Array.isArray(src) ? src.join('') : src) : '');
         if (row.incomingCell) onCellDragStart(rowIndex, 'incoming', row.incomingCell);
-    };
+    }, [onCellDragStart, rowIndex, row.incomingCell]);
 
     const canDragRow = rowDragEnabled && Boolean(onRowDragStart);
     const rowDragHandle = canDragRow ? (
@@ -213,10 +207,10 @@ export function MergeRowInner({
     // Check if this cell is a valid drop target
     const isDropTargetCell = (side: 'base' | 'current' | 'incoming') => {
         if (!enableCellDrag) return false;
-        if (!draggedCell) return false;
-        if (draggedCell.side !== side) return false; // Same column only
-        if (draggedCell.rowIndex === rowIndex) return false; // Not same row
-        return dropTarget?.rowIndex === rowIndex && dropTarget?.side === side;
+        if (!cellDragActive) return false;
+        if (cellDragSide !== side) return false; // Same column only
+        if (cellDragSourceRow === rowIndex) return false; // Not same row
+        return isRowDropTarget && rowDropTargetSide === side;
     };
 
     // Check if a cell can be dragged (only unmatched cells)
@@ -400,4 +394,4 @@ export function MergeRowInner({
         </div>
     );
 }
-export const MergeRow = MergeRowInner;
+export const MergeRow = React.memo(MergeRowInner);
