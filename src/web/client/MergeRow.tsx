@@ -262,29 +262,31 @@ export function MergeRowInner({
             )}
 
             {/* Three-way diff view */}
-            <div className="cell-columns">
-                <div className="cell-column base-column">
-                    {row.baseCell ? (
-                        <CellContent
-                            cell={row.baseCell}
-                            cellIndex={row.baseCellIndex}
-                            side="base"
-                            isConflict={true}
-                            compareCell={row.currentCell || row.incomingCell}
-                            showOutputs={showOutputs}
-                            onDragStart={canDragCell ? handleBaseCellDragStart : undefined}
-                            onDragEnd={canDragCell ? onCellDragEnd : undefined}
-                        />
-                    ) : (
-                        <div
-                            className={`cell-placeholder cell-deleted ${isDropTargetCell('base') ? 'drop-target' : ''}`}
-                            onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'base'); } : undefined}
-                            onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'base') : undefined}
-                        >
-                            <span className="placeholder-text">{getPlaceholderText('base')}</span>
-                        </div>
-                    )}
-                </div>
+            <div className={`cell-columns${showBaseColumn ? '' : ' two-column'}`}>
+                {showBaseColumn && (
+                    <div className="cell-column base-column">
+                        {row.baseCell ? (
+                            <CellContent
+                                cell={row.baseCell}
+                                cellIndex={row.baseCellIndex}
+                                side="base"
+                                isConflict={true}
+                                compareCell={row.currentCell || row.incomingCell}
+                                showOutputs={showOutputs}
+                                onDragStart={canDragCell ? handleBaseCellDragStart : undefined}
+                                onDragEnd={canDragCell ? onCellDragEnd : undefined}
+                            />
+                        ) : (
+                            <div
+                                className={`cell-placeholder cell-deleted ${isDropTargetCell('base') ? 'drop-target' : ''}`}
+                                onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'base'); } : undefined}
+                                onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'base') : undefined}
+                            >
+                                <span className="placeholder-text">{getPlaceholderText('base')}</span>
+                            </div>
+                        )}
+                    </div>
+                )}
                 <div className="cell-column current-column">
                     {row.currentCell ? (
                         <CellContent
