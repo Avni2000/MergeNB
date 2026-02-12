@@ -15,6 +15,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
 import { serializeNotebook, renumberExecutionCounts } from './notebookParser';
+import { selectNonConflictMergedCell } from './notebookUtils';
 import { WebConflictPanel } from './web/WebConflictPanel';
 import { UnifiedConflict, UnifiedResolution } from './web/webTypes';
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
@@ -327,6 +328,11 @@ export class NotebookConflictResolver {
 
         for (const row of rowsForResolution) {
             const { baseCell, currentCell, incomingCell, resolution: res } = row;
+            const currentCellFromAutoResolve = (
+                row.currentCellIndex !== undefined &&
+                autoResolvedNotebook?.cells?.[row.currentCellIndex]
+            ) ? autoResolvedNotebook.cells[row.currentCellIndex] : undefined;
+            const currentCellForFallback = currentCellFromAutoResolve || currentCell;
 
             let cellToUse: NotebookCell | undefined;
 
@@ -367,12 +373,12 @@ export class NotebookConflictResolver {
             } else if (preferredSide === 'base' || preferredSide === 'current' || preferredSide === 'incoming') {
                 // For uniform "take all", only include cells that exist on the preferred side.
                 if (preferredSide === 'base') cellToUse = baseCell;
-                else if (preferredSide === 'current') cellToUse = currentCell;
+                else if (preferredSide === 'current') cellToUse = currentCellForFallback;
                 else if (preferredSide === 'incoming') cellToUse = incomingCell;
             } else {
-                // For non-conflict (identical) rows, use the original cell directly
-                // Don't use autoResolvedCell here because it may have stripped outputs
-                cellToUse = currentCell || incomingCell || baseCell;
+                // For non-conflict rows, apply source-level 3-way merge semantics so
+                // one-sided incoming/current edits are preserved.
+                cellToUse = selectNonConflictMergedCell(baseCell, currentCellForFallback, incomingCell);
             }
 
             if (cellToUse) {

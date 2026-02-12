@@ -20,6 +20,45 @@ export function normalizeCellSource(source: string | string[]): string {
 }
 
 /**
+ * Choose the effective merged cell for a row that is not marked as a conflict.
+ * Uses source-based 3-way logic so one-sided edits are preserved:
+ * - base == current, incoming changed => choose incoming
+ * - base == incoming, current changed => choose current
+ * - otherwise prefer current for deterministic behavior
+ */
+export function selectNonConflictMergedCell(
+    baseCell?: NotebookCell,
+    currentCell?: NotebookCell,
+    incomingCell?: NotebookCell
+): NotebookCell | undefined {
+    if (baseCell && currentCell && incomingCell) {
+        const baseSource = normalizeCellSource(baseCell.source);
+        const currentSource = normalizeCellSource(currentCell.source);
+        const incomingSource = normalizeCellSource(incomingCell.source);
+
+        const currentMatchesBase = currentSource === baseSource;
+        const incomingMatchesBase = incomingSource === baseSource;
+
+        if (currentMatchesBase && !incomingMatchesBase) {
+            return incomingCell;
+        }
+        if (!currentMatchesBase && incomingMatchesBase) {
+            return currentCell;
+        }
+
+        // Includes unchanged rows and same-result concurrent edits.
+        if (currentSource === incomingSource) {
+            return currentCell;
+        }
+
+        // Defensive fallback; true conflicts should be handled elsewhere.
+        return currentCell;
+    }
+
+    return currentCell || incomingCell || baseCell;
+}
+
+/**
  * Convert cell source back to the array format expected by nbformat.
  */
 export function sourceToCellFormat(source: string): string[] {

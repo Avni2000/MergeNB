@@ -12,7 +12,7 @@
 import React, { useState, useCallback } from 'react';
 import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
-import { normalizeCellSource } from '../../notebookUtils';
+import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
 
 /** Resolution state for a cell */
 interface ResolutionState {
@@ -179,7 +179,7 @@ export function MergeRowInner({
 
     // For identical rows, show a unified single cell
     if (!isConflict) {
-        const cell = row.currentCell || row.incomingCell || row.baseCell;
+        const cell = selectNonConflictMergedCell(row.baseCell, row.currentCell, row.incomingCell);
         // Compute raw source for testing - this is what will become the cell source in the resolved notebook
         const rawSource = cell ? normalizeCellSource(cell.source) : '';
         const cellType = cell?.cell_type || 'code';
