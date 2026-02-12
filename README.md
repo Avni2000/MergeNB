@@ -26,17 +26,23 @@ I'm a perfectionist. VSCode Marketplace listing coming soon!
 
 `nbdime` is a valuable notebook diff/merge tool in the Jupyter ecosystem.
 
-MergeNB focuses on a different experience:
+That being said, MergeNB focuses on a different experience:
 
-We aim to keep things as simple as physically possible. While the goal eventually is to branch off into making a git mergetool, the initial focus is on a VSCode + Web experience that fits into existing Git workflows without needing to change Git configs or use separate CLI tools.
+### Philosophy
 
-- Undo/Redo support + history for all actions, which is critical for complex merges
-- Fantastic support for complex conflict scenarios (moved cells, unmatched cells, metadata conflicts)
-- Interactive cell-level resolution UI
-- IDE Integration with extension commands, status bar, and repo conflict discovery.
-- (Extremely) active development. Feel free to email me personally or open an issue if you have any questions, feedback, or want to contribute!
+Keep notebook conflict resolution as simple as possible inside an existing Git workflow.
 
-If nbdime already fits your workflow, keep using it. If you want a more interactive, user friendly experience for resolving notebook conflicts, give MergeNB a try!
+Right now, that means a VSCode + Web UI flow that works without extra Git config changes or separate CLI tools.
+
+### What stands out
+
+- Undo/redo + full action history for complex merges.
+- Fantastic handling of tested tricky scenarios (moved cells, unmatched cells, metadata conflicts).
+- Interactive, cell-level conflict resolution UI.
+- IDE integration via extension commands, status bar notifications, and file conflict discovery.
+- Extremely active development (issues and feedback are always welcome, and feel free to email me!).
+
+If nbdime already fits your workflow, keep using it. If you want a more interactive, user-friendly experience for notebook conflicts in VS Code, give MergeNB a try!
 
 > [!IMPORTANT]
 > MergeNB is currently **not compatible with nbdime** in the same merge flow.
