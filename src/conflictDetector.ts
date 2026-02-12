@@ -19,6 +19,25 @@ import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
 import { getSettings, MergeNBSettings } from './settings';
 
+function stableStringify(value: unknown): string {
+    if (value === undefined) return 'undefined';
+    if (value === null) return 'null';
+    const t = typeof value;
+    if (t === 'string' || t === 'number' || t === 'boolean') return JSON.stringify(value);
+
+    if (Array.isArray(value)) {
+        return '[' + value.map(stableStringify).join(',') + ']';
+    }
+
+    if (t === 'object') {
+        const obj = value as Record<string, unknown>;
+        const keys = Object.keys(obj).sort();
+        return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
+    }
+
+    return JSON.stringify(String(value));
+}
+
 function stripAllWhitespace(text: string): string {
     return text.replace(/\r\n/g, '\n');
 }
@@ -101,8 +120,8 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         // Match cells across versions
         const cellMappings = matchCells(baseNotebook, currentNotebook, incomingNotebook);
 
-        // Analyze mappings to find semantic conflicts
-        const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
+        // Analyze mappings to find semantic conflicts (settings-aware)
+        const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings, getSettings());
 
         // Get branch information
         const [currentBranch, incomingBranch] = await Promise.all([
@@ -130,8 +149,12 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
  * Analyze cell mappings to identify semantic conflicts.
  * Exported for testing purposes.
  */
-export function analyzeSemanticConflictsFromMappings(mappings: CellMapping[]): SemanticConflict[] {
+export function analyzeSemanticConflictsFromMappings(
+    mappings: CellMapping[],
+    settings?: MergeNBSettings
+): SemanticConflict[] {
     const conflicts: SemanticConflict[] = [];
+    const effectiveSettings = settings || getSettings();
 
     // Check for cell reordering
     if (detectReordering(mappings)) {
@@ -180,6 +203,58 @@ export function analyzeSemanticConflictsFromMappings(mappings: CellMapping[]): S
                     incomingContent: incomingCell,
                     description: 'Different cells added in same position'
                 });
+                continue;
+            }
+
+            // Same source added on both sides: still treat as a conflict if
+            // metadata, outputs, or execution_count differ. Otherwise we'd
+            // silently pick a deterministic side and drop branch-specific state.
+            const currentMetadata = stableStringify(currentCell.metadata ?? {});
+            const incomingMetadata = stableStringify(incomingCell.metadata ?? {});
+            if (currentMetadata !== incomingMetadata) {
+                conflicts.push({
+                    type: 'metadata-changed',
+                    currentCellIndex: currentIndex,
+                    incomingCellIndex: incomingIndex,
+                    currentContent: currentCell,
+                    incomingContent: incomingCell,
+                    description: 'Added cell metadata differs between branches'
+                });
+            }
+
+            if (currentCell.cell_type === 'code' && incomingCell.cell_type === 'code') {
+                // Only surface exec-count conflicts when the user hasn't opted
+                // into always-null execution counts.
+                if (!effectiveSettings.autoResolveExecutionCount) {
+                    const currentExecCount = currentCell.execution_count ?? null;
+                    const incomingExecCount = incomingCell.execution_count ?? null;
+                    if (currentExecCount !== incomingExecCount) {
+                        conflicts.push({
+                            type: 'execution-count-changed',
+                            currentCellIndex: currentIndex,
+                            incomingCellIndex: incomingIndex,
+                            currentContent: currentCell,
+                            incomingContent: incomingCell,
+                            description: `Execution count differs: current=${currentExecCount}, incoming=${incomingExecCount}`
+                        });
+                    }
+                }
+
+                // Only surface output conflicts when we're not stripping outputs.
+                if (!effectiveSettings.stripOutputs) {
+                    const currentOutputs = stableStringify(currentCell.outputs || []);
+                    const incomingOutputs = stableStringify(incomingCell.outputs || []);
+                    if (currentOutputs !== incomingOutputs) {
+                        conflicts.push({
+                            type: 'outputs-changed',
+                            currentCellIndex: currentIndex,
+                            incomingCellIndex: incomingIndex,
+                            currentContent: currentCell,
+                            incomingContent: incomingCell,
+                            description: 'Added cell outputs differ between branches'
+                        });
+                    }
+                }
             }
             continue;
         }
@@ -282,9 +357,9 @@ function compareCells(
         }
 
         // Compare outputs
-        const baseOutputs = JSON.stringify(baseCell.outputs || []);
-        const currentOutputs = JSON.stringify(currentCell.outputs || []);
-        const incomingOutputs = JSON.stringify(incomingCell.outputs || []);
+        const baseOutputs = stableStringify(baseCell.outputs || []);
+        const currentOutputs = stableStringify(currentCell.outputs || []);
+        const incomingOutputs = stableStringify(incomingCell.outputs || []);
 
         if (currentOutputs !== incomingOutputs && 
             (currentOutputs !== baseOutputs || incomingOutputs !== baseOutputs)) {
@@ -302,9 +377,9 @@ function compareCells(
     }
 
     // Compare metadata
-    const baseMetadata = JSON.stringify(baseCell.metadata);
-    const currentMetadata = JSON.stringify(currentCell.metadata);
-    const incomingMetadata = JSON.stringify(incomingCell.metadata);
+    const baseMetadata = stableStringify(baseCell.metadata ?? {});
+    const currentMetadata = stableStringify(currentCell.metadata ?? {});
+    const incomingMetadata = stableStringify(incomingCell.metadata ?? {});
 
     const currentMetadataModified = currentMetadata !== baseMetadata;
     const incomingMetadataModified = incomingMetadata !== baseMetadata;
@@ -429,9 +504,9 @@ export function applyAutoResolutions(
 
         // Check if kernel versions differ between current and incoming
         if (currentKernel && incomingKernel) {
-            const currentKernelStr = JSON.stringify(currentKernel);
-            const incomingKernelStr = JSON.stringify(incomingKernel);
-            const baseKernelStr = baseKernel ? JSON.stringify(baseKernel) : '';
+            const currentKernelStr = stableStringify(currentKernel);
+            const incomingKernelStr = stableStringify(incomingKernel);
+            const baseKernelStr = baseKernel ? stableStringify(baseKernel) : '';
 
             if (currentKernelStr !== incomingKernelStr && 
                 (currentKernelStr !== baseKernelStr || incomingKernelStr !== baseKernelStr)) {
@@ -448,9 +523,9 @@ export function applyAutoResolutions(
         const baseLangInfo = semanticConflict.base?.metadata?.language_info;
 
         if (currentLangInfo && incomingLangInfo) {
-            const currentLangStr = JSON.stringify(currentLangInfo);
-            const incomingLangStr = JSON.stringify(incomingLangInfo);
-            const baseLangStr = baseLangInfo ? JSON.stringify(baseLangInfo) : '';
+            const currentLangStr = stableStringify(currentLangInfo);
+            const incomingLangStr = stableStringify(incomingLangInfo);
+            const baseLangStr = baseLangInfo ? stableStringify(baseLangInfo) : '';
 
             if (currentLangStr !== incomingLangStr && 
                 (currentLangStr !== baseLangStr || incomingLangStr !== baseLangStr)) {
@@ -503,9 +578,9 @@ export function hasKernelVersionConflict(
 
     if (!currentKernel || !incomingKernel) return false;
 
-    const currentStr = JSON.stringify(currentKernel);
-    const incomingStr = JSON.stringify(incomingKernel);
-    const baseStr = baseKernel ? JSON.stringify(baseKernel) : '';
+    const currentStr = stableStringify(currentKernel);
+    const incomingStr = stableStringify(incomingKernel);
+    const baseStr = baseKernel ? stableStringify(baseKernel) : '';
 
     return currentStr !== incomingStr && (currentStr !== baseStr || incomingStr !== baseStr);
 }

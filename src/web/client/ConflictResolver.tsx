@@ -82,7 +82,7 @@ export function ConflictResolver({
     onCancel,
 }: ConflictResolverProps): React.ReactElement {
     const initialRows = conflict.type === 'semantic' && conflict.semanticConflict
-        ? buildMergeRowsFromSemantic(conflict.semanticConflict)
+        ? buildMergeRowsFromSemantic(conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook)
         : [];
 
     const [choices, setChoices] = useState<Map<number, ResolutionState>>(new Map());
@@ -826,7 +826,10 @@ export function ConflictResolver({
 /**
  * Build merge rows from semantic conflict data.
  */
-function buildMergeRowsFromSemantic(conflict: NotebookSemanticConflict): MergeRowType[] {
+function buildMergeRowsFromSemantic(
+    conflict: NotebookSemanticConflict,
+    currentNotebookOverride?: import('../../types').Notebook
+): MergeRowType[] {
     const rows: MergeRowType[] = [];
     const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();
 
@@ -838,8 +841,9 @@ function buildMergeRowsFromSemantic(conflict: NotebookSemanticConflict): MergeRo
     for (const mapping of conflict.cellMappings) {
         const baseCell = mapping.baseIndex !== undefined && conflict.base
             ? conflict.base.cells[mapping.baseIndex] : undefined;
-        const currentCell = mapping.currentIndex !== undefined && conflict.current
-            ? conflict.current.cells[mapping.currentIndex] : undefined;
+        const currentSource = currentNotebookOverride || conflict.current;
+        const currentCell = mapping.currentIndex !== undefined && currentSource
+            ? currentSource.cells[mapping.currentIndex] : undefined;
         const incomingCell = mapping.incomingIndex !== undefined && conflict.incoming
             ? conflict.incoming.cells[mapping.incomingIndex] : undefined;
 
