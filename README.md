@@ -78,8 +78,8 @@ Typical flow:
 
 Extension settings (`mergeNB.*`):
 
-- `mergeNB.ui.hideNonConflictOutputs` (default: `false`)
-    - Hide outputs for rows without conflicts.
+### Auto resolution:
+
 - `mergeNB.autoResolve.executionCount` (default: `true`)
     - Auto-resolve execution count differences by setting to `null`.
 - `mergeNB.autoResolve.kernelVersion` (default: `true`)
@@ -88,6 +88,11 @@ Extension settings (`mergeNB.*`):
     - Strip outputs from conflicted code cells.
 - `mergeNB.autoResolve.whitespace` (default: `true`)
     - Auto-resolve whitespace-only source differences.
+
+###  UI:
+
+- `mergeNB.ui.hideNonConflictOutputs` (default: `false`)
+    - Hide outputs for rows without conflicts.
 - `mergeNB.ui.showCellHeaders` (default: `false`)
     - Show cell index/type/execution count headers in resolver UI.
 - `mergeNB.ui.enableUndoRedoHotkeys` (default: `true`)
@@ -95,7 +100,7 @@ Extension settings (`mergeNB.*`):
 - `mergeNB.ui.showBaseColumn` (default: `false`)
     - Show the base (common ancestor) column.
 
-## What even is a "notebook merge conflict"? + Technical Details
+## How MergeNB Resolves Conflicts
 
 When multiple branches edit the same notebook file and then get merged, Git detects conflicts at the file level. However, since `.ipynb` files are JSON documents, Git's line-based diff/merge can produce conflicts that are difficult to interpret and resolve manually.
 
