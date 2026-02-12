@@ -1,1 +1,12 @@
 test/**
+src/tests/**
+.github/**
+.vscode/**
+.gitignore
+.vscodeignore
+playwright.config.ts
+output.txt
+AGENTS.md
+readme-assets/**
+out/**
+src/**
