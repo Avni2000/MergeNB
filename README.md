@@ -2,101 +2,147 @@
 
 ![MergeNB Logo](readme-assets/MergeNB-logo.png)
 
-**A VS Code extension for resolving merge conflicts in Jupyter notebooks (`.ipynb` files).**
+**Resolve Jupyter notebook merge conflicts in VS Code with a cell-aware UI.**
 
+[![VSCode Integration Tests](https://github.com/Avni2000/MergeNB/actions/workflows/vscode-integration-test.yml/badge.svg)](https://github.com/Avni2000/MergeNB/actions/workflows/vscode-integration-test.yml)
+[![Version](https://img.shields.io/badge/version-0.0.5-blue.svg)](https://github.com/Avni2000/MergeNB)
+[![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.80.0-007ACC.svg)](https://code.visualstudio.com/)
+[![License: GPLv3.0](https://img.shields.io/badge/License-GPLv3.0-yellow.svg)](https://www.gnu.org/licenses/gpl-3.0)
 </div>
 
 ---
 
-## The Problem
 
-Git doesn't know how to resolve merge conflicts in Jupyter Notebooks effectively. It often fails to identify conflicts or their exact locations. As a result, alternative "mergetools" are required to provide a specialized UI for resolving these conflicts.
+## Installation
 
-The canonical solution is **nbdime**, a collection of tools designed for this purpose. However, it has been known to be buggy and unreliable in certain scenarios.
+Check out the Release page for the last stable version - [MergeNB Releases](https://github.com/Avni2000/MergeNB/releases) - and install the `.vsix` file from there.
+
+Then, go to VSCode, look up "Extensions: Install from VSIX..." in the Command Palette, and select the downloaded file.
+
+I'm a perfectionist. VSCode Marketplace listing coming soon!
+
+
+## Why MergeNB? (vs nbdime)
+
+`nbdime` is a valuable notebook diff/merge tool in the Jupyter ecosystem.
+
+MergeNB focuses on a different experience:
+
+We aim to keep things as simple as physically possible. While the goal eventually is to branch off into making a git mergetool, the initial focus is on a VSCode + Web experience that fits into existing Git workflows without needing to change Git configs or use separate CLI tools.
+
+- Undo/Redo support + history for all actions, which is critical for complex merges
+- Fantastic support for complex conflict scenarios (moved cells, unmatched cells, metadata conflicts)
+- Interactive cell-level resolution UI
+- IDE Integration with extension commands, status bar, and repo conflict discovery.
+- (Extremely) active development. Feel free to email me personally or open an issue if you have any questions, feedback, or want to contribute!
+
+If nbdime already fits your workflow, keep using it. If you want a more interactive, user friendly experience for resolving notebook conflicts, give MergeNB a try!
 
 > [!IMPORTANT]
-> MergeNB is not compatible with nbdime. Running both can produce unpredictable results (e.g., nbdime may insert conflict markers MergeNB cannot handle. Disable or uninstall nbdime when using MergeNB to avoid conflicts.
+> MergeNB is currently **not compatible with nbdime** in the same merge flow.
+> If both are active at once, merge artifacts may be produced that MergeNB cannot reliably parse.
+> For best results, use one notebook merge strategy per repository/workflow.
 
-## Features
+## Commands & Usage
 
+### 1) Open conflicted notebooks
 
-MergeNB aims to fix all of that. It features, in no particular order:
+- Command: `MergeNB: Find Notebooks with Merge Conflicts`
+- ID: `merge-nb.findConflicts`
+- Also available from notebook context actions and status bar when applicable.
 
-(a) 3 way merge interface: each cell is compared across 3 versions, current, incoming, and base (the most common ancestor of current and incoming).
+<!-- [Screenshot: Command Palette showing "MergeNB: Find Notebooks with Merge Conflicts"] -->
 
-(b) Conflict detection: We parse through each set of cells - and match them with each other across stable index changes - in order to compute a "diff" (conflict) between each of current/incoming/base. This logic allows us to detect conflicts that would otherwise go unnoticed.
+### 2) Resolve in MergeNB UI
 
-![Diff View Example](readme-assets/conflicted.png)
+Typical flow:
 
+1. Open a notebook in unmerged (`UU`) state.
+2. Launch MergeNB command.
+3. Review each conflict row.
+4. Choose `base`, `current`, `incoming`, or `delete` per conflict.
+5. Optionally edit the resolved source text.
+6. Apply resolution and return to VS Code.
 
-(c) Unmatched Cells: Cells that are unmatched (eg. new cells added in one branch, as well as cells that we can't 100% match across branches) are also shown in the merge interface, allowing users to manually resolve them.
+<!-- [Screenshot: 3-column conflict resolver with branch selection buttons] -->
+<!-- [Screenshot: Resolved text editor area after choosing a branch] -->
+<!-- [Screenshot: Accept All controls + Resolve button] -->
 
-![New unmatched Cells Example](readme-assets/unmatched.png)
+## Configuration
 
-*New cell, not in either base or incoming*
+Extension settings (`mergeNB.*`):
 
-![Unmatched cell Example](readme-assets/two_unmatched.png)
-*This cell should be matched, but it is >30% different from the other two. This requires manual resolution*
+- `mergeNB.ui.hideNonConflictOutputs` (default: `false`)
+    - Hide outputs for rows without conflicts.
+- `mergeNB.autoResolve.executionCount` (default: `true`)
+    - Auto-resolve execution count differences by setting to `null`.
+- `mergeNB.autoResolve.kernelVersion` (default: `true`)
+    - Auto-resolve kernel/language version metadata using current branch values.
+- `mergeNB.autoResolve.stripOutputs` (default: `true`)
+    - Strip outputs from conflicted code cells.
+- `mergeNB.autoResolve.whitespace` (default: `true`)
+    - Auto-resolve whitespace-only source differences.
+- `mergeNB.ui.showCellHeaders` (default: `false`)
+    - Show cell index/type/execution count headers in resolver UI.
+- `mergeNB.ui.enableUndoRedoHotkeys` (default: `true`)
+    - Enable `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` in the web resolver.
+- `mergeNB.ui.showBaseColumn` (default: `false`)
+    - Show the base (common ancestor) column.
 
-## Extension Settings
+## What even is a "notebook merge conflict"? + Technical Details
 
-- mergeNB.autoResolve.executionCount: Automatically resolve execution count differences by setting `execution_count` to `null`. Default = true
+When multiple branches edit the same notebook file and then get merged, Git detects conflicts at the file level. However, since `.ipynb` files are JSON documents, Git's line-based diff/merge can produce conflicts that are difficult to interpret and resolve manually.
 
-- mergeNB.autoResolve.kernelVersion: Prefer the current kernel/version metadata during resolution. Default = true
+MergeNB applies three-way logic on matched notebook entities (`source`, `metadata`, `outputs`, `execution_count`). 
 
-- mergeNB.autoResolve.stripOutputs: Strip cell outputs during automatic resolution to avoid output-only conflicts. Default = true
+Here, we define `BASE` as the common ancestor version, `CURRENT` as the current branch version, and `INCOMING` as the incoming branch version to merge into current. The resolution logic for each entity is as follows:
 
-- mergeNB.ui.showCellHeaders: Show per-cell headers (cell index, type, execution count) in the conflict resolver UI. Default = false
+```text
+if CURRENT == BASE == INCOMING:
+        result = any of them (all identical)
+elif CURRENT == INCOMING:
+        result = CURRENT  (both sides made same change, or didn't change)
+elif CURRENT == BASE:
+        result = INCOMING  (only INCOMING changed)
+elif INCOMING == BASE:
+        result = CURRENT   (only CURRENT changed)
+else:
+        CONFLICT  (all three differ)
+```
 
-This list will remain up-to-date.
+Additional behavior:
 
-## Known Issues
-
-See issues tab :)
-
-## Manual Testing
-
-Your efforts are highly appreciated!
-
-There exists a single full integration test that does the following:
-
-1. Compiles
-2. Opens VSCode
-3. Runs command to open web notebook resolver
-4. Resolves headlessly with playwright, taking incoming/current/deletion and adding modifications based on cell index.
-5. Ensures on-disk file corresponds to the resolved cells + nonconflicted cells that a user sees in the web UI. 
-
-At this point, I'm curious about:
-
-a) How well it works when you radically change cells in one branch, and try to merge them together. 
-
-b) If very large (100s of cells) notebooks are buggy
-
-c) if you find any rendering issues moving cells around or deleting cells or scrolling fast
-
-d) How well made the web UI resolver/vscode integration is
-
-Any other suggestions you might have that aren't documented!
+- Uses Git unmerged stages (`:1`, `:2`, `:3`) as base/current/incoming sources.
+- Detects semantic conflicts after cell matching.
+- Applies configured auto-resolve policies before opening manual UI.
+- Rebuilds final notebook from resolved rows and validates notebook serialization.
 
 ## Development
 
+```bash
+npm install
+npm run compile
+npm run lint
+```
+
+Integration tests:
 
 ```bash
-git clone https://github.com/Avni2000/MergeNB.git
-
-cd MergeNB
-
-npm install
-
-npm run compile
-
-# To run the extension in a new VS Code window
-
-code --extensionDevelopmentPath=$(pwd) --new-window /path/to/a/repo/with/merge/conflicts
-
-# to make a .vsix package
-
-npm install -g vsce
-
-vsce package
+npm run test:integration
+npm run test:integration:all
+npm run test:integration:list
 ```
+
+Manual testing:
+
+```bash 
+bash test/simulate_merge_uu.sh
+```
+
+## Contributing
+
+Issues and PRs are absolutely welcome.
+
+## License
+
+GPLv3.0 - See [LICENSE](LICENSE).
