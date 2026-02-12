@@ -445,6 +445,18 @@ body {
     background: var(--diff-add);
 }
 
+.diff-line.diff-line-conflict {
+    background: var(--diff-remove);
+}
+
+.diff-line.diff-line-current {
+    background: var(--diff-add);
+}
+
+.diff-line.diff-line-incoming {
+    background: rgba(86, 156, 214, 0.28);
+}
+
 /* Cell outputs */
 .cell-outputs {
     margin-top: 8px;
@@ -992,6 +1004,21 @@ body {
 /* Enhanced inline diff highlighting - branch-based coloring */
 /* The color tells you which branch the content comes from, not whether it's added/removed */
 .diff-inline-unchanged {
+    color: var(--text-primary);
+}
+
+.diff-inline-conflict {
+    background: var(--diff-remove);
+    color: var(--text-primary);
+}
+
+.diff-inline-current {
+    background: var(--diff-add);
+    color: var(--text-primary);
+}
+
+.diff-inline-incoming {
+    background: rgba(86, 156, 214, 0.35);
     color: var(--text-primary);
 }
 `;

@@ -70,6 +70,7 @@ export function CellContentInner({
                     <DiffContent
                         source={source}
                         compareSource={normalizeCellSource((compareCell ?? baseCell)!.source)}
+                        side={side}
                         diffMode={diffMode}
                     />
                 ) : (
