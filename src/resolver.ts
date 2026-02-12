@@ -355,10 +355,6 @@ export class NotebookConflictResolver {
                         continue;
                 }
 
-                if (resolvedContent === '') {
-                    continue;
-                }
-
                 const cellType = referenceCell?.cell_type || 'code';
                 cellToUse = {
                     cell_type: cellType,

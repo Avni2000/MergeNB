@@ -119,6 +119,12 @@ export const TEST_GROUPS: TestGroup[] = [
                 notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
                 testModule: './incomingNonConflictRegression.test.js',
             },
+            {
+                id: 'regression_logic_metadata_renumber',
+                description: 'Non-conflict metadata + renumber execution_count correctness',
+                notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
+                testModule: './logicRegression.test.js',
+            },
         ],
     },
 ];

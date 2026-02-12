@@ -46,12 +46,13 @@ export function renumberExecutionCounts(notebook: Notebook): Notebook {
         if (cell.cell_type === 'code') {
             // Only number cells that have been executed (have outputs)
             if (cell.outputs && cell.outputs.length > 0) {
+                const nextCount = count++;
                 return {
                     ...cell,
-                    execution_count: count++,
+                    execution_count: nextCount,
                     outputs: cell.outputs.map(output => {
                         if (output.output_type === 'execute_result') {
-                            return { ...output, execution_count: cell.execution_count };
+                            return { ...output, execution_count: nextCount };
                         }
                         return output;
                     })
