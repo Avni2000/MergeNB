@@ -34,6 +34,11 @@ Keep notebook conflict resolution as simple as possible inside an existing Git w
 
 Right now, that means a VSCode + Web UI flow that works without extra Git config changes or separate CLI tools.
 
+### Demo walkthrough:
+
+![Demo Walkthrough Gif](readme-assets/demo_walkthrough.gif)
+
+
 ### What stands out
 
 - Undo/redo + full action history for complex merges.
@@ -42,7 +47,6 @@ Right now, that means a VSCode + Web UI flow that works without extra Git config
 - IDE integration via extension commands, status bar notifications, and file conflict discovery.
 - Extremely active development (issues and feedback are always welcome, and feel free to email me!).
 
-If nbdime already fits your workflow, keep using it. If you want a more interactive, user-friendly experience for notebook conflicts in VS Code, give MergeNB a try!
 
 > [!IMPORTANT]
 > MergeNB is currently **not compatible with nbdime** in the same merge flow.
@@ -70,9 +74,6 @@ Typical flow:
 5. Optionally edit the resolved source text.
 6. Apply resolution and return to VS Code.
 
-<!-- [Screenshot: 3-column conflict resolver with branch selection buttons] -->
-<!-- [Screenshot: Resolved text editor area after choosing a branch] -->
-<!-- [Screenshot: Accept All controls + Resolve button] -->
 
 ## Configuration
 
