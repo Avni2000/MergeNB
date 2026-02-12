@@ -1,16 +1,21 @@
-# MergeNB
+<div align="center">
 
-A VS Code extension for resolving merge conflicts in Jupyter notebooks (`.ipynb` files).
+![MergeNB Logo](readme-assets/MergeNB-logo.png)
+
+**A VS Code extension for resolving merge conflicts in Jupyter notebooks (`.ipynb` files).**
+
+</div>
+
+---
 
 ## The Problem
 
-Git doesn't know how to resolve git merge conflicts with Jupyter Notebooks at all. It doesn't even necessary know there ARE any conflicts, least of all where. So, alternate "mergetools" are used to create a specialized UI  
+Git doesn't know how to resolve merge conflicts in Jupyter Notebooks effectively. It often fails to identify conflicts or their exact locations. As a result, alternative "mergetools" are required to provide a specialized UI for resolving these conflicts.
 
-The canonical solution is nbdime, a collection of tools designed just for this purpose; however, it has been buggy and unreliable in my experience. 
-
+The canonical solution is **nbdime**, a collection of tools designed for this purpose. However, it has been known to be buggy and unreliable in certain scenarios.
 
 > [!IMPORTANT]
-> MergeNB is not compatible with nbdime. Running both can produce unpredictable results (e.g., nbdime may insert conflict markers MergeNB cannot handle if it works correctly). Disable or uninstall nbdime when using MergeNB to avoid conflicts.
+> MergeNB is not compatible with nbdime. Running both can produce unpredictable results (e.g., nbdime may insert conflict markers MergeNB cannot handle. Disable or uninstall nbdime when using MergeNB to avoid conflicts.
 
 ## Features
 
