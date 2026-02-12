@@ -15,6 +15,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
 import { serializeNotebook, renumberExecutionCounts } from './notebookParser';
+import { selectNonConflictMergedCell } from './notebookUtils';
 import { WebConflictPanel } from './web/WebConflictPanel';
 import { UnifiedConflict, UnifiedResolution } from './web/webTypes';
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
@@ -349,10 +350,6 @@ export class NotebookConflictResolver {
                         continue;
                 }
 
-                if (resolvedContent === '') {
-                    continue;
-                }
-
                 const cellType = referenceCell?.cell_type || 'code';
                 cellToUse = {
                     cell_type: cellType,
@@ -370,9 +367,9 @@ export class NotebookConflictResolver {
                 else if (preferredSide === 'current') cellToUse = currentCell;
                 else if (preferredSide === 'incoming') cellToUse = incomingCell;
             } else {
-                // For non-conflict (identical) rows, use the original cell directly
-                // Don't use autoResolvedCell here because it may have stripped outputs
-                cellToUse = currentCell || incomingCell || baseCell;
+                // For non-conflict rows, apply source-level 3-way merge semantics so
+                // one-sided incoming/current edits are preserved.
+                cellToUse = selectNonConflictMergedCell(baseCell, currentCell, incomingCell);
             }
 
             if (cellToUse) {
