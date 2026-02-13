@@ -398,9 +398,15 @@ body {
     position: relative;
 }
 
+/* Conflict row - consolidated styling: subtle red background with
+   a consistent 3px border on top/right/bottom and a 4px left accent */
 .merge-row.conflict-row {
-    border: 3px solid rgba(244, 135, 113, 0.6);
-    background: rgba(244, 135, 113, 0.08);
+    background: rgba(244, 135, 113, 0.05);
+    border-top: 3px solid rgba(244, 135, 113, 0.6);
+    border-right: 3px solid rgba(244, 135, 113, 0.6);
+    border-bottom: 3px solid rgba(244, 135, 113, 0.6);
+    border-left: 4px solid #f48771;
+    border-radius: 6px;
 }
 
 .merge-row.identical-row {
@@ -1036,12 +1042,8 @@ body {
     cursor: grabbing;
 }
 
-/* Conflict row - red border for actual conflicts */
-.merge-row.conflict-row {
-    background: rgba(244, 135, 113, 0.05);
-    border-left: 4px solid #f48771;
-    border-radius: 4px;
-}
+/* Conflict row - red border for actual conflicts
+   (consolidated rule moved earlier to avoid duplicate definitions) */
 
 /* Unmatched row - yellow border for cells that couldn't be matched */
 .merge-row.unmatched-row {
