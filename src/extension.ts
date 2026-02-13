@@ -33,6 +33,23 @@ let lastResolvedDetails: {
 // Event emitter to trigger decoration refresh
 const decorationChangeEmitter = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
 
+interface GitRepositoryState {
+	onDidChange: vscode.Event<void>;
+}
+
+interface GitRepository {
+	state?: GitRepositoryState;
+}
+
+interface GitAPI {
+	repositories: GitRepository[];
+	onDidOpenRepository: vscode.Event<GitRepository>;
+}
+
+interface GitExtensionExports {
+	getAPI(version: 1): GitAPI;
+}
+
 /**
  * Get the file URI for the currently active notebook.
  * Handles both notebook editor and text editor cases.
@@ -81,6 +98,57 @@ async function updateStatusBar(): Promise<void> {
 	}
 }
 
+function registerGitStateWatchers(context: vscode.ExtensionContext): void {
+	const extension = vscode.extensions.getExtension<GitExtensionExports>('vscode.git');
+	if (!extension) {
+		return;
+	}
+
+	const watchedRepositories = new WeakSet<GitRepository>();
+	const attachRepositoryWatcher = (repository: GitRepository): void => {
+		if (!repository?.state || watchedRepositories.has(repository)) {
+			return;
+		}
+		watchedRepositories.add(repository);
+		context.subscriptions.push(
+			repository.state.onDidChange(() => {
+				decorationChangeEmitter.fire(undefined);
+				void updateStatusBar();
+			})
+		);
+	};
+
+	const registerWithApi = (api: GitAPI): void => {
+		for (const repository of api.repositories) {
+			attachRepositoryWatcher(repository);
+		}
+
+		context.subscriptions.push(
+			api.onDidOpenRepository((repository) => {
+				attachRepositoryWatcher(repository);
+				decorationChangeEmitter.fire(undefined);
+				void updateStatusBar();
+			})
+		);
+	};
+
+	const onGitReady = (exports: GitExtensionExports | undefined): void => {
+		if (!exports?.getAPI) {
+			return;
+		}
+		registerWithApi(exports.getAPI(1));
+	};
+
+	if (extension.isActive) {
+		onGitReady(extension.exports);
+		return;
+	}
+
+	void extension.activate().then((exports) => {
+		onGitReady(exports as GitExtensionExports | undefined);
+	});
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	console.log('MergeNB extension is now active');
 	const isTestMode = process.env.MERGENB_TEST_MODE === 'true';
@@ -99,6 +167,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Initial status bar update
 	updateStatusBar();
+	registerGitStateWatchers(context);
 	
 	// Listen for resolution success events
 	context.subscriptions.push(
@@ -256,4 +325,3 @@ export function deactivate() {
 		webServer.stop();
 	}
 }
-
