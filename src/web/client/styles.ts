@@ -123,6 +123,39 @@ body {
     gap: 16px;
 }
 
+/* Logo icon */
+.logo-icon {
+    position: relative;
+    width: 40px;
+    height: 34px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.logo-card {
+    position: absolute;
+    width: 24px;
+    height: 32px;
+    border-radius: 4px;
+    mix-blend-mode: multiply;
+    opacity: 0.9;
+    transform-origin: 50% 90%;
+    top: 0;
+}
+
+.logo-card-left {
+    background-color: #A4D4DE;
+    left: 6px;
+    transform: rotate(-20deg);
+}
+
+.logo-card-right {
+    background-color: #C3C9F2;
+    right: 6px;
+    transform: rotate(20deg);
+}
+
 .header-title {
     font-size: 14px;
     font-weight: 600;
@@ -286,7 +319,7 @@ body {
     margin-bottom: 12px;
     position: sticky;
     top: 0;
-    background: var(--bg-primary);
+    background: transparent;
     padding: 8px 0;
     z-index: 50;
 }
@@ -318,19 +351,19 @@ body {
 }
 
 .merge-row.conflict-row {
-    border: 2px solid var(--border-color);
-    background: var(--bg-secondary);
+    border: 3px solid rgba(244, 135, 113, 0.6);
+    background: rgba(244, 135, 113, 0.08);
 }
 
 .merge-row.identical-row {
-    opacity: 0.7;
+    /* No opacity reduction - keep text readable */
 }
 
 .cell-columns {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1px;
-    background: var(--border-color);
+    background: transparent;
 }
 
 .cell-columns.two-column {
@@ -338,7 +371,7 @@ body {
 }
 
 .cell-column {
-    background: var(--bg-primary);
+    background: transparent;
     padding: 12px;
     min-height: 60px;
     display: flex;
@@ -376,7 +409,7 @@ body {
 .cell-content pre {
     margin: 0;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: rgba(255, 255, 255, 0.5);
     border-radius: 4px;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -389,7 +422,7 @@ body {
 
 .markdown-cell .cell-content {
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: rgba(255, 255, 255, 0.5);
     border-radius: 4px;
     border-left: 3px solid var(--accent-green);
 }
@@ -403,7 +436,7 @@ body {
     color: var(--text-primary);
     font-style: italic;
     font-size: 12px;
-    background: var(--bg-tertiary);
+    background: rgba(255, 255, 255, 0.3);
     border-radius: 4px;
     border: 1px dashed var(--border-color);
 }
@@ -416,7 +449,7 @@ body {
 .metadata-cell pre {
     margin: 0;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: rgba(255, 255, 255, 0.5);
     border-radius: 4px;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -520,7 +553,7 @@ body {
 .cell-outputs {
     margin-top: 8px;
     padding: 8px;
-    background: var(--bg-tertiary);
+    background: rgba(255, 255, 255, 0.4);
     border-radius: 4px;
     font-size: 12px;
 }
@@ -534,7 +567,7 @@ body {
     color: var(--text-secondary);
     font-style: italic;
     padding: 8px;
-    background: var(--bg-secondary);
+    background: rgba(255, 255, 255, 0.3);
     border: 1px dashed var(--border-color);
     border-radius: 4px;
     font-family: "SF Mono", Monaco, "Cascadia Code", "Courier New", monospace;
