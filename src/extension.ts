@@ -20,6 +20,7 @@ import { getWebServer } from './web';
 
 let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
+let statusBarVisible = false;
 let lastResolvedDetails: {
 	uri: string;
 	resolvedNotebook: unknown;
@@ -76,6 +77,7 @@ async function updateStatusBar(): Promise<void> {
 	
 	if (!activeUri) {
 		statusBarItem.hide();
+		statusBarVisible = false;
 		return;
 	}
 
@@ -88,8 +90,10 @@ async function updateStatusBar(): Promise<void> {
 		statusBarItem.command = 'merge-nb.findConflicts';
 		statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
 		statusBarItem.show();
+		statusBarVisible = true;
 	} else {
 		statusBarItem.hide();
+		statusBarVisible = false;
 	}
 }
 
@@ -255,6 +259,14 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.commands.registerCommand('merge-nb.getWebServerPort', () => {
 				const webServer = getWebServer();
 				return webServer.isRunning() ? webServer.getPort() : 0;
+			})
+		);
+		context.subscriptions.push(
+			vscode.commands.registerCommand('merge-nb.getStatusBarState', () => {
+				return {
+					visible: statusBarVisible,
+					text: statusBarItem.text,
+				};
 			})
 		);
 	}
