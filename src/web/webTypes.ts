@@ -33,8 +33,8 @@ export interface UnifiedConflict {
     enableUndoRedoHotkeys?: boolean;
     /** Whether to show the base column in the 3-way merge view */
     showBaseColumn?: boolean;
-    /** UI theme ('dark' | 'elegant') */
-    theme?: 'dark' | 'elegant';
+    /** UI theme ('dark' | 'light') */
+    theme?: 'dark' | 'light';
 }
 
 /**
@@ -103,7 +103,7 @@ export interface WebConflictData {
     incomingBranch?: string;
 
     // UI theme
-    theme?: 'dark' | 'elegant';
+    theme?: 'dark' | 'light';
 }
 
 /**

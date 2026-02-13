@@ -68,7 +68,7 @@ export async function run(): Promise<void> {
         hideNonConflictOutputs: true,
         enableUndoRedoHotkeys: true,
         showBaseColumn: true,
-        theme: 'elegant',
+        theme: 'light',
     });
     assert.ok(
         conflicts.some(c => c.type === 'metadata-changed'),

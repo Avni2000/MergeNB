@@ -3,11 +3,11 @@
  * @description Shared styles for the conflict resolver UI.
  */
 
-export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
+export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     const isDark = theme === 'dark';
     
-    // Checkered background gradient for elegant theme
-    const ELEGANT_GRID_GRADIENT = `linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
+    // Checkered background gradient for light theme
+    const LIGHT_GRID_GRADIENT = `linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)`;
 
     // Color palette based on theme
@@ -31,13 +31,17 @@ export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
         diffAdd: 'rgba(78, 201, 176, 0.3)',
         diffRemove: 'rgba(244, 135, 113, 0.3)',
         diffChange: 'rgba(255, 213, 79, 0.3)',
+        cellSurface: 'rgba(255, 255, 255, 0.08)',
+        cellSurfaceSoft: 'rgba(255, 255, 255, 0.05)',
+        cellPlaceholderBg: 'rgba(255, 255, 255, 0.04)',
+        outputBg: 'rgba(255, 255, 255, 0.06)',
         bodyBackground: '#1e1e1e',
         bodyBackgroundImage: 'none',
     } : {
-        // Elegant theme - inspired by MergeNB logo
-        bgPrimary: '#ffffff',
-        bgSecondary: '#f5f2ec',
-        bgTertiary: '#ebe7df',
+        // LIGHT theme - inspired by MergeNB logo
+        bgPrimary: '#f1ece3',
+        bgSecondary: '#ebe3d8',
+        bgTertiary: '#e2d8ca',
         borderColor: 'rgba(0, 0, 0, 0.1)',
         textPrimary: '#1A202C',
         textSecondary: '#6B7280',
@@ -54,8 +58,12 @@ export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
         diffAdd: 'rgba(195, 201, 242, 0.4)',
         diffRemove: 'rgba(244, 135, 113, 0.35)',
         diffChange: 'rgba(255, 193, 7, 0.35)',
-        bodyBackground: '#F9F7F1',
-        bodyBackgroundImage: ELEGANT_GRID_GRADIENT,
+        cellSurface: 'rgba(226, 216, 202, 0.78)',
+        cellSurfaceSoft: 'rgba(226, 216, 202, 0.62)',
+        cellPlaceholderBg: 'rgba(226, 216, 202, 0.48)',
+        outputBg: 'rgba(226, 216, 202, 0.66)',
+        bodyBackground: '#EAE2D5',
+        bodyBackgroundImage: LIGHT_GRID_GRADIENT,
     };
 
     const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
@@ -83,6 +91,10 @@ export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
     --diff-add: ${colors.diffAdd};
     --diff-remove: ${colors.diffRemove};
     --diff-change: ${colors.diffChange};
+    --cell-surface: ${colors.cellSurface};
+    --cell-surface-soft: ${colors.cellSurfaceSoft};
+    --cell-placeholder-bg: ${colors.cellPlaceholderBg};
+    --output-bg: ${colors.outputBg};
 }
 
 * {
@@ -429,7 +441,7 @@ body {
 .cell-content pre {
     margin: 0;
     padding: 12px;
-    background: rgba(255, 255, 255, 0.5);
+    background: var(--cell-surface);
     border-radius: 4px;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -442,7 +454,7 @@ body {
 
 .markdown-cell .cell-content {
     padding: 12px;
-    background: rgba(255, 255, 255, 0.5);
+    background: var(--cell-surface);
     border-radius: 4px;
     border-left: 3px solid var(--accent-green);
 }
@@ -456,7 +468,7 @@ body {
     color: var(--text-primary);
     font-style: italic;
     font-size: 12px;
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--cell-placeholder-bg);
     border-radius: 4px;
     border: 1px dashed var(--border-color);
 }
@@ -469,7 +481,7 @@ body {
 .metadata-cell pre {
     margin: 0;
     padding: 12px;
-    background: rgba(255, 255, 255, 0.5);
+    background: var(--cell-surface);
     border-radius: 4px;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -573,7 +585,7 @@ body {
 .cell-outputs {
     margin-top: 8px;
     padding: 8px;
-    background: rgba(255, 255, 255, 0.4);
+    background: var(--output-bg);
     border-radius: 4px;
     font-size: 12px;
 }
@@ -587,7 +599,7 @@ body {
     color: var(--text-secondary);
     font-style: italic;
     padding: 8px;
-    background: rgba(255, 255, 255, 0.3);
+    background: var(--cell-surface-soft);
     border: 1px dashed var(--border-color);
     border-radius: 4px;
     font-family: "SF Mono", Monaco, "Cascadia Code", "Courier New", monospace;
@@ -1136,7 +1148,7 @@ body {
 `;
 }
 
-export function injectStyles(theme: 'dark' | 'elegant' = 'elegant'): void {
+export function injectStyles(theme: 'dark' | 'light' = 'light'): void {
     if (typeof document !== 'undefined') {
         const existing = document.getElementById('mergenb-styles');
         if (existing) {
@@ -1152,4 +1164,4 @@ export function injectStyles(theme: 'dark' | 'elegant' = 'elegant'): void {
 }
 
 // Keep backward compatibility
-export const styles = getStyles('elegant');
+export const styles = getStyles('light');
