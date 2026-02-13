@@ -355,6 +355,9 @@ export class ConflictResolverWebServer {
         } else if (pathname === '/client.js' || pathname === '/client.js.map') {
             // Serve bundled React app from dist/web/
             this.serveStaticFile(res, pathname);
+        } else if (pathname.startsWith('/fonts/')) {
+            // Serve bundled web fonts from dist/web/fonts/
+            this.serveStaticFile(res, pathname);
         } else if (pathname.startsWith('/katex/')) {
             // Serve KaTeX files from dist/web/katex/
             this.serveStaticFile(res, pathname);

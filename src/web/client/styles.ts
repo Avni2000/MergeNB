@@ -81,7 +81,21 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
 
     return `
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@700&family=Playfair+Display:ital,wght@1,500&display=swap');
+@font-face {
+    font-family: 'DM Sans';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/dm-sans-700-latin.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Playfair Display';
+    font-style: italic;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/fonts/playfair-display-italic-500-latin.woff2') format('woff2');
+}
 
 :root {
     --bg-primary: ${colors.bgPrimary};
