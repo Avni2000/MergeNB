@@ -120,6 +120,7 @@ export class WebConflictPanel {
             hideNonConflictOutputs: this._conflict.hideNonConflictOutputs,
             enableUndoRedoHotkeys: this._conflict.enableUndoRedoHotkeys,
             showBaseColumn: this._conflict.showBaseColumn,
+            theme: this._conflict.theme,
             currentBranch: this._conflict.semanticConflict?.currentBranch,
             incomingBranch: this._conflict.semanticConflict?.incomingBranch,
         };

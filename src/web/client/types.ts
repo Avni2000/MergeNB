@@ -56,6 +56,7 @@ export interface UnifiedConflictData {
     incomingBranch?: string;
     enableUndoRedoHotkeys?: boolean;
     showBaseColumn?: boolean;
+    theme?: 'dark' | 'elegant';
 }
 
 /**

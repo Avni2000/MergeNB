@@ -3,27 +3,79 @@
  * @description Shared styles for the conflict resolver UI.
  */
 
-export const styles = `
+export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
+    const isDark = theme === 'dark';
+    
+    // Color palette based on theme
+    const colors = isDark ? {
+        bgPrimary: '#1e1e1e',
+        bgSecondary: '#252526',
+        bgTertiary: '#2d2d2d',
+        borderColor: '#3c3c3c',
+        textPrimary: '#f3f3f3',
+        textSecondary: '#808080',
+        accentBlue: '#007acc',
+        accentGreen: '#4ec9b0',
+        currentBg: 'rgba(64, 164, 223, 0.15)',
+        currentBorder: '#40a4df',
+        currentRgb: '64, 164, 223',
+        incomingBg: 'rgba(78, 201, 176, 0.15)',
+        incomingBorder: '#4ec9b0',
+        incomingRgb: '78, 201, 176',
+        baseBg: 'rgba(128, 128, 128, 0.15)',
+        baseBorder: '#808080',
+        diffAdd: 'rgba(78, 201, 176, 0.3)',
+        diffRemove: 'rgba(244, 135, 113, 0.3)',
+        diffChange: 'rgba(255, 213, 79, 0.3)',
+        bodyBackground: '#1e1e1e',
+        bodyBackgroundImage: 'none',
+    } : {
+        // Elegant theme - inspired by MergeNB logo
+        bgPrimary: '#ffffff',
+        bgSecondary: '#f5f2ec',
+        bgTertiary: '#ebe7df',
+        borderColor: 'rgba(0, 0, 0, 0.1)',
+        textPrimary: '#1A202C',
+        textSecondary: '#6B7280',
+        accentBlue: '#569cd6',
+        accentGreen: '#4ec9b0',
+        currentBg: 'rgba(164, 212, 222, 0.25)',
+        currentBorder: '#A4D4DE',
+        currentRgb: '164, 212, 222',
+        incomingBg: 'rgba(195, 201, 242, 0.25)',
+        incomingBorder: '#C3C9F2',
+        incomingRgb: '195, 201, 242',
+        baseBg: 'rgba(128, 128, 128, 0.12)',
+        baseBorder: '#999999',
+        diffAdd: 'rgba(195, 201, 242, 0.4)',
+        diffRemove: 'rgba(244, 135, 113, 0.35)',
+        diffChange: 'rgba(255, 193, 7, 0.35)',
+        bodyBackground: '#F9F7F1',
+        bodyBackgroundImage: `linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)`,
+    };
+
+    return `
 :root {
-    --bg-primary: #1e1e1e;
-    --bg-secondary: #252526;
-    --bg-tertiary: #2d2d2d;
-    --border-color: #3c3c3c;
-    --text-primary: #f3f3f3;
-    --text-secondary: #808080;
-    --accent-blue: #007acc;
-    --accent-green: #4ec9b0;
-    --current-bg: rgba(64, 164, 223, 0.15);
-    --current-border: #40a4df;
-    --current-rgb: 64, 164, 223;
-    --incoming-bg: rgba(78, 201, 176, 0.15);
-    --incoming-border: #4ec9b0;
-    --incoming-rgb: 78, 201, 176;
-    --base-bg: rgba(128, 128, 128, 0.15);
-    --base-border: #808080;
-    --diff-add: rgba(78, 201, 176, 0.3);
-    --diff-remove: rgba(244, 135, 113, 0.3);
-    --diff-change: rgba(255, 213, 79, 0.3);
+    --bg-primary: ${colors.bgPrimary};
+    --bg-secondary: ${colors.bgSecondary};
+    --bg-tertiary: ${colors.bgTertiary};
+    --border-color: ${colors.borderColor};
+    --text-primary: ${colors.textPrimary};
+    --text-secondary: ${colors.textSecondary};
+    --accent-blue: ${colors.accentBlue};
+    --accent-green: ${colors.accentGreen};
+    --current-bg: ${colors.currentBg};
+    --current-border: ${colors.currentBorder};
+    --current-rgb: ${colors.currentRgb};
+    --incoming-bg: ${colors.incomingBg};
+    --incoming-border: ${colors.incomingBorder};
+    --incoming-rgb: ${colors.incomingRgb};
+    --base-bg: ${colors.baseBg};
+    --base-border: ${colors.baseBorder};
+    --diff-add: ${colors.diffAdd};
+    --diff-remove: ${colors.diffRemove};
+    --diff-change: ${colors.diffChange};
 }
 
 * {
@@ -34,7 +86,9 @@ export const styles = `
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background: var(--bg-primary);
+    background: ${colors.bodyBackground};
+    ${colors.bodyBackgroundImage !== 'none' ? `background-image: ${colors.bodyBackgroundImage};` : ''}
+    ${colors.bodyBackgroundImage !== 'none' ? 'background-size: 20px 20px;' : ''}
     color: var(--text-primary);
     line-height: 1.5;
 }
@@ -1022,15 +1076,22 @@ body {
     color: var(--text-primary);
 }
 `;
+}
 
-export function injectStyles(): void {
+export function injectStyles(theme: 'dark' | 'elegant' = 'elegant'): void {
     if (typeof document !== 'undefined') {
         const existing = document.getElementById('mergenb-styles');
-        if (existing) return;
+        if (existing) {
+            existing.textContent = getStyles(theme);
+            return;
+        }
 
         const style = document.createElement('style');
         style.id = 'mergenb-styles';
-        style.textContent = styles;
+        style.textContent = getStyles(theme);
         document.head.appendChild(style);
     }
 }
+
+// Keep backward compatibility
+export const styles = getStyles('elegant');

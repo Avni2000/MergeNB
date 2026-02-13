@@ -112,6 +112,12 @@
           "type": "boolean",
           "default": false,
           "description": "Show the base (common ancestor) branch column in the conflict resolution view. When false, only current and incoming columns are shown."
+        },
+        "mergeNB.ui.theme": {
+          "type": "string",
+          "enum": ["dark", "elegant"],
+          "default": "elegant",
+          "description": "Visual theme for the conflict resolution UI. 'elegant' provides a light, beige theme inspired by the MergeNB logo. 'dark' provides the traditional dark theme."
         }
       }
     }
