@@ -6,6 +6,10 @@
 export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
     const isDark = theme === 'dark';
     
+    // Checkered background gradient for elegant theme
+    const ELEGANT_GRID_GRADIENT = `linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)`;
+
     // Color palette based on theme
     const colors = isDark ? {
         bgPrimary: '#1e1e1e',
@@ -51,9 +55,10 @@ export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
         diffRemove: 'rgba(244, 135, 113, 0.35)',
         diffChange: 'rgba(255, 193, 7, 0.35)',
         bodyBackground: '#F9F7F1',
-        bodyBackgroundImage: `linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)`,
+        bodyBackgroundImage: ELEGANT_GRID_GRADIENT,
     };
+
+    const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
 
     return `
 :root {
@@ -87,8 +92,8 @@ export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     background: ${colors.bodyBackground};
-    ${colors.bodyBackgroundImage !== 'none' ? `background-image: ${colors.bodyBackgroundImage};` : ''}
-    ${colors.bodyBackgroundImage !== 'none' ? 'background-size: 20px 20px;' : ''}
+    ${hasBackgroundImage ? `background-image: ${colors.bodyBackgroundImage};` : ''}
+    ${hasBackgroundImage ? 'background-size: 20px 20px;' : ''}
     color: var(--text-primary);
     line-height: 1.5;
 }
