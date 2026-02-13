@@ -272,7 +272,8 @@ export class NotebookConflictResolver {
             autoResolveResult: autoResolveResult,
             hideNonConflictOutputs: settings.hideNonConflictOutputs,
             enableUndoRedoHotkeys: settings.enableUndoRedoHotkeys,
-            showBaseColumn: settings.showBaseColumn
+            showBaseColumn: settings.showBaseColumn,
+            theme: settings.theme
         };
 
         const resolutionCallback = async (resolution: UnifiedResolution): Promise<void> => {

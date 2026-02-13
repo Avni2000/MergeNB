@@ -541,7 +541,14 @@ export function ConflictResolver({
         <div className="app-container">
             <header className="header">
                 <div className="header-left">
-                    <span className="header-title">MergeNB</span>
+                    <div className="logo-icon">
+                        <div className="logo-card logo-card-left"></div>
+                        <div className="logo-card logo-card-right"></div>
+                    </div>
+                    <div className="header-title">
+                        <span className="header-title-merge">Merge</span>
+                        <span className="header-title-nb">NB</span>
+                    </div>
                     <span className="file-path">{fileName}</span>
                 </div>
                 <div className="header-right">

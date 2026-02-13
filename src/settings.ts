@@ -10,6 +10,7 @@
  * - hideNonConflictOutputs: Hide outputs for non-conflicted cells in UI (default: true)
  * - enableUndoRedoHotkeys: Enable Ctrl+Z / Ctrl+Shift+Z in web UI (default: true)
  * - showBaseColumn: Show base branch column in 3-column view (default: false, true in headless/testing)
+ * - theme: UI theme selection ('dark' | 'light', default: 'light')
  * 
  * These reduce manual conflict resolution for common non-semantic differences.
  */
@@ -30,6 +31,7 @@ export interface MergeNBSettings {
     hideNonConflictOutputs: boolean;
     enableUndoRedoHotkeys: boolean;
     showBaseColumn: boolean;
+    theme: 'dark' | 'light';
 }
 
 /** Default settings used in headless mode */
@@ -40,7 +42,8 @@ const DEFAULT_SETTINGS: MergeNBSettings = {
     autoResolveWhitespace: true,
     hideNonConflictOutputs: true,
     enableUndoRedoHotkeys: true,
-    showBaseColumn: true
+    showBaseColumn: true,
+    theme: 'light'
 };
 
 /**
@@ -64,6 +67,7 @@ export function getSettings(): MergeNBSettings {
         hideNonConflictOutputs: true,
         enableUndoRedoHotkeys: true,
         showBaseColumn: false,
+        theme: 'light',
     };
 
     const config = vscode.workspace.getConfiguration('mergeNB');
@@ -76,13 +80,17 @@ export function getSettings(): MergeNBSettings {
         hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', defaults.hideNonConflictOutputs),
         enableUndoRedoHotkeys: config.get<boolean>('ui.enableUndoRedoHotkeys', defaults.enableUndoRedoHotkeys),
         showBaseColumn: config.get<boolean>('ui.showBaseColumn', defaults.showBaseColumn),
+        theme: config.get<'dark' | 'light'>('ui.theme', defaults.theme),
     };
 }
 
 /**
- * Check if a specific auto-resolve setting is enabled
+ * Check if a specific auto-resolve setting is enabled.
+ * Only checks actual auto-resolve settings, not UI settings.
  */
-export function isAutoResolveEnabled(setting: keyof MergeNBSettings): boolean {
+export function isAutoResolveEnabled(
+    setting: 'autoResolveExecutionCount' | 'autoResolveKernelVersion' | 'stripOutputs' | 'autoResolveWhitespace'
+): boolean {
     const settings = getSettings();
     return settings[setting];
 }

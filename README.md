@@ -47,6 +47,16 @@ Right now, that means a VSCode + Web UI flow that works without extra Git config
 - IDE integration via extension commands, status bar notifications, and file conflict discovery.
 - Extremely active development (issues and feedback are always welcome, and feel free to email me!).
 
+- Light and dark themes (the demo above needs to be updated!):
+
+<div >
+    <div style="box-shadow:0 12px 30px rgba(0,0,0,0.18);border-radius:8px;overflow:hidden;margin-bottom:32px;">
+        <img src="readme-assets/light-theme.png" alt="Light theme" style="display:block;width:100%;height:auto;" />
+    </div>
+    <div style="box-shadow:0 12px 30px rgba(0,0,0,0.18);border-radius:8px;overflow:hidden;">
+        <img src="readme-assets/dark-theme.png" alt="Dark theme" style="display:block;width:100%;height:auto;" />
+    </div>
+</div>
 
 > [!IMPORTANT]
 > MergeNB is currently **not compatible with nbdime** in the same merge flow.

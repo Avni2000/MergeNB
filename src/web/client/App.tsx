@@ -3,13 +3,21 @@
  * @description Root React component for the conflict resolver.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { ConflictResolver } from './ConflictResolver';
+import { injectStyles } from './styles';
 import type { ConflictChoice, ResolvedRow } from './types';
 
 export function App(): React.ReactElement {
     const { connected, conflictData, sendMessage, resolutionStatus, resolutionMessage } = useWebSocket();
+
+    // Inject theme styles when conflict data loads
+    useEffect(() => {
+        if (conflictData?.theme) {
+            injectStyles(conflictData.theme);
+        }
+    }, [conflictData?.theme]);
 
     const handleResolve = (resolutions: ConflictChoice[], markAsResolved: boolean, renumberExecutionCounts: boolean, resolvedRows: ResolvedRow[]) => {
         sendMessage({

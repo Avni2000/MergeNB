@@ -3,27 +3,128 @@
  * @description Shared styles for the conflict resolver UI.
  */
 
-export const styles = `
+export function getStyles(theme: 'dark' | 'light' = 'light'): string {
+    const isDark = theme === 'dark';
+    
+    // Checkered background gradients
+    const DARK_GRID_GRADIENT = `linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px)`;
+
+    // Checkered background gradient for light theme
+    const LIGHT_GRID_GRADIENT = `linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)`;
+
+    // Color palette based on theme
+    const colors = isDark ? {
+        bgPrimary: '#25201b',
+        bgSecondary: '#2c2620',
+        bgTertiary: '#373027',
+        bgQuarternary: '#373027',
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+        textPrimary: '#EFE7DB',
+        textSecondary: '#B5A998',
+        accentBlue: '#7FB9C7',
+        accentGreen: '#9FA8DD',
+        currentBg: 'rgba(127, 185, 199, 0.24)',
+        currentBorder: '#7FB9C7',
+        currentRgb: '127, 185, 199',
+        incomingBg: 'rgba(159, 168, 221, 0.24)',
+        incomingBorder: '#9FA8DD',
+        incomingRgb: '159, 168, 221',
+        baseBg: 'rgba(181, 169, 152, 0.18)',
+        baseBorder: '#B5A998',
+        diffAdd: 'rgba(159, 168, 221, 0.28)',
+        diffRemove: 'rgba(220, 130, 115, 0.3)',
+        diffChange: 'rgba(224, 180, 82, 0.28)',
+        cellSurface: 'rgba(55, 48, 39, 0.82)',
+        cellSurfaceSoft: 'rgba(55, 48, 39, 0.64)',
+        cellPlaceholderBg: 'rgba(55, 48, 39, 0.54)',
+        outputBg: 'rgba(55, 48, 39, 0.72)',
+        bodyBackground: '#1D1915',
+        bodyBackgroundImage: DARK_GRID_GRADIENT,
+        logoLeft: '#7FB9C7',
+        logoRight: '#9FA8DD',
+        logoBlendMode: 'normal',
+    } : {
+        // LIGHT theme - inspired by MergeNB logo
+        bgPrimary: '#f1ece3',
+        bgSecondary: '#ebe3d8',
+        bgTertiary: '#e2d8ca',
+        bgQuarternary: '#ebe3d8b7',
+        borderColor: 'rgba(0, 0, 0, 0.1)',
+        textPrimary: '#1A202C',
+        textSecondary: '#6B7280',
+        accentBlue: '#569cd6',
+        accentGreen: '#4ec9b0',
+        currentBg: 'rgba(164, 212, 222, 0.25)',
+        currentBorder: '#A4D4DE',
+        currentRgb: '164, 212, 222',
+        incomingBg: 'rgba(159, 168, 221, 0.30)',
+        incomingBorder: '#9FA8DD',
+        incomingRgb: '159, 168, 221',
+        baseBg: 'rgba(128, 128, 128, 0.18)',
+        baseBorder: '#8b7f70',
+        diffAdd: 'rgba(195, 201, 242, 0.4)',
+        diffRemove: 'rgba(244, 135, 113, 0.35)',
+        diffChange: 'rgba(255, 193, 7, 0.35)',
+        cellSurface: 'rgba(226, 216, 202, 0.78)',
+        cellSurfaceSoft: 'rgba(226, 216, 202, 0.62)',
+        cellPlaceholderBg: 'rgba(226, 216, 202, 0.48)',
+        outputBg: 'rgba(226, 216, 202, 0.66)',
+        bodyBackground: '#EAE2D5',
+        bodyBackgroundImage: LIGHT_GRID_GRADIENT,
+        logoLeft: '#A4D4DE',
+        logoRight: '#C3C9F2',
+        logoBlendMode: 'multiply',
+    };
+
+    const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
+
+    return `
+@font-face {
+    font-family: 'DM Sans';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/dm-sans-700-latin.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Playfair Display';
+    font-style: italic;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/fonts/playfair-display-italic-500-latin.woff2') format('woff2');
+}
+
 :root {
-    --bg-primary: #1e1e1e;
-    --bg-secondary: #252526;
-    --bg-tertiary: #2d2d2d;
-    --border-color: #3c3c3c;
-    --text-primary: #f3f3f3;
-    --text-secondary: #808080;
-    --accent-blue: #007acc;
-    --accent-green: #4ec9b0;
-    --current-bg: rgba(64, 164, 223, 0.15);
-    --current-border: #40a4df;
-    --current-rgb: 64, 164, 223;
-    --incoming-bg: rgba(78, 201, 176, 0.15);
-    --incoming-border: #4ec9b0;
-    --incoming-rgb: 78, 201, 176;
-    --base-bg: rgba(128, 128, 128, 0.15);
-    --base-border: #808080;
-    --diff-add: rgba(78, 201, 176, 0.3);
-    --diff-remove: rgba(244, 135, 113, 0.3);
-    --diff-change: rgba(255, 213, 79, 0.3);
+    --bg-primary: ${colors.bgPrimary};
+    --bg-secondary: ${colors.bgSecondary};
+    --bg-tertiary: ${colors.bgTertiary};
+    --bg-quarternary: ${colors.bgQuarternary};
+    --border-color: ${colors.borderColor};
+    --text-primary: ${colors.textPrimary};
+    --text-secondary: ${colors.textSecondary};
+    --accent-blue: ${colors.accentBlue};
+    --accent-green: ${colors.accentGreen};
+    --current-bg: ${colors.currentBg};
+    --current-border: ${colors.currentBorder};
+    --current-rgb: ${colors.currentRgb};
+    --incoming-bg: ${colors.incomingBg};
+    --incoming-border: ${colors.incomingBorder};
+    --incoming-rgb: ${colors.incomingRgb};
+    --base-bg: ${colors.baseBg};
+    --base-border: ${colors.baseBorder};
+    --diff-add: ${colors.diffAdd};
+    --diff-remove: ${colors.diffRemove};
+    --diff-change: ${colors.diffChange};
+    --cell-surface: ${colors.cellSurface};
+    --cell-surface-soft: ${colors.cellSurfaceSoft};
+    --cell-placeholder-bg: ${colors.cellPlaceholderBg};
+    --output-bg: ${colors.outputBg};
+    --logo-left: ${colors.logoLeft};
+    --logo-right: ${colors.logoRight};
+    --logo-blend-mode: ${colors.logoBlendMode};
 }
 
 * {
@@ -34,7 +135,9 @@ export const styles = `
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background: var(--bg-primary);
+    background: ${colors.bodyBackground};
+    ${hasBackgroundImage ? `background-image: ${colors.bodyBackgroundImage};` : ''}
+    ${hasBackgroundImage ? 'background-size: 20px 20px;' : ''}
     color: var(--text-primary);
     line-height: 1.5;
 }
@@ -64,9 +167,60 @@ body {
     gap: 16px;
 }
 
+/* Logo icon */
+.logo-icon {
+    position: relative;
+    width: 60px;
+    height: 40px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.logo-card {
+    position: absolute;
+    width: 30px;
+    height: 36px;
+    border-radius: 6px;
+    mix-blend-mode: var(--logo-blend-mode);
+    opacity: 0.9;
+    transform-origin: 50% 90%;
+    top: 0;
+}
+
+.logo-card-left {
+    background-color: var(--logo-left);
+    left: 6px;
+    transform: rotate(-25deg);
+}
+
+.logo-card-right {
+    background-color: var(--logo-right);
+    right: 6px;
+    transform: rotate(25deg);
+}
+
 .header-title {
-    font-size: 14px;
-    font-weight: 600;
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    color: var(--text-primary);
+    line-height: 1;
+    letter-spacing: -0.03em;
+}
+
+.header-title-merge {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 24px;
+    letter-spacing: -0.02em;
+}
+
+.header-title-nb {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    font-size: 24px;
 }
 
 .file-path {
@@ -227,7 +381,7 @@ body {
     margin-bottom: 12px;
     position: sticky;
     top: 0;
-    background: var(--bg-primary);
+    background: transparent;
     padding: 8px 0;
     z-index: 50;
 }
@@ -246,9 +400,9 @@ body {
     border-radius: 4px;
 }
 
-.column-label.base { background: var(--base-bg); color: var(--base-border); }
-.column-label.current { background: var(--current-bg); color: var(--current-border); }
-.column-label.incoming { background: var(--incoming-bg); color: var(--incoming-border); }
+.column-label.base { background: var(--base-bg); color: var(--text-primary); }
+.column-label.current { background: var(--current-bg); color: var(--text-primary); }
+.column-label.incoming { background: var(--incoming-bg); color: var(--text-primary); }
 
 /* Merge rows */
 .merge-row {
@@ -258,20 +412,26 @@ body {
     position: relative;
 }
 
+/* Conflict row - consolidated styling: subtle red background with
+   a consistent 3px border on top/right/bottom and a 4px left accent */
 .merge-row.conflict-row {
-    border: 2px solid var(--border-color);
-    background: var(--bg-secondary);
+    background: rgba(244, 135, 113, 0.05);
+    border-top: 3px solid rgba(244, 135, 113, 0.6);
+    border-right: 3px solid rgba(244, 135, 113, 0.6);
+    border-bottom: 3px solid rgba(244, 135, 113, 0.6);
+    border-left: 4px solid #f48771;
+    border-radius: 6px;
 }
 
 .merge-row.identical-row {
-    opacity: 0.7;
+    /* No opacity reduction - keep text readable */
 }
 
 .cell-columns {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 1px;
-    background: var(--border-color);
+    background: transparent;
 }
 
 .cell-columns.two-column {
@@ -279,7 +439,7 @@ body {
 }
 
 .cell-column {
-    background: var(--bg-primary);
+    background: transparent;
     padding: 12px;
     min-height: 60px;
     display: flex;
@@ -317,7 +477,7 @@ body {
 .cell-content pre {
     margin: 0;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--cell-surface);
     border-radius: 4px;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -330,7 +490,7 @@ body {
 
 .markdown-cell .cell-content {
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--cell-surface);
     border-radius: 4px;
     border-left: 3px solid var(--accent-green);
 }
@@ -344,7 +504,7 @@ body {
     color: var(--text-primary);
     font-style: italic;
     font-size: 12px;
-    background: var(--bg-tertiary);
+    background: var(--cell-placeholder-bg);
     border-radius: 4px;
     border: 1px dashed var(--border-color);
 }
@@ -357,7 +517,7 @@ body {
 .metadata-cell pre {
     margin: 0;
     padding: 12px;
-    background: var(--bg-tertiary);
+    background: var(--cell-surface);
     border-radius: 4px;
     overflow-x: auto;
     white-space: pre-wrap;
@@ -372,7 +532,7 @@ body {
     justify-content: center;
     gap: 8px;
     padding: 12px;
-    background: var(--bg-secondary);
+    background: var(--bg-quarternary);
     border-top: 1px solid var(--border-color);
 }
 
@@ -461,7 +621,7 @@ body {
 .cell-outputs {
     margin-top: 8px;
     padding: 8px;
-    background: var(--bg-tertiary);
+    background: var(--output-bg);
     border-radius: 4px;
     font-size: 12px;
 }
@@ -475,7 +635,7 @@ body {
     color: var(--text-secondary);
     font-style: italic;
     padding: 8px;
-    background: var(--bg-secondary);
+    background: var(--cell-surface-soft);
     border: 1px dashed var(--border-color);
     border-radius: 4px;
     font-family: "SF Mono", Monaco, "Cascadia Code", "Courier New", monospace;
@@ -657,7 +817,7 @@ body {
     width: 100%;
     min-height: 200px;
     padding: 12px;
-    background: var(--bg-primary);
+    background: var(--cell-surface);
     color: var(--text-primary);
     border: 1px solid var(--border-color);
     border-radius: 4px;
@@ -670,7 +830,7 @@ body {
 .resolved-cell {
     margin-top: 12px;
     padding: 12px;
-    background: rgba(78, 201, 176, 0.1);
+    background: var(--cell-surface);
     border: 2px solid var(--accent-green);
     border-radius: 6px;
 }
@@ -714,7 +874,7 @@ body {
     width: 100%;
     min-height: 120px;
     padding: 12px;
-    background: var(--bg-primary);
+    background: var(--cell-surface);
     color: var(--text-primary);
     border: 1px solid rgba(78, 201, 176, 0.4);
     border-radius: 4px;
@@ -896,12 +1056,8 @@ body {
     cursor: grabbing;
 }
 
-/* Conflict row - red border for actual conflicts */
-.merge-row.conflict-row {
-    background: rgba(244, 135, 113, 0.05);
-    border-left: 4px solid #f48771;
-    border-radius: 4px;
-}
+/* Conflict row - red border for actual conflicts
+   (consolidated rule moved earlier to avoid duplicate definitions) */
 
 /* Unmatched row - yellow border for cells that couldn't be matched */
 .merge-row.unmatched-row {
@@ -956,7 +1112,7 @@ body {
     font-style: italic;
     border: 2px dashed var(--border-color);
     border-radius: 4px;
-    background: rgba(128, 128, 128, 0.05);
+    background: var(--cell-placeholder-bg);
 }
 
 .cell-placeholder.drop-target {
@@ -1022,15 +1178,24 @@ body {
     color: var(--text-primary);
 }
 `;
+}
 
-export function injectStyles(): void {
+export function injectStyles(theme: 'dark' | 'light' = 'light'): void {
     if (typeof document !== 'undefined') {
         const existing = document.getElementById('mergenb-styles');
-        if (existing) return;
+        if (existing) {
+            existing.textContent = getStyles(theme);
+            return;
+        }
 
         const style = document.createElement('style');
         style.id = 'mergenb-styles';
-        style.textContent = styles;
+        style.textContent = getStyles(theme);
         document.head.appendChild(style);
     }
 }
+
+// Keep backward compatibility
+// Do not generate a default light stylesheet at module import time —
+// this prevents a light-theme flash on first render when the app wants dark.
+export const styles = '';
