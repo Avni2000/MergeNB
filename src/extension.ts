@@ -20,8 +20,6 @@ import { getWebServer } from './web';
 
 let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
-let currentFileHasConflicts = false;
-let successTimeout: NodeJS.Timeout | undefined;
 let lastResolvedDetails: {
 	uri: string;
 	resolvedNotebook: unknown;
@@ -78,7 +76,6 @@ async function updateStatusBar(): Promise<void> {
 	
 	if (!activeUri) {
 		statusBarItem.hide();
-		currentFileHasConflicts = false;
 		return;
 	}
 
@@ -91,17 +88,15 @@ async function updateStatusBar(): Promise<void> {
 		statusBarItem.command = 'merge-nb.findConflicts';
 		statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
 		statusBarItem.show();
-		currentFileHasConflicts = true;
 	} else {
 		statusBarItem.hide();
-		currentFileHasConflicts = false;
 	}
 }
 
-function registerGitStateWatchers(context: vscode.ExtensionContext): void {
+function registerGitStateWatchers(context: vscode.ExtensionContext): boolean {
 	const extension = vscode.extensions.getExtension<GitExtensionExports>('vscode.git');
 	if (!extension) {
-		return;
+		return false;
 	}
 
 	const watchedRepositories = new WeakSet<GitRepository>();
@@ -141,12 +136,13 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 
 	if (extension.isActive) {
 		onGitReady(extension.exports);
-		return;
+		return true;
 	}
 
 	void extension.activate().then((exports) => {
 		onGitReady(exports as GitExtensionExports | undefined);
 	});
+	return true;
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -167,7 +163,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Initial status bar update
 	updateStatusBar();
-	registerGitStateWatchers(context);
+	const usingGitApiWatchers = registerGitStateWatchers(context);
 	
 	// Listen for resolution success events
 	context.subscriptions.push(
@@ -306,16 +302,17 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	
-	// Also watch for Git repository changes
-	const gitWatcher = vscode.workspace.createFileSystemWatcher('**/.git/index');
-	context.subscriptions.push(
-		gitWatcher,
-		gitWatcher.onDidChange(async () => {
-			// Git index changed, refresh all notebook decorations
-			decorationChangeEmitter.fire(undefined);
-			updateStatusBar();
-		})
-	);
+	// Fallback for environments where the built-in Git extension API is unavailable.
+	if (!usingGitApiWatchers) {
+		const gitWatcher = vscode.workspace.createFileSystemWatcher('**/.git/index');
+		context.subscriptions.push(
+			gitWatcher,
+			gitWatcher.onDidChange(() => {
+				decorationChangeEmitter.fire(undefined);
+				void updateStatusBar();
+			})
+		);
+	}
 }
 
 export function deactivate() {
