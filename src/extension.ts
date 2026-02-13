@@ -128,6 +128,9 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 export function activate(context: vscode.ExtensionContext) {
 	console.log('MergeNB extension is now active');
 	const isTestMode = process.env.MERGENB_TEST_MODE === 'true';
+	void gitIntegration.ensureSupportedMergeTool().catch((error) => {
+		console.error('[MergeNB] Unsupported merge tool configuration detected:', error);
+	});
 
 	resolver = new NotebookConflictResolver(context.extensionUri);
 

@@ -29,6 +29,69 @@ try {
 }
 
 const execAsync = promisify(exec);
+const nbdimeWarningShownRoots = new Set<string>();
+
+export class UnsupportedMergeToolError extends Error {
+    constructor(public readonly gitRoot: string, public readonly mergeTool: string) {
+        super(`[MergeNB] Unsupported Git merge tool configured: merge.tool=${mergeTool}`);
+        this.name = 'UnsupportedMergeToolError';
+    }
+}
+
+function getNbdimeDisableCommands(): string {
+    return [
+        '# MergeNB detected merge.tool=nbdime (unsupported in the same merge flow)',
+        'git config --unset merge.tool',
+        'git config --global --unset merge.tool',
+        'git config --remove-section mergetool.nbdime || true',
+        'git config --global --remove-section mergetool.nbdime || true',
+        '# Optional: uninstall nbdime if you no longer use it',
+        'python -m pip uninstall nbdime'
+    ].join('\n');
+}
+
+async function showUnsupportedMergeToolGuidance(error: UnsupportedMergeToolError): Promise<void> {
+    if (!vscode || nbdimeWarningShownRoots.has(error.gitRoot)) {
+        return;
+    }
+
+    nbdimeWarningShownRoots.add(error.gitRoot);
+    const terminalChoice = 'Show terminal fix commands';
+    const selection = await vscode.window.showErrorMessage(
+        `MergeNB cannot run while Git merge.tool is set to "${error.mergeTool}" in this repo. Disable nbdime merge tool and retry.`,
+        terminalChoice
+    );
+
+    if (selection === terminalChoice) {
+        const terminal = vscode.window.createTerminal('MergeNB nbdime fix');
+        terminal.show(true);
+        terminal.sendText(getNbdimeDisableCommands(), false);
+    }
+}
+
+export async function ensureSupportedMergeTool(gitRootOrPath?: string): Promise<void> {
+    let gitRoot = gitRootOrPath;
+    if (!gitRoot && vscode?.workspace?.workspaceFolders?.[0]?.uri?.fsPath) {
+        gitRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+    }
+    if (!gitRoot) {
+        return;
+    }
+
+    try {
+        const { stdout } = await execAsync('git config --get merge.tool', { cwd: gitRoot });
+        const mergeTool = stdout.trim().toLowerCase();
+        if (mergeTool === 'nbdime') {
+            const error = new UnsupportedMergeToolError(gitRoot, mergeTool);
+            await showUnsupportedMergeToolGuidance(error);
+            throw error;
+        }
+    } catch (error) {
+        if (error instanceof UnsupportedMergeToolError) {
+            throw error;
+        }
+    }
+}
 
 function toGitPath(filePath: string): string {
     const converted = filePath.replace(/\\/g, '/');
