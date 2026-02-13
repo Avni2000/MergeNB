@@ -19,6 +19,7 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         bgPrimary: '#25201b',
         bgSecondary: '#2c2620',
         bgTertiary: '#373027',
+        bgQuarternary: '#373027',
         borderColor: 'rgba(255, 255, 255, 0.12)',
         textPrimary: '#EFE7DB',
         textSecondary: '#B5A998',
@@ -49,6 +50,7 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         bgPrimary: '#f1ece3',
         bgSecondary: '#ebe3d8',
         bgTertiary: '#e2d8ca',
+        bgQuarternary: '#ebe3d8b7',
         borderColor: 'rgba(0, 0, 0, 0.1)',
         textPrimary: '#1A202C',
         textSecondary: '#6B7280',
@@ -85,6 +87,7 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --bg-primary: ${colors.bgPrimary};
     --bg-secondary: ${colors.bgSecondary};
     --bg-tertiary: ${colors.bgTertiary};
+    --bg-quarternary: ${colors.bgQuarternary};
     --border-color: ${colors.borderColor};
     --text-primary: ${colors.textPrimary};
     --text-secondary: ${colors.textSecondary};
@@ -509,7 +512,7 @@ body {
     justify-content: center;
     gap: 8px;
     padding: 12px;
-    background: var(--bg-secondary);
+    background: var(--bg-quarternary);
     border-top: 1px solid var(--border-color);
 }
 
