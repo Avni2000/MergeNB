@@ -167,7 +167,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	// Initial status bar update
-	updateStatusBar();
+	void updateStatusBar();
 	const usingGitApiWatchers = registerGitStateWatchers(context);
 	
 	// Listen for resolution success events
@@ -303,15 +303,15 @@ export function activate(context: vscode.ExtensionContext) {
 		fileWatcher,
 		fileWatcher.onDidChange(uri => {
 			decorationChangeEmitter.fire(uri);
-			updateStatusBar();
+			void updateStatusBar();
 		}),
 		fileWatcher.onDidCreate(uri => {
 			decorationChangeEmitter.fire(uri);
-			updateStatusBar();
+			void updateStatusBar();
 		}),
 		fileWatcher.onDidDelete(uri => {
 			decorationChangeEmitter.fire(uri);
-			updateStatusBar();
+			void updateStatusBar();
 		})
 	);
 	
