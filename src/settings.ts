@@ -85,11 +85,11 @@ export function getSettings(): MergeNBSettings {
 }
 
 /**
- * Check if a specific auto-resolve setting is enabled
+ * Check if a specific auto-resolve setting is enabled.
+ * Only checks actual auto-resolve settings, not UI settings.
  */
 export function isAutoResolveEnabled(
-    setting: 'autoResolveExecutionCount' | 'autoResolveKernelVersion' | 'stripOutputs' | 
-             'autoResolveWhitespace' | 'hideNonConflictOutputs' | 'enableUndoRedoHotkeys' | 'showBaseColumn'
+    setting: 'autoResolveExecutionCount' | 'autoResolveKernelVersion' | 'stripOutputs' | 'autoResolveWhitespace'
 ): boolean {
     const settings = getSettings();
     return settings[setting];

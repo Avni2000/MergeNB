@@ -8,7 +8,7 @@ export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
     
     // Checkered background gradient for elegant theme
     const ELEGANT_GRID_GRADIENT = `linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
-            linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)`;
+        linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)`;
 
     // Color palette based on theme
     const colors = isDark ? {
