@@ -61,6 +61,8 @@ export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
     const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
 
     return `
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@700&family=Playfair+Display:ital,wght@1,500&display=swap');
+
 :root {
     --bg-primary: ${colors.bgPrimary};
     --bg-secondary: ${colors.bgSecondary};
@@ -126,8 +128,8 @@ body {
 /* Logo icon */
 .logo-icon {
     position: relative;
-    width: 40px;
-    height: 34px;
+    width: 60px;
+    height: 50px;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -135,9 +137,9 @@ body {
 
 .logo-card {
     position: absolute;
-    width: 24px;
-    height: 32px;
-    border-radius: 4px;
+    width: 34px;
+    height: 48px;
+    border-radius: 6px;
     mix-blend-mode: multiply;
     opacity: 0.9;
     transform-origin: 50% 90%;
@@ -146,19 +148,37 @@ body {
 
 .logo-card-left {
     background-color: #A4D4DE;
-    left: 6px;
-    transform: rotate(-20deg);
+    left: 8px;
+    transform: rotate(-25deg);
 }
 
 .logo-card-right {
     background-color: #C3C9F2;
-    right: 6px;
-    transform: rotate(20deg);
+    right: 8px;
+    transform: rotate(25deg);
 }
 
 .header-title {
-    font-size: 14px;
-    font-weight: 600;
+    display: flex;
+    align-items: baseline;
+    gap: 0;
+    color: var(--text-primary);
+    line-height: 1;
+    letter-spacing: -0.03em;
+}
+
+.header-title-merge {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 24px;
+    letter-spacing: -0.02em;
+}
+
+.header-title-nb {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 700;
+    font-size: 24px;
 }
 
 .file-path {

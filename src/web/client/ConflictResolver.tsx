@@ -545,7 +545,10 @@ export function ConflictResolver({
                         <div className="logo-card logo-card-left"></div>
                         <div className="logo-card logo-card-right"></div>
                     </div>
-                    <span className="header-title">MergeNB</span>
+                    <div className="header-title">
+                        <span className="header-title-merge">Merge</span>
+                        <span className="header-title-nb">NB</span>
+                    </div>
                     <span className="file-path">{fileName}</span>
                 </div>
                 <div className="header-right">
