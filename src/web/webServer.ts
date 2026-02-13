@@ -479,7 +479,7 @@ export class ConflictResolverWebServer {
         </div>
     </div>
     <script>
-        window.__MERGENB_INITIAL_THEME = '${theme}';
+        window.__MERGENB_INITIAL_THEME = '${theme === 'dark' ? 'dark' : 'light'}';
     </script>
     <script type="module" src="/client.js"></script>
 </body>
