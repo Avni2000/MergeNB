@@ -17,11 +17,11 @@ import * as vscode from 'vscode';
 import { NotebookConflictResolver, ConflictedNotebook, onDidResolveConflict, onDidResolveConflictWithDetails } from './resolver';
 import * as gitIntegration from './gitIntegration';
 import { getWebServer } from './web';
+import type { API as GitAPI, GitExtension, Repository } from './typings/git';
 
 let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
-let currentFileHasConflicts = false;
-let successTimeout: NodeJS.Timeout | undefined;
+let statusBarVisible = false;
 let lastResolvedDetails: {
 	uri: string;
 	resolvedNotebook: unknown;
@@ -61,7 +61,7 @@ async function updateStatusBar(): Promise<void> {
 	
 	if (!activeUri) {
 		statusBarItem.hide();
-		currentFileHasConflicts = false;
+		statusBarVisible = false;
 		return;
 	}
 
@@ -74,11 +74,55 @@ async function updateStatusBar(): Promise<void> {
 		statusBarItem.command = 'merge-nb.findConflicts';
 		statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
 		statusBarItem.show();
-		currentFileHasConflicts = true;
+		statusBarVisible = true;
 	} else {
 		statusBarItem.hide();
-		currentFileHasConflicts = false;
+		statusBarVisible = false;
 	}
+}
+
+function registerGitStateWatchers(context: vscode.ExtensionContext): void {
+	const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
+	if (!extension) {
+		console.warn('[MergeNB] vscode.git extension was not found; Git state watchers are disabled.');
+		return;
+	}
+
+	const watchedRepositories = new WeakSet<Repository>();
+	const attachRepositoryWatcher = (repository: Repository): void => {
+		if (!repository?.state || watchedRepositories.has(repository)) {
+			return;
+		}
+		watchedRepositories.add(repository);
+		context.subscriptions.push(
+			repository.state.onDidChange(() => {
+				decorationChangeEmitter.fire(undefined);
+				void updateStatusBar();
+			})
+		);
+	};
+
+	const registerWithApi = (api: GitAPI): void => {
+		for (const repository of api.repositories) {
+			attachRepositoryWatcher(repository);
+		}
+
+		context.subscriptions.push(
+			api.onDidOpenRepository((repository) => {
+				attachRepositoryWatcher(repository);
+				decorationChangeEmitter.fire(undefined);
+				void updateStatusBar();
+			})
+		);
+	};
+
+	const api = extension.exports?.getAPI(1);
+	if (!api) {
+		console.warn('[MergeNB] Git extension API unavailable; Git state watchers are disabled.');
+		return;
+	}
+
+	registerWithApi(api);
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -98,7 +142,8 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	// Initial status bar update
-	updateStatusBar();
+	void updateStatusBar();
+	registerGitStateWatchers(context);
 	
 	// Listen for resolution success events
 	context.subscriptions.push(
@@ -191,6 +236,14 @@ export function activate(context: vscode.ExtensionContext) {
 				return webServer.isRunning() ? webServer.getPort() : 0;
 			})
 		);
+		context.subscriptions.push(
+			vscode.commands.registerCommand('merge-nb.getStatusBarState', () => {
+				return {
+					visible: statusBarVisible,
+					text: statusBarItem.text,
+				};
+			})
+		);
 	}
 
 	// Register file decoration for notebooks with conflicts
@@ -225,28 +278,18 @@ export function activate(context: vscode.ExtensionContext) {
 		fileWatcher,
 		fileWatcher.onDidChange(uri => {
 			decorationChangeEmitter.fire(uri);
-			updateStatusBar();
+			void updateStatusBar();
 		}),
 		fileWatcher.onDidCreate(uri => {
 			decorationChangeEmitter.fire(uri);
-			updateStatusBar();
+			void updateStatusBar();
 		}),
 		fileWatcher.onDidDelete(uri => {
 			decorationChangeEmitter.fire(uri);
-			updateStatusBar();
+			void updateStatusBar();
 		})
 	);
 	
-	// Also watch for Git repository changes
-	const gitWatcher = vscode.workspace.createFileSystemWatcher('**/.git/index');
-	context.subscriptions.push(
-		gitWatcher,
-		gitWatcher.onDidChange(async () => {
-			// Git index changed, refresh all notebook decorations
-			decorationChangeEmitter.fire(undefined);
-			updateStatusBar();
-		})
-	);
 }
 
 export function deactivate() {
@@ -256,4 +299,3 @@ export function deactivate() {
 		webServer.stop();
 	}
 }
-

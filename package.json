@@ -17,6 +17,9 @@
     "onLanguage:jupyter-notebook",
     "workspaceContains:**/*.ipynb"
   ],
+  "extensionDependencies": [
+    "vscode.git"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
