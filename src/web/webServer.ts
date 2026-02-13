@@ -47,6 +47,7 @@ export interface PendingConnection {
 /** Session data stored for each active conflict resolution */
 export interface SessionData {
     htmlContent: string;
+    theme: 'dark' | 'light';
     conflictData?: unknown;
     onMessage: (message: unknown) => void;
 }
@@ -224,11 +225,13 @@ export class ConflictResolverWebServer {
     public async openSession(
         sessionId: string,
         htmlContent: string,
-        onMessage: (message: unknown) => void
+        onMessage: (message: unknown) => void,
+        theme: 'dark' | 'light' = 'light'
     ): Promise<WebSocket> {
         // Store session data
         this.sessions.set(sessionId, {
             htmlContent,
+            theme,
             onMessage
         });
 
@@ -329,7 +332,7 @@ export class ConflictResolverWebServer {
             
             if (session) {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(this.getHtmlShell(sessionId || 'default'));
+                res.end(this.getHtmlShell(sessionId || 'default', session.theme));
             } else {
                 res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
                 res.end(`<!DOCTYPE html>
@@ -431,7 +434,13 @@ export class ConflictResolverWebServer {
     /**
      * Generate minimal HTML shell that loads the React app.
      */
-    private getHtmlShell(sessionId: string): string {
+    private getHtmlShell(sessionId: string, theme: 'dark' | 'light' = 'light'): string {
+        const isDark = theme === 'dark';
+        const loadingBg = isDark ? '#1D1915' : '#EAE2D5';
+        const loadingText = isDark ? '#EFE7DB' : '#1A202C';
+        const spinnerBorder = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.1)';
+        const spinnerAccent = isDark ? '#7FB9C7' : '#569cd6';
+
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -440,7 +449,7 @@ export class ConflictResolverWebServer {
     <title>MergeNB - Conflict Resolver</title>
     <link rel="stylesheet" href="/katex/katex.min.css">
     <style>
-        body { margin: 0; background: #1e1e1e; }
+        body { margin: 0; background: ${loadingBg}; }
         .loading-container {
             display: flex;
             flex-direction: column;
@@ -448,14 +457,14 @@ export class ConflictResolverWebServer {
             justify-content: center;
             min-height: 100vh;
             gap: 16px;
-            color: #d4d4d4;
+            color: ${loadingText};
             font-family: system-ui, -apple-system, sans-serif;
         }
         .spinner {
             width: 40px;
             height: 40px;
-            border: 3px solid #3c3c3c;
-            border-top-color: #007acc;
+            border: 3px solid ${spinnerBorder};
+            border-top-color: ${spinnerAccent};
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
@@ -469,6 +478,9 @@ export class ConflictResolverWebServer {
             <p>Loading MergeNB...</p>
         </div>
     </div>
+    <script>
+        window.__MERGENB_INITIAL_THEME = '${theme}';
+    </script>
     <script type="module" src="/client.js"></script>
 </body>
 </html>`;

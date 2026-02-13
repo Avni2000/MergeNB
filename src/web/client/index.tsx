@@ -8,8 +8,18 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { injectStyles } from './styles';
 
-// Inject styles into the document
-injectStyles();
+declare global {
+    interface Window {
+        __MERGENB_INITIAL_THEME?: 'dark' | 'light';
+    }
+}
+
+// Use server-provided theme first so loading and app boot with the same palette.
+const initialTheme =
+    window.__MERGENB_INITIAL_THEME ??
+    (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+
+injectStyles(initialTheme);
 
 // Mount the React app
 const container = document.getElementById('root');

@@ -6,37 +6,44 @@
 export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     const isDark = theme === 'dark';
     
+    // Checkered background gradients
+    const DARK_GRID_GRADIENT = `linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px)`;
+
     // Checkered background gradient for light theme
     const LIGHT_GRID_GRADIENT = `linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)`;
 
     // Color palette based on theme
     const colors = isDark ? {
-        bgPrimary: '#1e1e1e',
-        bgSecondary: '#252526',
-        bgTertiary: '#2d2d2d',
-        borderColor: '#3c3c3c',
-        textPrimary: '#f3f3f3',
-        textSecondary: '#808080',
-        accentBlue: '#007acc',
-        accentGreen: '#4ec9b0',
-        currentBg: 'rgba(64, 164, 223, 0.15)',
-        currentBorder: '#40a4df',
-        currentRgb: '64, 164, 223',
-        incomingBg: 'rgba(78, 201, 176, 0.15)',
-        incomingBorder: '#4ec9b0',
-        incomingRgb: '78, 201, 176',
-        baseBg: 'rgba(128, 128, 128, 0.15)',
-        baseBorder: '#808080',
-        diffAdd: 'rgba(78, 201, 176, 0.3)',
-        diffRemove: 'rgba(244, 135, 113, 0.3)',
-        diffChange: 'rgba(255, 213, 79, 0.3)',
-        cellSurface: 'rgba(255, 255, 255, 0.08)',
-        cellSurfaceSoft: 'rgba(255, 255, 255, 0.05)',
-        cellPlaceholderBg: 'rgba(255, 255, 255, 0.04)',
-        outputBg: 'rgba(255, 255, 255, 0.06)',
-        bodyBackground: '#1e1e1e',
-        bodyBackgroundImage: 'none',
+        bgPrimary: '#25201b',
+        bgSecondary: '#2c2620',
+        bgTertiary: '#373027',
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+        textPrimary: '#EFE7DB',
+        textSecondary: '#B5A998',
+        accentBlue: '#7FB9C7',
+        accentGreen: '#9FA8DD',
+        currentBg: 'rgba(127, 185, 199, 0.24)',
+        currentBorder: '#7FB9C7',
+        currentRgb: '127, 185, 199',
+        incomingBg: 'rgba(159, 168, 221, 0.24)',
+        incomingBorder: '#9FA8DD',
+        incomingRgb: '159, 168, 221',
+        baseBg: 'rgba(181, 169, 152, 0.18)',
+        baseBorder: '#B5A998',
+        diffAdd: 'rgba(159, 168, 221, 0.28)',
+        diffRemove: 'rgba(220, 130, 115, 0.3)',
+        diffChange: 'rgba(224, 180, 82, 0.28)',
+        cellSurface: 'rgba(55, 48, 39, 0.82)',
+        cellSurfaceSoft: 'rgba(55, 48, 39, 0.64)',
+        cellPlaceholderBg: 'rgba(55, 48, 39, 0.54)',
+        outputBg: 'rgba(55, 48, 39, 0.72)',
+        bodyBackground: '#1D1915',
+        bodyBackgroundImage: DARK_GRID_GRADIENT,
+        logoLeft: '#7FB9C7',
+        logoRight: '#9FA8DD',
+        logoBlendMode: 'normal',
     } : {
         // LIGHT theme - inspired by MergeNB logo
         bgPrimary: '#f1ece3',
@@ -50,11 +57,11 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         currentBg: 'rgba(164, 212, 222, 0.25)',
         currentBorder: '#A4D4DE',
         currentRgb: '164, 212, 222',
-        incomingBg: 'rgba(195, 201, 242, 0.25)',
-        incomingBorder: '#C3C9F2',
-        incomingRgb: '195, 201, 242',
-        baseBg: 'rgba(128, 128, 128, 0.12)',
-        baseBorder: '#999999',
+        incomingBg: 'rgba(159, 168, 221, 0.30)',
+        incomingBorder: '#9FA8DD',
+        incomingRgb: '159, 168, 221',
+        baseBg: 'rgba(128, 128, 128, 0.18)',
+        baseBorder: '#8b7f70',
         diffAdd: 'rgba(195, 201, 242, 0.4)',
         diffRemove: 'rgba(244, 135, 113, 0.35)',
         diffChange: 'rgba(255, 193, 7, 0.35)',
@@ -64,6 +71,9 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         outputBg: 'rgba(226, 216, 202, 0.66)',
         bodyBackground: '#EAE2D5',
         bodyBackgroundImage: LIGHT_GRID_GRADIENT,
+        logoLeft: '#A4D4DE',
+        logoRight: '#C3C9F2',
+        logoBlendMode: 'multiply',
     };
 
     const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
@@ -95,6 +105,9 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --cell-surface-soft: ${colors.cellSurfaceSoft};
     --cell-placeholder-bg: ${colors.cellPlaceholderBg};
     --output-bg: ${colors.outputBg};
+    --logo-left: ${colors.logoLeft};
+    --logo-right: ${colors.logoRight};
+    --logo-blend-mode: ${colors.logoBlendMode};
 }
 
 * {
@@ -141,7 +154,7 @@ body {
 .logo-icon {
     position: relative;
     width: 60px;
-    height: 50px;
+    height: 40px;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -149,24 +162,24 @@ body {
 
 .logo-card {
     position: absolute;
-    width: 34px;
-    height: 48px;
+    width: 30px;
+    height: 36px;
     border-radius: 6px;
-    mix-blend-mode: multiply;
+    mix-blend-mode: var(--logo-blend-mode);
     opacity: 0.9;
     transform-origin: 50% 90%;
     top: 0;
 }
 
 .logo-card-left {
-    background-color: #A4D4DE;
-    left: 8px;
+    background-color: var(--logo-left);
+    left: 6px;
     transform: rotate(-25deg);
 }
 
 .logo-card-right {
-    background-color: #C3C9F2;
-    right: 8px;
+    background-color: var(--logo-right);
+    right: 6px;
     transform: rotate(25deg);
 }
 
@@ -370,9 +383,9 @@ body {
     border-radius: 4px;
 }
 
-.column-label.base { background: var(--base-bg); color: var(--base-border); }
-.column-label.current { background: var(--current-bg); color: var(--current-border); }
-.column-label.incoming { background: var(--incoming-bg); color: var(--incoming-border); }
+.column-label.base { background: var(--base-bg); color: var(--text-primary); }
+.column-label.current { background: var(--current-bg); color: var(--text-primary); }
+.column-label.incoming { background: var(--incoming-bg); color: var(--text-primary); }
 
 /* Merge rows */
 .merge-row {
@@ -781,7 +794,7 @@ body {
     width: 100%;
     min-height: 200px;
     padding: 12px;
-    background: var(--bg-primary);
+    background: var(--cell-surface);
     color: var(--text-primary);
     border: 1px solid var(--border-color);
     border-radius: 4px;
@@ -794,7 +807,7 @@ body {
 .resolved-cell {
     margin-top: 12px;
     padding: 12px;
-    background: rgba(78, 201, 176, 0.1);
+    background: var(--cell-surface);
     border: 2px solid var(--accent-green);
     border-radius: 6px;
 }
@@ -838,7 +851,7 @@ body {
     width: 100%;
     min-height: 120px;
     padding: 12px;
-    background: var(--bg-primary);
+    background: var(--cell-surface);
     color: var(--text-primary);
     border: 1px solid rgba(78, 201, 176, 0.4);
     border-radius: 4px;
@@ -1080,7 +1093,7 @@ body {
     font-style: italic;
     border: 2px dashed var(--border-color);
     border-radius: 4px;
-    background: rgba(128, 128, 128, 0.05);
+    background: var(--cell-placeholder-bg);
 }
 
 .cell-placeholder.drop-target {
@@ -1164,4 +1177,6 @@ export function injectStyles(theme: 'dark' | 'light' = 'light'): void {
 }
 
 // Keep backward compatibility
-export const styles = getStyles('light');
+// Do not generate a default light stylesheet at module import time —
+// this prevents a light-theme flash on first render when the app wants dark.
+export const styles = '';

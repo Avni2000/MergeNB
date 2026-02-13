@@ -115,9 +115,9 @@
         },
         "mergeNB.ui.theme": {
           "type": "string",
-          "enum": ["dark", "elegant"],
-          "default": "elegant",
-          "description": "Visual theme for the conflict resolution UI. 'elegant' provides a light, beige theme inspired by the MergeNB logo. 'dark' provides the traditional dark theme."
+          "enum": ["dark", "light"],
+          "default": "light",
+          "description": "Visual theme for the conflict resolution UI. 'light' provides a light, beige theme inspired by the MergeNB logo. 'dark' provides an inverse dark theme."
         }
       }
     }

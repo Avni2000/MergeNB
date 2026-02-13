@@ -92,7 +92,8 @@ export class WebConflictPanel {
         void server.openSession(
             this._sessionId,
             '', // No HTML content needed - server generates shell
-            (message: unknown) => this._handleMessage(message)
+            (message: unknown) => this._handleMessage(message),
+            this._conflict?.theme ?? 'light'
         ).then(() => {
             // Send conflict data to browser once connected
             this._sendConflictData();
