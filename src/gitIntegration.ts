@@ -38,16 +38,17 @@ export class UnsupportedMergeToolError extends Error {
     }
 }
 
-function getNbdimeDisableCommands(): string {
+function getNbdimeDisableCommands(): string[] {
     return [
         '# MergeNB detected merge.tool=nbdime (unsupported in the same merge flow)',
+        '# Review the commands below, then press Enter to run the selected ones.',
         'git config --unset merge.tool',
         'git config --global --unset merge.tool',
         'git config --remove-section mergetool.nbdime || true',
         'git config --global --remove-section mergetool.nbdime || true',
-        '# Optional: uninstall nbdime if you no longer use it',
+        '# Optional: uninstall nbdime if you no longer use it (interactive prompt expected)',
         'python -m pip uninstall nbdime'
-    ].join('\n');
+    ];
 }
 
 async function showUnsupportedMergeToolGuidance(error: UnsupportedMergeToolError): Promise<void> {
@@ -65,7 +66,7 @@ async function showUnsupportedMergeToolGuidance(error: UnsupportedMergeToolError
     if (selection === terminalChoice) {
         const terminal = vscode.window.createTerminal('MergeNB nbdime fix');
         terminal.show(true);
-        terminal.sendText(getNbdimeDisableCommands(), false);
+        terminal.sendText(getNbdimeDisableCommands().join('\n'), false);
     }
 }
 
@@ -90,6 +91,7 @@ export async function ensureSupportedMergeTool(gitRootOrPath?: string): Promise<
         if (error instanceof UnsupportedMergeToolError) {
             throw error;
         }
+        // `git config --get merge.tool` exits with code 1 when unset; ignore to keep default flow.
     }
 }
 
