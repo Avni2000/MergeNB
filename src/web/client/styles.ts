@@ -52,7 +52,7 @@ export function getStyles(theme: 'dark' | 'elegant' = 'elegant'): string {
         diffChange: 'rgba(255, 193, 7, 0.35)',
         bodyBackground: '#F9F7F1',
         bodyBackgroundImage: `linear-gradient(to right, rgba(0,0,0,0.05) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)`,
+            linear-gradient(to bottom, rgba(0,0,0,0.05) 1px, transparent 1px)`,
     };
 
     return `
