@@ -17,6 +17,7 @@ import * as vscode from 'vscode';
 import { NotebookConflictResolver, ConflictedNotebook, onDidResolveConflict, onDidResolveConflictWithDetails } from './resolver';
 import * as gitIntegration from './gitIntegration';
 import { getWebServer } from './web';
+import type { API as GitAPI, GitExtension, Repository } from './typings/git';
 
 let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
@@ -31,23 +32,6 @@ let lastResolvedDetails: {
 
 // Event emitter to trigger decoration refresh
 const decorationChangeEmitter = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
-
-interface GitRepositoryState {
-	onDidChange: vscode.Event<void>;
-}
-
-interface GitRepository {
-	state?: GitRepositoryState;
-}
-
-interface GitAPI {
-	repositories: GitRepository[];
-	onDidOpenRepository: vscode.Event<GitRepository>;
-}
-
-interface GitExtensionExports {
-	getAPI(version: 1): GitAPI;
-}
 
 /**
  * Get the file URI for the currently active notebook.
@@ -97,14 +81,15 @@ async function updateStatusBar(): Promise<void> {
 	}
 }
 
-function registerGitStateWatchers(context: vscode.ExtensionContext): boolean {
-	const extension = vscode.extensions.getExtension<GitExtensionExports>('vscode.git');
+function registerGitStateWatchers(context: vscode.ExtensionContext): void {
+	const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
 	if (!extension) {
-		return false;
+		console.warn('[MergeNB] vscode.git extension was not found; Git state watchers are disabled.');
+		return;
 	}
 
-	const watchedRepositories = new WeakSet<GitRepository>();
-	const attachRepositoryWatcher = (repository: GitRepository): void => {
+	const watchedRepositories = new WeakSet<Repository>();
+	const attachRepositoryWatcher = (repository: Repository): void => {
 		if (!repository?.state || watchedRepositories.has(repository)) {
 			return;
 		}
@@ -131,23 +116,13 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): boolean {
 		);
 	};
 
-	const onGitReady = (exports: GitExtensionExports | undefined): void => {
-		if (!exports?.getAPI) {
-			return;
-		}
-		registerWithApi(exports.getAPI(1));
-	};
-
-	if (extension.isActive) {
-		onGitReady(extension.exports);
-		return true;
+	const api = extension.exports?.getAPI(1);
+	if (!api) {
+		console.warn('[MergeNB] Git extension API unavailable; Git state watchers are disabled.');
+		return;
 	}
 
-	extension.activate().then(
-		(exports) => onGitReady(exports as GitExtensionExports | undefined),
-		(err) => console.warn('[MergeNB] Git extension activation failed:', err)
-	);
-	return false;
+	registerWithApi(api);
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -168,7 +143,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Initial status bar update
 	void updateStatusBar();
-	const usingGitApiWatchers = registerGitStateWatchers(context);
+	registerGitStateWatchers(context);
 	
 	// Listen for resolution success events
 	context.subscriptions.push(
@@ -315,17 +290,6 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 	
-	// Fallback for environments where the built-in Git extension API is unavailable.
-	if (!usingGitApiWatchers) {
-		const gitWatcher = vscode.workspace.createFileSystemWatcher('**/.git/index');
-		context.subscriptions.push(
-			gitWatcher,
-			gitWatcher.onDidChange(() => {
-				decorationChangeEmitter.fire(undefined);
-				void updateStatusBar();
-			})
-		);
-	}
 }
 
 export function deactivate() {
