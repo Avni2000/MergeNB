@@ -139,10 +139,11 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): boolean {
 		return true;
 	}
 
-	void extension.activate().then((exports) => {
-		onGitReady(exports as GitExtensionExports | undefined);
-	});
-	return true;
+	extension.activate().then(
+		(exports) => onGitReady(exports as GitExtensionExports | undefined),
+		(err) => console.warn('[MergeNB] Git extension activation failed:', err)
+	);
+	return false;
 }
 
 export function activate(context: vscode.ExtensionContext) {
