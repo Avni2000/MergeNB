@@ -408,7 +408,8 @@ export async function ensureSupportedMergeTool(
 
         const error = new UnsupportedMergeToolError(gitRoot, issues);
         const fixed = await showUnsupportedMergeToolGuidance(error, {
-            suppressIfAlreadyShown: options?.suppressIfAlreadyShown
+            suppressIfAlreadyShown: options?.suppressIfAlreadyShown,
+            testHooks: options?.testHooks
         });
         if (!fixed) {
             throw error;
