@@ -142,7 +142,7 @@
     "test:integration:list": "npm run compile-tests && node out/tests/runIntegrationTest.js --list"
   },
   "devDependencies": {
-    "@clack/prompts": "^1.0.0",
+    "@clack/prompts": "^1.0.1",
     "@playwright/test": "^1.58.2",
     "@types/dompurify": "^3.2.0",
     "@types/markdown-it": "^14.1.2",
@@ -171,7 +171,7 @@
     "@vscode/markdown-it-katex": "^1.1.2",
     "dompurify": "^3.3.1",
     "katex": "^0.16.22",
-    "markdown-it": "^14.1.0",
+    "markdown-it": "^14.1.1",
     "ws": "^8.19.0"
   }
 }
