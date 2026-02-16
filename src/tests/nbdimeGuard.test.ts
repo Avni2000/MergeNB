@@ -71,12 +71,11 @@ function ensureSectionMissing(cwd: string, scope: '--local' | '--global', sectio
 function configureIncompatibleNotebookSettings(workspacePath: string): void {
     // Local scope.
     git(workspacePath, 'config', '--local', 'merge.tool', 'nbdime');
-    git(workspacePath, 'config', '--local', 'mergetool.nbdime.cmd', '"nbmerge-driver \"$LOCAL\" \"$REMOTE\" \"$BASE\" \"$MERGED\""');
+    git(workspacePath, 'config', '--local', 'mergetool.nbdime.keepBackup', 'false');
     git(workspacePath, 'config', '--local', 'nbdime.autoresolve', 'false');
 
     // Global scope (isolated by GIT_CONFIG_GLOBAL in the runner).
-    git(workspacePath, 'config', '--global', 'diff.tool', 'nbdime');
-    git(workspacePath, 'config', '--global', 'difftool.nbdime.cmd', '"nbdiff-web \"$LOCAL\" \"$REMOTE\""');
+    git(workspacePath, 'config', '--global', 'difftool.nbdime.prompt', 'false');
     git(workspacePath, 'config', '--global', 'jupyter.merge.driver', 'enabled');
 }
 
@@ -147,7 +146,7 @@ export async function run(): Promise<void> {
     assert(!terminalCommandsCaptured, 'Terminal commands should not be captured when auto-fix action is chosen');
 
     ensureKeyMissing(workspacePath, '--local', 'merge.tool');
-    ensureKeyMissing(workspacePath, '--global', 'diff.tool');
+    ensureKeyMissing(workspacePath, '--global', 'difftool.nbdime.prompt');
     ensureSectionMissing(workspacePath, '--local', 'mergetool.nbdime');
     ensureSectionMissing(workspacePath, '--global', 'difftool.nbdime');
     ensureSectionMissing(workspacePath, '--global', 'jupyter.merge');
