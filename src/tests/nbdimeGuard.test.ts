@@ -16,6 +16,25 @@ type PromptCall = {
     actions: string[];
 };
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`Timed out after ${timeoutMs}ms: ${label}`));
+        }, timeoutMs);
+
+        promise.then(
+            (value) => {
+                clearTimeout(timer);
+                resolve(value);
+            },
+            (error) => {
+                clearTimeout(timer);
+                reject(error);
+            }
+        );
+    });
+}
+
 function assert(condition: unknown, message: string): asserts condition {
     if (!condition) {
         throw new Error(message);
@@ -64,6 +83,7 @@ function configureIncompatibleNotebookSettings(workspacePath: string): void {
 export async function run(): Promise<void> {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     assert(workspacePath, 'Expected a workspace folder for nbdime guard test');
+    console.log(`[nbdimeGuard.test] workspacePath=${workspacePath}`);
 
     const promptCalls: PromptCall[] = [];
     const infoMessages: string[] = [];
@@ -71,33 +91,39 @@ export async function run(): Promise<void> {
     let terminalCommandsCaptured = false;
 
     configureIncompatibleNotebookSettings(workspacePath);
+    console.log('[nbdimeGuard.test] incompatible git settings configured');
 
-    await gitIntegration.ensureSupportedMergeTool(workspacePath, {
-        testHooks: {
-            selectAction: async (context) => {
-                promptCalls.push({
-                    message: context.message,
-                    actions: context.actions
-                });
-                if (context.actions.includes('Auto-fix repo + global')) {
-                    return 'Auto-fix repo + global';
+    await withTimeout(
+        gitIntegration.ensureSupportedMergeTool(workspacePath, {
+            testHooks: {
+                selectAction: async (context) => {
+                    promptCalls.push({
+                        message: context.message,
+                        actions: context.actions
+                    });
+                    if (context.actions.includes('Auto-fix repo + global')) {
+                        return 'Auto-fix repo + global';
+                    }
+                    if (context.actions.includes('Auto-fix repo config')) {
+                        return 'Auto-fix repo config';
+                    }
+                    return context.actions[0];
+                },
+                onInfoMessage: (message) => {
+                    infoMessages.push(message);
+                },
+                onWarningMessage: (message) => {
+                    warningMessages.push(message);
+                },
+                onTerminalCommands: () => {
+                    terminalCommandsCaptured = true;
                 }
-                if (context.actions.includes('Auto-fix repo config')) {
-                    return 'Auto-fix repo config';
-                }
-                return context.actions[0];
-            },
-            onInfoMessage: (message) => {
-                infoMessages.push(message);
-            },
-            onWarningMessage: (message) => {
-                warningMessages.push(message);
-            },
-            onTerminalCommands: () => {
-                terminalCommandsCaptured = true;
             }
-        }
-    });
+        }),
+        15000,
+        'ensureSupportedMergeTool(auto-fix)'
+    );
+    console.log('[nbdimeGuard.test] ensureSupportedMergeTool auto-fix completed');
 
     assert(promptCalls.length === 1, `Expected one guidance prompt, got ${promptCalls.length}`);
     const prompt = promptCalls[0];
@@ -125,18 +151,24 @@ export async function run(): Promise<void> {
     ensureSectionMissing(workspacePath, '--local', 'mergetool.nbdime');
     ensureSectionMissing(workspacePath, '--global', 'difftool.nbdime');
     ensureSectionMissing(workspacePath, '--global', 'jupyter.merge');
+    console.log('[nbdimeGuard.test] config cleanup assertions completed');
 
     // Second call should be a no-op with no additional guidance prompts.
-    await gitIntegration.ensureSupportedMergeTool(workspacePath, {
-        testHooks: {
-            selectAction: async (context) => {
-                promptCalls.push({
-                    message: context.message,
-                    actions: context.actions
-                });
-                return 'Auto-fix repo + global';
+    await withTimeout(
+        gitIntegration.ensureSupportedMergeTool(workspacePath, {
+            testHooks: {
+                selectAction: async (context) => {
+                    promptCalls.push({
+                        message: context.message,
+                        actions: context.actions
+                    });
+                    return 'Auto-fix repo + global';
+                }
             }
-        }
-    });
+        }),
+        10000,
+        'ensureSupportedMergeTool(no-op)'
+    );
     assert(promptCalls.length === 1, 'Unexpected extra guidance prompt after auto-fix cleanup');
+    console.log('[nbdimeGuard.test] completed');
 }

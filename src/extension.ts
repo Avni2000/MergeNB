@@ -23,6 +23,7 @@ let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
 let statusBarVisible = false;
 let statusBarRefreshVersion = 0;
+let backgroundConflictMonitoringEnabled = true;
 let lastResolvedDetails: {
 	uri: string;
 	resolvedNotebook: unknown;
@@ -116,6 +117,14 @@ async function pickNotebookConflict(
  * Update the status bar based on all workspace notebook merge conflicts.
  */
 async function updateStatusBar(): Promise<void> {
+	if (!backgroundConflictMonitoringEnabled) {
+		await vscode.commands.executeCommand('setContext', conflictContextKey, false);
+		statusBarItem.hide();
+		statusBarItem.backgroundColor = undefined;
+		statusBarVisible = false;
+		return;
+	}
+
 	const refreshVersion = ++statusBarRefreshVersion;
 	let conflictedFiles: ConflictedNotebook[] = [];
 
@@ -195,28 +204,37 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 export function activate(context: vscode.ExtensionContext) {
 	console.log('MergeNB extension is now active');
 	const isTestMode = process.env.MERGENB_TEST_MODE === 'true';
+	const isNbdimeGuardTest = process.env.MERGENB_NBDIME_GUARD_CI === 'true';
+	backgroundConflictMonitoringEnabled = !isNbdimeGuardTest;
 
 	resolver = new NotebookConflictResolver(context.extensionUri);
-	void ensureSupportedMergeTool(undefined, { suppressIfAlreadyShown: true });
+	if (!isNbdimeGuardTest) {
+		void ensureSupportedMergeTool(undefined, { suppressIfAlreadyShown: true });
+	}
 
 	// Create status bar item (right side, high priority to be visible)
 	statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 	context.subscriptions.push(statusBarItem);
 
-	// Update status bar when active editor changes
-	context.subscriptions.push(
-		vscode.window.onDidChangeActiveTextEditor(() => updateStatusBar()),
-		vscode.window.onDidChangeActiveNotebookEditor(() => updateStatusBar())
-	);
+	if (backgroundConflictMonitoringEnabled) {
+		// Update status bar when active editor changes
+		context.subscriptions.push(
+			vscode.window.onDidChangeActiveTextEditor(() => updateStatusBar()),
+			vscode.window.onDidChangeActiveNotebookEditor(() => updateStatusBar())
+		);
 
-	// Initial status bar update
-	void updateStatusBar();
-	registerGitStateWatchers(context);
+		// Initial status bar update
+		void updateStatusBar();
+		registerGitStateWatchers(context);
+	}
 	
 	// Listen for resolution success events
 	context.subscriptions.push(
 		onDidResolveConflict.event((uri: vscode.Uri) => {
-			
+			if (!backgroundConflictMonitoringEnabled) {
+				return;
+			}
+
 			// Trigger decoration refresh
 			decorationChangeEmitter.fire(uri);
 			void updateStatusBar();
@@ -362,49 +380,51 @@ export function activate(context: vscode.ExtensionContext) {
 		);
 	}
 
-	// Register file decoration for notebooks with conflicts
-	const decorationProvider = vscode.window.registerFileDecorationProvider({
-		onDidChangeFileDecorations: decorationChangeEmitter.event,
-		provideFileDecoration: async (uri) => {
-			if (!uri.fsPath.endsWith('.ipynb')) {
+	if (backgroundConflictMonitoringEnabled) {
+		// Register file decoration for notebooks with conflicts
+		const decorationProvider = vscode.window.registerFileDecorationProvider({
+			onDidChangeFileDecorations: decorationChangeEmitter.event,
+			provideFileDecoration: async (uri) => {
+				if (!uri.fsPath.endsWith('.ipynb')) {
+					return undefined;
+				}
+				try {
+					// Fast check: is this file unmerged according to Git?
+					const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
+					if (isUnmerged) {
+						return {
+							badge: '⚠',
+							tooltip: 'Notebook has merge conflicts',
+							color: new vscode.ThemeColor('gitDecoration.conflictingResourceForeground')
+						};
+					}
+				} catch {
+					// Ignore errors
+				}
 				return undefined;
 			}
-			try {
-				// Fast check: is this file unmerged according to Git?
-				const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
-				if (isUnmerged) {
-					return {
-						badge: '⚠',
-						tooltip: 'Notebook has merge conflicts',
-						color: new vscode.ThemeColor('gitDecoration.conflictingResourceForeground')
-					};
-				}
-			} catch {
-				// Ignore errors
-			}
-			return undefined;
-		}
-	});
-	
-	context.subscriptions.push(decorationProvider);
-	
-	// Watch for file system changes to update decorations when conflicts are resolved
-	const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.ipynb');
-	context.subscriptions.push(
-		fileWatcher,
-		fileWatcher.onDidChange(uri => {
-			decorationChangeEmitter.fire(uri);
-			void updateStatusBar();
-		}),
-		fileWatcher.onDidCreate(uri => {
-			decorationChangeEmitter.fire(uri);
-			void updateStatusBar();
-		}),
-		fileWatcher.onDidDelete(uri => {
-			decorationChangeEmitter.fire(uri);
-			void updateStatusBar();
-		})
-	);
+		});
+		
+		context.subscriptions.push(decorationProvider);
+		
+		// Watch for file system changes to update decorations when conflicts are resolved
+		const fileWatcher = vscode.workspace.createFileSystemWatcher('**/*.ipynb');
+		context.subscriptions.push(
+			fileWatcher,
+			fileWatcher.onDidChange(uri => {
+				decorationChangeEmitter.fire(uri);
+				void updateStatusBar();
+			}),
+			fileWatcher.onDidCreate(uri => {
+				decorationChangeEmitter.fire(uri);
+				void updateStatusBar();
+			}),
+			fileWatcher.onDidDelete(uri => {
+				decorationChangeEmitter.fire(uri);
+				void updateStatusBar();
+			})
+		);
+	}
 	
 }
 
