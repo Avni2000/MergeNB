@@ -12,6 +12,7 @@ jobs:
     env:
       VSCODE_VERSION: stable
       CI: true
+      MERGENB_NBDIME_GUARD_CI: true
 
     steps:
       - name: Checkout
@@ -39,5 +40,10 @@ jobs:
           python -m pip install nbdime
           python -m nbdime --version
 
+      - name: Build extension and tests
+        run: |
+          npm run compile
+          npm run compile-tests
+
       - name: Run VS Code nbdime guard test
-        run: xvfb-run -a npm run test:nbdime-guard
+        run: xvfb-run -a node out/tests/runNbdimeGuardTest.js

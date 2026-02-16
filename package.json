@@ -133,9 +133,7 @@
     "pretest:integration:all": "npm run compile && npm run compile-tests",
     "test:integration": "node out/tests/runIntegrationTest.js",
     "test:integration:all": "node out/tests/runIntegrationTest.js --all",
-    "test:integration:list": "npm run compile-tests && node out/tests/runIntegrationTest.js --list",
-    "pretest:nbdime-guard": "npm run compile && npm run compile-tests",
-    "test:nbdime-guard": "node out/tests/runNbdimeGuardTest.js"
+    "test:integration:list": "npm run compile-tests && node out/tests/runIntegrationTest.js --list"
   },
   "devDependencies": {
     "@clack/prompts": "^1.0.0",

@@ -11,6 +11,10 @@ import { runTests } from '@vscode/test-electron';
 import { createMergeConflictRepo, cleanup } from './repoSetup';
 
 async function main(): Promise<void> {
+    if (process.env.MERGENB_NBDIME_GUARD_CI !== 'true') {
+        throw new Error('runNbdimeGuardTest is CI-only. Set MERGENB_NBDIME_GUARD_CI=true in CI.');
+    }
+
     const extensionDevelopmentPath = path.resolve(__dirname, '../..');
     const testDir = path.resolve(__dirname, '../../test');
     const extensionTestsPath = path.resolve(__dirname, './nbdimeGuard.test.js');
