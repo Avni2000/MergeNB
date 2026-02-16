@@ -38,7 +38,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install nbdime
-          python -m nbdime --version
+          python - <<'PY'
+          import nbdime
+          print(nbdime.__version__)
+          PY
 
       - name: Build extension and tests
         run: |
