@@ -11,9 +11,8 @@ import * as vscode from 'vscode';
 import { execSync } from 'child_process';
 import * as gitIntegration from '../gitIntegration';
 
-type ShowErrorCall = {
+type PromptCall = {
     message: string;
-    modal: boolean;
     actions: string[];
 };
 
@@ -62,116 +61,82 @@ function configureIncompatibleNotebookSettings(workspacePath: string): void {
     git(workspacePath, 'config', '--global', 'jupyter.merge.driver', 'enabled');
 }
 
-function restoreWindowMethod<T extends keyof typeof vscode.window>(
-    key: T,
-    original: (typeof vscode.window)[T]
-): void {
-    (vscode.window as unknown as Record<string, unknown>)[key] = original;
-}
-
 export async function run(): Promise<void> {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     assert(workspacePath, 'Expected a workspace folder for nbdime guard test');
 
-    const showErrorCalls: ShowErrorCall[] = [];
+    const promptCalls: PromptCall[] = [];
     const infoMessages: string[] = [];
     const warningMessages: string[] = [];
-    let terminalCreated = false;
+    let terminalCommandsCaptured = false;
 
     configureIncompatibleNotebookSettings(workspacePath);
 
-    const originalShowErrorMessage = vscode.window.showErrorMessage;
-    const originalShowInformationMessage = vscode.window.showInformationMessage;
-    const originalShowWarningMessage = vscode.window.showWarningMessage;
-    const originalCreateTerminal = vscode.window.createTerminal;
-
-    try {
-        (vscode.window as unknown as Record<string, unknown>).showErrorMessage = async (
-            message: string,
-            ...items: unknown[]
-        ): Promise<string | undefined> => {
-            let modal = false;
-            let actions: string[] = [];
-            if (items.length > 0 && typeof items[0] === 'object' && items[0] !== null && 'modal' in (items[0] as object)) {
-                const options = items[0] as { modal?: boolean };
-                modal = options.modal === true;
-                actions = items.slice(1).map((item) => String(item));
-            } else {
-                actions = items.map((item) => String(item));
+    await gitIntegration.ensureSupportedMergeTool(workspacePath, {
+        testHooks: {
+            selectAction: async (context) => {
+                promptCalls.push({
+                    message: context.message,
+                    actions: context.actions
+                });
+                if (context.actions.includes('Auto-fix repo + global')) {
+                    return 'Auto-fix repo + global';
+                }
+                if (context.actions.includes('Auto-fix repo config')) {
+                    return 'Auto-fix repo config';
+                }
+                return context.actions[0];
+            },
+            onInfoMessage: (message) => {
+                infoMessages.push(message);
+            },
+            onWarningMessage: (message) => {
+                warningMessages.push(message);
+            },
+            onTerminalCommands: () => {
+                terminalCommandsCaptured = true;
             }
+        }
+    });
 
-            showErrorCalls.push({ message, modal, actions });
-            if (actions.includes('Auto-fix repo + global')) {
+    assert(promptCalls.length === 1, `Expected one guidance prompt, got ${promptCalls.length}`);
+    const prompt = promptCalls[0];
+    assert(
+        prompt.actions.includes('Auto-fix repo + global'),
+        `Expected "Auto-fix repo + global" action. Got: ${prompt.actions.join(', ')}`
+    );
+    assert(
+        prompt.actions.includes('Show terminal fix commands'),
+        `Expected "Show terminal fix commands" action. Got: ${prompt.actions.join(', ')}`
+    );
+    assert(
+        prompt.message.includes('MergeNB found incompatible Git notebook config'),
+        `Unexpected guidance prompt text: ${prompt.message}`
+    );
+    assert(
+        infoMessages.some((message) => message.includes('removed incompatible Git notebook config')),
+        `Expected success message after auto-fix, got: ${infoMessages.join(' | ')}`
+    );
+    assert(warningMessages.length === 0, `Did not expect warning message, got: ${warningMessages.join(' | ')}`);
+    assert(!terminalCommandsCaptured, 'Terminal commands should not be captured when auto-fix action is chosen');
+
+    ensureKeyMissing(workspacePath, '--local', 'merge.tool');
+    ensureKeyMissing(workspacePath, '--global', 'diff.tool');
+    ensureSectionMissing(workspacePath, '--local', 'mergetool.nbdime');
+    ensureSectionMissing(workspacePath, '--global', 'difftool.nbdime');
+    ensureSectionMissing(workspacePath, '--global', 'jupyter.merge');
+
+    // Second call should be a no-op with no additional guidance prompts.
+    await gitIntegration.ensureSupportedMergeTool(workspacePath, {
+        testHooks: {
+            selectAction: async (context) => {
+                promptCalls.push({
+                    message: context.message,
+                    actions: context.actions
+                });
                 return 'Auto-fix repo + global';
             }
-            if (actions.includes('Auto-fix repo config')) {
-                return 'Auto-fix repo config';
-            }
-            return actions[0];
-        };
-
-        (vscode.window as unknown as Record<string, unknown>).showInformationMessage = async (
-            message: string
-        ): Promise<string | undefined> => {
-            infoMessages.push(message);
-            return undefined;
-        };
-
-        (vscode.window as unknown as Record<string, unknown>).showWarningMessage = async (
-            message: string
-        ): Promise<string | undefined> => {
-            warningMessages.push(message);
-            return undefined;
-        };
-
-        (vscode.window as unknown as Record<string, unknown>).createTerminal = () => {
-            terminalCreated = true;
-            return {
-                show: () => undefined,
-                sendText: () => undefined,
-                dispose: () => undefined,
-                hide: () => undefined,
-                processId: Promise.resolve(0),
-                creationOptions: {},
-                name: 'mock-terminal',
-                exitStatus: undefined,
-                state: { isInteractedWith: false },
-            } as unknown as vscode.Terminal;
-        };
-
-        await gitIntegration.ensureSupportedMergeTool(workspacePath);
-
-        assert(showErrorCalls.length === 1, `Expected one modal warning, got ${showErrorCalls.length}`);
-        const warning = showErrorCalls[0];
-        assert(warning.modal, 'Expected unsupported config warning to be modal');
-        assert(
-            warning.actions.includes('Auto-fix repo + global'),
-            `Expected "Auto-fix repo + global" action. Got: ${warning.actions.join(', ')}`
-        );
-        assert(
-            warning.actions.includes('Show terminal fix commands'),
-            `Expected "Show terminal fix commands" action. Got: ${warning.actions.join(', ')}`
-        );
-        assert(
-            infoMessages.some((message) => message.includes('removed incompatible Git notebook config')),
-            `Expected success message after auto-fix, got: ${infoMessages.join(' | ')}`
-        );
-        assert(warningMessages.length === 0, `Did not expect warning message, got: ${warningMessages.join(' | ')}`);
-        assert(!terminalCreated, 'Terminal should not be created when auto-fix action is chosen');
-
-        ensureKeyMissing(workspacePath, '--local', 'merge.tool');
-        ensureKeyMissing(workspacePath, '--global', 'diff.tool');
-        ensureSectionMissing(workspacePath, '--local', 'mergetool.nbdime');
-        ensureSectionMissing(workspacePath, '--global', 'difftool.nbdime');
-        ensureSectionMissing(workspacePath, '--global', 'jupyter.merge');
-
-        // Second call should be a no-op with no additional warning UI.
-        await gitIntegration.ensureSupportedMergeTool(workspacePath);
-        assert(showErrorCalls.length === 1, 'Unexpected extra modal warning after auto-fix cleanup');
-    } finally {
-        restoreWindowMethod('showErrorMessage', originalShowErrorMessage);
-        restoreWindowMethod('showInformationMessage', originalShowInformationMessage);
-        restoreWindowMethod('showWarningMessage', originalShowWarningMessage);
-        restoreWindowMethod('createTerminal', originalCreateTerminal);
-    }
+        }
+    });
+    assert(promptCalls.length === 1, 'Unexpected extra guidance prompt after auto-fix cleanup');
 }

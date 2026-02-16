@@ -47,6 +47,33 @@ interface IncompatibleGitConfigIssue {
     value: string;
 }
 
+export interface EnsureSupportedMergeToolIssue {
+    scope: 'local' | 'global';
+    key: string;
+    value: string;
+}
+
+export interface EnsureSupportedMergeToolPromptContext {
+    gitRoot: string;
+    issues: EnsureSupportedMergeToolIssue[];
+    message: string;
+    actions: string[];
+}
+
+export interface EnsureSupportedMergeToolTestHooks {
+    selectAction?: (
+        context: EnsureSupportedMergeToolPromptContext
+    ) => Promise<string | undefined> | string | undefined;
+    onInfoMessage?: (message: string) => void;
+    onWarningMessage?: (message: string) => void;
+    onTerminalCommands?: (commands: string[]) => void;
+}
+
+export interface EnsureSupportedMergeToolOptions {
+    suppressIfAlreadyShown?: boolean;
+    testHooks?: EnsureSupportedMergeToolTestHooks;
+}
+
 const toolPointerKeys = new Set(['merge.tool', 'diff.tool']);
 
 export class UnsupportedMergeToolError extends Error {
@@ -279,9 +306,10 @@ function summarizeIssues(issues: IncompatibleGitConfigIssue[]): string {
 
 async function showUnsupportedMergeToolGuidance(
     error: UnsupportedMergeToolError,
-    options?: { suppressIfAlreadyShown?: boolean }
+    options?: EnsureSupportedMergeToolOptions
 ): Promise<boolean> {
-    if (!vscode) {
+    const selectAction = options?.testHooks?.selectAction;
+    if (!vscode && !selectAction) {
         return false;
     }
     if (options?.suppressIfAlreadyShown && nbdimeWarningShownRoots.has(error.gitRoot)) {
@@ -309,20 +337,34 @@ async function showUnsupportedMergeToolGuidance(
     }
     actions.push(terminalChoice);
 
-    const selection = await vscode.window.showErrorMessage(
-        `MergeNB found incompatible Git notebook config in ${path.basename(error.gitRoot)}: ${summarizeIssues(error.issues)}`,
-        { modal: true },
-        ...actions
-    );
+    const message =
+        `MergeNB found incompatible Git notebook config in ${path.basename(error.gitRoot)}: ${summarizeIssues(error.issues)}`;
+
+    const selection = selectAction
+        ? await selectAction({
+            gitRoot: error.gitRoot,
+            issues: error.issues,
+            message,
+            actions: [...actions]
+        })
+        : await vscode!.window.showErrorMessage(
+            message,
+            { modal: true },
+            ...actions
+        );
 
     if (!selection) {
         return false;
     }
 
     if (selection === terminalChoice) {
-        const terminal = vscode.window.createTerminal({ name: 'MergeNB notebook config fix', cwd: error.gitRoot });
-        terminal.show(true);
-        terminal.sendText(getNbdimeDisableCommands(error).join('\n'), false);
+        const terminalCommands = getNbdimeDisableCommands(error);
+        options?.testHooks?.onTerminalCommands?.(terminalCommands);
+        if (!selectAction && vscode) {
+            const terminal = vscode.window.createTerminal({ name: 'MergeNB notebook config fix', cwd: error.gitRoot });
+            terminal.show(true);
+            terminal.sendText(terminalCommands.join('\n'), false);
+        }
         return false;
     }
 
@@ -336,19 +378,26 @@ async function showUnsupportedMergeToolGuidance(
     await applyGitConfigFix(error.gitRoot, scopesToFix, error.issues);
     const remainingIssues = await findIncompatibleGitConfig(error.gitRoot);
     if (remainingIssues.length === 0) {
-        vscode.window.showInformationMessage('MergeNB removed incompatible Git notebook config settings.');
+        const infoMessage = 'MergeNB removed incompatible Git notebook config settings.';
+        options?.testHooks?.onInfoMessage?.(infoMessage);
+        if (!selectAction && vscode) {
+            vscode.window.showInformationMessage(infoMessage);
+        }
         return true;
     }
 
-    vscode.window.showWarningMessage(
-        'MergeNB could not remove all incompatible Git notebook settings automatically. Use terminal fix commands and retry.'
-    );
+    const warningMessage =
+        'MergeNB could not remove all incompatible Git notebook settings automatically. Use terminal fix commands and retry.';
+    options?.testHooks?.onWarningMessage?.(warningMessage);
+    if (!selectAction && vscode) {
+        vscode.window.showWarningMessage(warningMessage);
+    }
     return false;
 }
 
 export async function ensureSupportedMergeTool(
     gitRootOrPath?: string,
-    options?: { suppressIfAlreadyShown?: boolean }
+    options?: EnsureSupportedMergeToolOptions
 ): Promise<void> {
     const gitRoots = await resolveGitRoots(gitRootOrPath);
     for (const gitRoot of gitRoots) {
