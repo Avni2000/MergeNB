@@ -21,7 +21,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22
 
       - name: Use Python
         uses: actions/setup-python@v5
@@ -37,7 +37,7 @@ jobs:
       - name: Install nbdime
         run: |
           python -m pip install --upgrade pip
-          python -m pip install nbdime
+          python -m pip install nbdime==4.0.4
           python - <<'PY'
           import nbdime
           print(nbdime.__version__)

@@ -363,7 +363,9 @@ async function showUnsupportedMergeToolGuidance(
         if (!selectAction && vscode) {
             const terminal = vscode.window.createTerminal({ name: 'MergeNB notebook config fix', cwd: error.gitRoot });
             terminal.show(true);
-            terminal.sendText(terminalCommands.join('\n'), false);
+            // Safety: avoid executing commands on paste; keep them commented out.  
+            const safeLines = terminalCommands.map((line) => (line.startsWith('#') ? line : `# ${line}`));  
+            terminal.sendText(safeLines.join('\n'), false);  
         }
         return false;
     }
