@@ -30,20 +30,27 @@ async function main(): Promise<void> {
         }
     }
 
-    const workspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile);
+    const previousGitConfigGlobal = process.env.GIT_CONFIG_GLOBAL;
+    const previousElectronRunAsNode = process.env.ELECTRON_RUN_AS_NODE;
     const isolatedGlobalConfig = path.join(
         os.tmpdir(),
         `mergenb-global-config-${Date.now()}-${Math.random().toString(36).slice(2)}`
     );
 
     fs.writeFileSync(isolatedGlobalConfig, '');
-    const extensionTestsEnv = {
+    process.env.GIT_CONFIG_GLOBAL = isolatedGlobalConfig;
+    delete process.env.ELECTRON_RUN_AS_NODE;
+
+    let workspacePath: string | undefined;
+    const extensionTestsEnv: NodeJS.ProcessEnv = {
         ...process.env,
         MERGENB_TEST_MODE: 'true',
         GIT_CONFIG_GLOBAL: isolatedGlobalConfig,
     };
+    delete extensionTestsEnv.ELECTRON_RUN_AS_NODE;
 
     try {
+        workspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile);
         await runTests({
             extensionDevelopmentPath,
             extensionTestsPath,
@@ -57,8 +64,20 @@ async function main(): Promise<void> {
             ],
         });
     } finally {
-        cleanup(workspacePath);
+        if (workspacePath) {
+            cleanup(workspacePath);
+        }
         cleanup(isolatedGlobalConfig);
+        if (previousGitConfigGlobal === undefined) {
+            delete process.env.GIT_CONFIG_GLOBAL;
+        } else {
+            process.env.GIT_CONFIG_GLOBAL = previousGitConfigGlobal;
+        }
+        if (previousElectronRunAsNode === undefined) {
+            delete process.env.ELECTRON_RUN_AS_NODE;
+        } else {
+            process.env.ELECTRON_RUN_AS_NODE = previousElectronRunAsNode;
+        }
     }
 }
 
