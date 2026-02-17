@@ -419,6 +419,14 @@ export function applyAutoResolutions(
         ? JSON.parse(JSON.stringify(semanticConflict.current))
         : JSON.parse(JSON.stringify(semanticConflict.incoming!));
 
+    const resolvedFromCurrent = Boolean(semanticConflict.current);
+    const getResolvedCellIndex = (conflict: SemanticConflict): number | undefined => {
+        if (resolvedFromCurrent) {
+            return conflict.currentCellIndex ?? conflict.incomingCellIndex;
+        }
+        return conflict.incomingCellIndex ?? conflict.currentCellIndex;
+    };
+
     // Track cell indices that had auto-resolutions applied
     const autoResolvedCellIndices = new Set<number>();
 
@@ -427,14 +435,15 @@ export function applyAutoResolutions(
 
         // Auto-resolve execution count differences
         if (conflict.type === 'execution-count-changed' && effectiveSettings.autoResolveExecutionCount) {
+            const resolvedCellIndex = getResolvedCellIndex(conflict);
             // Set execution_count to null on the resolved cell
-            if (conflict.currentCellIndex !== undefined && resolvedNotebook.cells[conflict.currentCellIndex]) {
-                resolvedNotebook.cells[conflict.currentCellIndex].execution_count = null;
-                autoResolvedCellIndices.add(conflict.currentCellIndex);
+            if (resolvedCellIndex !== undefined && resolvedNotebook.cells[resolvedCellIndex]) {
+                resolvedNotebook.cells[resolvedCellIndex].execution_count = null;
+                autoResolvedCellIndices.add(resolvedCellIndex);
             }
             autoResolved = true;
             autoResolvedCount++;
-            autoResolvedDescriptions.push(`Execution count set to null (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
+            autoResolvedDescriptions.push(`Execution count set to null (cell ${(resolvedCellIndex ?? 0) + 1})`);
         }
 
         // Auto-resolve outputs-changed conflicts when stripOutputs is enabled
@@ -448,14 +457,15 @@ export function applyAutoResolutions(
             
             // If source is identical, this is purely an output difference - auto-resolve
             if (currentSourceStr === incomingSourceStr) {
-                if (conflict.currentCellIndex !== undefined && resolvedNotebook.cells[conflict.currentCellIndex]) {
-                    resolvedNotebook.cells[conflict.currentCellIndex].outputs = [];
-                    resolvedNotebook.cells[conflict.currentCellIndex].execution_count = null;
-                    autoResolvedCellIndices.add(conflict.currentCellIndex);
+                const resolvedCellIndex = getResolvedCellIndex(conflict);
+                if (resolvedCellIndex !== undefined && resolvedNotebook.cells[resolvedCellIndex]) {
+                    resolvedNotebook.cells[resolvedCellIndex].outputs = [];
+                    resolvedNotebook.cells[resolvedCellIndex].execution_count = null;
+                    autoResolvedCellIndices.add(resolvedCellIndex);
                 }
                 autoResolved = true;
                 autoResolvedCount++;
-                autoResolvedDescriptions.push(`Outputs cleared (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
+                autoResolvedDescriptions.push(`Outputs cleared (cell ${(resolvedCellIndex ?? 0) + 1})`);
             }
         }
 
@@ -471,7 +481,8 @@ export function applyAutoResolutions(
                 if (isWhitespaceOnlyDifference(currentSourceStr, incomingSourceStr)) {
                     autoResolved = true;
                     autoResolvedCount++;
-                    autoResolvedDescriptions.push(`Whitespace-only change resolved (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
+                    const resolvedCellIndex = getResolvedCellIndex(conflict) ?? 0;
+                    autoResolvedDescriptions.push(`Whitespace-only change resolved (cell ${resolvedCellIndex + 1})`);
                 }
             }
 
@@ -486,7 +497,8 @@ export function applyAutoResolutions(
                 if (isWhitespaceOnlyDifference(currentSource, incomingSource)) {
                     autoResolved = true;
                     autoResolvedCount++;
-                    autoResolvedDescriptions.push(`Whitespace-only added cell resolved (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
+                    const resolvedCellIndex = getResolvedCellIndex(conflict) ?? 0;
+                    autoResolvedDescriptions.push(`Whitespace-only added cell resolved (cell ${resolvedCellIndex + 1})`);
                 }
             }
         }
@@ -543,11 +555,12 @@ export function applyAutoResolutions(
     if (effectiveSettings.stripOutputs) {
         // For remaining conflicts that weren't auto-resolved, still strip outputs
         for (const conflict of remainingConflicts) {
-            if (conflict.currentCellIndex !== undefined && !autoResolvedCellIndices.has(conflict.currentCellIndex)) {
-                const cell = resolvedNotebook.cells[conflict.currentCellIndex];
+            const resolvedCellIndex = getResolvedCellIndex(conflict);
+            if (resolvedCellIndex !== undefined && !autoResolvedCellIndices.has(resolvedCellIndex)) {
+                const cell = resolvedNotebook.cells[resolvedCellIndex];
                 if (cell && cell.cell_type === 'code' && cell.outputs && cell.outputs.length > 0) {
                     cell.outputs = [];
-                    autoResolvedDescriptions.push(`Outputs stripped (cell ${conflict.currentCellIndex + 1})`);
+                    autoResolvedDescriptions.push(`Outputs stripped (cell ${resolvedCellIndex + 1})`);
                 }
             }
         }
