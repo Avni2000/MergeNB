@@ -626,21 +626,50 @@ body {
     font-size: 12px;
 }
 
+.cell-output-item + .cell-output-item {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+}
+
+.cell-output-host {
+    color: var(--text-primary);
+}
+
+.cell-output-host .jp-RenderedText,
+.cell-output-host .jp-RenderedHTMLCommon,
+.cell-output-host .jp-RenderedImage,
+.cell-output-host .jp-RenderedSVG,
+.cell-output-host .jp-RenderedLatex {
+    color: var(--text-primary);
+}
+
+.cell-output-host .jp-RenderedText pre,
+.cell-output-host .jp-RenderedHTMLCommon pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.cell-output-host .jp-RenderedText[data-mime-type='application/vnd.jupyter.stderr'] {
+    background: rgba(244, 135, 113, 0.18);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.cell-output-fallback {
+    margin: 0;
+    padding: 8px;
+    background: var(--cell-surface-soft);
+    border-radius: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "SF Mono", Monaco, "Cascadia Code", "Courier New", monospace;
+}
+
 .cell-outputs img {
     max-width: 100%;
     height: auto;
-}
-
-.image-placeholder {
-    color: var(--text-secondary);
-    font-style: italic;
-    padding: 8px;
-    background: var(--cell-surface-soft);
-    border: 1px dashed var(--border-color);
-    border-radius: 4px;
-    font-family: "SF Mono", Monaco, "Cascadia Code", "Courier New", monospace;
-    white-space: pre-wrap;
-    font-size: 12px;
 }
 
 /* Auto-resolve banner */

@@ -3,12 +3,17 @@
  * @description React component for rendering notebook cell content.
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { renderMarkdown } from './markdown';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
-import DOMPurify from 'dompurify';
+
+const renderMimeRegistry = new RenderMimeRegistry({
+    initialFactories: standardRendererFactories,
+});
+type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 
 interface CellContentProps {
     cell: NotebookCell | undefined;
@@ -221,66 +226,121 @@ function CellOutputs({ outputs }: CellOutputsProps): React.ReactElement {
     );
 }
 
-function OutputItem({ output }: { output: CellOutput }): React.ReactElement | null {
-    if (output.output_type === 'stream' && output.text) {
-        const text = Array.isArray(output.text) ? output.text.join('') : output.text;
-        return <pre>{text}</pre>;
+function OutputItem({ output }: { output: CellOutput }): React.ReactElement {
+    return <RenderMimeOutput output={output} />;
+}
+
+function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElement {
+    const hostRef = useRef<HTMLDivElement>(null);
+    const [fallback, setFallback] = useState<string | null>(null);
+
+    useEffect(() => {
+        const host = hostRef.current;
+        if (!host) return;
+
+        host.replaceChildren();
+        setFallback(null);
+
+        let disposed = false;
+        let renderer: ReturnType<RenderMimeRegistry['createRenderer']> | null = null;
+        let model: OutputModel | null = null;
+
+        try {
+            model = new OutputModel({
+                value: normalizeOutputForRenderMime(output) as RenderMimeOutputValue,
+                trusted: false,
+            });
+
+            const preferredMimeType = renderMimeRegistry.preferredMimeType(model.data, 'ensure');
+            if (!preferredMimeType) {
+                setFallback(getOutputTextFallback(output));
+                model.dispose();
+                return;
+            }
+
+            renderer = renderMimeRegistry.createRenderer(preferredMimeType);
+
+            void renderer.renderModel(model).then(() => {
+                if (disposed || !hostRef.current || !renderer) return;
+                hostRef.current.replaceChildren(renderer.node);
+            }).catch((err: unknown) => {
+                console.warn('[MergeNB] Failed to render output via rendermime:', err);
+                if (!disposed) {
+                    setFallback(getOutputTextFallback(output));
+                }
+            });
+        } catch (err) {
+            console.warn('[MergeNB] Failed to initialize rendermime output model:', err);
+            setFallback(getOutputTextFallback(output));
+            renderer?.dispose();
+            model?.dispose();
+            return;
+        }
+
+        return () => {
+            disposed = true;
+            renderer?.dispose();
+            model?.dispose();
+            host.replaceChildren();
+        };
+    }, [output]);
+
+    return (
+        <div className="cell-output-item">
+            <div className="cell-output-host" ref={hostRef} />
+            {fallback && <pre className="cell-output-fallback">{fallback}</pre>}
+        </div>
+    );
+}
+
+function normalizeOutputForRenderMime(output: CellOutput): Record<string, unknown> {
+    const normalizedOutput = { ...(output as unknown as Record<string, unknown>) };
+
+    if (output.text !== undefined) {
+        normalizedOutput.text = normalizeTextValue(output.text);
     }
 
-    if ((output.output_type === 'display_data' || output.output_type === 'execute_result') && output.data) {
-        const data = output.data;
+    if (output.data) {
+        const normalizedData: Record<string, unknown> = {};
+        for (const [mimeType, value] of Object.entries(output.data)) {
+            normalizedData[mimeType] = normalizeMimeValue(value);
+        }
+        normalizedOutput.data = normalizedData;
+    }
 
-        // Use text placeholders for images instead of rendering actual <img> tags.
-        // This prevents browser decoding overhead, ResizeObserver feedback loops,
-        // and flickering from invalid/broken image data.
-        if (data['image/png']) {
-            return <ImagePlaceholder mimeType="image/png" />;
-        }
-        if (data['image/jpeg']) {
-            return <ImagePlaceholder mimeType="image/jpeg" />;
-        }
+    return normalizedOutput;
+}
 
-        // HTML
-        if (data['text/html']) {
-            const html = Array.isArray(data['text/html']) ? data['text/html'].join('') : String(data['text/html']);
-            const sanitizedHtml = DOMPurify.sanitize(html);
-            return <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-        }
+function normalizeTextValue(value: string | string[]): string {
+    return Array.isArray(value) ? value.join('') : value;
+}
 
-        // Plain text
-        if (data['text/plain']) {
-            const text = Array.isArray(data['text/plain']) ? data['text/plain'].join('') : String(data['text/plain']);
-            return <pre>{text}</pre>;
-        }
+function normalizeMimeValue(value: unknown): unknown {
+    if (Array.isArray(value) && value.every(item => typeof item === 'string')) {
+        return value.join('');
+    }
+    return value;
+}
+
+function getOutputTextFallback(output: CellOutput): string {
+    if (output.output_type === 'stream' && output.text) {
+        return normalizeTextValue(output.text);
     }
 
     if (output.output_type === 'error') {
-        const traceback = Array.isArray(output.traceback) ? output.traceback.join('\n') : (output.traceback ?? `${output.ename}: ${output.evalue}`);
-        return <pre className="error-output">{traceback}</pre>;
+        return Array.isArray(output.traceback)
+            ? output.traceback.join('\n')
+            : (output.traceback ?? `${output.ename}: ${output.evalue}`);
     }
 
-    return null;
-}
+    if ((output.output_type === 'display_data' || output.output_type === 'execute_result') && output.data) {
+        const plainText = output.data['text/plain'];
+        if (plainText !== undefined) {
+            return String(normalizeMimeValue(plainText));
+        }
+    }
 
-/**
- * Renders a text placeholder for an image output.
- * Uses markdown-style format to provide a consistent, stable representation.
- * 
- * @param mimeType - Currently only 'image/png' or 'image/jpeg' are supported and passed by OutputItem
- */
-function ImagePlaceholder({ mimeType }: { mimeType: string }): React.ReactElement {
-    const placeholderText = `![Image: ${mimeType}]`;
-    // Convert MIME type to user-friendly label for screen readers
-    const imageType = mimeType === 'image/png' ? 'PNG' : 'JPEG';
-    return (
-        <div 
-            className="image-placeholder"
-            role="img"
-            aria-label={`${imageType} image output`}
-        >
-            {placeholderText}
-        </div>
-    );
+    return '[Unsupported output]';
 }
 
 export const CellContent = React.memo(CellContentInner);
