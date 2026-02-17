@@ -135,7 +135,18 @@ async function listGitConfigEntries(gitRoot: string, scope: GitConfigScope): Pro
             .split('\0')
             .filter((entry) => entry.trim().length > 0)
             .map((entry) => {
-                const separator = entry.indexOf('=');
+                // `git config --null --list` may encode each record as either:
+                // - key=value\0
+                // - key\nvalue\0
+                // depending on git output mode/platform.
+                const equalsIndex = entry.indexOf('=');
+                const newlineIndex = entry.indexOf('\n');
+                const separator =
+                    equalsIndex === -1
+                        ? newlineIndex
+                        : newlineIndex === -1
+                            ? equalsIndex
+                            : Math.min(equalsIndex, newlineIndex);
                 if (separator === -1) {
                     return {
                         key: entry.trim(),

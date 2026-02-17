@@ -152,7 +152,7 @@ export async function run(): Promise<void> {
     assert(Array.isArray(terminalCommands), 'Expected terminal commands to be captured');
     ensureCommandsInclude(terminalCommands!, [
         'git config --local --unset-all merge.tool',
-        'git config --local --unset-all mergetool.nbdime.keepBackup',
+        'git config --local --unset-all mergetool.nbdime.keepbackup',
         'git config --local --unset-all nbdime.autoresolve',
         'git config --local --remove-section mergetool.nbdime',
         'git config --local --remove-section difftool.nbdime',
