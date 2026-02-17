@@ -125,6 +125,12 @@ export const TEST_GROUPS: TestGroup[] = [
                 notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
                 testModule: './logicRegression.test.js',
             },
+            {
+                id: 'regression_null_current_cell_indexing',
+                description: 'Cell indexing when current is null (delete/modify conflict)',
+                notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
+                testModule: './nullCurrentCellIndexing.test.js',
+            },
         ],
     },
 ];
