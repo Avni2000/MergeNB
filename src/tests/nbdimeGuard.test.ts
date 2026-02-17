@@ -165,6 +165,7 @@ export async function run(): Promise<void> {
 
     // Terminal guidance only shows commands; it must not mutate config.
     ensureKeyValue(workspacePath, '--local', 'merge.tool', 'nbdime');
+    ensureKeyValue(workspacePath, '--local', 'mergetool.nbdime.keepBackup', 'false');
     ensureKeyValue(workspacePath, '--local', 'nbdime.autoresolve', 'false');
     ensureKeyValue(workspacePath, '--global', 'difftool.nbdime.prompt', 'false');
     ensureKeyValue(workspacePath, '--global', 'jupyter.merge.driver', 'enabled');
@@ -236,6 +237,7 @@ export async function run(): Promise<void> {
     console.log('[nbdimeGuard.test] config cleanup assertions completed');
 
     // Second call should be a no-op with no additional guidance prompts.
+    const promptCallsBeforeNoOp = promptCalls.length;
     await withTimeout(
         gitIntegration.ensureSupportedMergeTool(workspacePath, {
             testHooks: {
@@ -251,6 +253,7 @@ export async function run(): Promise<void> {
         10000,
         'ensureSupportedMergeTool(no-op)'
     );
-    assert(promptCalls.length === 1, 'Unexpected extra guidance prompt after auto-fix cleanup');
+    const promptCallsFromNoOp = promptCalls.slice(promptCallsBeforeNoOp);
+    assert(promptCallsFromNoOp.length === 0, 'Unexpected extra guidance prompt after auto-fix cleanup');
     console.log('[nbdimeGuard.test] completed');
 }

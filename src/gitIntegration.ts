@@ -18,7 +18,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 
 // VSCode is optional - only needed for workspace-aware helpers.
@@ -30,6 +30,7 @@ try {
 }
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const nbdimeWarningShownRoots = new Set<string>();
 const notebookConfigPattern = /(jupyter|ipynb|nbdiff|nbdime)/i;
 const notebookToolValuePattern = /(jupyter|nbdiff|nbdime)/i;
@@ -83,6 +84,14 @@ export class UnsupportedMergeToolError extends Error {
             .join(', ');
         super(`[MergeNB] Incompatible Git notebook config detected: ${summary}`);
         this.name = 'UnsupportedMergeToolError';
+    }
+}
+
+export class AggregateUnsupportedMergeToolError extends Error {
+    constructor(public readonly errors: UnsupportedMergeToolError[]) {
+        const roots = errors.map((error) => path.basename(error.gitRoot)).join(', ');
+        super(`[MergeNB] Incompatible Git notebook config detected in multiple repositories: ${roots}`);
+        this.name = 'AggregateUnsupportedMergeToolError';
     }
 }
 
@@ -254,7 +263,7 @@ async function applyGitConfigFix(
         const keys = getScopedIssueKeys(issues, scope);
         for (const key of keys) {
             try {
-                await execAsync(`git config --${scope} --unset-all ${key}`, { cwd: gitRoot });
+                await execFileAsync('git', ['config', `--${scope}`, '--unset-all', key], { cwd: gitRoot });
             } catch {
                 // Key may already be unset; ignore.
             }
@@ -263,12 +272,19 @@ async function applyGitConfigFix(
         const notebookSections = getNotebookSections(keys);
         for (const section of notebookSections) {
             try {
-                await execAsync(`git config --${scope} --remove-section ${section}`, { cwd: gitRoot });
+                await execFileAsync('git', ['config', `--${scope}`, '--remove-section', section], { cwd: gitRoot });
             } catch {
                 // Section may not exist; ignore.
             }
         }
     }
+}
+
+function shellEscapeArg(value: string): string {
+    if (/^[A-Za-z0-9_./-]+$/.test(value)) {
+        return value;
+    }
+    return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
 function getNbdimeDisableCommands(error: UnsupportedMergeToolError): string[] {
@@ -283,20 +299,20 @@ function getNbdimeDisableCommands(error: UnsupportedMergeToolError): string[] {
     if (localKeys.length > 0) {
         commands.push('# Local repository settings');
         for (const key of localKeys) {
-            commands.push(`git config --local --unset-all ${key}`);
+            commands.push(`git config --local --unset-all ${shellEscapeArg(key)}`);
         }
         for (const section of getNotebookSections(localKeys)) {
-            commands.push(`git config --local --remove-section ${section}`);
+            commands.push(`git config --local --remove-section ${shellEscapeArg(section)}`);
         }
     }
 
     if (globalKeys.length > 0) {
         commands.push('# Global user settings');
         for (const key of globalKeys) {
-            commands.push(`git config --global --unset-all ${key}`);
+            commands.push(`git config --global --unset-all ${shellEscapeArg(key)}`);
         }
         for (const section of getNotebookSections(globalKeys)) {
-            commands.push(`git config --global --remove-section ${section}`);
+            commands.push(`git config --global --remove-section ${shellEscapeArg(section)}`);
         }
     }
 
@@ -413,6 +429,8 @@ export async function ensureSupportedMergeTool(
     options?: EnsureSupportedMergeToolOptions
 ): Promise<void> {
     const gitRoots = await resolveGitRoots(gitRootOrPath);
+    const unsupportedErrors: UnsupportedMergeToolError[] = [];
+
     for (const gitRoot of gitRoots) {
         const issues = await findIncompatibleGitConfig(gitRoot);
         if (issues.length === 0) {
@@ -425,8 +443,16 @@ export async function ensureSupportedMergeTool(
             testHooks: options?.testHooks
         });
         if (!fixed) {
-            throw error;
+            unsupportedErrors.push(error);
         }
+    }
+
+    if (unsupportedErrors.length === 1) {
+        throw unsupportedErrors[0];
+    }
+
+    if (unsupportedErrors.length > 1) {
+        throw new AggregateUnsupportedMergeToolError(unsupportedErrors);
     }
 }
 
@@ -596,31 +622,13 @@ export async function isUnmergedFile(filePath: string): Promise<boolean> {
  * Can be called with a VSCode WorkspaceFolder, a string path, or no argument.
  */
 export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<GitFileStatus[]> {
-    const candidateRoots = new Set<string>();
-    if (typeof workspaceFolderOrPath === 'string') {
-        candidateRoots.add(workspaceFolderOrPath);
-    } else if (workspaceFolderOrPath?.uri?.fsPath) {
-        candidateRoots.add(workspaceFolderOrPath.uri.fsPath);
-    } else {
-        for (const folder of vscode?.workspace?.workspaceFolders ?? []) {
-            candidateRoots.add(folder.uri.fsPath);
-        }
-    }
+    const pathHint =
+        typeof workspaceFolderOrPath === 'string'
+            ? workspaceFolderOrPath
+            : workspaceFolderOrPath?.uri?.fsPath;
+    const gitRoots = await resolveGitRoots(pathHint);
 
-    if (candidateRoots.size === 0) {
-        console.log('[GitIntegration] getUnmergedFiles: no workspace roots found, returning empty');
-        return [];
-    }
-
-    const gitRoots = new Set<string>();
-    for (const candidate of candidateRoots) {
-        const gitRoot = await resolveGitRootForPath(candidate);
-        if (gitRoot) {
-            gitRoots.add(gitRoot);
-        }
-    }
-
-    if (gitRoots.size === 0) {
+    if (gitRoots.length === 0) {
         console.log('[GitIntegration] getUnmergedFiles: no git roots found, returning empty');
         return [];
     }
