@@ -1,0 +1,52 @@
+name: VSCode Nbdime Guard Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  nbdime-guard:
+    runs-on: ubuntu-24.04
+    env:
+      VSCODE_VERSION: stable
+      CI: true
+      MERGENB_NBDIME_GUARD_CI: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Use Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Install nbdime
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install nbdime==4.0.4
+          python - <<'PY'
+          import nbdime
+          print(nbdime.__version__)
+          PY
+
+      - name: Build extension and tests
+        run: |
+          npm run compile
+          npm run compile-tests
+
+      - name: Run VS Code nbdime guard test
+        run: xvfb-run -a node out/tests/runNbdimeGuardTest.js

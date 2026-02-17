@@ -21,6 +21,11 @@ function git(cwd: string, ...args: string[]): string {
         console.log(`[RepoSetup] Success: ${cmd}`);
         return result;
     } catch (error: any) {
+        if (error?.status === 0) {
+            // execSync can throw when git writes advisory text to stderr even on success.
+            console.log(`[RepoSetup] Success with git advisory output: ${cmd}`);
+            return String(error.stdout || '');
+        }
         if(args[0] === 'merge') {
             // Merge conflicts are expected, so return the output even on non-zero exit.
             console.log(`[RepoSetup] Merge output (exit code ${error.status}):\n${error.stdout}`);
@@ -50,7 +55,7 @@ export function createMergeConflictRepo(
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergeNB-integration-'));
     console.log(`[RepoSetup] Creating merge conflict repo in: ${tmpDir}`);
 
-    git(tmpDir, 'init');
+    git(tmpDir, 'init', '-b', 'main');
     git(tmpDir, 'config', 'user.email', '"test@mergenb.test"');
     git(tmpDir, 'config', 'user.name', '"MergeNB Test"');
 
