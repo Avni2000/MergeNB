@@ -248,9 +248,13 @@ function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElemen
         try {
             const normalizedOutput = normalizeOutputForRenderMime(output) as RenderMimeOutputValue;
 
+            // Use trusted: true so that rich MIME types (text/html, image/svg+xml,
+            // application/json, etc.) are not silently downgraded or filtered.
+            // Outputs come from the user's own local git repository, so the threat
+            // surface is equivalent to opening a notebook in a local Jupyter server.
             model = new OutputModel({
                 value: normalizedOutput,
-                trusted: false,
+                trusted: true,
             });
 
             const preferredMimeType = renderMimeRegistry.preferredMimeType(model.data, 'any');
@@ -258,15 +262,6 @@ function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElemen
                 setFallback(getOutputTextFallback(output));
                 model.dispose();
                 return;
-            }
-
-            if (preferredMimeType === 'image/svg+xml') {
-                model.dispose();
-                // Render SVG through <img> data URL path in rendermime.
-                model = new OutputModel({
-                    value: normalizedOutput,
-                    trusted: true,
-                });
             }
 
             renderer = renderMimeRegistry.createRenderer(preferredMimeType);

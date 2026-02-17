@@ -83,10 +83,15 @@ export async function run(): Promise<void> {
         const pngImage = outputRoot.locator('.cell-output-host .jp-RenderedImage img[src^="data:image/png;base64,"]');
         await pngImage.first().waitFor({ timeout: 10000 });
 
-        // SVG renderer output
-        const svgNode = outputRoot.locator('.cell-output-host .jp-RenderedSVG svg[data-mime-test="svg-array"]');
-        await svgNode.first().waitFor({ timeout: 10000 });
-        await waitForText(outputRoot, 'SVG_RENDER_OK');
+        // SVG renderer output — JupyterLab 4.x renders SVG as <img data-URL>,
+        // not as an inline <svg> element. Verify the img element exists and that
+        // its src is a data-URL containing the expected SVG markup.
+        const svgImg = outputRoot.locator('.cell-output-host .jp-RenderedSVG img[src^="data:image/svg+xml"]');
+        await svgImg.first().waitFor({ timeout: 10000 });
+        const svgSrc = (await svgImg.first().getAttribute('src')) ?? '';
+        if (!svgSrc.includes('SVG_RENDER_OK') && !decodeURIComponent(svgSrc).includes('SVG_RENDER_OK')) {
+            throw new Error(`SVG data-URL does not contain expected marker. src prefix: "${svgSrc.slice(0, 80)}"`);
+        }
 
         // JSON renderer output
         await waitForText(outputRoot, 'JSON_RENDER_OK');

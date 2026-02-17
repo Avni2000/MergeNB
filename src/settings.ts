@@ -56,7 +56,29 @@ export function getSettings(): MergeNBSettings {
     }
 
     if (process.env.MERGENB_TEST_MODE === 'true') {
-        return { ...DEFAULT_SETTINGS };
+        // Start from DEFAULT_SETTINGS (ensures test-friendly defaults like showBaseColumn: true)
+        // but honour any workspace-level overrides that the test explicitly set via
+        // vscode.configuration.update(..., ConfigurationTarget.Workspace).
+        const config = vscode.workspace.getConfiguration('mergeNB');
+        const settings = { ...DEFAULT_SETTINGS };
+
+        const applyWorkspaceOverride = <T>(key: string, setter: (v: T) => void): void => {
+            const inspect = config.inspect<T>(key);
+            if (inspect?.workspaceValue !== undefined) {
+                setter(inspect.workspaceValue);
+            }
+        };
+
+        applyWorkspaceOverride<boolean>('autoResolve.executionCount', v => { settings.autoResolveExecutionCount = v; });
+        applyWorkspaceOverride<boolean>('autoResolve.kernelVersion', v => { settings.autoResolveKernelVersion = v; });
+        applyWorkspaceOverride<boolean>('autoResolve.stripOutputs', v => { settings.stripOutputs = v; });
+        applyWorkspaceOverride<boolean>('autoResolve.whitespace', v => { settings.autoResolveWhitespace = v; });
+        applyWorkspaceOverride<boolean>('ui.hideNonConflictOutputs', v => { settings.hideNonConflictOutputs = v; });
+        applyWorkspaceOverride<boolean>('ui.enableUndoRedoHotkeys', v => { settings.enableUndoRedoHotkeys = v; });
+        applyWorkspaceOverride<boolean>('ui.showBaseColumn', v => { settings.showBaseColumn = v; });
+        applyWorkspaceOverride<'dark' | 'light'>('ui.theme', v => { settings.theme = v; });
+
+        return settings;
     }
 
     const defaults: MergeNBSettings = {
