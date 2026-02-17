@@ -10,7 +10,7 @@
 
 import * as assert from 'assert';
 import { applyAutoResolutions } from '../conflictDetector';
-import type { NotebookSemanticConflict, Notebook, NotebookCell, SemanticConflict } from '../types';
+import type { NotebookSemanticConflict, Notebook, SemanticConflict } from '../types';
 
 export async function run(): Promise<void> {
     console.log('[nullCurrentCellIndexing] Starting test...');
@@ -104,22 +104,8 @@ export async function run(): Promise<void> {
     });
 
     // -------------------------------------------------------------------------
-    // Assert: The bug causes wrong cells to be modified
+    // Assert: incomingCellIndex is used when current notebook is null
     // -------------------------------------------------------------------------
-
-    // BUG: The code uses currentCellIndex to index into resolvedNotebook.cells
-    // But resolvedNotebook was cloned from incoming, so cells are at incomingCellIndex!
-    
-    // What happens with the bug:
-    // - conflict[0].currentCellIndex = 0, should affect incoming cell 1
-    //   Bug: modifies resolvedNotebook.cells[0] (wrong cell!)
-    // - conflict[1].currentCellIndex = 1, should affect incoming cell 2
-    //   Bug: modifies resolvedNotebook.cells[1] (wrong cell!)
-
-    // With the bug, cells at indices 0 and 1 are incorrectly modified
-    // Cell 0 should retain execution_count: 5 (it wasn't in the conflict)
-    // Cell 1 should retain execution_count: 10 (it wasn't in the conflict)
-    // But bug modifies them because it uses currentCellIndex instead of incomingCellIndex
 
     const cell0 = result.resolvedNotebook?.cells[0];
     const cell1 = result.resolvedNotebook?.cells[1];
@@ -131,68 +117,23 @@ export async function run(): Promise<void> {
         cell2: cell2?.execution_count,
     });
 
-    // Expected behavior (AFTER FIX):
-    // - Cell 0 should be untouched: execution_count = 5
-    // - Cell 1 should be nullified (conflict.incomingCellIndex = 1): execution_count = null
-    // - Cell 2 should be nullified (conflict.incomingCellIndex = 2): execution_count = null
+    assert.strictEqual(
+        cell0?.execution_count,
+        5,
+        'Cell 0 should not be modified (was not in conflict)'
+    );
 
-    // Actual behavior (WITH BUG):
-    // - Cell 0 is wrongly nullified (conflict[0].currentCellIndex = 0): execution_count = null
-    // - Cell 1 is wrongly nullified (conflict[1].currentCellIndex = 1): execution_count = null
-    // - Cell 2 is untouched: execution_count = 15
+    assert.strictEqual(
+        cell1?.execution_count,
+        null,
+        'Cell 1 execution_count should be null (was in conflict at incomingCellIndex 1)'
+    );
 
-    // Test for the bug (this will currently fail until the bug is fixed)
-    try {
-        // After the fix, cell 0 should not be modified
-        assert.strictEqual(
-            cell0?.execution_count,
-            5,
-            'Cell 0 should not be modified (was not in conflict)'
-        );
-        
-        // After the fix, cells 1 and 2 should be nullified
-        assert.strictEqual(
-            cell1?.execution_count,
-            null,
-            'Cell 1 execution_count should be null (was in conflict at incomingCellIndex 1)'
-        );
-        assert.strictEqual(
-            cell2?.execution_count,
-            null,
-            'Cell 2 execution_count should be null (was in conflict at incomingCellIndex 2)'
-        );
+    assert.strictEqual(
+        cell2?.execution_count,
+        null,
+        'Cell 2 execution_count should be null (was in conflict at incomingCellIndex 2)'
+    );
 
-        console.log('[nullCurrentCellIndexing] ✓ Test passed - bug is FIXED!');
-    } catch (error: any) {
-        // Document the current buggy behavior
-        console.log('[nullCurrentCellIndexing] ✗ Test failed - bug is PRESENT (expected)');
-        console.log('[nullCurrentCellIndexing] Error:', error.message);
-        console.log('[nullCurrentCellIndexing] Current (buggy) behavior:');
-        console.log('  - Cell 0 execution_count:', cell0?.execution_count, '(should be 5, but bug sets to null)');
-        console.log('  - Cell 1 execution_count:', cell1?.execution_count, '(should be null, but bug sets to null)');
-        console.log('  - Cell 2 execution_count:', cell2?.execution_count, '(should be null, but bug leaves as 15)');
-        
-        // Currently, the bug causes:
-        // - cell0.execution_count = null (WRONG, should be 5)
-        // - cell1.execution_count = null (CORRECT by accident)
-        // - cell2.execution_count = 15 (WRONG, should be null)
-        
-        // Verify the buggy behavior
-        assert.strictEqual(
-            cell0?.execution_count,
-            null,
-            'BUG DETECTED: Cell 0 wrongly nullified because currentCellIndex=0 was used instead of incomingCellIndex'
-        );
-        assert.strictEqual(
-            cell2?.execution_count,
-            15,
-            'BUG DETECTED: Cell 2 not nullified because currentCellIndex=1 was used instead of incomingCellIndex=2'
-        );
-        
-        console.log('[nullCurrentCellIndexing] Bug confirmed: Using currentCellIndex on incoming-cloned notebook');
-        throw new Error(
-            'Bug detected: resolvedNotebook uses currentCellIndex to index cells cloned from incoming. ' +
-            'Should use incomingCellIndex when semanticConflict.current is null.'
-        );
-    }
+    console.log('[nullCurrentCellIndexing] ✓ Test passed');
 }
