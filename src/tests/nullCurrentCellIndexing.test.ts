@@ -78,7 +78,7 @@ export async function run(): Promise<void> {
         semanticConflicts: conflicts,
         cellMappings: [],
         base: undefined,
-        current: null as any, // Simulate delete/modify conflict where current is null
+        current: undefined, // Simulate delete/modify conflict where current is null
         incoming: incomingNotebook,
     };
 
@@ -102,6 +102,22 @@ export async function run(): Promise<void> {
         remainingConflicts: result.remainingConflicts.length,
         resolvedNotebook: result.resolvedNotebook,
     });
+
+    // -------------------------------------------------------------------------
+    // Assert: auto-resolution summary is correct
+    // -------------------------------------------------------------------------
+
+    assert.strictEqual(
+        result.autoResolvedCount,
+        2,
+        'Should have resolved 2 execution-count conflicts automatically'
+    );
+
+    assert.strictEqual(
+        result.remainingConflicts.length,
+        0,
+        'Should have no remaining conflicts after auto-resolution'
+    );
 
     // -------------------------------------------------------------------------
     // Assert: incomingCellIndex is used when current notebook is null

@@ -481,7 +481,8 @@ export function applyAutoResolutions(
                 if (isWhitespaceOnlyDifference(currentSourceStr, incomingSourceStr)) {
                     autoResolved = true;
                     autoResolvedCount++;
-                    autoResolvedDescriptions.push(`Whitespace-only change resolved (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
+                    const resolvedCellIndex = getResolvedCellIndex(conflict) ?? 0;
+                    autoResolvedDescriptions.push(`Whitespace-only change resolved (cell ${resolvedCellIndex + 1})`);
                 }
             }
 
@@ -496,7 +497,8 @@ export function applyAutoResolutions(
                 if (isWhitespaceOnlyDifference(currentSource, incomingSource)) {
                     autoResolved = true;
                     autoResolvedCount++;
-                    autoResolvedDescriptions.push(`Whitespace-only added cell resolved (cell ${(conflict.currentCellIndex ?? 0) + 1})`);
+                    const resolvedCellIndex = getResolvedCellIndex(conflict) ?? 0;
+                    autoResolvedDescriptions.push(`Whitespace-only added cell resolved (cell ${resolvedCellIndex + 1})`);
                 }
             }
         }
