@@ -246,16 +246,27 @@ function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElemen
         let model: OutputModel | null = null;
 
         try {
+            const normalizedOutput = normalizeOutputForRenderMime(output) as RenderMimeOutputValue;
+
             model = new OutputModel({
-                value: normalizeOutputForRenderMime(output) as RenderMimeOutputValue,
+                value: normalizedOutput,
                 trusted: false,
             });
 
-            const preferredMimeType = renderMimeRegistry.preferredMimeType(model.data, 'ensure');
+            const preferredMimeType = renderMimeRegistry.preferredMimeType(model.data, 'any');
             if (!preferredMimeType) {
                 setFallback(getOutputTextFallback(output));
                 model.dispose();
                 return;
+            }
+
+            if (preferredMimeType === 'image/svg+xml') {
+                model.dispose();
+                // Render SVG through <img> data URL path in rendermime.
+                model = new OutputModel({
+                    value: normalizedOutput,
+                    trusted: true,
+                });
             }
 
             renderer = renderMimeRegistry.createRenderer(preferredMimeType);

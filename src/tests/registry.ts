@@ -133,6 +133,19 @@ export const TEST_GROUPS: TestGroup[] = [
             },
         ],
     },
+    {
+        id: 'renderMime',
+        name: 'RenderMime Outputs',
+        description: 'Validate JupyterLab rendermime output rendering in web UI',
+        tests: [
+            {
+                id: 'rendermime_outputs_05',
+                description: 'Render text/html/png/svg/json outputs and unsupported fallback',
+                notebooks: ['05_mime_base.ipynb', '05_mime_current.ipynb', '05_mime_incoming.ipynb'],
+                testModule: './rendermimeOutputs.test.js',
+            },
+        ],
+    },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
