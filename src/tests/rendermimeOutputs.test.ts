@@ -47,6 +47,18 @@ async function assertMarkdownLogoRendered(page: import('playwright').Page): Prom
     }
 }
 
+async function assertMarkdownKatexRendered(page: import('playwright').Page): Promise<void> {
+    const katexNode = page
+        .locator('.merge-row.identical-row .markdown-content .katex')
+        .first();
+    await katexNode.waitFor({ timeout: 15000 });
+
+    const katexText = ((await katexNode.textContent()) ?? '').trim();
+    if (!katexText) {
+        throw new Error('Expected non-empty KaTeX-rendered markdown content');
+    }
+}
+
 export async function run(): Promise<void> {
     console.log('Starting rendermime outputs integration test...');
 
@@ -74,8 +86,9 @@ export async function run(): Promise<void> {
 
         await assertMarkdownLogoRendered(page);
         console.log('✓ Markdown local SVG asset rendered through notebook-asset endpoint');
-
         if (mode === 'markdownOnly') {
+            await assertMarkdownKatexRendered(page);
+            console.log('✓ Markdown KaTeX content rendered');
             return;
         }
 

@@ -4,17 +4,37 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
+import { IRenderMime, MimeModel, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
+import { Widget } from '@lumino/widgets';
+import MarkdownIt from 'markdown-it';
+import renderMathInElement from 'katex/contrib/auto-render';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
-import { renderMarkdown } from './markdown';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
+const renderMimeMd = MarkdownIt({
+    html: true,
+    linkify: true,
+    typographer: true,
+});
 const renderMimeMarkdownParser = {
     async render(source: string): Promise<string> {
-        return renderMarkdown(source);
+        return renderMimeMd.render(source);
+    }
+};
+const renderMimeKatexTypesetter: IRenderMime.ILatexTypesetter = {
+    typeset(element: HTMLElement): void {
+        renderMathInElement(element, {
+            throwOnError: false,
+            delimiters: [
+                { left: '$$', right: '$$', display: true },
+                { left: '\\[', right: '\\]', display: true },
+                { left: '$', right: '$', display: false },
+                { left: '\\(', right: '\\)', display: false },
+            ],
+        });
     }
 };
 
@@ -115,57 +135,50 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
 
     useEffect(() => {
         const host = hostRef.current;
-        if (!host) return;
+        if (!host || !host.isConnected) return;
 
         host.replaceChildren();
         setFallback(null);
 
         let disposed = false;
         let renderer: ReturnType<RenderMimeRegistry['createRenderer']> | null = null;
-        let model: OutputModel | null = null;
+        let model: MimeModel | null = null;
 
         try {
-            model = new OutputModel({
-                value: {
-                    output_type: 'display_data',
-                    data: { 'text/markdown': source },
-                    metadata: {},
-                } as RenderMimeOutputValue,
+            model = new MimeModel({
+                data: { 'text/markdown': source },
                 trusted: false,
             });
 
-            const preferredMimeType = renderMimeRegistry.preferredMimeType(model.data, 'any') ?? 'text/markdown';
-            renderer = renderMimeRegistry.createRenderer(preferredMimeType);
+            renderer = renderMimeRegistry.createRenderer('text/markdown');
+            Widget.attach(renderer, host);
 
-            void renderer.renderModel(model).then(() => {
-                if (disposed || !hostRef.current || !renderer) return;
-                hostRef.current.replaceChildren(renderer.node);
-            }).catch((err: unknown) => {
+            void renderer.renderModel(model).catch((err: unknown) => {
                 console.warn('[MergeNB] Failed to render markdown via rendermime:', err);
                 if (!disposed) {
+                    disposeRenderer(renderer, host);
+                    renderer = null;
                     setFallback(source);
                 }
             });
         } catch (err) {
-            console.warn('[MergeNB] Failed to initialize markdown rendermime model:', err);
+            console.warn('[MergeNB] Failed to initialize rendermime markdown renderer:', err);
+            disposeRenderer(renderer, host);
             setFallback(source);
-            renderer?.dispose();
-            model?.dispose();
             return;
         }
 
         return () => {
             disposed = true;
-            renderer?.dispose();
-            model?.dispose();
+            disposeRenderer(renderer, host);
             host.replaceChildren();
         };
     }, [source, renderMimeRegistry]);
 
     return (
         <div className="markdown-content">
-            <div ref={hostRef} className="markdown-content-host" />
-            {fallback && <pre>{fallback}</pre>}
+            <div ref={hostRef} />
+            {fallback && <pre className="cell-output-fallback">{fallback}</pre>}
         </div>
     );
 }
@@ -354,26 +367,27 @@ function RenderMimeOutput({
 
             renderer = renderMimeRegistry.createRenderer(preferredMimeType);
 
-            void renderer.renderModel(model).then(() => {
-                if (disposed || !hostRef.current || !renderer) return;
-                hostRef.current.replaceChildren(renderer.node);
-            }).catch((err: unknown) => {
+            Widget.attach(renderer, host);
+
+            void renderer.renderModel(model).catch((err: unknown) => {
                 console.warn('[MergeNB] Failed to render output via rendermime:', err);
                 if (!disposed) {
+                    disposeRenderer(renderer, host);
+                    renderer = null;
                     setFallback(getOutputTextFallback(output));
                 }
             });
         } catch (err) {
             console.warn('[MergeNB] Failed to initialize rendermime output model:', err);
             setFallback(getOutputTextFallback(output));
-            renderer?.dispose();
+            disposeRenderer(renderer, host);
             model?.dispose();
             return;
         }
 
         return () => {
             disposed = true;
-            renderer?.dispose();
+            disposeRenderer(renderer, host);
             model?.dispose();
             host.replaceChildren();
         };
@@ -452,6 +466,7 @@ function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
     const registry = new RenderMimeRegistry({
         initialFactories: standardRendererFactories,
         resolver: createNotebookAssetResolver(sessionId, notebookPath),
+        latexTypesetter: renderMimeKatexTypesetter,
         markdownParser: renderMimeMarkdownParser,
     });
     renderMimeRegistryCache.set(cacheKey, registry);
@@ -461,26 +476,15 @@ function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
 function createNotebookAssetResolver(
     sessionId: string,
     notebookPath?: string
-): {
-    resolveUrl: (url: string) => Promise<string>;
-    getDownloadUrl: (urlPath: string) => Promise<string>;
-    isLocal: (url: string, allowRoot?: boolean) => boolean;
-} | undefined {
+): IRenderMime.IResolver | undefined {
     if (!notebookPath) return undefined;
 
     return {
         async resolveUrl(url: string): Promise<string> {
-            return normalizeLocalPath(url) || url;
+            return normalizeLocalPath(url);
         },
         async getDownloadUrl(urlPath: string): Promise<string> {
-            const normalizedPath = normalizeLocalPath(urlPath);
-            if (!normalizedPath) return urlPath;
-
-            const relativePath = normalizedPath.startsWith('/') ? normalizedPath.slice(1) : normalizedPath;
-            if (!isNotebookLocalPath(relativePath, true)) {
-                return urlPath;
-            }
-            return buildNotebookAssetUrl(sessionId, relativePath);
+            return buildNotebookAssetUrl(sessionId, urlPath);
         },
         isLocal(url: string, allowRoot = false): boolean {
             return isNotebookLocalPath(url, allowRoot);
@@ -517,6 +521,32 @@ function normalizeLocalPath(url: string): string {
         return decodeURIComponent(withoutQuery);
     } catch {
         return withoutQuery;
+    }
+}
+
+function disposeRenderer(
+    renderer: ReturnType<RenderMimeRegistry['createRenderer']> | null,
+    host: HTMLElement
+): void {
+    if (!renderer) return;
+
+    try {
+        if (renderer.isAttached && renderer.node.isConnected) {
+            Widget.detach(renderer);
+        } else if (renderer.node.parentElement === host) {
+            host.removeChild(renderer.node);
+        }
+    } catch (err) {
+        console.warn('[MergeNB] Failed to detach rendermime renderer:', err);
+        if (renderer.node.parentElement === host) {
+            host.removeChild(renderer.node);
+        }
+    }
+
+    try {
+        renderer.dispose();
+    } catch (err) {
+        console.warn('[MergeNB] Failed to dispose rendermime renderer:', err);
     }
 }
 
