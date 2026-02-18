@@ -337,8 +337,7 @@ function RenderMimeOutput({
 
     useEffect(() => {
         const host = hostRef.current;
-        if (!host) return;
-
+        if (!host || !host.isConnected) return;
         host.replaceChildren();
         setFallback(null);
 
