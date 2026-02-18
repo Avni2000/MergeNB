@@ -22,9 +22,45 @@ function decodeRowCell(rowCellAttr: string | null): any {
     return JSON.parse(decodeURIComponent(rowCellAttr));
 }
 
+function decodeCellAttr(cellAttr: string | null, context: string): any {
+    if (!cellAttr) {
+        throw new Error(`Missing data-cell attribute on ${context}`);
+    }
+    return JSON.parse(decodeURIComponent(cellAttr));
+}
+
+function normalizeSource(source: unknown): string {
+    if (Array.isArray(source)) {
+        return source.join('');
+    }
+    return typeof source === 'string' ? source : '';
+}
+
 async function waitForText(root: Locator, text: string): Promise<void> {
     const node = root.getByText(text).first();
     await node.waitFor({ timeout: 10000 });
+}
+
+async function assertSvgMarkerRendered(root: Locator, expectedMarker: string): Promise<void> {
+    const svgContainer = root.locator('.cell-output-host .jp-RenderedSVG').first();
+    await svgContainer.waitFor({ timeout: 10000 });
+
+    const inlineSvg = svgContainer.locator('svg');
+    const inlineSvgCount = await inlineSvg.count();
+    if (inlineSvgCount > 0) {
+        const inlineSvgText = (await inlineSvg.first().textContent()) ?? '';
+        if (!inlineSvgText.includes(expectedMarker)) {
+            throw new Error(`Inline SVG missing marker "${expectedMarker}". text="${inlineSvgText}"`);
+        }
+        return;
+    }
+
+    const svgImg = svgContainer.locator('img[src^="data:image/svg+xml"]');
+    await svgImg.first().waitFor({ timeout: 10000 });
+    const svgSrc = (await svgImg.first().getAttribute('src')) ?? '';
+    if (!svgSrc.includes(expectedMarker) && !decodeURIComponent(svgSrc).includes(expectedMarker)) {
+        throw new Error(`SVG data URL missing marker "${expectedMarker}". src prefix="${svgSrc.slice(0, 80)}"`);
+    }
 }
 
 async function assertMarkdownLogoRendered(page: import('playwright').Page): Promise<void> {
@@ -92,6 +128,37 @@ export async function run(): Promise<void> {
             return;
         }
 
+        const richConflictRow = conflictRows.filter({
+            hasText: 'MIME_CONFLICT_OUTPUT_SENTINEL',
+        }).first();
+        await richConflictRow.waitFor({ timeout: 15000 });
+        await richConflictRow.scrollIntoViewIfNeeded();
+
+        const currentConflictCell = decodeCellAttr(
+            await richConflictRow.locator('.current-column .notebook-cell').first().getAttribute('data-cell'),
+            'current conflict column'
+        );
+        const incomingConflictCell = decodeCellAttr(
+            await richConflictRow.locator('.incoming-column .notebook-cell').first().getAttribute('data-cell'),
+            'incoming conflict column'
+        );
+        const currentConflictSource = normalizeSource(currentConflictCell?.source);
+        const incomingConflictSource = normalizeSource(incomingConflictCell?.source);
+        if (currentConflictSource !== incomingConflictSource) {
+            throw new Error('Expected rich MIME conflict row to keep identical source on both branches');
+        }
+        if (!currentConflictSource.includes('MIME_CONFLICT_OUTPUT_SENTINEL')) {
+            throw new Error(`Expected rich MIME conflict row source marker, got "${currentConflictSource}"`);
+        }
+
+        const currentConflictOutputs = richConflictRow.locator('.current-column .cell-outputs').first();
+        const incomingConflictOutputs = richConflictRow.locator('.incoming-column .cell-outputs').first();
+        await currentConflictOutputs.waitFor({ timeout: 10000 });
+        await incomingConflictOutputs.waitFor({ timeout: 10000 });
+        await assertSvgMarkerRendered(currentConflictOutputs, 'SVG_CONFLICT_CURRENT');
+        await assertSvgMarkerRendered(incomingConflictOutputs, 'SVG_CONFLICT_INCOMING');
+        console.log('✓ Same MIME type with different SVG payloads surfaced as rich conflict output');
+
         const mimeRow = page.locator('.merge-row.identical-row').filter({
             hasText: 'MIME_OUTPUT_SENTINEL',
         }).first();
@@ -127,23 +194,7 @@ export async function run(): Promise<void> {
         await pngImage.first().waitFor({ timeout: 10000 });
 
         // SVG renderer output
-        const svgContainer = outputRoot.locator('.cell-output-host .jp-RenderedSVG').first();
-        await svgContainer.waitFor({ timeout: 10000 });
-        const inlineSvg = svgContainer.locator('svg');
-        const inlineSvgCount = await inlineSvg.count();
-        if (inlineSvgCount > 0) {
-            const inlineSvgText = (await inlineSvg.first().textContent()) ?? '';
-            if (!inlineSvgText.includes('SVG_RENDER_OK')) {
-                throw new Error(`Inline SVG did not contain expected marker. text="${inlineSvgText}"`);
-            }
-        } else {
-            const svgImg = svgContainer.locator('img[src^="data:image/svg+xml"]');
-            await svgImg.first().waitFor({ timeout: 10000 });
-            const svgSrc = (await svgImg.first().getAttribute('src')) ?? '';
-            if (!svgSrc.includes('SVG_RENDER_OK') && !decodeURIComponent(svgSrc).includes('SVG_RENDER_OK')) {
-                throw new Error(`SVG data-URL does not contain expected marker. src prefix: "${svgSrc.slice(0, 80)}"`);
-            }
-        }
+        await assertSvgMarkerRendered(outputRoot, 'SVG_RENDER_OK');
 
         // JSON renderer output
         await waitForText(outputRoot, 'JSON_RENDER_OK');

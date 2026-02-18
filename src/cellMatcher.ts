@@ -154,6 +154,32 @@ function computeCellSimilarity(cell1: NotebookCell, cell2: NotebookCell): number
 // Output + Context Similarity
 // ============================================================================
 
+function stableStringifyForOutputSimilarity(value: unknown): string {
+    if (value === undefined) return 'undefined';
+    if (value === null) return 'null';
+    const t = typeof value;
+    if (t === 'string' || t === 'number' || t === 'boolean') return JSON.stringify(value);
+
+    if (Array.isArray(value)) {
+        return `[${value.map(stableStringifyForOutputSimilarity).join(',')}]`;
+    }
+
+    if (t === 'object') {
+        const obj = value as Record<string, unknown>;
+        const keys = Object.keys(obj).sort();
+        return `{${keys.map(key => `${JSON.stringify(key)}:${stableStringifyForOutputSimilarity(obj[key])}`).join(',')}}`;
+    }
+
+    return JSON.stringify(String(value));
+}
+
+function normalizeMimeDataValue(value: unknown): unknown {
+    if (Array.isArray(value) && value.every(item => typeof item === 'string')) {
+        return value.join('');
+    }
+    return value;
+}
+
 function compareOutputApproximate(x: Record<string, unknown>, y: Record<string, unknown>): boolean {
     if (!x || !y) return x === y;
     if (x.output_type !== y.output_type) return false;
@@ -177,11 +203,19 @@ function compareOutputApproximate(x: Record<string, unknown>, y: Record<string, 
         if (xKeys.size !== yKeys.size) return false;
         for (const key of xKeys) {
             if (!yKeys.has(key)) return false;
-            if (!key.startsWith('text/')) continue;
+            const xValue = normalizeMimeDataValue(xData[key]);
+            const yValue = normalizeMimeDataValue(yData[key]);
 
-            const xValue = Array.isArray(xData[key]) ? (xData[key] as string[]).join('') : String(xData[key]);
-            const yValue = Array.isArray(yData[key]) ? (yData[key] as string[]).join('') : String(yData[key]);
-            if (!compareStringsApproximate(xValue, yValue, 0.7, 10000)) return false;
+            if (key.startsWith('text/')) {
+                const xText = typeof xValue === 'string' ? xValue : stableStringifyForOutputSimilarity(xValue);
+                const yText = typeof yValue === 'string' ? yValue : stableStringifyForOutputSimilarity(yValue);
+                if (!compareStringsApproximate(xText, yText, 0.7, 10000)) return false;
+                continue;
+            }
+
+            if (stableStringifyForOutputSimilarity(xValue) !== stableStringifyForOutputSimilarity(yValue)) {
+                return false;
+            }
         }
         return true;
     }
