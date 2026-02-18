@@ -86,9 +86,9 @@ export async function run(): Promise<void> {
 
         await assertMarkdownLogoRendered(page);
         console.log('✓ Markdown local SVG asset rendered through notebook-asset endpoint');
+        await assertMarkdownKatexRendered(page);
+        console.log('✓ Markdown KaTeX content rendered');
         if (mode === 'markdownOnly') {
-            await assertMarkdownKatexRendered(page);
-            console.log('✓ Markdown KaTeX content rendered');
             return;
         }
 
