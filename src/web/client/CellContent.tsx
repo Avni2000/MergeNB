@@ -142,7 +142,7 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
 
         let disposed = false;
         let renderer: ReturnType<RenderMimeRegistry['createRenderer']> | null = null;
-        let model: MimeModel | null = null;
+        let model: (MimeModel & { dispose?: () => void }) | null = null;
 
         try {
             model = new MimeModel({
@@ -157,6 +157,8 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
                 console.warn('[MergeNB] Failed to render markdown via rendermime:', err);
                 if (!disposed) {
                     disposeRenderer(renderer, host);
+                    model?.dispose?.();
+                    model = null;
                     renderer = null;
                     setFallback(source);
                 }
@@ -164,6 +166,8 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
         } catch (err) {
             console.warn('[MergeNB] Failed to initialize rendermime markdown renderer:', err);
             disposeRenderer(renderer, host);
+            model?.dispose?.();
+            model = null;
             setFallback(source);
             return;
         }
@@ -171,6 +175,8 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
         return () => {
             disposed = true;
             disposeRenderer(renderer, host);
+            model?.dispose?.();
+            model = null;
             host.replaceChildren();
         };
     }, [source, renderMimeRegistry]);
