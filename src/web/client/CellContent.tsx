@@ -158,12 +158,15 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
                 if (!disposed) {
                     disposeRenderer(renderer, host);
                     renderer = null;
+                    model?.dispose();
+                    model = null;
                     setFallback(source);
                 }
             });
         } catch (err) {
             console.warn('[MergeNB] Failed to initialize rendermime markdown renderer:', err);
             disposeRenderer(renderer, host);
+            model?.dispose();
             setFallback(source);
             return;
         }
@@ -171,6 +174,7 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
         return () => {
             disposed = true;
             disposeRenderer(renderer, host);
+            model?.dispose();
             host.replaceChildren();
         };
     }, [source, renderMimeRegistry]);
