@@ -165,12 +165,12 @@ export async function run(): Promise<void> {
     } finally {
         await mergeNBConfig.update(
             'ui.hideNonConflictOutputs',
-            previousHideOutputs ?? false,
+            previousHideOutputs,
             vscode.ConfigurationTarget.Workspace
         );
         await mergeNBConfig.update(
             'autoResolve.stripOutputs',
-            previousStripOutputs ?? true,
+            previousStripOutputs,
             vscode.ConfigurationTarget.Workspace
         );
         if (page) await page.close();
