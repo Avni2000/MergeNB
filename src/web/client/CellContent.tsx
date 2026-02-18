@@ -12,6 +12,11 @@ import { computeLineDiff, type DiffLine } from '../../diffUtils';
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
+const renderMimeMarkdownParser = {
+    async render(source: string): Promise<string> {
+        return renderMarkdown(source);
+    }
+};
 
 interface CellContentProps {
     cell: NotebookCell | undefined;
@@ -75,7 +80,7 @@ export function CellContentInner({
                 {cellType === 'markdown' && !isConflict ? (
                     <MarkdownContent
                         source={source}
-                        notebookPath={notebookPath}
+                        renderMimeRegistry={renderMimeRegistry}
                     />
                 ) : isConflict && (compareCell || baseCell) ? (
                     // Show conflict diffs as raw text (no markdown rendering)
@@ -101,26 +106,67 @@ export function CellContentInner({
 
 interface MarkdownContentProps {
     source: string;
-    notebookPath?: string;
+    renderMimeRegistry: RenderMimeRegistry;
 }
 
-function MarkdownContent({ source, notebookPath }: MarkdownContentProps): React.ReactElement {
+function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): React.ReactElement {
     const hostRef = useRef<HTMLDivElement>(null);
-    const html = useMemo(() => renderMarkdown(source), [source]);
-    const sessionId = useMemo(getCurrentSessionId, []);
+    const [fallback, setFallback] = useState<string | null>(null);
 
     useEffect(() => {
         const host = hostRef.current;
-        if (!host || !notebookPath) return;
-        rewriteLocalUrlsInElement(host, sessionId);
-    }, [html, notebookPath, sessionId]);
+        if (!host) return;
+
+        host.replaceChildren();
+        setFallback(null);
+
+        let disposed = false;
+        let renderer: ReturnType<RenderMimeRegistry['createRenderer']> | null = null;
+        let model: OutputModel | null = null;
+
+        try {
+            model = new OutputModel({
+                value: {
+                    output_type: 'display_data',
+                    data: { 'text/markdown': source },
+                    metadata: {},
+                } as RenderMimeOutputValue,
+                trusted: false,
+            });
+
+            const preferredMimeType = renderMimeRegistry.preferredMimeType(model.data, 'any') ?? 'text/markdown';
+            renderer = renderMimeRegistry.createRenderer(preferredMimeType);
+
+            void renderer.renderModel(model).then(() => {
+                if (disposed || !hostRef.current || !renderer) return;
+                hostRef.current.replaceChildren(renderer.node);
+            }).catch((err: unknown) => {
+                console.warn('[MergeNB] Failed to render markdown via rendermime:', err);
+                if (!disposed) {
+                    setFallback(source);
+                }
+            });
+        } catch (err) {
+            console.warn('[MergeNB] Failed to initialize markdown rendermime model:', err);
+            setFallback(source);
+            renderer?.dispose();
+            model?.dispose();
+            return;
+        }
+
+        return () => {
+            disposed = true;
+            renderer?.dispose();
+            model?.dispose();
+            host.replaceChildren();
+        };
+    }, [source, renderMimeRegistry]);
 
     return (
-        <div
-            ref={hostRef}
-            className="markdown-content"
-            dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <div className="markdown-content">
+            <div ref={hostRef} className="markdown-content-host" />
+            {fallback && <pre>{fallback}</pre>}
+        </div>
     );
 }
 
@@ -406,6 +452,7 @@ function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
     const registry = new RenderMimeRegistry({
         initialFactories: standardRendererFactories,
         resolver: createNotebookAssetResolver(sessionId, notebookPath),
+        markdownParser: renderMimeMarkdownParser,
     });
     renderMimeRegistryCache.set(cacheKey, registry);
     return registry;
@@ -423,39 +470,22 @@ function createNotebookAssetResolver(
 
     return {
         async resolveUrl(url: string): Promise<string> {
-            return normalizeLocalPath(url);
+            return normalizeLocalPath(url) || url;
         },
         async getDownloadUrl(urlPath: string): Promise<string> {
-            return buildNotebookAssetUrl(sessionId, urlPath);
+            const normalizedPath = normalizeLocalPath(urlPath);
+            if (!normalizedPath) return urlPath;
+
+            const relativePath = normalizedPath.startsWith('/') ? normalizedPath.slice(1) : normalizedPath;
+            if (!isNotebookLocalPath(relativePath, true)) {
+                return urlPath;
+            }
+            return buildNotebookAssetUrl(sessionId, relativePath);
         },
         isLocal(url: string, allowRoot = false): boolean {
             return isNotebookLocalPath(url, allowRoot);
         },
     };
-}
-
-function rewriteLocalUrlsInElement(root: HTMLElement, sessionId: string): void {
-    const srcNodes = root.querySelectorAll<HTMLElement>('[src]');
-    srcNodes.forEach(node => rewriteElementAttribute(node, 'src', sessionId));
-
-    const hrefNodes = root.querySelectorAll<HTMLElement>('[href]');
-    hrefNodes.forEach(node => rewriteElementAttribute(node, 'href', sessionId));
-}
-
-function rewriteElementAttribute(
-    element: HTMLElement,
-    attribute: 'src' | 'href',
-    sessionId: string
-): void {
-    const rawValue = element.getAttribute(attribute);
-    if (!rawValue || !isNotebookLocalPath(rawValue)) return;
-
-    const normalizedPath = normalizeLocalPath(rawValue);
-    if (!normalizedPath) return;
-
-    const hash = extractUrlHash(rawValue);
-    const rewritten = buildNotebookAssetUrl(sessionId, normalizedPath);
-    element.setAttribute(attribute, `${rewritten}${hash}`);
 }
 
 function buildNotebookAssetUrl(sessionId: string, pathValue: string): string {
@@ -488,12 +518,6 @@ function normalizeLocalPath(url: string): string {
     } catch {
         return withoutQuery;
     }
-}
-
-function extractUrlHash(url: string): string {
-    const hashIndex = url.indexOf('#');
-    if (hashIndex < 0) return '';
-    return url.slice(hashIndex);
 }
 
 export const CellContent = React.memo(CellContentInner);

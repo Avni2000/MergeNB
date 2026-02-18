@@ -183,7 +183,10 @@ async function runTest(test: TestDef): Promise<RunResult> {
     const extensionDevelopmentPath = path.resolve(__dirname, '../..');
     const testDir = path.resolve(__dirname, '../../test');
     let workspacePath: string | undefined;
-    const testEnv = { ...process.env, MERGENB_TEST_MODE: 'true' };
+    const testEnv: NodeJS.ProcessEnv = { ...process.env, MERGENB_TEST_MODE: 'true' };
+    // Some environments set this globally, which makes the VS Code binary run
+    // in Node mode and reject normal Electron/Code CLI flags.
+    testEnv.ELECTRON_RUN_AS_NODE = undefined;
     const vscodeVersion = process.env.VSCODE_VERSION?.trim();
     process.env.MERGENB_TEST_MODE = 'true';
 

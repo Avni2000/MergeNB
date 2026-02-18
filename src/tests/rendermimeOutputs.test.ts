@@ -13,6 +13,8 @@ import {
     setupConflictResolver,
 } from './testHarness';
 
+type RenderMimeTestMode = 'full' | 'markdownOnly';
+
 function decodeRowCell(rowCellAttr: string | null): any {
     if (!rowCellAttr) {
         throw new Error('Missing data-cell attribute on identical row');
@@ -23,6 +25,26 @@ function decodeRowCell(rowCellAttr: string | null): any {
 async function waitForText(root: Locator, text: string): Promise<void> {
     const node = root.getByText(text).first();
     await node.waitFor({ timeout: 10000 });
+}
+
+async function assertMarkdownLogoRendered(page: import('playwright').Page): Promise<void> {
+    const markdownLogo = page
+        .locator('.merge-row.identical-row .markdown-content img[alt="logo"]')
+        .first();
+    await markdownLogo.waitFor({ timeout: 15000 });
+
+    const markdownLogoSrc = (await markdownLogo.getAttribute('src')) ?? '';
+    if (!markdownLogoSrc.includes('/notebook-asset?')) {
+        throw new Error(`Expected markdown logo src to use /notebook-asset, got "${markdownLogoSrc}"`);
+    }
+
+    const markdownLogoLoaded = await markdownLogo.evaluate((node) => {
+        const img = node as { complete?: boolean; naturalWidth?: number };
+        return Boolean(img.complete) && Number(img.naturalWidth ?? 0) > 0;
+    });
+    if (!markdownLogoLoaded) {
+        throw new Error('Markdown logo image did not load (naturalWidth=0)');
+    }
 }
 
 export async function run(): Promise<void> {
@@ -39,6 +61,7 @@ export async function run(): Promise<void> {
         await mergeNBConfig.update('autoResolve.stripOutputs', false, vscode.ConfigurationTarget.Workspace);
 
         const config = readTestConfig();
+        const mode: RenderMimeTestMode = config.params?.mode === 'markdownOnly' ? 'markdownOnly' : 'full';
         const session = await setupConflictResolver(config);
         browser = session.browser;
         page = session.page;
@@ -49,22 +72,11 @@ export async function run(): Promise<void> {
             throw new Error('Expected at least one conflict row for MIME fixture');
         }
 
-        // Markdown image rendering: local SVG asset should be rewritten through
-        // the notebook-asset endpoint and successfully loaded by the browser.
-        const markdownLogo = page
-            .locator('.merge-row.identical-row .markdown-content img[alt="logo"]')
-            .first();
-        await markdownLogo.waitFor({ timeout: 15000 });
-        const markdownLogoSrc = (await markdownLogo.getAttribute('src')) ?? '';
-        if (!markdownLogoSrc.includes('/notebook-asset?')) {
-            throw new Error(`Expected markdown logo src to use /notebook-asset, got "${markdownLogoSrc}"`);
-        }
-        const markdownLogoLoaded = await markdownLogo.evaluate((node) => {
-            const img = node as { complete?: boolean; naturalWidth?: number };
-            return Boolean(img.complete) && Number(img.naturalWidth ?? 0) > 0;
-        });
-        if (!markdownLogoLoaded) {
-            throw new Error('Markdown logo image did not load (naturalWidth=0)');
+        await assertMarkdownLogoRendered(page);
+        console.log('✓ Markdown local SVG asset rendered through notebook-asset endpoint');
+
+        if (mode === 'markdownOnly') {
+            return;
         }
 
         const mimeRow = page.locator('.merge-row.identical-row').filter({
@@ -135,7 +147,6 @@ export async function run(): Promise<void> {
             throw new Error(`Expected unsupported MIME fallback text, got "${fallbackText}"`);
         }
 
-        console.log('✓ Markdown local SVG asset rendered through notebook-asset endpoint');
         console.log('✓ Rendermime rendered text/html/png/svg/json outputs');
         console.log('✓ Unsupported MIME output used fallback text');
     } finally {

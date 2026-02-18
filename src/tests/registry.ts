@@ -139,6 +139,13 @@ export const TEST_GROUPS: TestGroup[] = [
         description: 'Validate JupyterLab rendermime output rendering in web UI',
         tests: [
             {
+                id: 'rendermime_markdown_logo_02',
+                description: 'Render markdown local SVG assets (logo.svg) in fixture 02',
+                notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
+                testModule: './rendermimeOutputs.test.js',
+                params: { mode: 'markdownOnly' },
+            },
+            {
                 id: 'rendermime_outputs_05',
                 description: 'Render text/html/png/svg/json outputs and unsupported fallback',
                 notebooks: ['05_mime_base.ipynb', '05_mime_current.ipynb', '05_mime_incoming.ipynb'],
