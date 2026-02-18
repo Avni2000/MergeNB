@@ -12,6 +12,16 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { execSync } from 'child_process';
 
+const IMAGE_EXTENSIONS = new Set([
+    '.png',
+    '.jpg',
+    '.jpeg',
+    '.gif',
+    '.svg',
+    '.webp',
+    '.bmp',
+]);
+
 /** Run a git command in `cwd`, tolerating expected non-zero exits (e.g. merge). */
 function git(cwd: string, ...args: string[]): string {
     const cmd = `git ${args.join(' ')}`;
@@ -59,10 +69,12 @@ export function createMergeConflictRepo(
     git(tmpDir, 'config', 'user.email', '"test@mergenb.test"');
     git(tmpDir, 'config', 'user.name', '"MergeNB Test"');
 
+    copyFixtureImageAssets([baseFile, currentFile, incomingFile], tmpDir);
+
     // Base commit
     console.log(`[RepoSetup] Setting up base commit from ${baseFile}`);
     fs.copyFileSync(baseFile, path.join(tmpDir, 'conflict.ipynb'));
-    git(tmpDir, 'add', 'conflict.ipynb');
+    git(tmpDir, 'add', '.');
     git(tmpDir, 'commit', '-m', '"base"');
 
     const baseBranch = git(tmpDir, 'rev-parse', '--abbrev-ref', 'HEAD').trim();
@@ -100,6 +112,36 @@ export function createMergeConflictRepo(
     }
 
     return tmpDir;
+}
+
+function copyFixtureImageAssets(notebookFiles: string[], targetDir: string): void {
+    const fixtureDirs = new Set(notebookFiles.map(file => path.dirname(file)));
+
+    for (const fixtureDir of fixtureDirs) {
+        let entries: fs.Dirent[] = [];
+        try {
+            entries = fs.readdirSync(fixtureDir, { withFileTypes: true });
+        } catch (err) {
+            console.warn(`[RepoSetup] Could not read fixture directory for assets: ${fixtureDir}`, err);
+            continue;
+        }
+
+        for (const entry of entries) {
+            if (!entry.isFile()) continue;
+            const ext = path.extname(entry.name).toLowerCase();
+            if (!IMAGE_EXTENSIONS.has(ext)) continue;
+
+            const sourcePath = path.join(fixtureDir, entry.name);
+            const targetPath = path.join(targetDir, entry.name);
+
+            try {
+                fs.copyFileSync(sourcePath, targetPath);
+                console.log(`[RepoSetup] Copied fixture asset: ${entry.name}`);
+            } catch (err) {
+                console.warn(`[RepoSetup] Failed to copy fixture asset "${entry.name}":`, err);
+            }
+        }
+    }
 }
 
 /** Write the test config that the VS Code test module reads at runtime. */

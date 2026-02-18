@@ -27,6 +27,7 @@ interface MergeRowProps {
     row: MergeRowType;
     rowIndex: number;
     conflictIndex: number;
+    notebookPath?: string;
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onUpdateContent: (index: number, resolvedContent: string) => void;
@@ -56,6 +57,7 @@ export function MergeRowInner({
     row,
     rowIndex,
     conflictIndex,
+    notebookPath,
     resolutionState,
     onSelectChoice,
     onUpdateContent,
@@ -198,6 +200,7 @@ export function MergeRowInner({
                             cell={cell}
                             cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
                             side="current"
+                            notebookPath={notebookPath}
                             showOutputs={showOutputs}
                         />
                     </div>
@@ -270,6 +273,7 @@ export function MergeRowInner({
                                 cell={row.baseCell}
                                 cellIndex={row.baseCellIndex}
                                 side="base"
+                                notebookPath={notebookPath}
                                 isConflict={true}
                                 compareCell={row.currentCell || row.incomingCell}
                                 showOutputs={showOutputs}
@@ -293,6 +297,7 @@ export function MergeRowInner({
                             cell={row.currentCell}
                             cellIndex={row.currentCellIndex}
                             side="current"
+                            notebookPath={notebookPath}
                             isConflict={true}
                             compareCell={row.incomingCell || row.baseCell}
                             baseCell={row.baseCell}
@@ -317,6 +322,7 @@ export function MergeRowInner({
                             cell={row.incomingCell}
                             cellIndex={row.incomingCellIndex}
                             side="incoming"
+                            notebookPath={notebookPath}
                             isConflict={true}
                             compareCell={row.currentCell || row.baseCell}
                             baseCell={row.baseCell}

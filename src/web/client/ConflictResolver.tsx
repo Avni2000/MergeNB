@@ -786,6 +786,7 @@ export function ConflictResolver({
                                         row={row}
                                         rowIndex={i}
                                         conflictIndex={conflictIdx}
+                                        notebookPath={conflict.filePath}
                                         resolutionState={resolutionState}
                                         onSelectChoice={handleSelectChoice}
                                         onUpdateContent={handleUpdateContent}

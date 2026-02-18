@@ -10,15 +10,14 @@ import { normalizeCellSource } from '../../notebookUtils';
 import { renderMarkdown } from './markdown';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
 
-const renderMimeRegistry = new RenderMimeRegistry({
-    initialFactories: standardRendererFactories,
-});
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
+const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
 
 interface CellContentProps {
     cell: NotebookCell | undefined;
     cellIndex?: number;
     side: 'base' | 'current' | 'incoming';
+    notebookPath?: string;
     isConflict?: boolean;
     compareCell?: NotebookCell;
     baseCell?: NotebookCell;
@@ -32,6 +31,7 @@ export function CellContentInner({
     cell,
     cellIndex,
     side,
+    notebookPath,
     isConflict = false,
     compareCell,
     baseCell,
@@ -50,6 +50,10 @@ export function CellContentInner({
 
     const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
+    const renderMimeRegistry = useMemo(
+        () => getRenderMimeRegistry(notebookPath),
+        [notebookPath]
+    );
     const encodedCell = useMemo(() => encodeURIComponent(JSON.stringify(cell)), [cell]);
 
     const cellClasses = [
@@ -69,7 +73,10 @@ export function CellContentInner({
         >
             <div className="cell-content">
                 {cellType === 'markdown' && !isConflict ? (
-                    <MarkdownContent source={source} />
+                    <MarkdownContent
+                        source={source}
+                        notebookPath={notebookPath}
+                    />
                 ) : isConflict && (compareCell || baseCell) ? (
                     // Show conflict diffs as raw text (no markdown rendering)
                     <DiffContent
@@ -83,7 +90,10 @@ export function CellContentInner({
                 )}
             </div>
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
-                <CellOutputs outputs={cell.outputs} />
+                <CellOutputs
+                    outputs={cell.outputs}
+                    renderMimeRegistry={renderMimeRegistry}
+                />
             )}
         </div>
     );
@@ -91,13 +101,23 @@ export function CellContentInner({
 
 interface MarkdownContentProps {
     source: string;
+    notebookPath?: string;
 }
 
-function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
+function MarkdownContent({ source, notebookPath }: MarkdownContentProps): React.ReactElement {
+    const hostRef = useRef<HTMLDivElement>(null);
     const html = useMemo(() => renderMarkdown(source), [source]);
+    const sessionId = useMemo(getCurrentSessionId, []);
+
+    useEffect(() => {
+        const host = hostRef.current;
+        if (!host || !notebookPath) return;
+        rewriteLocalUrlsInElement(host, sessionId);
+    }, [html, notebookPath, sessionId]);
 
     return (
         <div
+            ref={hostRef}
             className="markdown-content"
             dangerouslySetInnerHTML={{ __html: html }}
         />
@@ -214,23 +234,45 @@ function isWhitespaceOnlyLineChange(line: DiffLine): boolean {
 
 interface CellOutputsProps {
     outputs: CellOutput[];
+    renderMimeRegistry: RenderMimeRegistry;
 }
 
-function CellOutputs({ outputs }: CellOutputsProps): React.ReactElement {
+function CellOutputs({ outputs, renderMimeRegistry }: CellOutputsProps): React.ReactElement {
     return (
         <div className="cell-outputs">
             {outputs.map((output, i) => (
-                <OutputItem key={i} output={output} />
+                <OutputItem
+                    key={i}
+                    output={output}
+                    renderMimeRegistry={renderMimeRegistry}
+                />
             ))}
         </div>
     );
 }
 
-function OutputItem({ output }: { output: CellOutput }): React.ReactElement {
-    return <RenderMimeOutput output={output} />;
+function OutputItem({
+    output,
+    renderMimeRegistry
+}: {
+    output: CellOutput;
+    renderMimeRegistry: RenderMimeRegistry;
+}): React.ReactElement {
+    return (
+        <RenderMimeOutput
+            output={output}
+            renderMimeRegistry={renderMimeRegistry}
+        />
+    );
 }
 
-function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElement {
+function RenderMimeOutput({
+    output,
+    renderMimeRegistry
+}: {
+    output: CellOutput;
+    renderMimeRegistry: RenderMimeRegistry;
+}): React.ReactElement {
     const hostRef = useRef<HTMLDivElement>(null);
     const [fallback, setFallback] = useState<string | null>(null);
 
@@ -289,7 +331,7 @@ function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElemen
             model?.dispose();
             host.replaceChildren();
         };
-    }, [output]);
+    }, [output, renderMimeRegistry]);
 
     return (
         <div className="cell-output-item">
@@ -347,6 +389,111 @@ function getOutputTextFallback(output: CellOutput): string {
     }
 
     return '[Unsupported output]';
+}
+
+function getCurrentSessionId(): string {
+    if (typeof window === 'undefined') return 'default';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('session') || 'default';
+}
+
+function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
+    const sessionId = getCurrentSessionId();
+    const cacheKey = `${sessionId}::${notebookPath ?? ''}`;
+    const cached = renderMimeRegistryCache.get(cacheKey);
+    if (cached) return cached;
+
+    const registry = new RenderMimeRegistry({
+        initialFactories: standardRendererFactories,
+        resolver: createNotebookAssetResolver(sessionId, notebookPath),
+    });
+    renderMimeRegistryCache.set(cacheKey, registry);
+    return registry;
+}
+
+function createNotebookAssetResolver(
+    sessionId: string,
+    notebookPath?: string
+): {
+    resolveUrl: (url: string) => Promise<string>;
+    getDownloadUrl: (urlPath: string) => Promise<string>;
+    isLocal: (url: string, allowRoot?: boolean) => boolean;
+} | undefined {
+    if (!notebookPath) return undefined;
+
+    return {
+        async resolveUrl(url: string): Promise<string> {
+            return normalizeLocalPath(url);
+        },
+        async getDownloadUrl(urlPath: string): Promise<string> {
+            return buildNotebookAssetUrl(sessionId, urlPath);
+        },
+        isLocal(url: string, allowRoot = false): boolean {
+            return isNotebookLocalPath(url, allowRoot);
+        },
+    };
+}
+
+function rewriteLocalUrlsInElement(root: HTMLElement, sessionId: string): void {
+    const srcNodes = root.querySelectorAll<HTMLElement>('[src]');
+    srcNodes.forEach(node => rewriteElementAttribute(node, 'src', sessionId));
+
+    const hrefNodes = root.querySelectorAll<HTMLElement>('[href]');
+    hrefNodes.forEach(node => rewriteElementAttribute(node, 'href', sessionId));
+}
+
+function rewriteElementAttribute(
+    element: HTMLElement,
+    attribute: 'src' | 'href',
+    sessionId: string
+): void {
+    const rawValue = element.getAttribute(attribute);
+    if (!rawValue || !isNotebookLocalPath(rawValue)) return;
+
+    const normalizedPath = normalizeLocalPath(rawValue);
+    if (!normalizedPath) return;
+
+    const hash = extractUrlHash(rawValue);
+    const rewritten = buildNotebookAssetUrl(sessionId, normalizedPath);
+    element.setAttribute(attribute, `${rewritten}${hash}`);
+}
+
+function buildNotebookAssetUrl(sessionId: string, pathValue: string): string {
+    const params = new URLSearchParams({
+        session: sessionId,
+        path: pathValue,
+    });
+    return `/notebook-asset?${params.toString()}`;
+}
+
+function isNotebookLocalPath(url: string, allowRoot = false): boolean {
+    const normalized = normalizeLocalPath(url);
+    if (!normalized) return false;
+    if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(normalized)) return false;
+    if (normalized.startsWith('//')) return false;
+    if (!allowRoot && normalized.startsWith('/')) return false;
+    return true;
+}
+
+function normalizeLocalPath(url: string): string {
+    const trimmed = url.trim();
+    if (!trimmed || trimmed.startsWith('#')) return '';
+
+    const withoutHash = trimmed.split('#', 1)[0];
+    const withoutQuery = withoutHash.split('?', 1)[0];
+    if (!withoutQuery) return '';
+
+    try {
+        return decodeURIComponent(withoutQuery);
+    } catch {
+        return withoutQuery;
+    }
+}
+
+function extractUrlHash(url: string): string {
+    const hashIndex = url.indexOf('#');
+    if (hashIndex < 0) return '';
+    return url.slice(hashIndex);
 }
 
 export const CellContent = React.memo(CellContentInner);

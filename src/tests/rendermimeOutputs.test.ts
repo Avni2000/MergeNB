@@ -49,6 +49,24 @@ export async function run(): Promise<void> {
             throw new Error('Expected at least one conflict row for MIME fixture');
         }
 
+        // Markdown image rendering: local SVG asset should be rewritten through
+        // the notebook-asset endpoint and successfully loaded by the browser.
+        const markdownLogo = page
+            .locator('.merge-row.identical-row .markdown-content img[alt="logo"]')
+            .first();
+        await markdownLogo.waitFor({ timeout: 15000 });
+        const markdownLogoSrc = (await markdownLogo.getAttribute('src')) ?? '';
+        if (!markdownLogoSrc.includes('/notebook-asset?')) {
+            throw new Error(`Expected markdown logo src to use /notebook-asset, got "${markdownLogoSrc}"`);
+        }
+        const markdownLogoLoaded = await markdownLogo.evaluate((node) => {
+            const img = node as { complete?: boolean; naturalWidth?: number };
+            return Boolean(img.complete) && Number(img.naturalWidth ?? 0) > 0;
+        });
+        if (!markdownLogoLoaded) {
+            throw new Error('Markdown logo image did not load (naturalWidth=0)');
+        }
+
         const mimeRow = page.locator('.merge-row.identical-row').filter({
             hasText: 'MIME_OUTPUT_SENTINEL',
         }).first();
@@ -83,14 +101,23 @@ export async function run(): Promise<void> {
         const pngImage = outputRoot.locator('.cell-output-host .jp-RenderedImage img[src^="data:image/png;base64,"]');
         await pngImage.first().waitFor({ timeout: 10000 });
 
-        // SVG renderer output — JupyterLab 4.x renders SVG as <img data-URL>,
-        // not as an inline <svg> element. Verify the img element exists and that
-        // its src is a data-URL containing the expected SVG markup.
-        const svgImg = outputRoot.locator('.cell-output-host .jp-RenderedSVG img[src^="data:image/svg+xml"]');
-        await svgImg.first().waitFor({ timeout: 10000 });
-        const svgSrc = (await svgImg.first().getAttribute('src')) ?? '';
-        if (!svgSrc.includes('SVG_RENDER_OK') && !decodeURIComponent(svgSrc).includes('SVG_RENDER_OK')) {
-            throw new Error(`SVG data-URL does not contain expected marker. src prefix: "${svgSrc.slice(0, 80)}"`);
+        // SVG renderer output
+        const svgContainer = outputRoot.locator('.cell-output-host .jp-RenderedSVG').first();
+        await svgContainer.waitFor({ timeout: 10000 });
+        const inlineSvg = svgContainer.locator('svg');
+        const inlineSvgCount = await inlineSvg.count();
+        if (inlineSvgCount > 0) {
+            const inlineSvgText = (await inlineSvg.first().textContent()) ?? '';
+            if (!inlineSvgText.includes('SVG_RENDER_OK')) {
+                throw new Error(`Inline SVG did not contain expected marker. text="${inlineSvgText}"`);
+            }
+        } else {
+            const svgImg = svgContainer.locator('img[src^="data:image/svg+xml"]');
+            await svgImg.first().waitFor({ timeout: 10000 });
+            const svgSrc = (await svgImg.first().getAttribute('src')) ?? '';
+            if (!svgSrc.includes('SVG_RENDER_OK') && !decodeURIComponent(svgSrc).includes('SVG_RENDER_OK')) {
+                throw new Error(`SVG data-URL does not contain expected marker. src prefix: "${svgSrc.slice(0, 80)}"`);
+            }
         }
 
         // JSON renderer output
@@ -108,6 +135,7 @@ export async function run(): Promise<void> {
             throw new Error(`Expected unsupported MIME fallback text, got "${fallbackText}"`);
         }
 
+        console.log('✓ Markdown local SVG asset rendered through notebook-asset endpoint');
         console.log('✓ Rendermime rendered text/html/png/svg/json outputs');
         console.log('✓ Unsupported MIME output used fallback text');
     } finally {
