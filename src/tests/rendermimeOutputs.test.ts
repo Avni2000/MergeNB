@@ -159,6 +159,33 @@ export async function run(): Promise<void> {
         await assertSvgMarkerRendered(incomingConflictOutputs, 'SVG_CONFLICT_INCOMING');
         console.log('✓ Same MIME type with different SVG payloads surfaced as rich conflict output');
 
+        const inputPayloadConflictRow = conflictRows.filter({
+            hasText: 'MIME_INPUT_PAYLOAD_CONFLICT_SENTINEL',
+        }).first();
+        await inputPayloadConflictRow.waitFor({ timeout: 15000 });
+        await inputPayloadConflictRow.scrollIntoViewIfNeeded();
+
+        const currentInputConflictCell = decodeCellAttr(
+            await inputPayloadConflictRow.locator('.current-column .notebook-cell').first().getAttribute('data-cell'),
+            'current input payload conflict column'
+        );
+        const incomingInputConflictCell = decodeCellAttr(
+            await inputPayloadConflictRow.locator('.incoming-column .notebook-cell').first().getAttribute('data-cell'),
+            'incoming input payload conflict column'
+        );
+        const currentInputConflictSource = normalizeSource(currentInputConflictCell?.source);
+        const incomingInputConflictSource = normalizeSource(incomingInputConflictCell?.source);
+        if (currentInputConflictSource === incomingInputConflictSource) {
+            throw new Error('Expected input payload conflict row to preserve differing source payloads');
+        }
+        if (!currentInputConflictSource.includes('INPUT_SVG_CURRENT')) {
+            throw new Error(`Expected current input payload marker, got "${currentInputConflictSource}"`);
+        }
+        if (!incomingInputConflictSource.includes('INPUT_SVG_INCOMING')) {
+            throw new Error(`Expected incoming input payload marker, got "${incomingInputConflictSource}"`);
+        }
+        console.log('✓ Input payload differences surfaced as source conflict');
+
         const mimeRow = page.locator('.merge-row.identical-row').filter({
             hasText: 'MIME_OUTPUT_SENTINEL',
         }).first();

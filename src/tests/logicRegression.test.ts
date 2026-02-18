@@ -76,6 +76,59 @@ export async function run(): Promise<void> {
     );
 
     // ---------------------------------------------------------------------
+    // Regression: source/input payload differences must remain conflicts even
+    // when stripOutputs is enabled (the default path).
+    // ---------------------------------------------------------------------
+    const inputBase: NotebookCell = {
+        cell_type: 'code',
+        source: "svg_payload = \"<svg><text>INPUT_BASE</text></svg>\"",
+        metadata: {},
+        execution_count: null,
+        outputs: [],
+    };
+    const inputCurrent: NotebookCell = {
+        cell_type: 'code',
+        source: "svg_payload = \"<svg><text>INPUT_CURRENT</text></svg>\"",
+        metadata: {},
+        execution_count: null,
+        outputs: [],
+    };
+    const inputIncoming: NotebookCell = {
+        cell_type: 'code',
+        source: "svg_payload = \"<svg><text>INPUT_INCOMING</text></svg>\"",
+        metadata: {},
+        execution_count: null,
+        outputs: [],
+    };
+
+    const inputMappings: CellMapping[] = [
+        {
+            baseIndex: 0,
+            currentIndex: 0,
+            incomingIndex: 0,
+            matchConfidence: 1,
+            baseCell: inputBase,
+            currentCell: inputCurrent,
+            incomingCell: inputIncoming,
+        },
+    ];
+
+    const inputConflicts = analyzeSemanticConflictsFromMappings(inputMappings, {
+        autoResolveExecutionCount: true,
+        autoResolveKernelVersion: true,
+        stripOutputs: true,
+        autoResolveWhitespace: true,
+        hideNonConflictOutputs: true,
+        enableUndoRedoHotkeys: true,
+        showBaseColumn: true,
+        theme: 'light',
+    });
+    assert.ok(
+        inputConflicts.some(c => c.type === 'cell-modified'),
+        'Expected cell-modified conflict for differing input payload sources'
+    );
+
+    // ---------------------------------------------------------------------
     // Regression: renumbering must update execute_result.execution_count too
     // ---------------------------------------------------------------------
     const notebook: Notebook = {
