@@ -1,29 +1,50 @@
 /**
  * @file registry.ts
- * @description Test registry with grouped test definitions.
+ * @description Test registry with grouped runnable definitions.
  *
- * Tests are organized into groups (e.g. "Per-Cell Resolution", "Take All Buttons")
+ * Entries are organized into groups (e.g. "Per-Cell Resolution", "Take All Buttons")
  * for easy selection via CLI flags or the interactive TUI picker.
  *
- * To add a new test:
+ * To add a new automated test:
  *   1. Create the test module (export async function run(): Promise<void>)
  *   2. Add a TestDef entry under the appropriate group (or create a new group)
+ *   3. Set `testModule`
+ *
+ * To add a new manual sandbox:
+ *   1. Add a TestDef entry with `kind: 'manual'`
+ *   2. Provide the notebook triplet to seed the temporary conflict repo
  *   3. That's it — the runner picks it up automatically.
  */
 
-/** A single integration test case. */
-export interface TestDef {
+/** Shared fields for every runnable entry. */
+interface TestBase {
     /** Unique identifier (used on CLI: --test <id>) */
     id: string;
     /** Short human-readable description shown in the picker */
     description: string;
     /** Notebook triplet: [base, current, incoming] relative to test/ */
     notebooks: [string, string, string];
+    /** If false, `--all` will skip this entry. */
+    includeInAll?: boolean;
+}
+
+/** A VS Code integration test case. */
+export interface AutomatedTestDef extends TestBase {
+    /** Defaults to automated when omitted. */
+    kind?: 'automated';
     /** Compiled test module path relative to out/tests/ */
     testModule: string;
     /** Optional params forwarded to the test via the config file */
     params?: Record<string, unknown>;
 }
+
+/** A manual sandbox launcher (creates conflict repo + opens VS Code). */
+export interface ManualSandboxDef extends TestBase {
+    kind: 'manual';
+}
+
+/** A runnable entry from the test registry. */
+export type TestDef = AutomatedTestDef | ManualSandboxDef;
 
 /** A logical group of related tests. */
 export interface TestGroup {
@@ -166,6 +187,34 @@ export const TEST_GROUPS: TestGroup[] = [
             },
         ],
     },
+    {
+        id: 'manual',
+        name: 'Manual Sandbox',
+        description: 'Open throwaway merge sandbox repos for exploratory notebook resolution',
+        tests: [
+            {
+                id: 'manual_02',
+                description: 'Manual sandbox with 02 fixtures',
+                notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
+                kind: 'manual',
+                includeInAll: false,
+            },
+            {
+                id: 'manual_03',
+                description: 'Manual sandbox with 03 fixtures',
+                notebooks: ['03_base.ipynb', '03_current.ipynb', '03_incoming.ipynb'],
+                kind: 'manual',
+                includeInAll: false,
+            },
+            {
+                id: 'manual_04',
+                description: 'Manual sandbox with 04 fixtures',
+                notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
+                kind: 'manual',
+                includeInAll: false,
+            },
+        ],
+    },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -173,6 +222,21 @@ export const TEST_GROUPS: TestGroup[] = [
 /** Flatten all tests from all groups into a single list. */
 export function allTests(): TestDef[] {
     return TEST_GROUPS.flatMap(g => g.tests);
+}
+
+/** Tests that should be included by the `--all` flag. */
+export function testsForAll(): TestDef[] {
+    return allTests().filter(t => t.includeInAll !== false);
+}
+
+/** Type guard for manual sandbox entries. */
+export function isManualTest(test: TestDef): test is ManualSandboxDef {
+    return test.kind === 'manual';
+}
+
+/** Type guard for automated integration test entries. */
+export function isAutomatedTest(test: TestDef): test is AutomatedTestDef {
+    return !isManualTest(test);
 }
 
 /** Look up a single test by its id (across all groups). */
