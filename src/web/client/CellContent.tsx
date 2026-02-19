@@ -48,6 +48,7 @@ interface CellContentProps {
     baseCell?: NotebookCell;
     diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
+    showCellHeaders?: boolean;
     onDragStart?: (e: React.DragEvent) => void;
     onDragEnd?: () => void;
 }
@@ -62,6 +63,7 @@ export function CellContentInner({
     baseCell,
     diffMode = 'base',
     showOutputs = true,
+    showCellHeaders = false,
     onDragStart,
     onDragEnd,
 }: CellContentProps): React.ReactElement {
@@ -96,6 +98,17 @@ export function CellContentInner({
             data-cell={encodedCell}
             data-cell-type={cellType}
         >
+            {showCellHeaders && (
+                <div className="cell-header" data-testid="cell-header">
+                    <span className="cell-header-type">{cellType}</span>
+                    {cellIndex !== undefined && (
+                        <span className="cell-header-index">Cell {cellIndex + 1}</span>
+                    )}
+                    {cellType === 'code' && cell.execution_count != null && (
+                        <span className="cell-header-exec">In [{cell.execution_count}]</span>
+                    )}
+                </div>
+            )}
             <div className="cell-content">
                 {cellType === 'markdown' && !isConflict ? (
                     <MarkdownContent

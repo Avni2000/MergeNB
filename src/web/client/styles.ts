@@ -455,6 +455,27 @@ body {
     flex-direction: column;
 }
 
+.cell-header {
+    display: flex;
+    gap: 8px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-primary);
+    background: var(--bg-secondary);
+}
+
+.cell-header-type {
+    text-transform: capitalize;
+    font-weight: 600;
+}
+
+.cell-header-index,
+.cell-header-exec {
+    opacity: 0.7;
+}
+
 .cell-content {
     font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
     font-size: 13px;

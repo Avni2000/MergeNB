@@ -52,6 +52,7 @@ export interface UnifiedConflictData {
     semanticConflict?: import('../../types').NotebookSemanticConflict;
     autoResolveResult?: AutoResolveResult;
     hideNonConflictOutputs?: boolean;
+    showCellHeaders?: boolean;
     currentBranch?: string;
     incomingBranch?: string;
     enableUndoRedoHotkeys?: boolean;

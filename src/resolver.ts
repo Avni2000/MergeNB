@@ -271,6 +271,7 @@ export class NotebookConflictResolver {
             semanticConflict: filteredSemanticConflict,
             autoResolveResult: autoResolveResult,
             hideNonConflictOutputs: settings.hideNonConflictOutputs,
+            showCellHeaders: settings.showCellHeaders,
             enableUndoRedoHotkeys: settings.enableUndoRedoHotkeys,
             showBaseColumn: settings.showBaseColumn,
             theme: settings.theme

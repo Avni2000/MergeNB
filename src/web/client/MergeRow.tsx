@@ -35,6 +35,7 @@ interface MergeRowProps {
     isDragging?: boolean;
     showOutputs?: boolean;
     showBaseColumn?: boolean;
+    showCellHeaders?: boolean;
     enableCellDrag?: boolean;
     rowDragEnabled?: boolean;
     onRowDragStart?: (rowIndex: number) => void;
@@ -65,6 +66,7 @@ export function MergeRowInner({
     isDragging = false,
     showOutputs = true,
     showBaseColumn = true,
+    showCellHeaders = false,
     enableCellDrag = true,
     rowDragEnabled = true,
     onRowDragStart,
@@ -202,6 +204,7 @@ export function MergeRowInner({
                             side="current"
                             notebookPath={notebookPath}
                             showOutputs={showOutputs}
+                            showCellHeaders={showCellHeaders}
                         />
                     </div>
                 </div>
@@ -277,6 +280,7 @@ export function MergeRowInner({
                                 isConflict={true}
                                 compareCell={row.currentCell || row.incomingCell}
                                 showOutputs={showOutputs}
+                                showCellHeaders={showCellHeaders}
                                 onDragStart={canDragCell ? handleBaseCellDragStart : undefined}
                                 onDragEnd={canDragCell ? onCellDragEnd : undefined}
                             />
@@ -303,6 +307,7 @@ export function MergeRowInner({
                             baseCell={row.baseCell}
                             diffMode={diffMode}
                             showOutputs={showOutputs}
+                            showCellHeaders={showCellHeaders}
                             onDragStart={canDragCell ? handleCurrentCellDragStart : undefined}
                             onDragEnd={canDragCell ? onCellDragEnd : undefined}
                         />
@@ -328,6 +333,7 @@ export function MergeRowInner({
                             baseCell={row.baseCell}
                             diffMode={diffMode}
                             showOutputs={showOutputs}
+                            showCellHeaders={showCellHeaders}
                             onDragStart={canDragCell ? handleIncomingCellDragStart : undefined}
                             onDragEnd={canDragCell ? onCellDragEnd : undefined}
                         />

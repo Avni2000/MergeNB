@@ -193,6 +193,7 @@ export function ConflictResolver({
     const canRedo = history.index < history.entries.length - 1;
     const enableUndoRedoHotkeys = conflict.enableUndoRedoHotkeys ?? true;
     const showBaseColumn = conflict.showBaseColumn ?? false;
+    const showCellHeaders = conflict.showCellHeaders ?? false;
     const isMac = useMemo(() => /Mac|iPod|iPhone|iPad/.test(navigator.platform), []);
     const undoShortcutLabel = isMac ? 'Cmd+Z' : 'Ctrl+Z';
     const redoShortcutLabel = isMac ? 'Cmd+Shift+Z' : 'Ctrl+Shift+Z';
@@ -794,6 +795,7 @@ export function ConflictResolver({
                                         isDragging={draggedRowIndex === i || draggedCell?.rowIndex === i}
                                         showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
                                         showBaseColumn={showBaseColumn}
+                                        showCellHeaders={showCellHeaders}
                                         enableCellDrag={allowCellDrag}
                                         rowDragEnabled={allowRowDrag}
                                         onRowDragStart={allowRowDrag ? handleRowDragStart : undefined}

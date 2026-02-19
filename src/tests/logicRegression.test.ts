@@ -65,10 +65,11 @@ export async function run(): Promise<void> {
         autoResolveKernelVersion: true,
         stripOutputs: true,
         autoResolveWhitespace: true,
-        hideNonConflictOutputs: true,
+        hideNonConflictOutputs: false,
+        showCellHeaders: false,
         enableUndoRedoHotkeys: true,
         showBaseColumn: true,
-        theme: 'light',
+        theme: 'dark',
     });
     assert.ok(
         conflicts.some(c => c.type === 'metadata-changed'),
@@ -118,10 +119,11 @@ export async function run(): Promise<void> {
         autoResolveKernelVersion: true,
         stripOutputs: true,
         autoResolveWhitespace: true,
-        hideNonConflictOutputs: true,
+        hideNonConflictOutputs: false,
+        showCellHeaders: false,
         enableUndoRedoHotkeys: true,
         showBaseColumn: true,
-        theme: 'light',
+        theme: 'dark',
     });
     assert.ok(
         inputConflicts.some(c => c.type === 'cell-modified'),

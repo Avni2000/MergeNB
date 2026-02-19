@@ -29,6 +29,8 @@ export interface UnifiedConflict {
     autoResolveResult?: AutoResolveResult;
     /** Whether to hide outputs for non-conflicted cells */
     hideNonConflictOutputs?: boolean;
+    /** Whether to show cell type, execution count, and cell index headers */
+    showCellHeaders?: boolean;
     /** Whether undo/redo hotkeys are enabled in the web UI */
     enableUndoRedoHotkeys?: boolean;
     /** Whether to show the base column in the 3-way merge view */
