@@ -209,11 +209,21 @@ export async function run(): Promise<void> {
         await waitForText(outputRoot, 'PLAIN_ARRAY_LINE_2');
 
         // HTML renderer output
-        const htmlNode = outputRoot.locator('.cell-output-host .jp-RenderedHTMLCommon [data-mime-test="html-array"]');
-        await htmlNode.first().waitFor({ timeout: 10000 });
-        const htmlText = (await htmlNode.first().textContent())?.trim() || '';
-        if (htmlText !== 'HTML_RENDER_OK') {
+        const htmlNode = outputRoot
+            .locator('.cell-output-host .jp-RenderedHTMLCommon')
+            .filter({ hasText: 'HTML_RENDER_OK' })
+            .first();
+        await htmlNode.waitFor({ timeout: 10000 });
+        const htmlText = ((await htmlNode.textContent()) ?? '').trim();
+        if (!htmlText.includes('HTML_RENDER_OK')) {
             throw new Error(`Expected HTML renderer marker, got "${htmlText}"`);
+        }
+        const htmlScriptExecuted = await page.evaluate(() => {
+            const win = window as Window & { __MERGENB_HTML_SCRIPT_EXECUTED__?: boolean };
+            return Boolean(win.__MERGENB_HTML_SCRIPT_EXECUTED__);
+        });
+        if (htmlScriptExecuted) {
+            throw new Error('Inline HTML script executed from output payload');
         }
 
         // PNG image renderer output

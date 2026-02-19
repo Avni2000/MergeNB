@@ -367,20 +367,30 @@ function RenderMimeOutput({
         try {
             const normalizedOutput = normalizeOutputForRenderMime(output) as RenderMimeOutputValue;
 
-            // Use trusted: true so that rich MIME types (text/html, image/svg+xml,
-            // application/json, etc.) are not silently downgraded or filtered.
-            // Outputs come from the user's own local git repository, so the threat
-            // surface is equivalent to opening a notebook in a local Jupyter server.
-            model = new OutputModel({
+            const untrustedModel = new OutputModel({
                 value: normalizedOutput,
-                trusted: true,
+                trusted: false,
             });
 
-            const preferredMimeType = renderMimeRegistry.preferredMimeType(model.data, 'any');
+            const preferredMimeType = renderMimeRegistry.preferredMimeType(untrustedModel.data, 'any');
             if (!preferredMimeType) {
                 setFallback(getOutputTextFallback(output));
-                model.dispose();
+                untrustedModel.dispose();
                 return;
+            }
+
+            const trusted = shouldTrustOutputMimeType(preferredMimeType);
+            if (trusted) {
+                // Jupyter's HTML renderer evaluates inline scripts for trusted output.
+                // Keep HTML and other rich outputs untrusted; only SVG requires trust
+                // to avoid rendermime's "Cannot display an untrusted SVG" fallback.
+                untrustedModel.dispose();
+                model = new OutputModel({
+                    value: normalizedOutput,
+                    trusted: true,
+                });
+            } else {
+                model = untrustedModel;
             }
 
             renderer = renderMimeRegistry.createRenderer(preferredMimeType);
@@ -467,6 +477,10 @@ function getOutputTextFallback(output: CellOutput): string {
     }
 
     return '[Unsupported output]';
+}
+
+function shouldTrustOutputMimeType(mimeType: string): boolean {
+    return mimeType === 'image/svg+xml';
 }
 
 function getCurrentSessionId(): string {
