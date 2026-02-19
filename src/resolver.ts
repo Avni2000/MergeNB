@@ -372,14 +372,23 @@ export class NotebookConflictResolver {
         // Detect a uniform "take all" action (e.g. all base/current/incoming).
         // If all non-delete choices are the same side, prefer that side for ordering
         // and for unmatched non-conflict rows.
-        const nonDeleteChoices = resolvedRows
+        const conflictChoices = resolvedRows
             .map(r => r.resolution?.choice)
-            .filter((c): c is 'base' | 'current' | 'incoming' => !!c && c !== 'delete');
+            .filter((c): c is ResolutionChoice => !!c);
+        const nonDeleteChoices = conflictChoices
+            .filter((c): c is 'base' | 'current' | 'incoming' => c !== 'delete');
 
+        // Treat as "take all side" only when multiple conflict rows were resolved
+        // to the same non-delete branch. With a single conflict row this heuristic
+        // causes false positives and rewrites non-conflict rows unexpectedly.
         const uniqueChoices = new Set(nonDeleteChoices);
-        const preferredSide = (uniqueChoices.size === 1
-            ? [...uniqueChoices][0]
-            : undefined) as ('base' | 'current' | 'incoming' | undefined);
+        const preferredSide = (
+            conflictChoices.length > 1 &&
+            nonDeleteChoices.length === conflictChoices.length &&
+            uniqueChoices.size === 1
+                ? [...uniqueChoices][0]
+                : undefined
+        ) as ('base' | 'current' | 'incoming' | undefined);
 
         let rowsForResolution = resolvedRows;
         if (preferredSide === 'base' || preferredSide === 'current' || preferredSide === 'incoming') {
