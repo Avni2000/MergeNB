@@ -402,6 +402,8 @@ function RenderMimeOutput({
                 if (!disposed) {
                     disposeRenderer(renderer, host);
                     renderer = null;
+                    model?.dispose();
+                    model = null;
                     setFallback(getOutputTextFallback(output));
                 }
             });
