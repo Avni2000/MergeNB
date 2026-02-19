@@ -264,9 +264,10 @@ export async function run(): Promise<void> {
 
     // ── 3a. autoResolveWhitespace=true → whitespace-only cell-modified is auto-resolved ──
     {
-        const base = makeCodeCell('x = 1\n');
-        const current = makeCodeCell('x = 1\n  ');   // trailing spaces
-        const incoming = makeCodeCell('x = 1');
+        // Trailing spaces on lines - same logical content, different raw bytes
+        const base = makeCodeCell('x = 1\ny = 2');
+        const current = makeCodeCell('x = 1   \ny = 2  ');   // trailing spaces on each line
+        const incoming = makeCodeCell('x = 1\ny = 2');
 
         const nb = makeNotebook([base]);
         const sc = makeSemanticConflict(nb, makeNotebook([current]), makeNotebook([incoming]));
@@ -286,9 +287,9 @@ export async function run(): Promise<void> {
 
     // ── 3b. autoResolveWhitespace=false → whitespace-only cell-modified must remain ──
     {
-        const base = makeCodeCell('x = 1\n');
-        const current = makeCodeCell('x = 1\n  ');
-        const incoming = makeCodeCell('x = 1');
+        const base = makeCodeCell('x = 1\ny = 2');
+        const current = makeCodeCell('x = 1   \ny = 2  ');
+        const incoming = makeCodeCell('x = 1\ny = 2');
 
         const nb = makeNotebook([base]);
         const sc = makeSemanticConflict(nb, makeNotebook([current]), makeNotebook([incoming]));

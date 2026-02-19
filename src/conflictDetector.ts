@@ -293,7 +293,7 @@ export function analyzeSemanticConflictsFromMappings(
 
         // Case 7: Cell exists in all three - check for modifications
         if (baseCell && currentCell && incomingCell) {
-            const conflicts_found = compareCells(baseCell, currentCell, incomingCell, baseIndex, currentIndex, incomingIndex);
+            const conflicts_found = compareCells(baseCell, currentCell, incomingCell, baseIndex, currentIndex, incomingIndex, effectiveSettings);
             conflicts.push(...conflicts_found);
         }
     }
@@ -310,8 +310,10 @@ function compareCells(
     incomingCell: NotebookCell,
     baseIndex?: number,
     currentIndex?: number,
-    incomingIndex?: number
+    incomingIndex?: number,
+    settings?: MergeNBSettings
 ): SemanticConflict[] {
+    const effectiveSettings = settings || getSettings();
     const conflicts: SemanticConflict[] = [];
 
     // Compare source content
@@ -342,37 +344,42 @@ function compareCells(
         const currentExecCount = currentCell.execution_count;
         const incomingExecCount = incomingCell.execution_count;
 
-        if (currentExecCount !== incomingExecCount && 
-            (currentExecCount !== baseExecCount || incomingExecCount !== baseExecCount)) {
-            conflicts.push({
-                type: 'execution-count-changed',
-                baseCellIndex: baseIndex,
-                currentCellIndex: currentIndex,
-                incomingCellIndex: incomingIndex,
-                baseContent: baseCell,
-                currentContent: currentCell,
-                incomingContent: incomingCell,
-                description: `Execution count differs: current=${currentExecCount}, incoming=${incomingExecCount}`
-            });
+        // Only surface execution-count conflicts if the user hasn't opted into always-null.
+        if (!effectiveSettings.autoResolveExecutionCount) {
+            if (currentExecCount !== incomingExecCount && 
+                (currentExecCount !== baseExecCount || incomingExecCount !== baseExecCount)) {
+                conflicts.push({
+                    type: 'execution-count-changed',
+                    baseCellIndex: baseIndex,
+                    currentCellIndex: currentIndex,
+                    incomingCellIndex: incomingIndex,
+                    baseContent: baseCell,
+                    currentContent: currentCell,
+                    incomingContent: incomingCell,
+                    description: `Execution count differs: current=${currentExecCount}, incoming=${incomingExecCount}`
+                });
+            }
         }
 
-        // Compare outputs
-        const baseOutputs = stableStringify(baseCell.outputs || []);
-        const currentOutputs = stableStringify(currentCell.outputs || []);
-        const incomingOutputs = stableStringify(incomingCell.outputs || []);
+        // Only surface output conflicts when we're not stripping outputs.
+        if (!effectiveSettings.stripOutputs) {
+            const baseOutputs = stableStringify(baseCell.outputs || []);
+            const currentOutputs = stableStringify(currentCell.outputs || []);
+            const incomingOutputs = stableStringify(incomingCell.outputs || []);
 
-        if (currentOutputs !== incomingOutputs && 
-            (currentOutputs !== baseOutputs || incomingOutputs !== baseOutputs)) {
-            conflicts.push({
-                type: 'outputs-changed',
-                baseCellIndex: baseIndex,
-                currentCellIndex: currentIndex,
-                incomingCellIndex: incomingIndex,
-                baseContent: baseCell,
-                currentContent: currentCell,
-                incomingContent: incomingCell,
-                description: 'Cell outputs differ between branches'
-            });
+            if (currentOutputs !== incomingOutputs && 
+                (currentOutputs !== baseOutputs || incomingOutputs !== baseOutputs)) {
+                conflicts.push({
+                    type: 'outputs-changed',
+                    baseCellIndex: baseIndex,
+                    currentCellIndex: currentIndex,
+                    incomingCellIndex: incomingIndex,
+                    baseContent: baseCell,
+                    currentContent: currentCell,
+                    incomingContent: incomingCell,
+                    description: 'Cell outputs differ between branches'
+                });
+            }
         }
     }
 
