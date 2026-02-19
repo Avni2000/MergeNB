@@ -161,8 +161,6 @@ Manual testing:
 npm run test:integration -- --group manual
 # or pick one fixture set directly
 node out/tests/runIntegrationTest.js --test manual_02
-# legacy helper wrapper (now backed by the same runner entries)
-bash test/simulate_merge_uu.sh --suite 02
 ```
 
 ## Contributing

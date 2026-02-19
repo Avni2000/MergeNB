@@ -142,6 +142,7 @@
     "pretest:integration:all": "npm run compile && npm run compile-tests",
     "test:integration": "node out/tests/runIntegrationTest.js",
     "test:integration:all": "node out/tests/runIntegrationTest.js --all",
+    "test:integration:manual": "node out/tests/runIntegrationTest.js --group manual",
     "test:integration:list": "npm run compile-tests && node out/tests/runIntegrationTest.js --list"
   },
   "devDependencies": {
