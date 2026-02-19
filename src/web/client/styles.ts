@@ -462,7 +462,7 @@ body {
     font-size: 11px;
     font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
     color: var(--text-secondary);
-    border-bottom: 1px solid var(--border-primary);
+    border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
 }
 
