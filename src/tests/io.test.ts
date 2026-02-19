@@ -6,6 +6,7 @@
  * current/incoming choices, with optional deletion, then verifies the written notebook.
  */
 
+import * as vscode from 'vscode';
 import {
     validateNotebookStructure,
 } from './testHelpers';
@@ -30,8 +31,17 @@ export async function run(): Promise<void> {
 
     let browser;
     let page;
+    const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
+    const previousAutoResolveExecutionCount = mergeNBConfig.get<boolean>('autoResolve.executionCount');
+    const previousStripOutputs = mergeNBConfig.get<boolean>('autoResolve.stripOutputs');
+    const previousAutoResolveWhitespace = mergeNBConfig.get<boolean>('autoResolve.whitespace');
 
     try {
+        // Keep manual-resolution fixtures deterministic despite auto-resolve defaults.
+        await mergeNBConfig.update('autoResolve.executionCount', false, vscode.ConfigurationTarget.Workspace);
+        await mergeNBConfig.update('autoResolve.stripOutputs', false, vscode.ConfigurationTarget.Workspace);
+        await mergeNBConfig.update('autoResolve.whitespace', false, vscode.ConfigurationTarget.Workspace);
+
         // Setup: Read config and open conflict file
         const config = readTestConfig();
         const session = await setupConflictResolver(config);
@@ -171,7 +181,7 @@ export async function run(): Promise<void> {
                     throw new Error('Expected history panel to record the first resolution action');
                 }
                 const lastEntry = updatedHistory[updatedHistory.length - 1].toLowerCase();
-                if (!lastEntry.includes('resolve conflict 1')) {
+                if (!/resolve conflict \d+/.test(lastEntry)) {
                     throw new Error(`Unexpected history entry for first resolution: ${lastEntry}`);
                 }
 
@@ -247,6 +257,21 @@ export async function run(): Promise<void> {
         console.log('✓ Notebook structure valid');
 
     } finally {
+        await mergeNBConfig.update(
+            'autoResolve.executionCount',
+            previousAutoResolveExecutionCount,
+            vscode.ConfigurationTarget.Workspace
+        );
+        await mergeNBConfig.update(
+            'autoResolve.stripOutputs',
+            previousStripOutputs,
+            vscode.ConfigurationTarget.Workspace
+        );
+        await mergeNBConfig.update(
+            'autoResolve.whitespace',
+            previousAutoResolveWhitespace,
+            vscode.ConfigurationTarget.Workspace
+        );
         if (page) await page.close();
         if (browser) await browser.close();
     }

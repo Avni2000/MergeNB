@@ -19,12 +19,19 @@ export function App(): React.ReactElement {
         }
     }, [conflictData?.theme]);
 
-    const handleResolve = (resolutions: ConflictChoice[], markAsResolved: boolean, renumberExecutionCounts: boolean, resolvedRows: ResolvedRow[]) => {
+    const handleResolve = (
+        resolutions: ConflictChoice[],
+        markAsResolved: boolean,
+        renumberExecutionCounts: boolean,
+        resolvedRows: ResolvedRow[],
+        semanticChoice?: 'base' | 'current' | 'incoming'
+    ) => {
         sendMessage({
             command: 'resolve',
             type: 'semantic',
             resolutions,
             resolvedRows,
+            semanticChoice,
             markAsResolved,
             renumberExecutionCounts,
         });

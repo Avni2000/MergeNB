@@ -45,11 +45,14 @@ interface DropTarget {
     side: 'base' | 'current' | 'incoming';
 }
 
+type TakeAllChoice = 'base' | 'current' | 'incoming';
+
 interface ResolverSnapshot {
     choices: Map<number, ResolutionState>;
     rows: MergeRowType[];
     markAsResolved: boolean;
     renumberExecutionCounts: boolean;
+    takeAllChoice?: TakeAllChoice;
 }
 
 interface HistoryEntry {
@@ -72,7 +75,13 @@ function cloneRows(source: MergeRowType[]): MergeRowType[] {
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
-    onResolve: (resolutions: ConflictChoice[], markAsResolved: boolean, renumberExecutionCounts: boolean, resolvedRows: import('./types').ResolvedRow[]) => void;
+    onResolve: (
+        resolutions: ConflictChoice[],
+        markAsResolved: boolean,
+        renumberExecutionCounts: boolean,
+        resolvedRows: import('./types').ResolvedRow[],
+        semanticChoice?: 'base' | 'current' | 'incoming'
+    ) => void;
     onCancel: () => void;
 }
 
@@ -88,6 +97,7 @@ export function ConflictResolver({
     const [choices, setChoices] = useState<Map<number, ResolutionState>>(new Map());
     const [markAsResolved, setMarkAsResolved] = useState(INITIAL_MARK_AS_RESOLVED);
     const [renumberExecutionCounts, setRenumberExecutionCounts] = useState(INITIAL_RENUMBER_EXECUTION_COUNTS);
+    const [takeAllChoice, setTakeAllChoice] = useState<TakeAllChoice | undefined>(undefined);
     const [rows, setRows] = useState<MergeRowType[]>(initialRows);
     const [history, setHistory] = useState<HistoryState>(() => ({
         entries: [{
@@ -97,6 +107,7 @@ export function ConflictResolver({
                 rows: cloneRows(initialRows),
                 markAsResolved: INITIAL_MARK_AS_RESOLVED,
                 renumberExecutionCounts: INITIAL_RENUMBER_EXECUTION_COUNTS,
+                takeAllChoice: undefined,
             },
         }],
         index: 0,
@@ -119,6 +130,7 @@ export function ConflictResolver({
     const rowsRef = useRef(rows);
     const markAsResolvedRef = useRef(markAsResolved);
     const renumberExecutionCountsRef = useRef(renumberExecutionCounts);
+    const takeAllChoiceRef = useRef(takeAllChoice);
     const historyRef = useRef(history);
 
     useEffect(() => {
@@ -138,6 +150,10 @@ export function ConflictResolver({
     }, [renumberExecutionCounts]);
 
     useEffect(() => {
+        takeAllChoiceRef.current = takeAllChoice;
+    }, [takeAllChoice]);
+
+    useEffect(() => {
         historyRef.current = history;
     }, [history]);
 
@@ -148,6 +164,7 @@ export function ConflictResolver({
         overrides?: {
             markAsResolved?: boolean;
             renumberExecutionCounts?: boolean;
+            takeAllChoice?: TakeAllChoice;
         }
     ) => {
         setHistory(prev => {
@@ -159,6 +176,7 @@ export function ConflictResolver({
                     rows: cloneRows(nextRows),
                     markAsResolved: overrides?.markAsResolved ?? markAsResolvedRef.current,
                     renumberExecutionCounts: overrides?.renumberExecutionCounts ?? renumberExecutionCountsRef.current,
+                    takeAllChoice: overrides?.takeAllChoice ?? takeAllChoiceRef.current,
                 },
             });
             return { entries, index: entries.length - 1 };
@@ -170,6 +188,7 @@ export function ConflictResolver({
         setRows(cloneRows(snapshot.rows));
         setMarkAsResolved(snapshot.markAsResolved);
         setRenumberExecutionCounts(snapshot.renumberExecutionCounts);
+        setTakeAllChoice(snapshot.takeAllChoice);
         draggedCellRef.current = null;
         setDraggedCell(null);
         setDropTarget(null);
@@ -193,6 +212,7 @@ export function ConflictResolver({
     const canRedo = history.index < history.entries.length - 1;
     const enableUndoRedoHotkeys = conflict.enableUndoRedoHotkeys ?? true;
     const showBaseColumn = conflict.showBaseColumn ?? false;
+    const showCellHeaders = conflict.showCellHeaders ?? false;
     const isMac = useMemo(() => /Mac|iPod|iPhone|iPad/.test(navigator.platform), []);
     const undoShortcutLabel = isMac ? 'Cmd+Z' : 'Ctrl+Z';
     const redoShortcutLabel = isMac ? 'Cmd+Shift+Z' : 'Ctrl+Shift+Z';
@@ -231,7 +251,8 @@ export function ConflictResolver({
             resolvedContent
         });
         setChoices(next);
-        recordHistory(`Resolve conflict ${index + 1} (${choice})`, next, rowsRef.current);
+        setTakeAllChoice(undefined);
+        recordHistory(`Resolve conflict ${index + 1} (${choice})`, next, rowsRef.current, { takeAllChoice: undefined });
     }, [recordHistory]);
 
     /** Handle user editing the resolved content (just updates the text) */
@@ -288,7 +309,8 @@ export function ConflictResolver({
         });
         if (!didChange) return;
         setChoices(next);
-        recordHistory(`Accept all ${choice}`, next, rowsRef.current);
+        setTakeAllChoice(choice);
+        recordHistory(`Accept all ${choice}`, next, rowsRef.current, { takeAllChoice: choice });
     };
 
     const handleToggleRenumberExecutionCounts = (checked: boolean) => {
@@ -391,7 +413,13 @@ export function ConflictResolver({
             };
         });
 
-        onResolve(resolutions, markAsResolved, renumberExecutionCounts, resolvedRows);
+        const semanticChoice = (
+            takeAllChoice &&
+            isTakeAllChoiceConsistent(rows, choices, takeAllChoice, true)
+        )
+            ? takeAllChoice
+            : inferTakeAllChoice(rows, choices);
+        onResolve(resolutions, markAsResolved, renumberExecutionCounts, resolvedRows, semanticChoice);
     };
 
     // Cell drag handlers
@@ -479,7 +507,8 @@ export function ConflictResolver({
         // Filter out rows with no cells
         const filteredRows = newRows.filter(r => r.baseCell || r.currentCell || r.incomingCell);
         setRows(filteredRows);
-        recordHistory(`Move ${targetSide} cell`, choicesRef.current, filteredRows);
+        setTakeAllChoice(undefined);
+        recordHistory(`Move ${targetSide} cell`, choicesRef.current, filteredRows, { takeAllChoice: undefined });
         draggedCellRef.current = null;
         setDraggedCell(null);
         setDropTarget(null);
@@ -520,7 +549,8 @@ export function ConflictResolver({
         const [draggedRow] = newRows.splice(dragged, 1);
         newRows.splice(targetIndex, 0, draggedRow);
         setRows(newRows);
-        recordHistory(`Reorder row ${dragged + 1}`, choicesRef.current, newRows);
+        setTakeAllChoice(undefined);
+        recordHistory(`Reorder row ${dragged + 1}`, choicesRef.current, newRows, { takeAllChoice: undefined });
         draggedRowIndexRef.current = null;
         setDraggedRowIndex(null);
         setDropRowIndex(null);
@@ -794,6 +824,7 @@ export function ConflictResolver({
                                         isDragging={draggedRowIndex === i || draggedCell?.rowIndex === i}
                                         showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
                                         showBaseColumn={showBaseColumn}
+                                        showCellHeaders={showCellHeaders}
                                         enableCellDrag={allowCellDrag}
                                         rowDragEnabled={allowRowDrag}
                                         onRowDragStart={allowRowDrag ? handleRowDragStart : undefined}
@@ -829,6 +860,71 @@ export function ConflictResolver({
             </main>
         </div>
     );
+}
+
+function isTakeAllChoiceConsistent(
+    rows: MergeRowType[],
+    choices: Map<number, ResolutionState>,
+    side: TakeAllChoice,
+    allowSingleConflict: boolean
+): boolean {
+    const conflictRows = rows.filter((row): row is MergeRowType & { conflictIndex: number } =>
+        row.type === 'conflict' && row.conflictIndex !== undefined
+    );
+
+    if (conflictRows.length === 0) {
+        return false;
+    }
+
+    // Without explicit "Take All" intent, single-conflict notebooks can produce
+    // false positives from ordinary per-row selections.
+    if (!allowSingleConflict && conflictRows.length <= 1) {
+        return false;
+    }
+
+    let sawSideChoice = false;
+    for (const row of conflictRows) {
+        const choice = choices.get(row.conflictIndex)?.choice;
+        if (!choice) {
+            return false;
+        }
+        const sideCell = getCellForSide(row, side);
+        if (choice === side) {
+            if (!sideCell) return false;
+            sawSideChoice = true;
+            continue;
+        }
+        if (choice === 'delete') {
+            if (sideCell) return false;
+            continue;
+        }
+        return false;
+    }
+
+    return sawSideChoice;
+}
+
+function inferTakeAllChoice(
+    rows: MergeRowType[],
+    choices: Map<number, ResolutionState>
+): TakeAllChoice | undefined {
+    const candidateSides: TakeAllChoice[] = ['base', 'current', 'incoming'];
+    for (const side of candidateSides) {
+        if (isTakeAllChoiceConsistent(rows, choices, side, false)) {
+            return side;
+        }
+    }
+
+    return undefined;
+}
+
+function getCellForSide(
+    row: MergeRowType,
+    side: TakeAllChoice
+): NotebookCell | undefined {
+    if (side === 'base') return row.baseCell;
+    if (side === 'current') return row.currentCell;
+    return row.incomingCell;
 }
 
 /**

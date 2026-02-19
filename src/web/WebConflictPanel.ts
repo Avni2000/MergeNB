@@ -120,6 +120,7 @@ export class WebConflictPanel {
             semanticConflict: this._conflict.semanticConflict,
             autoResolveResult: this._conflict.autoResolveResult,
             hideNonConflictOutputs: this._conflict.hideNonConflictOutputs,
+            showCellHeaders: this._conflict.showCellHeaders,
             enableUndoRedoHotkeys: this._conflict.enableUndoRedoHotkeys,
             showBaseColumn: this._conflict.showBaseColumn,
             theme: this._conflict.theme,
@@ -180,7 +181,7 @@ export class WebConflictPanel {
                 try {
                     await this._onResolutionComplete({
                         type: 'semantic',
-                        semanticChoice: message.semanticChoice as 'current' | 'incoming' | undefined,
+                        semanticChoice: message.semanticChoice as 'base' | 'current' | 'incoming' | undefined,
                         semanticResolutions: semanticResolutionMap,
                         resolvedRows: message.resolvedRows,
                         markAsResolved: message.markAsResolved ?? false,

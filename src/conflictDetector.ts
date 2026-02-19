@@ -120,7 +120,7 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         // Match cells across versions
         const cellMappings = matchCells(baseNotebook, currentNotebook, incomingNotebook);
 
-        // Analyze mappings to find semantic conflicts (settings-aware)
+        // Analyze mappings to find semantic conflicts
         const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings, getSettings());
 
         // Get branch information
@@ -154,7 +154,9 @@ export function analyzeSemanticConflictsFromMappings(
     settings?: MergeNBSettings
 ): SemanticConflict[] {
     const conflicts: SemanticConflict[] = [];
-    const effectiveSettings = settings || getSettings();
+    if (!settings) {
+        getSettings();
+    }
 
     // Check for cell reordering
     if (detectReordering(mappings)) {
@@ -223,37 +225,30 @@ export function analyzeSemanticConflictsFromMappings(
             }
 
             if (currentCell.cell_type === 'code' && incomingCell.cell_type === 'code') {
-                // Only surface exec-count conflicts when the user hasn't opted
-                // into always-null execution counts.
-                if (!effectiveSettings.autoResolveExecutionCount) {
-                    const currentExecCount = currentCell.execution_count ?? null;
-                    const incomingExecCount = incomingCell.execution_count ?? null;
-                    if (currentExecCount !== incomingExecCount) {
-                        conflicts.push({
-                            type: 'execution-count-changed',
-                            currentCellIndex: currentIndex,
-                            incomingCellIndex: incomingIndex,
-                            currentContent: currentCell,
-                            incomingContent: incomingCell,
-                            description: `Execution count differs: current=${currentExecCount}, incoming=${incomingExecCount}`
-                        });
-                    }
+                const currentExecCount = currentCell.execution_count ?? null;
+                const incomingExecCount = incomingCell.execution_count ?? null;
+                if (currentExecCount !== incomingExecCount) {
+                    conflicts.push({
+                        type: 'execution-count-changed',
+                        currentCellIndex: currentIndex,
+                        incomingCellIndex: incomingIndex,
+                        currentContent: currentCell,
+                        incomingContent: incomingCell,
+                        description: `Execution count differs: current=${currentExecCount}, incoming=${incomingExecCount}`
+                    });
                 }
 
-                // Only surface output conflicts when we're not stripping outputs.
-                if (!effectiveSettings.stripOutputs) {
-                    const currentOutputs = stableStringify(currentCell.outputs || []);
-                    const incomingOutputs = stableStringify(incomingCell.outputs || []);
-                    if (currentOutputs !== incomingOutputs) {
-                        conflicts.push({
-                            type: 'outputs-changed',
-                            currentCellIndex: currentIndex,
-                            incomingCellIndex: incomingIndex,
-                            currentContent: currentCell,
-                            incomingContent: incomingCell,
-                            description: 'Added cell outputs differ between branches'
-                        });
-                    }
+                const currentOutputs = stableStringify(currentCell.outputs || []);
+                const incomingOutputs = stableStringify(incomingCell.outputs || []);
+                if (currentOutputs !== incomingOutputs) {
+                    conflicts.push({
+                        type: 'outputs-changed',
+                        currentCellIndex: currentIndex,
+                        incomingCellIndex: incomingIndex,
+                        currentContent: currentCell,
+                        incomingContent: incomingCell,
+                        description: 'Added cell outputs differ between branches'
+                    });
                 }
             }
             continue;
@@ -342,7 +337,7 @@ function compareCells(
         const currentExecCount = currentCell.execution_count;
         const incomingExecCount = incomingCell.execution_count;
 
-        if (currentExecCount !== incomingExecCount && 
+        if (currentExecCount !== incomingExecCount &&
             (currentExecCount !== baseExecCount || incomingExecCount !== baseExecCount)) {
             conflicts.push({
                 type: 'execution-count-changed',
@@ -356,12 +351,11 @@ function compareCells(
             });
         }
 
-        // Compare outputs
         const baseOutputs = stableStringify(baseCell.outputs || []);
         const currentOutputs = stableStringify(currentCell.outputs || []);
         const incomingOutputs = stableStringify(incomingCell.outputs || []);
 
-        if (currentOutputs !== incomingOutputs && 
+        if (currentOutputs !== incomingOutputs &&
             (currentOutputs !== baseOutputs || incomingOutputs !== baseOutputs)) {
             conflicts.push({
                 type: 'outputs-changed',

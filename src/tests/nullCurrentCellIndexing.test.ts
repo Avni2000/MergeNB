@@ -92,9 +92,10 @@ export async function run(): Promise<void> {
         stripOutputs: false,
         autoResolveWhitespace: false,
         hideNonConflictOutputs: false,
+        showCellHeaders: false,
         enableUndoRedoHotkeys: false,
         showBaseColumn: false,
-        theme: 'light',
+        theme: 'dark',
     });
 
     console.log('[nullCurrentCellIndexing] Auto-resolution result:', {

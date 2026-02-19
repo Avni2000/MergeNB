@@ -52,6 +52,7 @@ export interface UnifiedConflictData {
     semanticConflict?: import('../../types').NotebookSemanticConflict;
     autoResolveResult?: AutoResolveResult;
     hideNonConflictOutputs?: boolean;
+    showCellHeaders?: boolean;
     currentBranch?: string;
     incomingBranch?: string;
     enableUndoRedoHotkeys?: boolean;
@@ -106,7 +107,7 @@ export interface ResolutionMessage {
     resolutions: ConflictChoice[];
     /** The complete resolved row structure from the UI (source of truth) */
     resolvedRows: ResolvedRow[];
-    semanticChoice?: 'current' | 'incoming';
+    semanticChoice?: 'base' | 'current' | 'incoming';
     markAsResolved: boolean;
     renumberExecutionCounts: boolean;
 }
