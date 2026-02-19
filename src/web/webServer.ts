@@ -48,6 +48,7 @@ export interface PendingConnection {
 export interface SessionData {
     htmlContent: string;
     theme: 'dark' | 'light';
+    notebookFilePath?: string;
     conflictData?: unknown;
     onMessage: (message: unknown) => void;
 }
@@ -226,12 +227,14 @@ export class ConflictResolverWebServer {
         sessionId: string,
         htmlContent: string,
         onMessage: (message: unknown) => void,
-        theme: 'dark' | 'light' = 'light'
+        theme: 'dark' | 'light' = 'light',
+        notebookFilePath?: string
     ): Promise<WebSocket> {
         // Store session data
         this.sessions.set(sessionId, {
             htmlContent,
             theme,
+            notebookFilePath,
             onMessage
         });
 
@@ -361,6 +364,8 @@ export class ConflictResolverWebServer {
         } else if (pathname.startsWith('/katex/')) {
             // Serve KaTeX files from dist/web/katex/
             this.serveStaticFile(res, pathname);
+        } else if (pathname === '/notebook-asset') {
+            this.serveNotebookAsset(url, res);
         } else if (pathname === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ 
@@ -410,7 +415,91 @@ export class ConflictResolverWebServer {
             return;
         }
 
-        const ext = path.extname(fileName).toLowerCase();
+        fs.readFile(filePath, (err, data) => {
+            if (err) {
+                console.error(`[MergeNB Web] Failed to read ${filePath}:`, err.message);
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Not Found');
+            } else {
+                const ext = path.extname(fileName).toLowerCase();
+                res.writeHead(200, { 'Content-Type': this.getContentType(ext) });
+                res.end(data);
+            }
+        });
+    }
+
+    /**
+     * Serve notebook-relative assets for markdown/html rendering in the web UI.
+     *
+     * Endpoint format:
+     *   /notebook-asset?session=<sessionId>&path=<relative-path-from-notebook-dir>
+     */
+    private serveNotebookAsset(url: URL, res: http.ServerResponse): void {
+        const sessionId = url.searchParams.get('session');
+        const requestedPath = url.searchParams.get('path');
+
+        if (!sessionId || !requestedPath) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            res.end('Missing session or path');
+            return;
+        }
+
+        const session = this.sessions.get(sessionId);
+        if (!session?.notebookFilePath) {
+            res.writeHead(404, { 'Content-Type': 'text/plain' });
+            res.end('Session not found');
+            return;
+        }
+
+        const sanitizedPath = requestedPath.split(/[?#]/)[0];
+        if (!sanitizedPath || sanitizedPath.includes('\0')) {
+            res.writeHead(400, { 'Content-Type': 'text/plain' });
+            res.end('Invalid path');
+            return;
+        }
+
+        // Reject protocols and network-path references.
+        if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(sanitizedPath) || sanitizedPath.startsWith('//')) {
+            res.writeHead(403, { 'Content-Type': 'text/plain' });
+            res.end('Forbidden');
+            return;
+        }
+
+        // Asset paths are restricted to the notebook directory (and its subdirectories).
+        if (path.isAbsolute(sanitizedPath)) {
+            res.writeHead(403, { 'Content-Type': 'text/plain' });
+            res.end('Forbidden');
+            return;
+        }
+
+        const notebookDir = path.dirname(session.notebookFilePath);
+        const resolvedNotebookDir = path.resolve(notebookDir);
+        const resolvedAssetPath = path.resolve(notebookDir, sanitizedPath);
+
+        if (
+            !resolvedAssetPath.startsWith(resolvedNotebookDir + path.sep) &&
+            resolvedAssetPath !== resolvedNotebookDir
+        ) {
+            console.warn(`[MergeNB Web] Notebook asset traversal blocked: ${requestedPath} -> ${resolvedAssetPath}`);
+            res.writeHead(403, { 'Content-Type': 'text/plain' });
+            res.end('Forbidden');
+            return;
+        }
+
+        fs.readFile(resolvedAssetPath, (err, data) => {
+            if (err) {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Not Found');
+                return;
+            }
+
+            const ext = path.extname(resolvedAssetPath).toLowerCase();
+            res.writeHead(200, { 'Content-Type': this.getContentType(ext) });
+            res.end(data);
+        });
+    }
+
+    private getContentType(ext: string): string {
         const contentTypes: Record<string, string> = {
             '.js': 'application/javascript',
             '.css': 'text/css',
@@ -420,18 +509,18 @@ export class ConflictResolverWebServer {
             '.ttf': 'font/ttf',
             '.otf': 'font/otf',
             '.svg': 'image/svg+xml',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.bmp': 'image/bmp',
+            '.txt': 'text/plain; charset=utf-8',
+            '.md': 'text/markdown; charset=utf-8',
+            '.html': 'text/html; charset=utf-8',
+            '.ipynb': 'application/x-ipynb+json',
         };
-
-        fs.readFile(filePath, (err, data) => {
-            if (err) {
-                console.error(`[MergeNB Web] Failed to read ${filePath}:`, err.message);
-                res.writeHead(404, { 'Content-Type': 'text/plain' });
-                res.end('Not Found');
-            } else {
-                res.writeHead(200, { 'Content-Type': contentTypes[ext] || 'application/octet-stream' });
-                res.end(data);
-            }
-        });
+        return contentTypes[ext] || 'application/octet-stream';
     }
 
     /**

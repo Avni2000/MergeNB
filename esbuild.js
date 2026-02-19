@@ -119,6 +119,7 @@ async function main() {
 		jsx: 'automatic',
 		loader: {
 			'.css': 'text',
+			'.svg': 'dataurl',
 		},
 		plugins: [
 			esbuildProblemMatcherPlugin,

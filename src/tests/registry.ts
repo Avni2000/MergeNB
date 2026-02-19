@@ -86,6 +86,13 @@ export const TEST_GROUPS: TestGroup[] = [
                 params: { action: 'current' },
             },
             {
+                id: 'takeAll_current_single_conflict',
+                description: 'Take All Current (single-conflict notebook)',
+                notebooks: ['06_base.ipynb', '06_current.ipynb', '06_incoming.ipynb'],
+                testModule: './takeAllButtons.test.js',
+                params: { action: 'current' },
+            },
+            {
                 id: 'takeAll_incoming',
                 description: 'Take All Incoming',
                 notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
@@ -130,6 +137,32 @@ export const TEST_GROUPS: TestGroup[] = [
                 description: 'Cell indexing when current is null (delete/modify conflict)',
                 notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
                 testModule: './nullCurrentCellIndexing.test.js',
+            },
+            {
+                id: 'regression_settings',
+                description: 'Each MergeNBSettings field is propagated and respected',
+                notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
+                testModule: './settingsRegression.test.js',
+            },
+        ],
+    },
+    {
+        id: 'renderMime',
+        name: 'RenderMime Outputs',
+        description: 'Validate JupyterLab rendermime output rendering in web UI',
+        tests: [
+            {
+                id: 'rendermime_markdown_logo_02',
+                description: 'Render markdown local SVG assets (logo.svg) in fixture 02',
+                notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
+                testModule: './rendermimeOutputs.test.js',
+                params: { mode: 'markdownOnly' },
+            },
+            {
+                id: 'rendermime_outputs_05',
+                description: 'Render text/html/png/svg/json outputs and unsupported fallback',
+                notebooks: ['05_mime_base.ipynb', '05_mime_current.ipynb', '05_mime_incoming.ipynb'],
+                testModule: './rendermimeOutputs.test.js',
             },
         ],
     },

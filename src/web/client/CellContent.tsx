@@ -3,22 +3,53 @@
  * @description React component for rendering notebook cell content.
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { IRenderMime, MimeModel, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
+import { Widget } from '@lumino/widgets';
+import MarkdownIt from 'markdown-it';
+import renderMathInElement from 'katex/contrib/auto-render';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
-import { renderMarkdown } from './markdown';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
-import DOMPurify from 'dompurify';
+
+type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
+const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
+const MAX_RENDERMIME_REGISTRY_CACHE_SIZE = 32;
+const renderMimeMd = MarkdownIt({
+    html: true,
+    linkify: true,
+    typographer: true,
+});
+const renderMimeMarkdownParser = {
+    async render(source: string): Promise<string> {
+        return renderMimeMd.render(source);
+    }
+};
+const renderMimeKatexTypesetter: IRenderMime.ILatexTypesetter = {
+    typeset(element: HTMLElement): void {
+        renderMathInElement(element, {
+            throwOnError: false,
+            delimiters: [
+                { left: '$$', right: '$$', display: true },
+                { left: '\\[', right: '\\]', display: true },
+                { left: '$', right: '$', display: false },
+                { left: '\\(', right: '\\)', display: false },
+            ],
+        });
+    }
+};
 
 interface CellContentProps {
     cell: NotebookCell | undefined;
     cellIndex?: number;
     side: 'base' | 'current' | 'incoming';
+    notebookPath?: string;
     isConflict?: boolean;
     compareCell?: NotebookCell;
     baseCell?: NotebookCell;
     diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
+    showCellHeaders?: boolean;
     onDragStart?: (e: React.DragEvent) => void;
     onDragEnd?: () => void;
 }
@@ -27,14 +58,25 @@ export function CellContentInner({
     cell,
     cellIndex,
     side,
+    notebookPath,
     isConflict = false,
     compareCell,
     baseCell,
     diffMode = 'base',
     showOutputs = true,
+    showCellHeaders = false,
     onDragStart,
     onDragEnd,
 }: CellContentProps): React.ReactElement {
+    const renderMimeRegistry = useMemo(
+        () => getRenderMimeRegistry(notebookPath),
+        [notebookPath]
+    );
+    const encodedCell = useMemo(
+        () => (cell ? encodeURIComponent(JSON.stringify(cell)) : ''),
+        [cell]
+    );
+
     if (!cell) {
         return (
             <div className="cell-placeholder">
@@ -45,7 +87,6 @@ export function CellContentInner({
 
     const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
-    const encodedCell = useMemo(() => encodeURIComponent(JSON.stringify(cell)), [cell]);
 
     const cellClasses = [
         'notebook-cell',
@@ -62,9 +103,23 @@ export function CellContentInner({
             data-cell={encodedCell}
             data-cell-type={cellType}
         >
+            {showCellHeaders && (
+                <div className="cell-header" data-testid="cell-header">
+                    <span className="cell-header-type">{cellType}</span>
+                    {cellIndex !== undefined && (
+                        <span className="cell-header-index">Cell {cellIndex + 1}</span>
+                    )}
+                    {cellType === 'code' && cell.execution_count != null && (
+                        <span className="cell-header-exec">In [{cell.execution_count}]</span>
+                    )}
+                </div>
+            )}
             <div className="cell-content">
                 {cellType === 'markdown' && !isConflict ? (
-                    <MarkdownContent source={source} />
+                    <MarkdownContent
+                        source={source}
+                        renderMimeRegistry={renderMimeRegistry}
+                    />
                 ) : isConflict && (compareCell || baseCell) ? (
                     // Show conflict diffs as raw text (no markdown rendering)
                     <DiffContent
@@ -78,7 +133,10 @@ export function CellContentInner({
                 )}
             </div>
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
-                <CellOutputs outputs={cell.outputs} />
+                <CellOutputs
+                    outputs={cell.outputs}
+                    renderMimeRegistry={renderMimeRegistry}
+                />
             )}
         </div>
     );
@@ -86,16 +144,66 @@ export function CellContentInner({
 
 interface MarkdownContentProps {
     source: string;
+    renderMimeRegistry: RenderMimeRegistry;
 }
 
-function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
-    const html = useMemo(() => renderMarkdown(source), [source]);
+function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): React.ReactElement {
+    const hostRef = useRef<HTMLDivElement>(null);
+    const [fallback, setFallback] = useState<string | null>(null);
+
+    useEffect(() => {
+        const host = hostRef.current;
+        if (!host || !host.isConnected) return;
+
+        host.replaceChildren();
+        setFallback(null);
+
+        let disposed = false;
+        let renderer: ReturnType<RenderMimeRegistry['createRenderer']> | null = null;
+        let model: (MimeModel & { dispose?: () => void }) | null = null;
+
+        try {
+            model = new MimeModel({
+                data: { 'text/markdown': source },
+                trusted: false,
+            });
+
+            renderer = renderMimeRegistry.createRenderer('text/markdown');
+            Widget.attach(renderer, host);
+
+            void renderer.renderModel(model).catch((err: unknown) => {
+                console.warn('[MergeNB] Failed to render markdown via rendermime:', err);
+                if (!disposed) {
+                    disposeRenderer(renderer, host);
+                    model?.dispose?.();
+                    model = null;
+                    renderer = null;
+                    setFallback(source);
+                }
+            });
+        } catch (err) {
+            console.warn('[MergeNB] Failed to initialize rendermime markdown renderer:', err);
+            disposeRenderer(renderer, host);
+            model?.dispose?.();
+            model = null;
+            setFallback(source);
+            return;
+        }
+
+        return () => {
+            disposed = true;
+            disposeRenderer(renderer, host);
+            model?.dispose?.();
+            model = null;
+            host.replaceChildren();
+        };
+    }, [source, renderMimeRegistry]);
 
     return (
-        <div
-            className="markdown-content"
-            dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <div className="markdown-content">
+            <div ref={hostRef} />
+            {fallback && <pre className="cell-output-fallback">{fallback}</pre>}
+        </div>
     );
 }
 
@@ -209,78 +317,295 @@ function isWhitespaceOnlyLineChange(line: DiffLine): boolean {
 
 interface CellOutputsProps {
     outputs: CellOutput[];
+    renderMimeRegistry: RenderMimeRegistry;
 }
 
-function CellOutputs({ outputs }: CellOutputsProps): React.ReactElement {
+function CellOutputs({ outputs, renderMimeRegistry }: CellOutputsProps): React.ReactElement {
     return (
         <div className="cell-outputs">
             {outputs.map((output, i) => (
-                <OutputItem key={i} output={output} />
+                <RenderMimeOutput
+                    key={i}
+                    output={output}
+                    renderMimeRegistry={renderMimeRegistry}
+                />
             ))}
         </div>
     );
 }
 
-function OutputItem({ output }: { output: CellOutput }): React.ReactElement | null {
-    if (output.output_type === 'stream' && output.text) {
-        const text = Array.isArray(output.text) ? output.text.join('') : output.text;
-        return <pre>{text}</pre>;
+function RenderMimeOutput({
+    output,
+    renderMimeRegistry
+}: {
+    output: CellOutput;
+    renderMimeRegistry: RenderMimeRegistry;
+}): React.ReactElement {
+    const hostRef = useRef<HTMLDivElement>(null);
+    const [fallback, setFallback] = useState<string | null>(null);
+
+    useEffect(() => {
+        const host = hostRef.current;
+        if (!host || !host.isConnected) return;
+        host.replaceChildren();
+        setFallback(null);
+
+        let disposed = false;
+        let renderer: ReturnType<RenderMimeRegistry['createRenderer']> | null = null;
+        let model: OutputModel | null = null;
+
+        try {
+            const normalizedOutput = normalizeOutputForRenderMime(output) as RenderMimeOutputValue;
+
+            const untrustedModel = new OutputModel({
+                value: normalizedOutput,
+                trusted: false,
+            });
+
+            const preferredMimeType = renderMimeRegistry.preferredMimeType(untrustedModel.data, 'any');
+            if (!preferredMimeType) {
+                setFallback(getOutputTextFallback(output));
+                untrustedModel.dispose();
+                return;
+            }
+
+            const trusted = shouldTrustOutputMimeType(preferredMimeType);
+            if (trusted) {
+                // Jupyter's HTML renderer evaluates inline scripts for trusted output.
+                // Keep HTML and other rich outputs untrusted; only SVG requires trust
+                // to avoid rendermime's "Cannot display an untrusted SVG" fallback.
+                untrustedModel.dispose();
+                model = new OutputModel({
+                    value: normalizedOutput,
+                    trusted: true,
+                });
+            } else {
+                model = untrustedModel;
+            }
+
+            renderer = renderMimeRegistry.createRenderer(preferredMimeType);
+
+            Widget.attach(renderer, host);
+
+            void renderer.renderModel(model).catch((err: unknown) => {
+                console.warn('[MergeNB] Failed to render output via rendermime:', err);
+                if (!disposed) {
+                    disposeRenderer(renderer, host);
+                    renderer = null;
+                    model?.dispose();
+                    model = null;
+                    setFallback(getOutputTextFallback(output));
+                }
+            });
+        } catch (err) {
+            console.warn('[MergeNB] Failed to initialize rendermime output model:', err);
+            setFallback(getOutputTextFallback(output));
+            disposeRenderer(renderer, host);
+            model?.dispose();
+            return;
+        }
+
+        return () => {
+            disposed = true;
+            disposeRenderer(renderer, host);
+            model?.dispose();
+            host.replaceChildren();
+        };
+    }, [output, renderMimeRegistry]);
+
+    return (
+        <div className="cell-output-item">
+            <div className="cell-output-host" ref={hostRef} />
+            {fallback && <pre className="cell-output-fallback">{fallback}</pre>}
+        </div>
+    );
+}
+
+function normalizeOutputForRenderMime(output: CellOutput): Record<string, unknown> {
+    const normalizedOutput = { ...(output as unknown as Record<string, unknown>) };
+
+    if (output.text !== undefined) {
+        normalizedOutput.text = normalizeTextValue(output.text);
     }
 
-    if ((output.output_type === 'display_data' || output.output_type === 'execute_result') && output.data) {
-        const data = output.data;
+    if (output.data) {
+        const normalizedData: Record<string, unknown> = {};
+        for (const [mimeType, value] of Object.entries(output.data)) {
+            normalizedData[mimeType] = normalizeMimeValue(value);
+        }
+        normalizedOutput.data = normalizedData;
+    }
 
-        // Use text placeholders for images instead of rendering actual <img> tags.
-        // This prevents browser decoding overhead, ResizeObserver feedback loops,
-        // and flickering from invalid/broken image data.
-        if (data['image/png']) {
-            return <ImagePlaceholder mimeType="image/png" />;
-        }
-        if (data['image/jpeg']) {
-            return <ImagePlaceholder mimeType="image/jpeg" />;
-        }
+    return normalizedOutput;
+}
 
-        // HTML
-        if (data['text/html']) {
-            const html = Array.isArray(data['text/html']) ? data['text/html'].join('') : String(data['text/html']);
-            const sanitizedHtml = DOMPurify.sanitize(html);
-            return <div dangerouslySetInnerHTML={{ __html: sanitizedHtml }} />;
-        }
+function normalizeTextValue(value: string | string[]): string {
+    return Array.isArray(value) ? value.join('') : value;
+}
 
-        // Plain text
-        if (data['text/plain']) {
-            const text = Array.isArray(data['text/plain']) ? data['text/plain'].join('') : String(data['text/plain']);
-            return <pre>{text}</pre>;
-        }
+function normalizeMimeValue(value: unknown): unknown {
+    if (Array.isArray(value) && value.every(item => typeof item === 'string')) {
+        return value.join('');
+    }
+    return value;
+}
+
+function getOutputTextFallback(output: CellOutput): string {
+    if (output.output_type === 'stream' && output.text) {
+        return normalizeTextValue(output.text);
     }
 
     if (output.output_type === 'error') {
-        const traceback = Array.isArray(output.traceback) ? output.traceback.join('\n') : (output.traceback ?? `${output.ename}: ${output.evalue}`);
-        return <pre className="error-output">{traceback}</pre>;
+        if (Array.isArray(output.traceback)) {
+            return output.traceback.join('\n');
+        }
+
+        const errorParts = [output.ename, output.evalue]
+            .filter((part): part is string => typeof part === 'string' && part.trim() !== '');
+        return errorParts.length > 0 ? errorParts.join(': ') : 'Error';
     }
 
-    return null;
+    if ((output.output_type === 'display_data' || output.output_type === 'execute_result') && output.data) {
+        const plainText = output.data['text/plain'];
+        if (plainText !== undefined) {
+            return String(normalizeMimeValue(plainText));
+        }
+    }
+
+    return '[Unsupported output]';
 }
 
-/**
- * Renders a text placeholder for an image output.
- * Uses markdown-style format to provide a consistent, stable representation.
- * 
- * @param mimeType - Currently only 'image/png' or 'image/jpeg' are supported and passed by OutputItem
- */
-function ImagePlaceholder({ mimeType }: { mimeType: string }): React.ReactElement {
-    const placeholderText = `![Image: ${mimeType}]`;
-    // Convert MIME type to user-friendly label for screen readers
-    const imageType = mimeType === 'image/png' ? 'PNG' : 'JPEG';
-    return (
-        <div 
-            className="image-placeholder"
-            role="img"
-            aria-label={`${imageType} image output`}
-        >
-            {placeholderText}
-        </div>
-    );
+function shouldTrustOutputMimeType(mimeType: string): boolean {
+    return mimeType === 'image/svg+xml';
+}
+
+function getCurrentSessionId(): string {
+    if (typeof window === 'undefined') return 'default';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('session') || 'default';
+}
+
+function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
+    const sessionId = getCurrentSessionId();
+    const cacheKey = `${sessionId}::${notebookPath ?? ''}`;
+    const cached = renderMimeRegistryCache.get(cacheKey);
+    if (cached) {
+        renderMimeRegistryCache.delete(cacheKey);
+        renderMimeRegistryCache.set(cacheKey, cached);
+        return cached;
+    }
+
+    const registry = new RenderMimeRegistry({
+        initialFactories: standardRendererFactories,
+        resolver: createNotebookAssetResolver(sessionId),
+        latexTypesetter: renderMimeKatexTypesetter,
+        markdownParser: renderMimeMarkdownParser,
+    });
+
+    renderMimeRegistryCache.set(cacheKey, registry);
+    evictRenderMimeRegistryCacheEntries();
+    return registry;
+}
+
+function evictRenderMimeRegistryCacheEntries(): void {
+    while (renderMimeRegistryCache.size > MAX_RENDERMIME_REGISTRY_CACHE_SIZE) {
+        const leastRecentlyUsedKey = renderMimeRegistryCache.keys().next().value as string | undefined;
+        if (!leastRecentlyUsedKey) return;
+
+        const leastRecentlyUsedRegistry = renderMimeRegistryCache.get(leastRecentlyUsedKey);
+        renderMimeRegistryCache.delete(leastRecentlyUsedKey);
+        disposeRenderMimeRegistry(leastRecentlyUsedRegistry);
+    }
+}
+
+function disposeRenderMimeRegistry(registry: RenderMimeRegistry | undefined): void {
+    if (!registry) return;
+
+    const resolver = registry.resolver as (IRenderMime.IResolver & { dispose?: () => void }) | null;
+    try {
+        resolver?.dispose?.();
+    } catch (err) {
+        console.warn('[MergeNB] Failed to dispose rendermime resolver:', err);
+    }
+
+    const disposableRegistry = registry as RenderMimeRegistry & { dispose?: () => void };
+    try {
+        disposableRegistry.dispose?.();
+    } catch (err) {
+        console.warn('[MergeNB] Failed to dispose rendermime registry:', err);
+    }
+}
+
+function createNotebookAssetResolver(sessionId: string): IRenderMime.IResolver {
+    return {
+        async resolveUrl(url: string): Promise<string> {
+            return normalizeLocalPath(url);
+        },
+        async getDownloadUrl(urlPath: string): Promise<string> {
+            return buildNotebookAssetUrl(sessionId, urlPath);
+        },
+        isLocal(url: string, allowRoot = false): boolean {
+            return isNotebookLocalPath(url, allowRoot);
+        },
+    };
+}
+
+function buildNotebookAssetUrl(sessionId: string, pathValue: string): string {
+    const params = new URLSearchParams({
+        session: sessionId,
+        path: pathValue,
+    });
+    return `/notebook-asset?${params.toString()}`;
+}
+
+function isNotebookLocalPath(url: string, allowRoot = false): boolean {
+    const normalized = normalizeLocalPath(url);
+    if (!normalized) return false;
+    if (/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(normalized)) return false;
+    if (normalized.startsWith('//')) return false;
+    if (!allowRoot && normalized.startsWith('/')) return false;
+    return true;
+}
+
+function normalizeLocalPath(url: string): string {
+    const trimmed = url.trim();
+    if (!trimmed || trimmed.startsWith('#')) return '';
+
+    const withoutHash = trimmed.split('#', 1)[0];
+    const withoutQuery = withoutHash.split('?', 1)[0];
+    if (!withoutQuery) return '';
+
+    try {
+        return decodeURIComponent(withoutQuery);
+    } catch {
+        return withoutQuery;
+    }
+}
+
+function disposeRenderer(
+    renderer: ReturnType<RenderMimeRegistry['createRenderer']> | null,
+    host: HTMLElement
+): void {
+    if (!renderer) return;
+
+    try {
+        if (renderer.isAttached && renderer.node.isConnected) {
+            Widget.detach(renderer);
+        } else if (renderer.node.parentElement === host) {
+            host.removeChild(renderer.node);
+        }
+    } catch (err) {
+        console.warn('[MergeNB] Failed to detach rendermime renderer:', err);
+        if (renderer.node.parentElement === host) {
+            host.removeChild(renderer.node);
+        }
+    }
+
+    try {
+        renderer.dispose();
+    } catch (err) {
+        console.warn('[MergeNB] Failed to dispose rendermime renderer:', err);
+    }
 }
 
 export const CellContent = React.memo(CellContentInner);

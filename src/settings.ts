@@ -7,10 +7,11 @@
  * - autoResolveKernelVersion: Use current kernel/Python version (default: true)  
  * - stripOutputs: Clear cell outputs during merge (default: true)
  * - autoResolveWhitespace: Auto-resolve whitespace-only source diffs (default: true)
- * - hideNonConflictOutputs: Hide outputs for non-conflicted cells in UI (default: true)
+ * - hideNonConflictOutputs: Hide outputs for non-conflicted cells in UI (default: false)
+ * - showCellHeaders: Show cell type, execution count, cell index headers (default: false)
  * - enableUndoRedoHotkeys: Enable Ctrl+Z / Ctrl+Shift+Z in web UI (default: true)
  * - showBaseColumn: Show base branch column in 3-column view (default: false, true in headless/testing)
- * - theme: UI theme selection ('dark' | 'light', default: 'light')
+ * - theme: UI theme selection ('dark' | 'light', default: 'dark')
  * 
  * These reduce manual conflict resolution for common non-semantic differences.
  */
@@ -29,6 +30,7 @@ export interface MergeNBSettings {
     stripOutputs: boolean;
     autoResolveWhitespace: boolean;
     hideNonConflictOutputs: boolean;
+    showCellHeaders: boolean;
     enableUndoRedoHotkeys: boolean;
     showBaseColumn: boolean;
     theme: 'dark' | 'light';
@@ -40,10 +42,11 @@ const DEFAULT_SETTINGS: MergeNBSettings = {
     autoResolveKernelVersion: true,
     stripOutputs: true,
     autoResolveWhitespace: true,
-    hideNonConflictOutputs: true,
+    hideNonConflictOutputs: false,
+    showCellHeaders: false,
     enableUndoRedoHotkeys: true,
     showBaseColumn: true,
-    theme: 'light'
+    theme: 'dark'
 };
 
 /**
@@ -56,7 +59,30 @@ export function getSettings(): MergeNBSettings {
     }
 
     if (process.env.MERGENB_TEST_MODE === 'true') {
-        return { ...DEFAULT_SETTINGS };
+        // Start from DEFAULT_SETTINGS (ensures test-friendly defaults like showBaseColumn: true)
+        // but honour any workspace-level overrides that the test explicitly set via
+        // vscode.configuration.update(..., ConfigurationTarget.Workspace).
+        const config = vscode.workspace.getConfiguration('mergeNB');
+        const settings = { ...DEFAULT_SETTINGS };
+
+        const applyWorkspaceOverride = <T>(key: string, setter: (v: T) => void): void => {
+            const inspect = config.inspect<T>(key);
+            if (inspect?.workspaceValue !== undefined) {
+                setter(inspect.workspaceValue);
+            }
+        };
+
+        applyWorkspaceOverride<boolean>('autoResolve.executionCount', v => { settings.autoResolveExecutionCount = v; });
+        applyWorkspaceOverride<boolean>('autoResolve.kernelVersion', v => { settings.autoResolveKernelVersion = v; });
+        applyWorkspaceOverride<boolean>('autoResolve.stripOutputs', v => { settings.stripOutputs = v; });
+        applyWorkspaceOverride<boolean>('autoResolve.whitespace', v => { settings.autoResolveWhitespace = v; });
+        applyWorkspaceOverride<boolean>('ui.hideNonConflictOutputs', v => { settings.hideNonConflictOutputs = v; });
+        applyWorkspaceOverride<boolean>('ui.showCellHeaders', v => { settings.showCellHeaders = v; });
+        applyWorkspaceOverride<boolean>('ui.enableUndoRedoHotkeys', v => { settings.enableUndoRedoHotkeys = v; });
+        applyWorkspaceOverride<boolean>('ui.showBaseColumn', v => { settings.showBaseColumn = v; });
+        applyWorkspaceOverride<'dark' | 'light'>('ui.theme', v => { settings.theme = v; });
+
+        return settings;
     }
 
     const defaults: MergeNBSettings = {
@@ -64,10 +90,11 @@ export function getSettings(): MergeNBSettings {
         autoResolveKernelVersion: true,
         stripOutputs: true,
         autoResolveWhitespace: true,
-        hideNonConflictOutputs: true,
+        hideNonConflictOutputs: false,
+        showCellHeaders: false,
         enableUndoRedoHotkeys: true,
         showBaseColumn: false,
-        theme: 'light',
+        theme: 'dark',
     };
 
     const config = vscode.workspace.getConfiguration('mergeNB');
@@ -78,19 +105,11 @@ export function getSettings(): MergeNBSettings {
         stripOutputs: config.get<boolean>('autoResolve.stripOutputs', defaults.stripOutputs),
         autoResolveWhitespace: config.get<boolean>('autoResolve.whitespace', defaults.autoResolveWhitespace),
         hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', defaults.hideNonConflictOutputs),
+        showCellHeaders: config.get<boolean>('ui.showCellHeaders', defaults.showCellHeaders),
         enableUndoRedoHotkeys: config.get<boolean>('ui.enableUndoRedoHotkeys', defaults.enableUndoRedoHotkeys),
         showBaseColumn: config.get<boolean>('ui.showBaseColumn', defaults.showBaseColumn),
         theme: config.get<'dark' | 'light'>('ui.theme', defaults.theme),
     };
 }
 
-/**
- * Check if a specific auto-resolve setting is enabled.
- * Only checks actual auto-resolve settings, not UI settings.
- */
-export function isAutoResolveEnabled(
-    setting: 'autoResolveExecutionCount' | 'autoResolveKernelVersion' | 'stripOutputs' | 'autoResolveWhitespace'
-): boolean {
-    const settings = getSettings();
-    return settings[setting];
-}
+
