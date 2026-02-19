@@ -71,7 +71,7 @@ export interface ResolvedRow {
  */
 export interface UnifiedResolution {
     type: 'semantic';
-    semanticChoice?: 'current' | 'incoming';
+    semanticChoice?: 'base' | 'current' | 'incoming';
     semanticResolutions?: Map<number, { choice: ResolutionChoice; resolvedContent: string }>;
     /** The complete resolved row structure from the UI (source of truth) */
     resolvedRows?: ResolvedRow[];
@@ -181,7 +181,7 @@ export type BrowserToExtensionMessage =
         }>;
         /** The complete resolved row structure from the UI (source of truth) */
         resolvedRows: ResolvedRow[];
-        semanticChoice?: string;
+        semanticChoice?: 'base' | 'current' | 'incoming';
         markAsResolved?: boolean;
     }
     | { command: 'cancel' }
@@ -197,7 +197,7 @@ export interface WebResolutionData {
         choice: ResolutionChoice | 'base';
         customContent?: string;
     }>;
-    semanticChoice?: 'current' | 'incoming';
+    semanticChoice?: 'base' | 'current' | 'incoming';
     markAsResolved: boolean;
 }
 

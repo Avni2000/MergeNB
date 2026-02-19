@@ -93,6 +93,77 @@ function mergeNotebookMetadata(
     return merged;
 }
 
+type PreferredSide = 'base' | 'current' | 'incoming';
+
+function getCellForSide(
+    row: import('./web/webTypes').ResolvedRow,
+    side: PreferredSide
+): NotebookCell | undefined {
+    if (side === 'base') return row.baseCell;
+    if (side === 'current') return row.currentCell;
+    return row.incomingCell;
+}
+
+function isConsistentTakeAllSelection(
+    resolvedRows: import('./web/webTypes').ResolvedRow[],
+    side: PreferredSide
+): boolean {
+    const rowsWithResolution = resolvedRows.filter(
+        (row): row is import('./web/webTypes').ResolvedRow & { resolution: { choice: ResolutionChoice; resolvedContent: string } } =>
+            !!row.resolution
+    );
+
+    if (rowsWithResolution.length <= 1) {
+        return false;
+    }
+
+    let sawSideSelection = false;
+    for (const row of rowsWithResolution) {
+        const choice = row.resolution.choice;
+        const sideCell = getCellForSide(row, side);
+        if (choice === side) {
+            if (!sideCell) return false;
+            sawSideSelection = true;
+            continue;
+        }
+        if (choice === 'delete') {
+            // In take-all mode, delete is expected only when the selected side is absent.
+            if (sideCell) return false;
+            continue;
+        }
+        return false;
+    }
+
+    return sawSideSelection;
+}
+
+function inferPreferredSide(
+    resolvedRows: import('./web/webTypes').ResolvedRow[],
+    preferredSideHint?: PreferredSide
+): PreferredSide | undefined {
+    if (preferredSideHint && isConsistentTakeAllSelection(resolvedRows, preferredSideHint)) {
+        return preferredSideHint;
+    }
+
+    const conflictChoices = resolvedRows
+        .map(row => row.resolution?.choice)
+        .filter((choice): choice is ResolutionChoice => !!choice);
+    const nonDeleteChoices = conflictChoices
+        .filter((choice): choice is PreferredSide => choice !== 'delete');
+
+    if (conflictChoices.length <= 1 || nonDeleteChoices.length === 0) {
+        return undefined;
+    }
+
+    const uniqueChoices = new Set(nonDeleteChoices);
+    if (uniqueChoices.size !== 1) {
+        return undefined;
+    }
+
+    const inferred = [...uniqueChoices][0];
+    return isConsistentTakeAllSelection(resolvedRows, inferred) ? inferred : undefined;
+}
+
 /**
  * Event fired when a notebook conflict is successfully resolved.
  */
@@ -214,14 +285,17 @@ export class NotebookConflictResolver {
             return;
         }
 
-        if (semanticConflict.semanticConflicts.length === 0) {
-            vscode.window.showInformationMessage('Notebook is in unmerged state but no conflicts detected.');
-            return;
-        }
-
         // Apply auto-resolutions based on settings
         const settings = getSettings();
         const autoResolveResult = applyAutoResolutions(semanticConflict, settings);
+
+        if (
+            semanticConflict.semanticConflicts.length === 0 &&
+            autoResolveResult.autoResolvedCount === 0
+        ) {
+            vscode.window.showInformationMessage('Notebook is in unmerged state but no conflicts detected.');
+            return;
+        }
 
         // Show what was auto-resolved
         if (autoResolveResult.autoResolvedCount > 0) {
@@ -253,9 +327,12 @@ export class NotebookConflictResolver {
                 markAsResolved: false,
                 renumberExecutionCounts: renumber === 'Yes'
             });
-            vscode.window.showInformationMessage(
-                `All ${semanticConflict.semanticConflicts.length} conflicts were auto-resolved.`
-            );
+            const resolvedCount = semanticConflict.semanticConflicts.length;
+            if (resolvedCount > 0) {
+                vscode.window.showInformationMessage(`All ${resolvedCount} conflicts were auto-resolved.`);
+            } else {
+                vscode.window.showInformationMessage('Applied automatic notebook-level resolutions.');
+            }
             return;
         }
 
@@ -341,7 +418,8 @@ export class NotebookConflictResolver {
             resolvedRows,
             resolution.markAsResolved,
             resolution.renumberExecutionCounts,
-            autoResolveResult
+            autoResolveResult,
+            resolution.semanticChoice
         );
     }
 
@@ -354,7 +432,8 @@ export class NotebookConflictResolver {
         resolvedRows: import('./web/webTypes').ResolvedRow[],
         markAsResolved: boolean,
         shouldRenumber: boolean,
-        autoResolveResult?: AutoResolveResult
+        autoResolveResult?: AutoResolveResult,
+        preferredSideHint?: PreferredSide
     ): Promise<void> {
         const baseNotebook = semanticConflict.base;
         const currentNotebook = semanticConflict.current;
@@ -370,25 +449,9 @@ export class NotebookConflictResolver {
         const resolvedCells: NotebookCell[] = [];
 
         // Detect a uniform "take all" action (e.g. all base/current/incoming).
-        // If all non-delete choices are the same side, prefer that side for ordering
-        // and for unmatched non-conflict rows.
-        const conflictChoices = resolvedRows
-            .map(r => r.resolution?.choice)
-            .filter((c): c is ResolutionChoice => !!c);
-        const nonDeleteChoices = conflictChoices
-            .filter((c): c is 'base' | 'current' | 'incoming' => c !== 'delete');
-
-        // Treat as "take all side" only when multiple conflict rows were resolved
-        // to the same non-delete branch. With a single conflict row this heuristic
-        // causes false positives and rewrites non-conflict rows unexpectedly.
-        const uniqueChoices = new Set(nonDeleteChoices);
-        const preferredSide = (
-            conflictChoices.length > 1 &&
-            nonDeleteChoices.length === conflictChoices.length &&
-            uniqueChoices.size === 1
-                ? [...uniqueChoices][0]
-                : undefined
-        ) as ('base' | 'current' | 'incoming' | undefined);
+        // If the UI provides an explicit choice (semanticChoice), use it when valid.
+        // Otherwise infer with strict delete-side consistency checks.
+        const preferredSide = inferPreferredSide(resolvedRows, preferredSideHint);
 
         let rowsForResolution = resolvedRows;
         if (preferredSide === 'base' || preferredSide === 'current' || preferredSide === 'incoming') {

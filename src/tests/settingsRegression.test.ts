@@ -7,7 +7,7 @@
  *
  * Coverage
  * --------
- *  autoResolveExecutionCount  - execution-count-changed conflicts are suppressed or kept
+ *  autoResolveExecutionCount  - execution-count-changed conflicts are auto-resolved or kept
  *  autoResolveKernelVersion   - kernel / language_info diffs are auto-resolved or not
  *  stripOutputs               - outputs-changed conflicts are auto-resolved; outputs stripped
  *  autoResolveWhitespace      - whitespace-only source diffs are auto-resolved or not
@@ -116,7 +116,7 @@ function makeNotebook(cells: NotebookCell[], metadata: Record<string, unknown> =
 // ---------------------------------------------------------------------------
 
 export async function run(): Promise<void> {
-    // ── 1a. autoResolveExecutionCount=true → execution-count conflicts suppressed ──
+    // ── 1a. Detection still reports execution-count conflicts (true setting) ──
     {
         const base = makeCodeCell('x = 1', 1);
         const current = makeCodeCell('x = 1', 2);
@@ -128,11 +128,11 @@ export async function run(): Promise<void> {
         );
 
         const execConflicts = conflicts.filter(c => c.type === 'execution-count-changed');
-        assert.strictEqual(execConflicts.length, 0,
-            'autoResolveExecutionCount=true: execution-count conflict should be suppressed in detection');
+        assert.ok(execConflicts.length > 0,
+            'Detection should report execution-count conflicts; auto-resolution happens later');
     }
 
-    // ── 1b. autoResolveExecutionCount=false → execution-count conflicts surfaced ──
+    // ── 1b. Detection also reports execution-count conflicts (false setting) ──
     {
         const base = makeCodeCell('x = 1', 1);
         const current = makeCodeCell('x = 1', 2);
@@ -241,7 +241,7 @@ export async function run(): Promise<void> {
             'stripOutputs=false: outputs-changed conflict must remain');
     }
 
-    // ── 2c. stripOutputs=true includes detection-level suppression ──
+    // ── 2c. Detection reports outputs-changed for added-in-both code cells ──
     {
         const outputs = [{ output_type: 'stream', name: 'stdout', text: 'A\n' }] as NotebookCell['outputs'];
         const current = makeCodeCell('same', 1, outputs);
@@ -252,8 +252,8 @@ export async function run(): Promise<void> {
             makeSettings({ stripOutputs: true })
         );
         const outputConflicts = conflicts.filter(c => c.type === 'outputs-changed');
-        assert.strictEqual(outputConflicts.length, 0,
-            'stripOutputs=true: detection should suppress outputs-changed for added-in-both cells');
+        assert.ok(outputConflicts.length > 0,
+            'Detection should report outputs-changed; stripOutputs is applied in auto-resolution');
     }
 
     console.log('[settingsRegression] stripOutputs ✓');

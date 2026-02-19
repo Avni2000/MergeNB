@@ -72,7 +72,13 @@ function cloneRows(source: MergeRowType[]): MergeRowType[] {
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
-    onResolve: (resolutions: ConflictChoice[], markAsResolved: boolean, renumberExecutionCounts: boolean, resolvedRows: import('./types').ResolvedRow[]) => void;
+    onResolve: (
+        resolutions: ConflictChoice[],
+        markAsResolved: boolean,
+        renumberExecutionCounts: boolean,
+        resolvedRows: import('./types').ResolvedRow[],
+        semanticChoice?: 'base' | 'current' | 'incoming'
+    ) => void;
     onCancel: () => void;
 }
 
@@ -392,7 +398,8 @@ export function ConflictResolver({
             };
         });
 
-        onResolve(resolutions, markAsResolved, renumberExecutionCounts, resolvedRows);
+        const semanticChoice = inferTakeAllChoice(rows, choices);
+        onResolve(resolutions, markAsResolved, renumberExecutionCounts, resolvedRows, semanticChoice);
     };
 
     // Cell drag handlers
@@ -831,6 +838,66 @@ export function ConflictResolver({
             </main>
         </div>
     );
+}
+
+function inferTakeAllChoice(
+    rows: MergeRowType[],
+    choices: Map<number, ResolutionState>
+): 'base' | 'current' | 'incoming' | undefined {
+    const conflictRows = rows.filter((row): row is MergeRowType & { conflictIndex: number } =>
+        row.type === 'conflict' && row.conflictIndex !== undefined
+    );
+
+    // Single-conflict notebooks can produce false positives with side-heuristics.
+    if (conflictRows.length <= 1) {
+        return undefined;
+    }
+
+    const rowChoices: Array<ResolutionChoice> = [];
+    for (const row of conflictRows) {
+        const choice = choices.get(row.conflictIndex)?.choice;
+        if (!choice) {
+            return undefined;
+        }
+        rowChoices.push(choice);
+    }
+
+    const nonDeleteChoices = rowChoices.filter(
+        (choice): choice is 'base' | 'current' | 'incoming' => choice !== 'delete'
+    );
+    if (nonDeleteChoices.length === 0) {
+        return undefined;
+    }
+
+    const uniqueNonDeleteChoices = new Set(nonDeleteChoices);
+    if (uniqueNonDeleteChoices.size !== 1) {
+        return undefined;
+    }
+
+    const inferredSide = [...uniqueNonDeleteChoices][0];
+    const getCellForSide = (
+        row: MergeRowType,
+        side: 'base' | 'current' | 'incoming'
+    ): NotebookCell | undefined => {
+        if (side === 'base') return row.baseCell;
+        if (side === 'current') return row.currentCell;
+        return row.incomingCell;
+    };
+
+    // Delete is considered part of take-all only when the selected side is absent.
+    const consistentWithTakeAll = conflictRows.every((row) => {
+        const choice = choices.get(row.conflictIndex)?.choice;
+        const sideCell = getCellForSide(row, inferredSide);
+        if (choice === inferredSide) {
+            return Boolean(sideCell);
+        }
+        if (choice === 'delete') {
+            return !sideCell;
+        }
+        return false;
+    });
+
+    return consistentWithTakeAll ? inferredSide : undefined;
 }
 
 /**

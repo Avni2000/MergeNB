@@ -181,7 +181,7 @@ export class WebConflictPanel {
                 try {
                     await this._onResolutionComplete({
                         type: 'semantic',
-                        semanticChoice: message.semanticChoice as 'current' | 'incoming' | undefined,
+                        semanticChoice: message.semanticChoice as 'base' | 'current' | 'incoming' | undefined,
                         semanticResolutions: semanticResolutionMap,
                         resolvedRows: message.resolvedRows,
                         markAsResolved: message.markAsResolved ?? false,
