@@ -106,14 +106,19 @@ function getCellForSide(
 
 function isConsistentTakeAllSelection(
     resolvedRows: import('./web/webTypes').ResolvedRow[],
-    side: PreferredSide
+    side: PreferredSide,
+    allowSingleRow: boolean = false
 ): boolean {
     const rowsWithResolution = resolvedRows.filter(
         (row): row is import('./web/webTypes').ResolvedRow & { resolution: { choice: ResolutionChoice; resolvedContent: string } } =>
             !!row.resolution
     );
 
-    if (rowsWithResolution.length <= 1) {
+    if (rowsWithResolution.length === 0) {
+        return false;
+    }
+
+    if (!allowSingleRow && rowsWithResolution.length <= 1) {
         return false;
     }
 
@@ -141,7 +146,7 @@ function inferPreferredSide(
     resolvedRows: import('./web/webTypes').ResolvedRow[],
     preferredSideHint?: PreferredSide
 ): PreferredSide | undefined {
-    if (preferredSideHint && isConsistentTakeAllSelection(resolvedRows, preferredSideHint)) {
+    if (preferredSideHint && isConsistentTakeAllSelection(resolvedRows, preferredSideHint, true)) {
         return preferredSideHint;
     }
 
@@ -161,7 +166,7 @@ function inferPreferredSide(
     }
 
     const inferred = [...uniqueChoices][0];
-    return isConsistentTakeAllSelection(resolvedRows, inferred) ? inferred : undefined;
+    return isConsistentTakeAllSelection(resolvedRows, inferred, false) ? inferred : undefined;
 }
 
 /**

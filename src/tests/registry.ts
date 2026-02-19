@@ -86,6 +86,13 @@ export const TEST_GROUPS: TestGroup[] = [
                 params: { action: 'current' },
             },
             {
+                id: 'takeAll_current_single_conflict',
+                description: 'Take All Current (single-conflict notebook)',
+                notebooks: ['06_base.ipynb', '06_current.ipynb', '06_incoming.ipynb'],
+                testModule: './takeAllButtons.test.js',
+                params: { action: 'current' },
+            },
+            {
                 id: 'takeAll_incoming',
                 description: 'Take All Incoming',
                 notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
