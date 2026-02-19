@@ -131,6 +131,12 @@ export const TEST_GROUPS: TestGroup[] = [
                 notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
                 testModule: './nullCurrentCellIndexing.test.js',
             },
+            {
+                id: 'regression_settings',
+                description: 'Each MergeNBSettings field is propagated and respected',
+                notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
+                testModule: './settingsRegression.test.js',
+            },
         ],
     },
     {
