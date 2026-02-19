@@ -14,6 +14,7 @@ import { computeLineDiff, type DiffLine } from '../../diffUtils';
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
+const MAX_RENDERMIME_REGISTRY_CACHE_SIZE = 32;
 const renderMimeMd = MarkdownIt({
     html: true,
     linkify: true,
@@ -67,6 +68,15 @@ export function CellContentInner({
     onDragStart,
     onDragEnd,
 }: CellContentProps): React.ReactElement {
+    const renderMimeRegistry = useMemo(
+        () => getRenderMimeRegistry(notebookPath),
+        [notebookPath]
+    );
+    const encodedCell = useMemo(
+        () => (cell ? encodeURIComponent(JSON.stringify(cell)) : ''),
+        [cell]
+    );
+
     if (!cell) {
         return (
             <div className="cell-placeholder">
@@ -77,11 +87,6 @@ export function CellContentInner({
 
     const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
-    const renderMimeRegistry = useMemo(
-        () => getRenderMimeRegistry(notebookPath),
-        [notebookPath]
-    );
-    const encodedCell = useMemo(() => encodeURIComponent(JSON.stringify(cell)), [cell]);
 
     const cellClasses = [
         'notebook-cell',
@@ -319,28 +324,13 @@ function CellOutputs({ outputs, renderMimeRegistry }: CellOutputsProps): React.R
     return (
         <div className="cell-outputs">
             {outputs.map((output, i) => (
-                <OutputItem
+                <RenderMimeOutput
                     key={i}
                     output={output}
                     renderMimeRegistry={renderMimeRegistry}
                 />
             ))}
         </div>
-    );
-}
-
-function OutputItem({
-    output,
-    renderMimeRegistry
-}: {
-    output: CellOutput;
-    renderMimeRegistry: RenderMimeRegistry;
-}): React.ReactElement {
-    return (
-        <RenderMimeOutput
-            output={output}
-            renderMimeRegistry={renderMimeRegistry}
-        />
     );
 }
 
@@ -466,9 +456,13 @@ function getOutputTextFallback(output: CellOutput): string {
     }
 
     if (output.output_type === 'error') {
-        return Array.isArray(output.traceback)
-            ? output.traceback.join('\n')
-            : (output.traceback ?? `${output.ename}: ${output.evalue}`);
+        if (Array.isArray(output.traceback)) {
+            return output.traceback.join('\n');
+        }
+
+        const errorParts = [output.ename, output.evalue]
+            .filter((part): part is string => typeof part === 'string' && part.trim() !== '');
+        return errorParts.length > 0 ? errorParts.join(': ') : 'Error';
     }
 
     if ((output.output_type === 'display_data' || output.output_type === 'execute_result') && output.data) {
@@ -495,24 +489,54 @@ function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
     const sessionId = getCurrentSessionId();
     const cacheKey = `${sessionId}::${notebookPath ?? ''}`;
     const cached = renderMimeRegistryCache.get(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+        renderMimeRegistryCache.delete(cacheKey);
+        renderMimeRegistryCache.set(cacheKey, cached);
+        return cached;
+    }
 
     const registry = new RenderMimeRegistry({
         initialFactories: standardRendererFactories,
-        resolver: createNotebookAssetResolver(sessionId, notebookPath),
+        resolver: createNotebookAssetResolver(sessionId),
         latexTypesetter: renderMimeKatexTypesetter,
         markdownParser: renderMimeMarkdownParser,
     });
+
     renderMimeRegistryCache.set(cacheKey, registry);
+    evictRenderMimeRegistryCacheEntries();
     return registry;
 }
 
-function createNotebookAssetResolver(
-    sessionId: string,
-    notebookPath?: string
-): IRenderMime.IResolver | undefined {
-    if (!notebookPath) return undefined;
+function evictRenderMimeRegistryCacheEntries(): void {
+    while (renderMimeRegistryCache.size > MAX_RENDERMIME_REGISTRY_CACHE_SIZE) {
+        const leastRecentlyUsedKey = renderMimeRegistryCache.keys().next().value as string | undefined;
+        if (!leastRecentlyUsedKey) return;
 
+        const leastRecentlyUsedRegistry = renderMimeRegistryCache.get(leastRecentlyUsedKey);
+        renderMimeRegistryCache.delete(leastRecentlyUsedKey);
+        disposeRenderMimeRegistry(leastRecentlyUsedRegistry);
+    }
+}
+
+function disposeRenderMimeRegistry(registry: RenderMimeRegistry | undefined): void {
+    if (!registry) return;
+
+    const resolver = registry.resolver as (IRenderMime.IResolver & { dispose?: () => void }) | null;
+    try {
+        resolver?.dispose?.();
+    } catch (err) {
+        console.warn('[MergeNB] Failed to dispose rendermime resolver:', err);
+    }
+
+    const disposableRegistry = registry as RenderMimeRegistry & { dispose?: () => void };
+    try {
+        disposableRegistry.dispose?.();
+    } catch (err) {
+        console.warn('[MergeNB] Failed to dispose rendermime registry:', err);
+    }
+}
+
+function createNotebookAssetResolver(sessionId: string): IRenderMime.IResolver {
     return {
         async resolveUrl(url: string): Promise<string> {
             return normalizeLocalPath(url);
