@@ -147,12 +147,12 @@ npm run compile
 npm run lint
 ```
 
-Integration tests:
+Test runner:
 
 ```bash
-npm run test:integration
-npm run test:integration:all
-npm run test:integration:list
+npm run test
+npm run test:all
+npm run test:list
 ```
 
 Manual testing:
@@ -160,17 +160,18 @@ Manual testing:
 See the test directory for our fixtures, and src/tests for the test runners.
 
 ```bash 
-npm run test:integration -- --group manual
+npm run test:manual
 # npm shorthand: --manual is consumed by npm, fixture values are forwarded
-npm run test:integration --manual 02
+npm run test --manual 02
 # equivalent explicit ID format 
 node out/tests/runIntegrationTest.js --manual manual_02
 # optional: override deterministic sandbox path
-MERGENB_MANUAL_SANDBOX_DIR=/path/to/sandbox node out/tests/runIntegrationTest.js --manual 02
+MERGENB_MANUAL_SANDBOX_DIR=/path/to/sandbox npm run test --manual 02
 ```
 
 Manual sandboxes default to a deterministic workspace at `~/.mergenb/manual-sandbox`
 and launch with `code --reuse-window` so one VS Code window can be reused.
+`--manual` accepts exactly one fixture per run (for example, `02`).
 Each sandbox starts with an active merge conflict in `conflict.ipynb` and includes
 `{original-notebooks}/base.ipynb`, `{original-notebooks}/current.ipynb`, and
 `{original-notebooks}/incoming.ipynb` for quick reference.

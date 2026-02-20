@@ -1,6 +1,6 @@
 /**
  * @file runIntegrationTest.ts
- * @description Integration test runner with interactive TUI picker and CLI flags.
+ * @description Test runner with interactive TUI picker and CLI flags.
  *
  * Usage:
  *   node out/tests/runIntegrationTest.js                  # Interactive TUI picker
@@ -14,9 +14,9 @@
  *   node out/tests/runIntegrationTest.js --list            # Print groups & tests
  *
  * npm scripts (see package.json):
- *   npm run test:integration              # Interactive picker
- *   npm run test:integration -- --all     # Run all
- *   npm run test:integration -- --list    # List available tests
+ *   npm run test                          # Interactive picker
+ *   npm run test -- --all                # Run all
+ *   npm run test:list                    # List available tests
  */
 
 import * as path from 'path';
@@ -159,7 +159,7 @@ function printTestList(): void {
     const manualFixtures = manualSandboxTests().map(test => test.id.replace(/^manual_/, ''));
 
     console.log();
-    console.log(pc.bold('Available integration entries'));
+    console.log(pc.bold('Available test entries'));
     console.log(pc.dim('─'.repeat(60)));
 
     for (const group of TEST_GROUPS) {
@@ -197,7 +197,7 @@ function printTestList(): void {
 
 async function pickTestsInteractively(): Promise<TestDef[]> {
     const c = await clack();
-    c.intro(pc.bgCyan(pc.black(' MergeNB Integration Tests ')));
+    c.intro(pc.bgCyan(pc.black(' MergeNB Tests ')));
 
     const mode = await c.select({
         message: 'What do you want to run?',
