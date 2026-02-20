@@ -20,6 +20,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { spawnSync } from 'child_process';
 import { runTests } from '@vscode/test-electron';
 import pc from 'picocolors';
@@ -214,6 +215,14 @@ function isCodeCliAvailable(): boolean {
     return !result.error && result.status === 0;
 }
 
+function resolveManualWorkspacePath(): string {
+    const configured = process.env.MERGENB_MANUAL_SANDBOX_DIR?.trim();
+    if (configured) {
+        return path.resolve(configured);
+    }
+    return path.join(os.homedir(), '.mergenb', 'manual-sandbox');
+}
+
 async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
     const start = Date.now();
     const extensionDevelopmentPath = path.resolve(__dirname, '../..');
@@ -268,11 +277,13 @@ async function runManualSandbox(test: ManualSandboxDef): Promise<RunResult> {
 
     try {
         const [baseFile, currentFile, incomingFile] = resolveNotebookTripletPaths(test);
-        const workspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile);
+        const workspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile, {
+            targetDir: resolveManualWorkspacePath(),
+        });
         const openArgs = [
             '--extensionDevelopmentPath',
             extensionDevelopmentPath,
-            '--new-window',
+            '--reuse-window',
             workspacePath,
         ];
         const openCommand = `code ${openArgs.map(arg => JSON.stringify(arg)).join(' ')}`;
@@ -347,7 +358,7 @@ async function runAll(tests: TestDef[]): Promise<void> {
             );
             if (result.workspacePath) {
                 console.log(`  ${pc.dim(`Workspace: ${result.workspacePath}`)}`);
-                console.log(`  ${pc.dim('Note: Manual sandboxes are intentionally preserved.')}`);
+                console.log(`  ${pc.dim('Note: Manual sandbox path is deterministic and reused.')}`);
             }
         } else {
             console.log(

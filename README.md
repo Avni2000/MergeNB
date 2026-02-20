@@ -161,7 +161,12 @@ Manual testing:
 npm run test:integration -- --group manual
 # or pick one fixture set directly
 node out/tests/runIntegrationTest.js --test manual_02
+# optional: override deterministic sandbox path
+MERGENB_MANUAL_SANDBOX_DIR=/path/to/sandbox node out/tests/runIntegrationTest.js --test manual_02
 ```
+
+Manual sandboxes default to a deterministic workspace at `~/.mergenb/manual-sandbox`
+and launch with `code --reuse-window` so one VS Code window can be reused.
 
 ## Contributing
 

@@ -22,6 +22,14 @@ const IMAGE_EXTENSIONS = new Set([
     '.bmp',
 ]);
 
+export interface MergeConflictRepoOptions {
+    /**
+     * Optional deterministic target directory.
+     * When provided, the directory is recreated before building the repo.
+     */
+    targetDir?: string;
+}
+
 /** Run a git command in `cwd`, tolerating expected non-zero exits (e.g. merge). */
 function git(cwd: string, ...args: string[]): string {
     const cmd = `git ${args.join(' ')}`;
@@ -48,21 +56,26 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 /**
- * Create a temporary git repo whose working tree has a `conflict.ipynb` with
+ * Create a git repo whose working tree has a `conflict.ipynb` with
  * merge conflicts between a *current* and *incoming* branch (base is the
  * common ancestor).
  *
  * @param baseFile     Absolute path to the base notebook
  * @param currentFile  Absolute path to the current-branch notebook
  * @param incomingFile Absolute path to the incoming-branch notebook
- * @returns            Absolute path to the temporary repository
+ * @param options      Optional directory controls (e.g. deterministic targetDir)
+ * @returns            Absolute path to the created repository
  */
 export function createMergeConflictRepo(
     baseFile: string,
     currentFile: string,
     incomingFile: string,
+    options: MergeConflictRepoOptions = {},
 ): string {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergeNB-integration-'));
+    const targetDir = options.targetDir?.trim();
+    const tmpDir = targetDir
+        ? prepareDeterministicRepoDir(targetDir)
+        : fs.mkdtempSync(path.join(os.tmpdir(), 'mergeNB-integration-'));
     console.log(`[RepoSetup] Creating merge conflict repo in: ${tmpDir}`);
 
     git(tmpDir, 'init', '-b', 'main');
@@ -112,6 +125,18 @@ export function createMergeConflictRepo(
     }
 
     return tmpDir;
+}
+
+function prepareDeterministicRepoDir(targetDir: string): string {
+    const resolved = path.resolve(targetDir);
+    const rootPath = path.parse(resolved).root;
+    if (resolved === rootPath) {
+        throw new Error(`Refusing to use filesystem root as test repo directory: ${resolved}`);
+    }
+
+    fs.rmSync(resolved, { recursive: true, force: true });
+    fs.mkdirSync(resolved, { recursive: true });
+    return resolved;
 }
 
 function copyFixtureImageAssets(notebookFiles: string[], targetDir: string): void {
