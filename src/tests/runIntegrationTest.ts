@@ -9,6 +9,7 @@
  *   node out/tests/runIntegrationTest.js --group takeAll --group undoRedo
  *   node out/tests/runIntegrationTest.js --test takeAll_base
  *   node out/tests/runIntegrationTest.js --test manual_04
+ *   node out/tests/runIntegrationTest.js --manual 02
  *   node out/tests/runIntegrationTest.js --test takeAll_base --test perCell_02
  *   node out/tests/runIntegrationTest.js --list            # Print groups & tests
  *
@@ -55,10 +56,17 @@ interface CliArgs {
     list: boolean;
     groups: string[];
     tests: string[];
+    manualFixtures: string[];
 }
 
 function parseArgs(argv: string[]): CliArgs {
-    const args: CliArgs = { all: false, list: false, groups: [], tests: [] };
+    const args: CliArgs = {
+        all: false,
+        list: false,
+        groups: [],
+        tests: [],
+        manualFixtures: [],
+    };
     let i = 2; // skip node + script
     while (i < argv.length) {
         const arg = argv[i];
@@ -72,10 +80,74 @@ function parseArgs(argv: string[]): CliArgs {
         } else if (arg === '--test' || arg === '-t') {
             i++;
             if (i < argv.length) args.tests.push(argv[i]);
+        } else if (arg === '--manual' || arg === '-m') {
+            i++;
+            if (i < argv.length) args.manualFixtures.push(argv[i]);
+        } else if (arg.startsWith('--manual=')) {
+            const value = arg.slice('--manual='.length);
+            if (value) args.manualFixtures.push(value);
+        } else if (!arg.startsWith('-')) {
+            // npm can strip unknown flags (e.g. `npm run ... --manual 02`) and
+            // forward only positional values to the script.
+            const looksLikeManualFixture =
+                /^manual_/i.test(arg) || /^\d+(?:[\/,]\d+)*$/.test(arg);
+            if (looksLikeManualFixture) {
+                args.manualFixtures.push(arg);
+            }
         }
         i++;
     }
     return args;
+}
+
+function manualSandboxTests(): ManualSandboxDef[] {
+    return allTests().filter(isManualTest);
+}
+
+function parseManualFixtureTokens(rawValues: string[]): string[] {
+    return rawValues
+        .flatMap(value => value.split(/[\/,\s]+/))
+        .map(value => value.trim())
+        .filter(Boolean);
+}
+
+function normalizeManualFixtureToId(token: string): string {
+    const normalized = token.trim().toLowerCase();
+    if (normalized.startsWith('manual_')) {
+        return normalized;
+    }
+    if (/^\d+$/.test(normalized)) {
+        return `manual_${normalized.padStart(2, '0')}`;
+    }
+    return `manual_${normalized}`;
+}
+
+function resolveManualFixtureSelections(rawValues: string[]): {
+    selectedIds: string[];
+    unknownTokens: string[];
+} {
+    const tokens = parseManualFixtureTokens(rawValues);
+    const availableByLowerId = new Map(
+        manualSandboxTests().map(test => [test.id.toLowerCase(), test.id]),
+    );
+    const selectedIds: string[] = [];
+    const seen = new Set<string>();
+    const unknownTokens: string[] = [];
+
+    for (const token of tokens) {
+        const requestedId = normalizeManualFixtureToId(token);
+        const resolvedId = availableByLowerId.get(requestedId);
+        if (!resolvedId) {
+            unknownTokens.push(token);
+            continue;
+        }
+        if (!seen.has(resolvedId)) {
+            selectedIds.push(resolvedId);
+            seen.add(resolvedId);
+        }
+    }
+
+    return { selectedIds, unknownTokens };
 }
 
 // ─── List command ───────────────────────────────────────────────────────────
@@ -84,6 +156,7 @@ function printTestList(): void {
     const all = allTests();
     const automatedCount = all.filter(isAutomatedTest).length;
     const manualCount = all.length - automatedCount;
+    const manualFixtures = manualSandboxTests().map(test => test.id.replace(/^manual_/, ''));
 
     console.log();
     console.log(pc.bold('Available integration entries'));
@@ -112,6 +185,11 @@ function printTestList(): void {
     console.log(
         `  ${pc.dim('Breakdown:')} ${automatedCount} automated, ${manualCount} manual`,
     );
+    if (manualFixtures.length > 0) {
+        console.log(
+            `  ${pc.dim('Manual fixtures:')} ${manualFixtures.join(', ')} ${pc.dim('(use --manual <fixture>)')}`,
+        );
+    }
     console.log();
 }
 
@@ -220,7 +298,50 @@ function resolveManualWorkspacePath(): string {
     if (configured) {
         return path.resolve(configured);
     }
-    return path.join(os.homedir(), '.mergenb', 'manual-sandbox');
+    return path.join(os.tmpdir(), '.mergenb', 'manual-sandbox');
+}
+
+interface ManualNotebookReferences {
+    base: string;
+    current: string;
+    incoming: string;
+}
+
+function writeManualNotebookReferences(
+    workspacePath: string,
+    baseFile: string,
+    currentFile: string,
+    incomingFile: string,
+): ManualNotebookReferences {
+    const referenceDir = path.join(workspacePath, 'original-notebooks');
+    fs.rmSync(referenceDir, { recursive: true, force: true });
+    fs.mkdirSync(referenceDir, { recursive: true });
+
+    const paths: ManualNotebookReferences = {
+        base: path.join(referenceDir, 'base.ipynb'),
+        current: path.join(referenceDir, 'current.ipynb'),
+        incoming: path.join(referenceDir, 'incoming.ipynb'),
+    };
+
+    fs.copyFileSync(baseFile, paths.base);
+    fs.copyFileSync(currentFile, paths.current);
+    fs.copyFileSync(incomingFile, paths.incoming);
+    fs.writeFileSync(
+        path.join(referenceDir, 'README.txt'),
+        [
+            'Reference notebooks for manual conflict testing.',
+            '',
+            'Use conflict.ipynb at workspace root to resolve the merge conflict.',
+            'Files in this folder mirror the original BASE/CURRENT/INCOMING fixtures.',
+            '',
+            '  base.ipynb     - common ancestor',
+            '  current.ipynb  - current branch version',
+            '  incoming.ipynb - incoming branch version',
+            '',
+        ].join('\n'),
+    );
+
+    return paths;
 }
 
 async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
@@ -280,15 +401,25 @@ async function runManualSandbox(test: ManualSandboxDef): Promise<RunResult> {
         const workspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile, {
             targetDir: resolveManualWorkspacePath(),
         });
+        const referencePaths = writeManualNotebookReferences(
+            workspacePath,
+            baseFile,
+            currentFile,
+            incomingFile,
+        );
+        const conflictNotebookPath = path.join(workspacePath, 'conflict.ipynb');
         const openArgs = [
             '--extensionDevelopmentPath',
             extensionDevelopmentPath,
             '--reuse-window',
             workspacePath,
+            conflictNotebookPath,
         ];
         const openCommand = `code ${openArgs.map(arg => JSON.stringify(arg)).join(' ')}`;
 
         console.log(`  ${pc.dim(`Sandbox repo: ${workspacePath}`)}`);
+        console.log(`  ${pc.dim(`Conflict notebook: ${conflictNotebookPath}`)}`);
+        console.log(`  ${pc.dim(`Reference notebooks: ${path.dirname(referencePaths.base)}`)}`);
         console.log(`  ${pc.dim(`Open command: ${openCommand}`)}`);
 
         if (isCodeCliAvailable()) {
@@ -403,6 +534,7 @@ async function runAll(tests: TestDef[]): Promise<void> {
 
 async function main(): Promise<void> {
     const cli = parseArgs(process.argv);
+    const manualSelection = resolveManualFixtureSelections(cli.manualFixtures);
 
     // --list
     if (cli.list) {
@@ -415,12 +547,46 @@ async function main(): Promise<void> {
         return runAll(testsForAll());
     }
 
-    // --group / --test (can be combined)
-    if (cli.groups.length > 0 || cli.tests.length > 0) {
-        const tests = resolveTests([...cli.groups, ...cli.tests]);
+    if (manualSelection.unknownTokens.length > 0) {
+        const manualFixtures = manualSandboxTests()
+            .map(test => test.id.replace(/^manual_/, ''))
+            .join(', ');
+        console.error(
+            pc.red(
+                `Unknown --manual fixture selector(s): ${manualSelection.unknownTokens.join(', ')}`,
+            ),
+        );
+        console.error(
+            pc.dim(`Available manual fixtures: ${manualFixtures}`),
+        );
+        console.error(
+            pc.dim('Examples: --manual 02, --manual 02/03, --manual manual_04'),
+        );
+        process.exit(1);
+    }
+
+    if (manualSelection.selectedIds.length > 1) {
+        console.error(
+            pc.red(
+                `--manual accepts exactly one fixture, but received ${manualSelection.selectedIds.length}.`,
+            ),
+        );
+        console.error(
+            pc.dim('Use one fixture at a time, e.g. --manual 02'),
+        );
+        process.exit(1);
+    }
+
+    // --group / --test / --manual (can be combined)
+    if (cli.groups.length > 0 || cli.tests.length > 0 || manualSelection.selectedIds.length > 0) {
+        const tests = resolveTests([
+            ...cli.groups,
+            ...cli.tests,
+            ...manualSelection.selectedIds,
+        ]);
         if (tests.length === 0) {
             console.error(
-                pc.red('No tests matched the given --group / --test flags.'),
+                pc.red('No tests matched the given --group / --test / --manual flags.'),
             );
             console.error(pc.dim('Run with --list to see available ids.'));
             process.exit(1);
