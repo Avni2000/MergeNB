@@ -694,7 +694,7 @@ export async function getBaseVersion(filePath: string): Promise<string | null> {
  * Get the current version of a file from Git staging area (stage :2:)
  * This is the "ours" version (current branch)
  */
-export async function getcurrentVersion(filePath: string): Promise<string | null> {
+export async function getCurrentVersion(filePath: string): Promise<string | null> {
     try {
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
@@ -717,7 +717,7 @@ export async function getcurrentVersion(filePath: string): Promise<string | null
  * Get the incoming version of a file from Git staging area (stage :3:)
  * This is the "theirs" version (incoming branch)
  */
-export async function getincomingVersion(filePath: string): Promise<string | null> {
+export async function getIncomingVersion(filePath: string): Promise<string | null> {
     try {
         const gitRoot = await getGitRoot(filePath);
         if (!gitRoot) return null;
@@ -746,8 +746,8 @@ export async function getThreeWayVersions(filePath: string): Promise<{
 } | null> {
     const [base, current, incoming] = await Promise.all([
         getBaseVersion(filePath),
-        getcurrentVersion(filePath),
-        getincomingVersion(filePath)
+        getCurrentVersion(filePath),
+        getIncomingVersion(filePath)
     ]);
 
     if (base === null && current === null && incoming === null) {
