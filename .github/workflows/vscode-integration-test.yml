@@ -136,8 +136,8 @@ jobs:
       # Run tests
       - name: Run VS Code integration tests under Xvfb
         if: runner.os == 'Linux'
-        run: xvfb-run -a npm run test:integration:all
+        run: xvfb-run -a npm run test:all
 
       - name: Run VS Code integration tests
         if: runner.os == 'Windows' || runner.os == 'macOS'
-        run: npm run test:integration:all
+        run: npm run test:all
