@@ -165,15 +165,23 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 	}
 
 	const watchedRepositories = new WeakSet<Repository>();
+	const refreshRepositoryUnmergedSnapshot = (repository: Repository): void => {
+		void (async () => {
+			await gitIntegration.refreshUnmergedFilesSnapshot(repository.rootUri.fsPath);
+			decorationChangeEmitter.fire(undefined);
+			void updateStatusBar();
+		})();
+	};
+
 	const attachRepositoryWatcher = (repository: Repository): void => {
 		if (!repository?.state || watchedRepositories.has(repository)) {
 			return;
 		}
 		watchedRepositories.add(repository);
+		refreshRepositoryUnmergedSnapshot(repository);
 		context.subscriptions.push(
 			repository.state.onDidChange(() => {
-				decorationChangeEmitter.fire(undefined);
-				void updateStatusBar();
+				refreshRepositoryUnmergedSnapshot(repository);
 			})
 		);
 	};
@@ -186,8 +194,6 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 		context.subscriptions.push(
 			api.onDidOpenRepository((repository) => {
 				attachRepositoryWatcher(repository);
-				decorationChangeEmitter.fire(undefined);
-				void updateStatusBar();
 			})
 		);
 	};
@@ -223,9 +229,9 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.window.onDidChangeActiveNotebookEditor(() => updateStatusBar())
 		);
 
+		registerGitStateWatchers(context);
 		// Initial status bar update
 		void updateStatusBar();
-		registerGitStateWatchers(context);
 	}
 	
 	// Listen for resolution success events
