@@ -1,4 +1,4 @@
-name: VSCode Integration Tests
+name: MergeNB Tests
 on:
   pull_request:
   push:
