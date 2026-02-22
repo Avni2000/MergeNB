@@ -661,7 +661,8 @@ interface GitFileContext {
 
 function readGitShowFromStage(gitRoot: string, relativePath: string, stage: GitStageNumber): Promise<string> {
     return new Promise((resolve, reject) => {
-        const gitShow = spawn('git', ['show', `:${stage}:${relativePath}`], {
+        // `cat-file blob` returns the blob directly and avoids command formatting overhead.
+        const gitShow = spawn('git', ['cat-file', 'blob', `:${stage}:${relativePath}`], {
             cwd: gitRoot,
             stdio: ['ignore', 'pipe', 'pipe']
         });
@@ -669,25 +670,21 @@ function readGitShowFromStage(gitRoot: string, relativePath: string, stage: GitS
         const stdout = gitShow.stdout;
         const stderr = gitShow.stderr;
         if (!stdout || !stderr) {
-            reject(new Error('Unable to capture git show output streams.'));
+            reject(new Error('Unable to capture git cat-file output streams.'));
             return;
         }
 
-        const stdoutChunks: Buffer[] = [];
-        const stderrChunks: Buffer[] = [];
-        let stdoutBytes = 0;
-        let stderrBytes = 0;
+        stdout.setEncoding('utf8');
+        stderr.setEncoding('utf8');
+        let stdoutOutput = '';
+        let stderrOutput = '';
 
-        stdout.on('data', (chunk: Buffer | string) => {
-            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-            stdoutChunks.push(buffer);
-            stdoutBytes += buffer.length;
+        stdout.on('data', (chunk: string) => {
+            stdoutOutput += chunk;
         });
 
-        stderr.on('data', (chunk: Buffer | string) => {
-            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-            stderrChunks.push(buffer);
-            stderrBytes += buffer.length;
+        stderr.on('data', (chunk: string) => {
+            stderrOutput += chunk;
         });
 
         gitShow.once('error', (error) => {
@@ -696,19 +693,12 @@ function readGitShowFromStage(gitRoot: string, relativePath: string, stage: GitS
 
         gitShow.once('close', (code) => {
             if (code !== 0) {
-                const stderrOutput =
-                    stderrBytes > 0 ? Buffer.concat(stderrChunks, stderrBytes).toString('utf8').trim() : '';
-                const fallback = `git show :${stage}:${relativePath} failed with exit code ${String(code)}`;
-                reject(new Error(stderrOutput || fallback));
+                const fallback = `git cat-file blob :${stage}:${relativePath} failed with exit code ${String(code)}`;
+                reject(new Error(stderrOutput.trim() || fallback));
                 return;
             }
 
-            if (stdoutBytes === 0) {
-                resolve('');
-                return;
-            }
-
-            resolve(Buffer.concat(stdoutChunks, stdoutBytes).toString('utf8'));
+            resolve(stdoutOutput);
         });
     });
 }
