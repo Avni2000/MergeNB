@@ -157,6 +157,28 @@ async function updateStatusBar(): Promise<void> {
 	statusBarVisible = true;
 }
 
+async function getNotebookConflictDecoration(uri: vscode.Uri): Promise<vscode.FileDecoration | undefined> {
+	if (!backgroundConflictMonitoringEnabled || !uri.fsPath.endsWith('.ipynb')) {
+		return undefined;
+	}
+
+	try {
+		// Fast check: is this file unmerged according to Git?
+		const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
+		if (isUnmerged) {
+			return {
+				badge: '⚠',
+				tooltip: 'Notebook has merge conflicts',
+				color: new vscode.ThemeColor('gitDecoration.conflictingResourceForeground')
+			};
+		}
+	} catch {
+		// Ignore errors
+	}
+
+	return undefined;
+}
+
 function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 	const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
 	if (!extension) {
@@ -384,31 +406,38 @@ export function activate(context: vscode.ExtensionContext) {
 				};
 			})
 		);
+		context.subscriptions.push(
+			vscode.commands.registerCommand('merge-nb.getFileDecorationState', async (target?: string | vscode.Uri) => {
+				const uri =
+					target instanceof vscode.Uri
+						? target
+						: typeof target === 'string'
+							? vscode.Uri.file(target)
+							: getActiveNotebookFileUri();
+
+				if (!uri) {
+					return { hasDecoration: false };
+				}
+
+				const decoration = await getNotebookConflictDecoration(uri);
+				if (!decoration) {
+					return { hasDecoration: false };
+				}
+
+				return {
+					hasDecoration: true,
+					badge: decoration.badge,
+					tooltip: typeof decoration.tooltip === 'string' ? decoration.tooltip : undefined
+				};
+			})
+		);
 	}
 
 	if (backgroundConflictMonitoringEnabled) {
 		// Register file decoration for notebooks with conflicts
 		const decorationProvider = vscode.window.registerFileDecorationProvider({
 			onDidChangeFileDecorations: decorationChangeEmitter.event,
-			provideFileDecoration: async (uri) => {
-				if (!uri.fsPath.endsWith('.ipynb')) {
-					return undefined;
-				}
-				try {
-					// Fast check: is this file unmerged according to Git?
-					const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
-					if (isUnmerged) {
-						return {
-							badge: '⚠',
-							tooltip: 'Notebook has merge conflicts',
-							color: new vscode.ThemeColor('gitDecoration.conflictingResourceForeground')
-						};
-					}
-				} catch {
-					// Ignore errors
-				}
-				return undefined;
-			}
+			provideFileDecoration: getNotebookConflictDecoration
 		});
 		
 		context.subscriptions.push(decorationProvider);

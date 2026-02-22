@@ -165,6 +165,12 @@ export const TEST_GROUPS: TestGroup[] = [
                 notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
                 testModule: './settingsRegression.test.js',
             },
+            {
+                id: 'regression_status_indicators',
+                description: 'Status bar + file decoration update on startup/conflict/add',
+                notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
+                testModule: './statusIndicatorsRegression.test.js',
+            },
         ],
     },
     {
