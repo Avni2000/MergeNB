@@ -562,6 +562,7 @@ interface UnmergedFilesCacheEntry {
 }
 
 const UNMERGED_FILES_CACHE_TTL_MS = 500;
+const GIT_STATUS_MAX_BUFFER_BYTES = 1024 * 1024;
 const unmergedFilesCacheByRoot = new Map<string, UnmergedFilesCacheEntry>();
 const unmergedFilesSnapshotByRoot = new Map<string, GitFileStatus[]>();
 const unmergedFilesFetchPromisesByRoot = new Map<string, Promise<GitFileStatus[]>>();
@@ -606,11 +607,23 @@ function setCachedUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]):
     });
 }
 
+function isStdoutMaxBufferError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+        return false;
+    }
+
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' || /stdout maxBuffer length exceeded/i.test(error.message);
+}
+
 async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]> {
     const unmergedFiles: GitFileStatus[] = [];
 
     try {
-        const { stdout } = await execAsync('git status --porcelain', { cwd: gitRoot });
+        const { stdout } = await execAsync('git status --porcelain', {
+            cwd: gitRoot,
+            maxBuffer: GIT_STATUS_MAX_BUFFER_BYTES
+        });
         console.log(`[GitIntegration] getUnmergedFiles git status output for ${gitRoot}:\n${stdout}`);
 
         const lines = stdout.split('\n').filter((line) => line.trim());
@@ -633,6 +646,13 @@ async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus
             }
         }
     } catch (error) {
+        if (isStdoutMaxBufferError(error)) {
+            const message = `MergeNB could not read unmerged files for ${path.basename(gitRoot)} because git status output exceeded ${Math.round(GIT_STATUS_MAX_BUFFER_BYTES / (1024 * 1024))}MB.`;
+            if (vscode) {
+                void vscode.window.showErrorMessage(message);
+            }
+            throw new Error(message);
+        }
         console.error(`[GitIntegration] Error getting unmerged files for ${gitRoot}:`, error);
     }
 
