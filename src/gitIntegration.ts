@@ -999,6 +999,22 @@ async function getVersionForStage(context: GitFileContext, stage: GitStageNumber
     }
 }
 
+async function readGitShowFromStagesFallback(
+    context: GitFileContext
+): Promise<Record<GitStageNumber, string | null>> {
+    const [base, current, incoming] = await Promise.all([
+        getVersionForStage(context, '1'),
+        getVersionForStage(context, '2'),
+        getVersionForStage(context, '3')
+    ]);
+
+    return {
+        '1': base,
+        '2': current,
+        '3': incoming
+    };
+}
+
 async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]> {
     const unmergedFiles: GitFileStatus[] = [];
     let pathCount = 0;
@@ -1255,11 +1271,7 @@ export async function getThreeWayVersions(filePath: string): Promise<{
     try {
         stagedVersions = await readGitShowFromStages(context.gitRoot, context.relativePath, ['1', '2', '3']);
     } catch {
-        stagedVersions = {
-            '1': await getVersionForStage(context, '1'),
-            '2': await getVersionForStage(context, '2'),
-            '3': await getVersionForStage(context, '3')
-        };
+        stagedVersions = await readGitShowFromStagesFallback(context);
     }
 
     const base = stagedVersions['1'];
