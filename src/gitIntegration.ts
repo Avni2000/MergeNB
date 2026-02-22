@@ -18,7 +18,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec, execFile } from 'child_process';
+import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 
 // VSCode is optional - only needed for workspace-aware helpers.
@@ -556,8 +556,230 @@ export interface GitFileStatus {
     isUnmerged: boolean;
 }
 
+interface UnmergedFilesCacheEntry {
+    expiresAt: number;
+    files: GitFileStatus[];
+}
+
+const UNMERGED_FILES_CACHE_TTL_MS = 500;
+const unmergedFilesCacheByRoot = new Map<string, UnmergedFilesCacheEntry>();
+const unmergedFilesSnapshotByRoot = new Map<string, GitFileStatus[]>();
+const unmergedFilesFetchPromisesByRoot = new Map<string, Promise<GitFileStatus[]>>();
+
+function getGitRootCacheKey(gitRoot: string): string {
+    return normalizeForComparison(resolveRealPath(gitRoot));
+}
+
+function getCachedUnmergedFilesForRoot(gitRoot: string): GitFileStatus[] | null {
+    const cacheKey = getGitRootCacheKey(gitRoot);
+    const cached = unmergedFilesCacheByRoot.get(cacheKey);
+    if (!cached) {
+        return null;
+    }
+
+    if (cached.expiresAt <= Date.now()) {
+        unmergedFilesCacheByRoot.delete(cacheKey);
+        return null;
+    }
+
+    return cached.files;
+}
+
+function getSnapshotUnmergedFilesForRoot(gitRoot: string): GitFileStatus[] | null {
+    const cacheKey = getGitRootCacheKey(gitRoot);
+    if (!unmergedFilesSnapshotByRoot.has(cacheKey)) {
+        return null;
+    }
+    return unmergedFilesSnapshotByRoot.get(cacheKey) ?? [];
+}
+
+function setSnapshotUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]): void {
+    const cacheKey = getGitRootCacheKey(gitRoot);
+    unmergedFilesSnapshotByRoot.set(cacheKey, files);
+}
+
+function setCachedUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]): void {
+    const cacheKey = getGitRootCacheKey(gitRoot);
+    unmergedFilesCacheByRoot.set(cacheKey, {
+        expiresAt: Date.now() + UNMERGED_FILES_CACHE_TTL_MS,
+        files
+    });
+}
+
+function streamGitStatusPorcelain(gitRoot: string, onLine: (line: string) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const gitStatus = spawn('git', ['status', '--porcelain'], {
+            cwd: gitRoot,
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        const stdout = gitStatus.stdout;
+        const stderr = gitStatus.stderr;
+        if (!stdout || !stderr) {
+            reject(new Error('Unable to capture git status output streams.'));
+            return;
+        }
+
+        stdout.setEncoding('utf8');
+        stderr.setEncoding('utf8');
+
+        let bufferedLine = '';
+        let stderrOutput = '';
+
+        stdout.on('data', (chunk: string) => {
+            bufferedLine += chunk;
+
+            let newlineIndex = bufferedLine.indexOf('\n');
+            while (newlineIndex !== -1) {
+                const rawLine = bufferedLine.slice(0, newlineIndex);
+                bufferedLine = bufferedLine.slice(newlineIndex + 1);
+                const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+                if (line.length > 0) {
+                    onLine(line);
+                }
+                newlineIndex = bufferedLine.indexOf('\n');
+            }
+        });
+
+        stderr.on('data', (chunk: string) => {
+            stderrOutput += chunk;
+        });
+
+        gitStatus.once('error', (error) => {
+            reject(error);
+        });
+
+        gitStatus.once('close', (code) => {
+            const trailingLine = bufferedLine.endsWith('\r') ? bufferedLine.slice(0, -1) : bufferedLine;
+            if (trailingLine.length > 0) {
+                onLine(trailingLine);
+            }
+
+            if (code !== 0) {
+                const message =
+                    stderrOutput.trim() || `git status --porcelain failed with exit code ${String(code)}`;
+                reject(new Error(message));
+                return;
+            }
+
+            resolve();
+        });
+    });
+}
+
+async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]> {
+    const unmergedFiles: GitFileStatus[] = [];
+    let lineCount = 0;
+
+    try {
+        await streamGitStatusPorcelain(gitRoot, (line) => {
+            if (!line.trim()) {
+                return;
+            }
+            lineCount += 1;
+            const status = line.substring(0, 2);
+            const filePath = normalizeStatusPath(line.substring(3));
+
+            if (isUnmergedStatus(status)) {
+                const fullPath = path.join(gitRoot, filePath);
+                unmergedFiles.push({
+                    path: fullPath,
+                    repoPath: filePath,
+                    status,
+                    isUnmerged: true
+                });
+            }
+        });
+        console.log(`[GitIntegration] getUnmergedFiles: ${lineCount} non-empty lines in ${gitRoot}`);
+    } catch (error) {
+        const errorDetails = error instanceof Error ? error.message : String(error);
+        const message = `MergeNB failed to query unmerged files for ${gitRoot}: ${errorDetails}`;
+        console.error(`[GitIntegration] ${message}`, error);
+        if (vscode) {
+            void vscode.window.showErrorMessage(message);
+        }
+        throw error instanceof Error ? error : new Error(errorDetails);
+    }
+
+    return unmergedFiles;
+}
+
+async function refreshUnmergedFilesSnapshotForRoot(gitRoot: string): Promise<GitFileStatus[]> {
+    const cacheKey = getGitRootCacheKey(gitRoot);
+    const inFlight = unmergedFilesFetchPromisesByRoot.get(cacheKey);
+    if (inFlight) {
+        const files = await inFlight;
+        setSnapshotUnmergedFilesForRoot(gitRoot, files);
+        return files;
+    }
+
+    const fetchPromise = (async (): Promise<GitFileStatus[]> => {
+        const files = await queryUnmergedFilesForRoot(gitRoot);
+        setCachedUnmergedFilesForRoot(gitRoot, files);
+        return files;
+    })();
+
+    unmergedFilesFetchPromisesByRoot.set(cacheKey, fetchPromise);
+    try {
+        const files = await fetchPromise;
+        setSnapshotUnmergedFilesForRoot(gitRoot, files);
+        return files;
+    } finally {
+        unmergedFilesFetchPromisesByRoot.delete(cacheKey);
+    }
+}
+
+async function getUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]> {
+    const snapshot = getSnapshotUnmergedFilesForRoot(gitRoot);
+    if (snapshot) {
+        return snapshot;
+    }
+
+    const cached = getCachedUnmergedFilesForRoot(gitRoot);
+    if (cached) {
+        return cached;
+    }
+
+    const cacheKey = getGitRootCacheKey(gitRoot);
+    const inFlight = unmergedFilesFetchPromisesByRoot.get(cacheKey);
+    if (inFlight) {
+        return inFlight;
+    }
+
+    const fetchPromise = (async (): Promise<GitFileStatus[]> => {
+        const files = await queryUnmergedFilesForRoot(gitRoot);
+        setCachedUnmergedFilesForRoot(gitRoot, files);
+        return files;
+    })();
+
+    unmergedFilesFetchPromisesByRoot.set(cacheKey, fetchPromise);
+    try {
+        return await fetchPromise;
+    } finally {
+        unmergedFilesFetchPromisesByRoot.delete(cacheKey);
+    }
+}
+
+/**
+ * Refresh cached unmerged status by querying Git once per repository root.
+ * Intended to be called from Git state listeners (e.g. vscode.git onDidChange)
+ * and at extension startup.
+ */
+export async function refreshUnmergedFilesSnapshot(workspaceFolderOrPath?: any): Promise<void> {
+    const pathHint =
+        typeof workspaceFolderOrPath === 'string'
+            ? workspaceFolderOrPath
+            : workspaceFolderOrPath?.uri?.fsPath;
+    const gitRoots = await resolveGitRoots(pathHint);
+    if (gitRoots.length === 0) {
+        return;
+    }
+
+    await Promise.all(gitRoots.map((gitRoot) => refreshUnmergedFilesSnapshotForRoot(gitRoot)));
+}
+
 async function resolveStatusPathForFile(gitRoot: string, filePath: string): Promise<string | null> {
-    const unmergedFiles = await getUnmergedFiles(gitRoot);
+    const unmergedFiles = await getUnmergedFilesForRoot(gitRoot);
 
     for (const file of unmergedFiles) {
         if (pathsLikelySameFile(file.path, filePath, file.repoPath)) {
@@ -633,33 +855,14 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
         return [];
     }
 
+    const unmergedFilesPerRoot = await Promise.all(
+        gitRoots.map((gitRoot) => getUnmergedFilesForRoot(gitRoot))
+    );
+
     const unmergedFiles: GitFileStatus[] = [];
-    for (const gitRoot of gitRoots) {
-        try {
-            const { stdout } = await execAsync('git status --porcelain', { cwd: gitRoot });
-            console.log(`[GitIntegration] getUnmergedFiles git status output for ${gitRoot}:\n${stdout}`);
-
-            const lines = stdout.split('\n').filter((line) => line.trim());
-            console.log(`[GitIntegration] getUnmergedFiles: ${lines.length} non-empty lines in ${gitRoot}`);
-
-            for (const line of lines) {
-                const status = line.substring(0, 2);
-                const filePath = normalizeStatusPath(line.substring(3));
-                console.log(`[GitIntegration]   Line: "${line}" -> status="${status}" path="${filePath}"`);
-
-                if (isUnmergedStatus(status)) {
-                    const fullPath = path.join(gitRoot, filePath);
-                    console.log(`[GitIntegration]   -> UNMERGED: ${fullPath}`);
-                    unmergedFiles.push({
-                        path: fullPath,
-                        repoPath: filePath,
-                        status,
-                        isUnmerged: true
-                    });
-                }
-            }
-        } catch (error) {
-            console.error(`[GitIntegration] Error getting unmerged files for ${gitRoot}:`, error);
+    for (const files of unmergedFilesPerRoot) {
+        for (const file of files) {
+            unmergedFiles.push(file);
         }
     }
 
