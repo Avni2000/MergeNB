@@ -157,6 +157,8 @@ async function updateStatusBar(): Promise<void> {
 	statusBarVisible = true;
 }
 
+const decorationErrorShown = { value: false };  
+
 async function getNotebookConflictDecoration(uri: vscode.Uri): Promise<vscode.FileDecoration | undefined> {
 	if (!backgroundConflictMonitoringEnabled || !uri.fsPath.endsWith('.ipynb')) {
 		return undefined;
@@ -174,9 +176,11 @@ async function getNotebookConflictDecoration(uri: vscode.Uri): Promise<vscode.Fi
 		}
 	} catch (error) {
 		console.error('[MergeNB] Failed to provide notebook conflict decoration:', error);
-		const message = error instanceof Error ? error.message : String(error);
-		void vscode.window.showErrorMessage(`MergeNB failed to check notebook conflict decoration: ${message}`);
-		throw error;
+		if (!decorationErrorShown.value) {  
+			decorationErrorShown.value = true;  
+			const message = error instanceof Error ? error.message : String(error);  
+			void vscode.window.showErrorMessage(`MergeNB failed to check notebook conflict decoration: ${message}`);  
+		}  
 	}
 
 	return undefined;
