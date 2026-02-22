@@ -679,11 +679,9 @@ async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus
             lineCount += 1;
             const status = line.substring(0, 2);
             const filePath = normalizeStatusPath(line.substring(3));
-            console.log(`[GitIntegration]   Line: "${line}" -> status="${status}" path="${filePath}"`);
 
             if (isUnmergedStatus(status)) {
                 const fullPath = path.join(gitRoot, filePath);
-                console.log(`[GitIntegration]   -> UNMERGED: ${fullPath}`);
                 unmergedFiles.push({
                     path: fullPath,
                     repoPath: filePath,
@@ -694,7 +692,13 @@ async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus
         });
         console.log(`[GitIntegration] getUnmergedFiles: ${lineCount} non-empty lines in ${gitRoot}`);
     } catch (error) {
-        console.error(`[GitIntegration] Error getting unmerged files for ${gitRoot}:`, error);
+        const errorDetails = error instanceof Error ? error.message : String(error);
+        const message = `MergeNB failed to query unmerged files for ${gitRoot}: ${errorDetails}`;
+        console.error(`[GitIntegration] ${message}`, error);
+        if (vscode) {
+            void vscode.window.showErrorMessage(message);
+        }
+        throw error instanceof Error ? error : new Error(errorDetails);
     }
 
     return unmergedFiles;
