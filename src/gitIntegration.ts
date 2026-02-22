@@ -694,6 +694,13 @@ function setCachedUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]):
     setRepoPathIndexForRoot(gitRoot, files);
 }
 
+function invalidateUnmergedCachesForRoot(gitRoot: string): void {
+    const cacheKey = getGitRootCacheKey(gitRoot);
+    unmergedFilesCacheByRoot.delete(cacheKey);
+    unmergedFilesSnapshotByRoot.delete(cacheKey);
+    unmergedRepoPathIndexByRoot.delete(cacheKey);
+}
+
 function setRepoPathIndexForRoot(gitRoot: string, files: GitFileStatus[]): void {
     const cacheKey = getGitRootCacheKey(gitRoot);
     const index = new Map<string, GitFileStatus>();
@@ -1136,6 +1143,7 @@ export async function stageFile(filePath: string): Promise<boolean> {
 
     try {
         await context.repository.add([context.relativePath]);
+        invalidateUnmergedCachesForRoot(context.gitRoot);
         return true;
     } catch (error) {
         console.error(`[GitIntegration] Failed to stage ${filePath}: ${String(error)}`);

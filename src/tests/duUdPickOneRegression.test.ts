@@ -122,6 +122,7 @@ async function assertKeepContentResult(
     const statusLine = git(cwd, ['status', '--porcelain', '--', 'conflict.ipynb']).trim();
     assert.ok(statusLine.startsWith('M '), `Expected staged modification after keep-content (${context}), got: ${statusLine}`);
 
+    await gitIntegration.refreshUnmergedFilesSnapshot(cwd);
     const unmergedStatus = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
     assert.strictEqual(unmergedStatus, null, `Expected no unmerged status after keep-content (${context})`);
 }
@@ -143,6 +144,7 @@ async function assertKeepDeleteResult(
     const statusLine = git(cwd, ['status', '--porcelain', '--', 'conflict.ipynb']).trim();
     assert.ok(statusLine.startsWith('D '), `Expected staged deletion after keep-delete (${context}), got: ${statusLine}`);
 
+    await gitIntegration.refreshUnmergedFilesSnapshot(cwd);
     const unmergedStatus = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
     assert.strictEqual(unmergedStatus, null, `Expected no unmerged status after keep-delete (${context})`);
 }
