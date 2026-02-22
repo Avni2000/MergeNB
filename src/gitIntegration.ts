@@ -551,6 +551,7 @@ const UNMERGED_FILES_CACHE_TTL_MS = 500;
 const unmergedFilesCacheByRoot = new Map<string, UnmergedFilesCacheEntry>();
 const unmergedFilesSnapshotByRoot = new Map<string, GitFileStatus[]>();
 const unmergedFilesFetchPromisesByRoot = new Map<string, Promise<GitFileStatus[]>>();
+const unmergedRepoPathIndexByRoot = new Map<string, Map<string, string>>();
 
 function getGitRootCacheKey(gitRoot: string): string {
     return normalizeForComparison(resolveRealPath(gitRoot));
@@ -565,6 +566,9 @@ function getCachedUnmergedFilesForRoot(gitRoot: string): GitFileStatus[] | null 
 
     if (cached.expiresAt <= Date.now()) {
         unmergedFilesCacheByRoot.delete(cacheKey);
+        if (!unmergedFilesSnapshotByRoot.has(cacheKey)) {
+            unmergedRepoPathIndexByRoot.delete(cacheKey);
+        }
         return null;
     }
 
@@ -582,6 +586,7 @@ function getSnapshotUnmergedFilesForRoot(gitRoot: string): GitFileStatus[] | nul
 function setSnapshotUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]): void {
     const cacheKey = getGitRootCacheKey(gitRoot);
     unmergedFilesSnapshotByRoot.set(cacheKey, files);
+    setRepoPathIndexForRoot(gitRoot, files);
 }
 
 function setCachedUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]): void {
@@ -590,6 +595,44 @@ function setCachedUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]):
         expiresAt: Date.now() + UNMERGED_FILES_CACHE_TTL_MS,
         files
     });
+    setRepoPathIndexForRoot(gitRoot, files);
+}
+
+function setRepoPathIndexForRoot(gitRoot: string, files: GitFileStatus[]): void {
+    const cacheKey = getGitRootCacheKey(gitRoot);
+    const index = new Map<string, string>();
+    for (const file of files) {
+        if (!file.repoPath) {
+            continue;
+        }
+        index.set(normalizeForComparison(file.repoPath), file.repoPath);
+    }
+    unmergedRepoPathIndexByRoot.set(cacheKey, index);
+}
+
+function tryResolveStatusPathFromIndex(gitRoot: string, filePath: string): string | null {
+    const cacheKey = getGitRootCacheKey(gitRoot);
+    const index = unmergedRepoPathIndexByRoot.get(cacheKey);
+    if (!index || index.size === 0) {
+        return null;
+    }
+
+    const candidatePaths = new Set<string>([
+        gitRelativePath(gitRoot, filePath),
+        toGitPath(path.relative(gitRoot, filePath))
+    ]);
+
+    for (const candidatePath of candidatePaths) {
+        if (!candidatePath || candidatePath === '.' || candidatePath.startsWith('..')) {
+            continue;
+        }
+        const match = index.get(normalizeForComparison(candidatePath));
+        if (match) {
+            return match;
+        }
+    }
+
+    return null;
 }
 
 function streamGitUnmergedPaths(gitRoot: string, onPath: (repoPath: string) => void): Promise<void> {
@@ -839,6 +882,11 @@ export async function refreshUnmergedFilesSnapshot(workspaceFolderOrPath?: any):
 
 async function resolveStatusPathForFile(gitRoot: string, filePath: string): Promise<string | null> {
     const unmergedFiles = await getUnmergedFilesForRoot(gitRoot);
+
+    const indexedMatch = tryResolveStatusPathFromIndex(gitRoot, filePath);
+    if (indexedMatch) {
+        return indexedMatch;
+    }
 
     for (const file of unmergedFiles) {
         if (pathsLikelySameFile(file.path, filePath, file.repoPath)) {
