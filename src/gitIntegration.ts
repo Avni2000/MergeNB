@@ -1128,13 +1128,13 @@ export async function refreshUnmergedFilesSnapshot(workspaceFolderOrPath?: any):
 
 async function resolveStatusPathForFile(gitRoot: string, filePath: string): Promise<string | null> {
     const unmergedFiles = await getUnmergedFilesForRoot(gitRoot);
-    const targetPath = getNormalizedPathInfo(filePath);
 
     const indexedMatch = tryResolveStatusPathFromIndex(gitRoot, filePath);
     if (indexedMatch) {
         return indexedMatch;
     }
 
+    const targetPath = getNormalizedPathInfo(filePath);
     for (const file of unmergedFiles) {
         if (pathsLikelySameFileToTarget(file.path, targetPath, file.repoPath)) {
             return file.repoPath || null;
