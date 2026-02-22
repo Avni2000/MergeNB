@@ -189,9 +189,13 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 	const watchedRepositories = new WeakSet<Repository>();
 	const refreshRepositoryUnmergedSnapshot = (repository: Repository): void => {
 		void (async () => {
-			await gitIntegration.refreshUnmergedFilesSnapshot(repository.rootUri.fsPath);
-			decorationChangeEmitter.fire(undefined);
-			void updateStatusBar();
+			try {
+				await gitIntegration.refreshUnmergedFilesSnapshot(repository.rootUri.fsPath);
+				decorationChangeEmitter.fire(undefined);
+				void updateStatusBar();
+			} catch (error) {
+				console.error('[MergeNB] Failed to refresh unmerged snapshot:', error);
+			}
 		})();
 	};
 
