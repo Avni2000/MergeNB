@@ -169,7 +169,7 @@ node out/tests/runIntegrationTest.js --manual manual_02
 MERGENB_MANUAL_SANDBOX_DIR=/path/to/sandbox npm run test --manual 02
 ```
 
-Manual sandboxes default to a deterministic workspace at `~/.mergenb/manual-sandbox`
+Manual sandboxes default to a deterministic workspace at `$TMP/.mergenb/manual-sandbox`
 and launch with `code --reuse-window` so one VS Code window can be reused.
 `--manual` accepts exactly one fixture per run (for example, `02`).
 Each sandbox starts with an active merge conflict in `conflict.ipynb` and includes
