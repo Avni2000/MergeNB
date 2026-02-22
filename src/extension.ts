@@ -409,7 +409,10 @@ export function activate(context: vscode.ExtensionContext) {
 			})
 		);
 		context.subscriptions.push(
-			vscode.commands.registerCommand('merge-nb.getStatusBarState', () => {
+			vscode.commands.registerCommand('merge-nb.getStatusBarState', async () => {
+				if (backgroundConflictMonitoringEnabled) {
+					await updateStatusBar();
+				}
 				return {
 					visible: statusBarVisible,
 					text: statusBarItem.text,

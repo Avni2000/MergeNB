@@ -583,6 +583,11 @@ interface GitFileContext {
     relativePath: string;
 }
 
+interface GitCliFileContext {
+    gitRoot: string;
+    relativePath: string;
+}
+
 const GIT_STATUS_ADDED_BY_US = 12;
 const GIT_STATUS_ADDED_BY_THEM = 13;
 const GIT_STATUS_DELETED_BY_US = 14;
@@ -592,6 +597,7 @@ const GIT_STATUS_BOTH_DELETED = 17;
 const GIT_STATUS_BOTH_MODIFIED = 18;
 
 const UNMERGED_FILES_CACHE_TTL_MS = 500;
+const UNMERGED_STATUSES = new Set<GitUnmergedStatus>(['UU', 'AA', 'DD', 'AU', 'UA', 'DU', 'UD']);
 const unmergedFilesCacheByRoot = new Map<string, UnmergedFilesCacheEntry>();
 const unmergedFilesSnapshotByRoot = new Map<string, GitFileStatus[]>();
 const unmergedFilesFetchPromisesByRoot = new Map<string, Promise<GitFileStatus[]>>();
@@ -699,6 +705,7 @@ function invalidateUnmergedCachesForRoot(gitRoot: string): void {
     unmergedFilesCacheByRoot.delete(cacheKey);
     unmergedFilesSnapshotByRoot.delete(cacheKey);
     unmergedRepoPathIndexByRoot.delete(cacheKey);
+    unmergedFilesFetchPromisesByRoot.delete(cacheKey);
 }
 
 function setRepoPathIndexForRoot(gitRoot: string, files: GitFileStatus[]): void {
@@ -759,6 +766,10 @@ function mapGitStatusToUnmergedStatus(status: number): GitUnmergedStatus | null 
     }
 }
 
+function isUnmergedStatus(statusCode: string): statusCode is GitUnmergedStatus {
+    return UNMERGED_STATUSES.has(statusCode as GitUnmergedStatus);
+}
+
 function resolveRepoPathFromChange(repository: Repository, change: Change): string | null {
     const candidatePaths = [
         change.uri?.fsPath,
@@ -804,6 +815,54 @@ function queryUnmergedFilesFromRepository(repository: Repository): GitFileStatus
     }
 
     return [...filesByRepoPath.values()];
+}
+
+async function queryUnmergedFilesFromGitCli(gitRoot: string): Promise<GitFileStatus[] | null> {
+    try {
+        const { stdout } = await execFileAsync(
+            'git',
+            ['status', '--porcelain', '-z', '--untracked-files=no'],
+            { cwd: gitRoot, encoding: 'utf8' }
+        );
+        const statusOutput = typeof stdout === 'string' ? stdout : String(stdout);
+        if (!statusOutput) {
+            return [];
+        }
+
+        const filesByRepoPath = new Map<string, GitFileStatus>();
+        const entries = statusOutput.split('\0').filter(Boolean);
+        for (const entry of entries) {
+            if (entry.length < 4 || entry[2] !== ' ') {
+                continue;
+            }
+
+            const statusCode = entry.slice(0, 2);
+            if (!isUnmergedStatus(statusCode)) {
+                continue;
+            }
+
+            const repoPath = toGitPath(entry.slice(3));
+            if (!repoPath) {
+                continue;
+            }
+
+            const fullPath = path.join(gitRoot, repoPath);
+            filesByRepoPath.set(normalizeForComparison(repoPath), {
+                path: fullPath,
+                repoPath,
+                status: statusCode,
+                isUnmerged: true
+            });
+        }
+
+        return [...filesByRepoPath.values()];
+    } catch (error) {
+        warnApiStrictOnce(
+            `cli:unmerged-status-failed:${getGitRootCacheKey(gitRoot)}`,
+            `Failed to query git status for ${gitRoot}: ${String(error)}`
+        );
+        return null;
+    }
 }
 
 function getCachedRepositoryForPath(filePath: string): Repository | null {
@@ -864,16 +923,38 @@ async function getRepositoriesForPathHint(pathHint?: string): Promise<Repository
     return matched ? [matched] : [];
 }
 
+function dedupeGitRoots(roots: string[]): string[] {
+    const rootsByKey = new Map<string, string>();
+    for (const root of roots) {
+        rootsByKey.set(getGitRootCacheKey(root), root);
+    }
+    return [...rootsByKey.values()];
+}
+
+async function resolveGitRootsForPathHint(pathHint?: string): Promise<string[]> {
+    const repositories = await getRepositoriesForPathHint(pathHint);
+    const rootsFromApi = repositories.map((repository) => repository.rootUri.fsPath);
+    const rootsFromCli = await resolveGitRoots(pathHint);
+    return dedupeGitRoots([...rootsFromApi, ...rootsFromCli]);
+}
+
 async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]> {
     const repository = await getRepositoryForPath(gitRoot);
+    const apiFiles = repository ? queryUnmergedFilesFromRepository(repository) : [];
     if (!repository) {
         warnApiStrictOnce(
             `repo:missing:${getGitRootCacheKey(gitRoot)}`,
-            `No VS Code Git repository found for ${gitRoot}.`
+            `No VS Code Git repository found for ${gitRoot}; falling back to Git CLI for unmerged status.`
         );
-        return [];
     }
-    return queryUnmergedFilesFromRepository(repository);
+
+    const cliFiles = await queryUnmergedFilesFromGitCli(gitRoot);
+    if (cliFiles !== null) {
+        return cliFiles;
+    }
+
+    // CLI query failed; fall back to API results if available.
+    return apiFiles;
 }
 
 async function refreshUnmergedFilesSnapshotForRoot(gitRoot: string): Promise<GitFileStatus[]> {
@@ -902,11 +983,6 @@ async function refreshUnmergedFilesSnapshotForRoot(gitRoot: string): Promise<Git
 }
 
 async function getUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]> {
-    const snapshot = getSnapshotUnmergedFilesForRoot(gitRoot);
-    if (snapshot) {
-        return snapshot;
-    }
-
     const cached = getCachedUnmergedFilesForRoot(gitRoot);
     if (cached) {
         return cached;
@@ -933,7 +1009,8 @@ async function getUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]
 }
 
 /**
- * Refresh cached unmerged status by querying VS Code Git API once per repository root.
+ * Refresh cached unmerged status per repository root.
+ * Uses Git CLI as source-of-truth for unmerged entries, with VS Code API fallback.
  * Intended to be called from Git state listeners and at extension startup.
  */
 export async function refreshUnmergedFilesSnapshot(workspaceFolderOrPath?: any): Promise<void> {
@@ -941,12 +1018,12 @@ export async function refreshUnmergedFilesSnapshot(workspaceFolderOrPath?: any):
         typeof workspaceFolderOrPath === 'string'
             ? workspaceFolderOrPath
             : workspaceFolderOrPath?.uri?.fsPath;
-    const repositories = await getRepositoriesForPathHint(pathHint);
-    if (repositories.length === 0) {
+    const roots = await resolveGitRootsForPathHint(pathHint);
+    if (roots.length === 0) {
         return;
     }
 
-    await Promise.all(repositories.map((repository) => refreshUnmergedFilesSnapshotForRoot(repository.rootUri.fsPath)));
+    await Promise.all(roots.map((root) => refreshUnmergedFilesSnapshotForRoot(root)));
 }
 
 async function resolveStatusEntryForFile(gitRoot: string, filePath: string): Promise<GitFileStatus | null> {
@@ -1004,12 +1081,88 @@ async function resolveGitFileContext(filePath: string): Promise<GitFileContext |
     };
 }
 
+async function resolveCliFileContext(filePath: string): Promise<GitCliFileContext | null> {
+    const gitRoot = await resolveGitRootForPath(filePath);
+    if (!gitRoot) {
+        return null;
+    }
+
+    const resolvedPath = await resolveGitPathForFile(gitRoot, filePath);
+    if (resolvedPath) {
+        return {
+            gitRoot,
+            relativePath: resolvedPath
+        };
+    }
+
+    const relativePath = toGitPath(path.relative(gitRoot, filePath));
+    if (!isRepoRelativePath(relativePath)) {
+        return null;
+    }
+
+    return {
+        gitRoot,
+        relativePath
+    };
+}
+
 async function getVersionForStage(context: GitFileContext, stage: GitStageNumber): Promise<string | null> {
     try {
         return await context.repository.show(`:${stage}`, context.relativePath);
     } catch {
         return null;
     }
+}
+
+function getStagePathCandidates(gitRoot: string, filePath: string, preferredPath?: string): string[] {
+    const candidates: string[] = [];
+
+    const pushCandidate = (candidate: string | undefined): void => {
+        if (!candidate || candidates.includes(candidate)) {
+            return;
+        }
+        candidates.push(candidate);
+    };
+
+    if (preferredPath && isRepoRelativePath(preferredPath)) {
+        pushCandidate(preferredPath);
+    }
+
+    const directRelative = toGitPath(path.relative(gitRoot, filePath));
+    if (isRepoRelativePath(directRelative)) {
+        pushCandidate(directRelative);
+    }
+
+    const realRelative = toGitPath(path.relative(resolveRealPath(gitRoot), resolveRealPath(filePath)));
+    if (isRepoRelativePath(realRelative)) {
+        pushCandidate(realRelative);
+    }
+
+    pushCandidate(filePath);
+
+    const realFilePath = resolveRealPath(filePath);
+    if (realFilePath !== filePath) {
+        pushCandidate(realFilePath);
+    }
+
+    return candidates;
+}
+
+async function stageFileWithGitCli(gitRoot: string, pathCandidates: string[]): Promise<boolean> {
+    let lastError: unknown;
+    for (const candidate of pathCandidates) {
+        try {
+            await execFileAsync('git', ['add', '--', candidate], { cwd: gitRoot });
+            return true;
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    if (lastError) {
+        console.error(`[GitIntegration] Failed to stage via Git CLI in ${gitRoot}: ${String(lastError)}`);
+    }
+    return false;
 }
 
 /**
@@ -1029,15 +1182,16 @@ export async function getGitRoot(filePath: string): Promise<string | null> {
 export async function getUnmergedFileStatus(filePath: string): Promise<GitUnmergedStatus | null> {
     try {
         const repository = await getRepositoryForPath(filePath);
-        if (!repository) {
+        const gitRoot = repository?.rootUri.fsPath ?? await resolveGitRootForPath(filePath);
+        if (!gitRoot) {
             warnApiStrictOnce(
                 `repo:status:${normalizeForComparison(filePath)}`,
-                `No VS Code Git repository found for ${filePath}; cannot determine unmerged status.`
+                `No Git repository found for ${filePath}; cannot determine unmerged status.`
             );
             return null;
         }
 
-        const statusEntry = await resolveStatusEntryForFile(repository.rootUri.fsPath, filePath);
+        const statusEntry = await resolveStatusEntryForFile(gitRoot, filePath);
         return statusEntry?.status ?? null;
     } catch (error) {
         console.error(`[GitIntegration] Error in getUnmergedFileStatus: ${String(error)}`);
@@ -1061,12 +1215,11 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
         typeof workspaceFolderOrPath === 'string'
             ? workspaceFolderOrPath
             : workspaceFolderOrPath?.uri?.fsPath;
-    const repositories = await getRepositoriesForPathHint(pathHint);
-    if (repositories.length === 0) {
+    const roots = await resolveGitRootsForPathHint(pathHint);
+    if (roots.length === 0) {
         return [];
     }
 
-    const roots = [...new Set(repositories.map((repository) => repository.rootUri.fsPath))];
     const unmergedFilesPerRoot = await Promise.all(roots.map((root) => getUnmergedFilesForRoot(root)));
 
     const unmergedFiles: GitFileStatus[] = [];
@@ -1137,18 +1290,38 @@ export async function getThreeWayVersions(filePath: string): Promise<{
 
 export async function stageFile(filePath: string): Promise<boolean> {
     const context = await resolveGitFileContext(filePath);
-    if (!context) {
+    if (context) {
+        try {
+            await context.repository.add([context.relativePath]);
+            invalidateUnmergedCachesForRoot(context.gitRoot);
+            return true;
+        } catch (error) {
+            const stagedViaCli = await stageFileWithGitCli(
+                context.gitRoot,
+                getStagePathCandidates(context.gitRoot, filePath, context.relativePath)
+            );
+            if (stagedViaCli) {
+                invalidateUnmergedCachesForRoot(context.gitRoot);
+                return true;
+            }
+            console.error(`[GitIntegration] Failed to stage ${filePath}: ${String(error)}`);
+            return false;
+        }
+    }
+
+    const cliContext = await resolveCliFileContext(filePath);
+    if (!cliContext) {
         return false;
     }
 
-    try {
-        await context.repository.add([context.relativePath]);
-        invalidateUnmergedCachesForRoot(context.gitRoot);
-        return true;
-    } catch (error) {
-        console.error(`[GitIntegration] Failed to stage ${filePath}: ${String(error)}`);
-        return false;
+    const stagedViaCli = await stageFileWithGitCli(
+        cliContext.gitRoot,
+        getStagePathCandidates(cliContext.gitRoot, filePath, cliContext.relativePath)
+    );
+    if (stagedViaCli) {
+        invalidateUnmergedCachesForRoot(cliContext.gitRoot);
     }
+    return stagedViaCli;
 }
 
 /**
