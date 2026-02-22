@@ -514,16 +514,26 @@ function pathHasSuffix(targetPath: string, suffixPath: string): boolean {
     return true;
 }
 
-function pathsLikelySameFile(firstPath: string, secondPath: string, repoPath?: string): boolean {
+interface NormalizedPathInfo {
+    realPath: string;
+    normalizedPath: string;
+}
+
+function getNormalizedPathInfo(filePath: string): NormalizedPathInfo {
+    return {
+        realPath: normalizeForComparison(resolveRealPath(filePath)),
+        normalizedPath: normalizeForComparison(filePath)
+    };
+}
+
+function pathsLikelySameFileToTarget(firstPath: string, targetPath: NormalizedPathInfo, repoPath?: string): boolean {
     const firstReal = normalizeForComparison(resolveRealPath(firstPath));
-    const secondReal = normalizeForComparison(resolveRealPath(secondPath));
-    if (firstReal === secondReal) {
+    if (firstReal === targetPath.realPath) {
         return true;
     }
 
     const firstNorm = normalizeForComparison(firstPath);
-    const secondNorm = normalizeForComparison(secondPath);
-    if (firstNorm === secondNorm) {
+    if (firstNorm === targetPath.normalizedPath) {
         return true;
     }
 
@@ -532,7 +542,7 @@ function pathsLikelySameFile(firstPath: string, secondPath: string, repoPath?: s
     }
 
     const repoNorm = normalizeForComparison(repoPath);
-    return pathHasSuffix(firstNorm, repoNorm) && pathHasSuffix(secondNorm, repoNorm);
+    return pathHasSuffix(firstNorm, repoNorm) && pathHasSuffix(targetPath.normalizedPath, repoNorm);
 }
 
 export interface GitFileStatus {
@@ -1096,6 +1106,7 @@ export async function refreshUnmergedFilesSnapshot(workspaceFolderOrPath?: any):
 
 async function resolveStatusPathForFile(gitRoot: string, filePath: string): Promise<string | null> {
     const unmergedFiles = await getUnmergedFilesForRoot(gitRoot);
+    const targetPath = getNormalizedPathInfo(filePath);
 
     const indexedMatch = tryResolveStatusPathFromIndex(gitRoot, filePath);
     if (indexedMatch) {
@@ -1103,7 +1114,7 @@ async function resolveStatusPathForFile(gitRoot: string, filePath: string): Prom
     }
 
     for (const file of unmergedFiles) {
-        if (pathsLikelySameFile(file.path, filePath, file.repoPath)) {
+        if (pathsLikelySameFileToTarget(file.path, targetPath, file.repoPath)) {
             return file.repoPath || null;
         }
     }
