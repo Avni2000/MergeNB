@@ -775,9 +775,76 @@ function readGitShowFromStages(
         let completedCount = 0;
         let pendingContentBytes: number | null = null;
         let pendingContentStage: GitStageNumber | null = null;
-        let stdoutBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+        const stdoutQueue: Buffer<ArrayBufferLike>[] = [];
+        let stdoutQueueBytes = 0;
         let stderrOutput = '';
         let parserError: Error | null = null;
+
+        const appendStdoutChunk = (chunk: Buffer<ArrayBufferLike>): void => {
+            if (chunk.length === 0) {
+                return;
+            }
+            stdoutQueue.push(chunk);
+            stdoutQueueBytes += chunk.length;
+        };
+
+        const takeStdoutBytes = (byteCount: number): Buffer<ArrayBufferLike> | null => {
+            if (byteCount < 0 || stdoutQueueBytes < byteCount) {
+                return null;
+            }
+            if (byteCount === 0) {
+                return Buffer.alloc(0);
+            }
+
+            const output = Buffer.allocUnsafe(byteCount);
+            let outputOffset = 0;
+            let remaining = byteCount;
+
+            while (remaining > 0) {
+                const head = stdoutQueue[0];
+                if (!head) {
+                    return null;
+                }
+
+                const copyCount = Math.min(head.length, remaining);
+                head.copy(output, outputOffset, 0, copyCount);
+                outputOffset += copyCount;
+                remaining -= copyCount;
+                stdoutQueueBytes -= copyCount;
+
+                if (copyCount === head.length) {
+                    stdoutQueue.shift();
+                } else {
+                    stdoutQueue[0] = head.subarray(copyCount);
+                }
+            }
+
+            return output;
+        };
+
+        const takeStdoutLine = (): string | null => {
+            let scannedBytes = 0;
+            let newlineOffset = -1;
+
+            for (const chunk of stdoutQueue) {
+                const chunkNewlineIndex = chunk.indexOf(0x0a);
+                if (chunkNewlineIndex !== -1) {
+                    newlineOffset = scannedBytes + chunkNewlineIndex;
+                    break;
+                }
+                scannedBytes += chunk.length;
+            }
+
+            if (newlineOffset === -1) {
+                return null;
+            }
+
+            const lineBuffer = takeStdoutBytes(newlineOffset + 1);
+            if (!lineBuffer) {
+                return null;
+            }
+            return lineBuffer.subarray(0, lineBuffer.length - 1).toString('utf8');
+        };
 
         const processStdout = (): void => {
             while (true) {
@@ -785,13 +852,10 @@ function readGitShowFromStages(
                     return;
                 }
                 if (pendingContentBytes === null) {
-                    const newlineIndex = stdoutBuffer.indexOf(0x0a);
-                    if (newlineIndex === -1) {
+                    const header = takeStdoutLine();
+                    if (header === null) {
                         return;
                     }
-
-                    const header = stdoutBuffer.subarray(0, newlineIndex).toString('utf8');
-                    stdoutBuffer = stdoutBuffer.subarray(newlineIndex + 1);
 
                     if (completedCount >= stageCount) {
                         parserError = new Error(`Unexpected extra output from git cat-file --batch for ${relativePath}`);
@@ -824,18 +888,18 @@ function readGitShowFromStages(
 
                 if (pendingContentBytes !== null) {
                     const requiredBytes = pendingContentBytes + 1;
-                    if (stdoutBuffer.length < requiredBytes) {
+                    const payload = takeStdoutBytes(requiredBytes);
+                    if (!payload) {
                         return;
                     }
 
-                    const content = stdoutBuffer.subarray(0, pendingContentBytes);
-                    const trailingByte = stdoutBuffer[pendingContentBytes];
+                    const content = payload.subarray(0, pendingContentBytes);
+                    const trailingByte = payload[pendingContentBytes];
                     if (trailingByte !== 0x0a) {
                         parserError = new Error(`Malformed git cat-file --batch payload for ${relativePath}`);
                         return;
                     }
 
-                    stdoutBuffer = stdoutBuffer.subarray(requiredBytes);
                     const stage = pendingContentStage;
                     if (!stage) {
                         parserError = new Error(`Missing pending stage while parsing git output for ${relativePath}`);
@@ -852,7 +916,7 @@ function readGitShowFromStages(
 
         stdout.on('data', (chunk: Buffer | string) => {
             const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-            stdoutBuffer = stdoutBuffer.length === 0 ? buffer : Buffer.concat([stdoutBuffer, buffer]);
+            appendStdoutChunk(buffer);
             processStdout();
         });
 
