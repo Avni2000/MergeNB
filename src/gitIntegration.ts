@@ -667,6 +667,96 @@ function streamGitStatusPorcelain(gitRoot: string, onLine: (line: string) => voi
     });
 }
 
+type GitStageNumber = '1' | '2' | '3';
+
+interface GitFileContext {
+    gitRoot: string;
+    relativePath: string;
+}
+
+function readGitShowFromStage(gitRoot: string, relativePath: string, stage: GitStageNumber): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const gitShow = spawn('git', ['show', `:${stage}:${relativePath}`], {
+            cwd: gitRoot,
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
+
+        const stdout = gitShow.stdout;
+        const stderr = gitShow.stderr;
+        if (!stdout || !stderr) {
+            reject(new Error('Unable to capture git show output streams.'));
+            return;
+        }
+
+        const stdoutChunks: Buffer[] = [];
+        const stderrChunks: Buffer[] = [];
+        let stdoutBytes = 0;
+        let stderrBytes = 0;
+
+        stdout.on('data', (chunk: Buffer | string) => {
+            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            stdoutChunks.push(buffer);
+            stdoutBytes += buffer.length;
+        });
+
+        stderr.on('data', (chunk: Buffer | string) => {
+            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            stderrChunks.push(buffer);
+            stderrBytes += buffer.length;
+        });
+
+        gitShow.once('error', (error) => {
+            reject(error);
+        });
+
+        gitShow.once('close', (code) => {
+            if (code !== 0) {
+                const stderrOutput =
+                    stderrBytes > 0 ? Buffer.concat(stderrChunks, stderrBytes).toString('utf8').trim() : '';
+                const fallback = `git show :${stage}:${relativePath} failed with exit code ${String(code)}`;
+                reject(new Error(stderrOutput || fallback));
+                return;
+            }
+
+            if (stdoutBytes === 0) {
+                resolve('');
+                return;
+            }
+
+            resolve(Buffer.concat(stdoutChunks, stdoutBytes).toString('utf8'));
+        });
+    });
+}
+
+async function resolveGitFileContext(filePath: string): Promise<GitFileContext | null> {
+    try {
+        const gitRoot = await getGitRoot(filePath);
+        if (!gitRoot) {
+            return null;
+        }
+
+        const relativePath = await resolveGitPathForFile(gitRoot, filePath);
+        if (!relativePath) {
+            return null;
+        }
+
+        return {
+            gitRoot,
+            relativePath
+        };
+    } catch {
+        return null;
+    }
+}
+
+async function getVersionForStage(context: GitFileContext, stage: GitStageNumber): Promise<string | null> {
+    try {
+        return await readGitShowFromStage(context.gitRoot, context.relativePath, stage);
+    } catch {
+        return null;
+    }
+}
+
 async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]> {
     const unmergedFiles: GitFileStatus[] = [];
     let lineCount = 0;
@@ -874,23 +964,12 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
  * This is the common ancestor version before the merge
  */
 export async function getBaseVersion(filePath: string): Promise<string | null> {
-    try {
-        const gitRoot = await getGitRoot(filePath);
-        if (!gitRoot) return null;
-
-        const relativePath = await resolveGitPathForFile(gitRoot, filePath);
-        if (!relativePath) return null;
-        const { stdout } = await execAsync(`git show :1:"${relativePath}"`, { 
-            cwd: gitRoot,
-            encoding: 'utf8',
-            maxBuffer: 10 * 1024 * 1024 // 10MB buffer for large notebooks
-        });
-        
-        return stdout;
-    } catch (error) {
-        // File might not exist in base (newly added in both branches)
+    const context = await resolveGitFileContext(filePath);
+    if (!context) {
         return null;
     }
+    // File might not exist in base (newly added in both branches).
+    return getVersionForStage(context, '1');
 }
 
 /**
@@ -898,22 +977,11 @@ export async function getBaseVersion(filePath: string): Promise<string | null> {
  * This is the "ours" version (current branch)
  */
 export async function getCurrentVersion(filePath: string): Promise<string | null> {
-    try {
-        const gitRoot = await getGitRoot(filePath);
-        if (!gitRoot) return null;
-
-        const relativePath = await resolveGitPathForFile(gitRoot, filePath);
-        if (!relativePath) return null;
-        const { stdout } = await execAsync(`git show :2:"${relativePath}"`, { 
-            cwd: gitRoot,
-            encoding: 'utf8',
-            maxBuffer: 10 * 1024 * 1024
-        });
-        
-        return stdout;
-    } catch (error) {
+    const context = await resolveGitFileContext(filePath);
+    if (!context) {
         return null;
     }
+    return getVersionForStage(context, '2');
 }
 
 /**
@@ -921,22 +989,11 @@ export async function getCurrentVersion(filePath: string): Promise<string | null
  * This is the "theirs" version (incoming branch)
  */
 export async function getIncomingVersion(filePath: string): Promise<string | null> {
-    try {
-        const gitRoot = await getGitRoot(filePath);
-        if (!gitRoot) return null;
-
-        const relativePath = await resolveGitPathForFile(gitRoot, filePath);
-        if (!relativePath) return null;
-        const { stdout } = await execAsync(`git show :3:"${relativePath}"`, { 
-            cwd: gitRoot,
-            encoding: 'utf8',
-            maxBuffer: 10 * 1024 * 1024
-        });
-        
-        return stdout;
-    } catch (error) {
+    const context = await resolveGitFileContext(filePath);
+    if (!context) {
         return null;
     }
+    return getVersionForStage(context, '3');
 }
 
 /**
@@ -947,10 +1004,15 @@ export async function getThreeWayVersions(filePath: string): Promise<{
     current: string | null;
     incoming: string | null;
 } | null> {
+    const context = await resolveGitFileContext(filePath);
+    if (!context) {
+        return null;
+    }
+
     const [base, current, incoming] = await Promise.all([
-        getBaseVersion(filePath),
-        getCurrentVersion(filePath),
-        getIncomingVersion(filePath)
+        getVersionForStage(context, '1'),
+        getVersionForStage(context, '2'),
+        getVersionForStage(context, '3')
     ]);
 
     if (base === null && current === null && incoming === null) {
