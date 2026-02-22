@@ -2,7 +2,7 @@
  * @file conflictDetector.ts
  * @description Conflict detection and analysis engine for MergeNB.
  * 
- * Handles semantic conflicts (Git UU status):
+ * Handles semantic conflicts (Git unmerged status):
  *    - Cell added/deleted/modified in both branches
  *    - Cell reordering conflicts
  *    - Output and execution count differences
@@ -66,7 +66,7 @@ export interface AutoResolveResult {
 }
 
 /**
- * Detect semantic conflicts (Git UU status)
+ * Detect semantic conflicts (Git unmerged status)
  * Compares base/current/incoming versions from Git staging areas
  */
 export async function detectSemanticConflicts(filePath: string): Promise<NotebookSemanticConflict | null> {

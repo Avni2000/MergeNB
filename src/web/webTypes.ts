@@ -75,7 +75,7 @@ export interface UnifiedResolution {
     semanticResolutions?: Map<number, { choice: ResolutionChoice; resolvedContent: string }>;
     /** The complete resolved row structure from the UI (source of truth) */
     resolvedRows?: ResolvedRow[];
-    // Whether to mark file as resolved with git add
+    // Whether to mark file as resolved by staging in Git
     markAsResolved: boolean;
     // Whether to renumber execution counts sequentially
     renumberExecutionCounts: boolean;

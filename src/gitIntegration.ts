@@ -3,7 +3,7 @@
  * @description Git command-line integration for retrieving merge conflict data.
  * 
  * Provides:
- * - Detection of unmerged files (Git UU status)
+ * - Detection of unmerged files (Git unmerged status)
  * - Retrieval of three-way merge versions from Git staging areas:
  *   - Stage 1 (:1:file) = base (common ancestor)
  *   - Stage 2 (:2:file) = current (ours/HEAD)
@@ -18,8 +18,9 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec, execFile, spawn } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
+import type { API as GitAPI, Change, GitExtension, Repository } from './typings/git';
 
 // VSCode is optional - only needed for workspace-aware helpers.
 let vscode: typeof import('vscode') | undefined;
@@ -545,10 +546,27 @@ function pathsLikelySameFileToTarget(firstPath: string, targetPath: NormalizedPa
     return pathHasSuffix(firstNorm, repoNorm) && pathHasSuffix(targetPath.normalizedPath, repoNorm);
 }
 
+function isRepoRelativePath(relativePath: string): boolean {
+    if (!relativePath || relativePath === '.') {
+        return false;
+    }
+    if (relativePath.startsWith('..')) {
+        return false;
+    }
+    return path.isAbsolute(relativePath) === false;
+}
+
+function isPathWithinRoot(filePath: string, rootPath: string): boolean {
+    const relative = toGitPath(path.relative(resolveRealPath(rootPath), resolveRealPath(filePath)));
+    return relative === '' || relative === '.' || isRepoRelativePath(relative);
+}
+
+export type GitUnmergedStatus = 'UU' | 'AA' | 'DD' | 'AU' | 'UA' | 'DU' | 'UD';
+
 export interface GitFileStatus {
     path: string;
     repoPath?: string;
-    status: string; // 'UU' = unmerged, both modified
+    status: GitUnmergedStatus;
     isUnmerged: boolean;
 }
 
@@ -557,14 +575,82 @@ interface UnmergedFilesCacheEntry {
     files: GitFileStatus[];
 }
 
+type GitStageNumber = '1' | '2' | '3';
+
+interface GitFileContext {
+    repository: Repository;
+    gitRoot: string;
+    relativePath: string;
+}
+
+const GIT_STATUS_ADDED_BY_US = 12;
+const GIT_STATUS_ADDED_BY_THEM = 13;
+const GIT_STATUS_DELETED_BY_US = 14;
+const GIT_STATUS_DELETED_BY_THEM = 15;
+const GIT_STATUS_BOTH_ADDED = 16;
+const GIT_STATUS_BOTH_DELETED = 17;
+const GIT_STATUS_BOTH_MODIFIED = 18;
+
 const UNMERGED_FILES_CACHE_TTL_MS = 500;
 const unmergedFilesCacheByRoot = new Map<string, UnmergedFilesCacheEntry>();
 const unmergedFilesSnapshotByRoot = new Map<string, GitFileStatus[]>();
 const unmergedFilesFetchPromisesByRoot = new Map<string, Promise<GitFileStatus[]>>();
-const unmergedRepoPathIndexByRoot = new Map<string, Map<string, string>>();
+const unmergedRepoPathIndexByRoot = new Map<string, Map<string, GitFileStatus>>();
+const repositoryCacheByRoot = new Map<string, Repository>();
+const apiStrictWarningKeys = new Set<string>();
+let gitApiPromise: Promise<GitAPI | null> | null = null;
 
 function getGitRootCacheKey(gitRoot: string): string {
     return normalizeForComparison(resolveRealPath(gitRoot));
+}
+
+function warnApiStrictOnce(key: string, message: string): void {
+    if (apiStrictWarningKeys.has(key)) {
+        return;
+    }
+    apiStrictWarningKeys.add(key);
+    console.warn(`[GitIntegration] ${message}`);
+}
+
+async function getGitApi(): Promise<GitAPI | null> {
+    if (gitApiPromise) {
+        return gitApiPromise;
+    }
+
+    gitApiPromise = (async () => {
+        if (!vscode) {
+            warnApiStrictOnce('api:missing-vscode', 'VS Code API unavailable; API-first unmerged support is disabled.');
+            return null;
+        }
+
+        const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
+        if (!extension) {
+            warnApiStrictOnce('api:missing-git-extension', 'vscode.git extension not found; API-first unmerged support is disabled.');
+            return null;
+        }
+
+        if (!extension.isActive) {
+            try {
+                await extension.activate();
+            } catch (error) {
+                warnApiStrictOnce('api:activate-failed', `Failed to activate vscode.git extension: ${String(error)}`);
+                return null;
+            }
+        }
+
+        try {
+            return extension.exports?.getAPI(1) ?? null;
+        } catch (error) {
+            warnApiStrictOnce('api:get-api-failed', `Failed to acquire vscode.git API: ${String(error)}`);
+            return null;
+        }
+    })();
+
+    return gitApiPromise;
+}
+
+function cacheRepository(repository: Repository): void {
+    repositoryCacheByRoot.set(getGitRootCacheKey(repository.rootUri.fsPath), repository);
 }
 
 function getCachedUnmergedFilesForRoot(gitRoot: string): GitFileStatus[] | null {
@@ -610,17 +696,17 @@ function setCachedUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]):
 
 function setRepoPathIndexForRoot(gitRoot: string, files: GitFileStatus[]): void {
     const cacheKey = getGitRootCacheKey(gitRoot);
-    const index = new Map<string, string>();
+    const index = new Map<string, GitFileStatus>();
     for (const file of files) {
         if (!file.repoPath) {
             continue;
         }
-        index.set(normalizeForComparison(file.repoPath), file.repoPath);
+        index.set(normalizeForComparison(file.repoPath), file);
     }
     unmergedRepoPathIndexByRoot.set(cacheKey, index);
 }
 
-function tryResolveStatusPathFromIndex(gitRoot: string, filePath: string): string | null {
+function tryResolveStatusEntryFromIndex(gitRoot: string, filePath: string): GitFileStatus | null {
     const cacheKey = getGitRootCacheKey(gitRoot);
     const index = unmergedRepoPathIndexByRoot.get(cacheKey);
     if (!index || index.size === 0) {
@@ -633,7 +719,7 @@ function tryResolveStatusPathFromIndex(gitRoot: string, filePath: string): strin
     ]);
 
     for (const candidatePath of candidatePaths) {
-        if (!candidatePath || candidatePath === '.' || candidatePath.startsWith('..')) {
+        if (!isRepoRelativePath(candidatePath)) {
             continue;
         }
         const match = index.get(normalizeForComparison(candidatePath));
@@ -645,411 +731,142 @@ function tryResolveStatusPathFromIndex(gitRoot: string, filePath: string): strin
     return null;
 }
 
-function streamGitUnmergedPaths(gitRoot: string, onPath: (repoPath: string) => void): Promise<void> {
-    return new Promise((resolve, reject) => {
-        // Query only unresolved merge paths. Using `-z` avoids path quoting/escaping.
-        const gitDiff = spawn('git', ['diff', '--name-only', '--diff-filter=U', '-z'], {
-            cwd: gitRoot,
-            stdio: ['ignore', 'pipe', 'pipe']
-        });
-
-        const stdout = gitDiff.stdout;
-        const stderr = gitDiff.stderr;
-        if (!stdout || !stderr) {
-            reject(new Error('Unable to capture git diff output streams.'));
-            return;
-        }
-
-        stdout.setEncoding('utf8');
-        stderr.setEncoding('utf8');
-
-        let bufferedPath = '';
-        let stderrOutput = '';
-
-        stdout.on('data', (chunk: string) => {
-            bufferedPath += chunk;
-
-            let delimiterIndex = bufferedPath.indexOf('\0');
-            while (delimiterIndex !== -1) {
-                const rawPath = bufferedPath.slice(0, delimiterIndex);
-                bufferedPath = bufferedPath.slice(delimiterIndex + 1);
-                if (rawPath.length > 0) {
-                    onPath(toGitPath(rawPath));
-                }
-                delimiterIndex = bufferedPath.indexOf('\0');
-            }
-        });
-
-        stderr.on('data', (chunk: string) => {
-            stderrOutput += chunk;
-        });
-
-        gitDiff.once('error', (error) => {
-            reject(error);
-        });
-
-        gitDiff.once('close', (code) => {
-            if (bufferedPath.length > 0) {
-                onPath(toGitPath(bufferedPath));
-            }
-
-            if (code !== 0) {
-                const message =
-                    stderrOutput.trim() || `git diff --name-only --diff-filter=U -z failed with exit code ${String(code)}`;
-                reject(new Error(message));
-                return;
-            }
-
-            resolve();
-        });
-    });
-}
-
-type GitStageNumber = '1' | '2' | '3';
-
-interface GitFileContext {
-    gitRoot: string;
-    relativePath: string;
-}
-
-function readGitShowFromStage(gitRoot: string, relativePath: string, stage: GitStageNumber): Promise<string> {
-    return new Promise((resolve, reject) => {
-        // `cat-file blob` returns the blob directly and avoids command formatting overhead.
-        const gitShow = spawn('git', ['cat-file', 'blob', `:${stage}:${relativePath}`], {
-            cwd: gitRoot,
-            stdio: ['ignore', 'pipe', 'pipe']
-        });
-
-        const stdout = gitShow.stdout;
-        const stderr = gitShow.stderr;
-        if (!stdout || !stderr) {
-            reject(new Error('Unable to capture git cat-file output streams.'));
-            return;
-        }
-
-        stdout.setEncoding('utf8');
-        stderr.setEncoding('utf8');
-        let stdoutOutput = '';
-        let stderrOutput = '';
-
-        stdout.on('data', (chunk: string) => {
-            stdoutOutput += chunk;
-        });
-
-        stderr.on('data', (chunk: string) => {
-            stderrOutput += chunk;
-        });
-
-        gitShow.once('error', (error) => {
-            reject(error);
-        });
-
-        gitShow.once('close', (code) => {
-            if (code !== 0) {
-                const fallback = `git cat-file blob :${stage}:${relativePath} failed with exit code ${String(code)}`;
-                reject(new Error(stderrOutput.trim() || fallback));
-                return;
-            }
-
-            resolve(stdoutOutput);
-        });
-    });
-}
-
-function readGitShowFromStages(
-    gitRoot: string,
-    relativePath: string,
-    stages: GitStageNumber[]
-): Promise<Record<GitStageNumber, string | null>> {
-    return new Promise((resolve, reject) => {
-        const gitShow = spawn('git', ['cat-file', '--batch'], {
-            cwd: gitRoot,
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
-
-        const stdout = gitShow.stdout;
-        const stderr = gitShow.stderr;
-        const stdin = gitShow.stdin;
-        if (!stdout || !stderr || !stdin) {
-            reject(new Error('Unable to capture git cat-file --batch streams.'));
-            return;
-        }
-
-        const results: Record<GitStageNumber, string | null> = {
-            '1': null,
-            '2': null,
-            '3': null
-        };
-        const pendingStages = [...stages];
-        const stageCount = pendingStages.length;
-        let completedCount = 0;
-        let pendingContentBytes: number | null = null;
-        let pendingContentStage: GitStageNumber | null = null;
-        const stdoutQueue: Buffer<ArrayBufferLike>[] = [];
-        let stdoutQueueBytes = 0;
-        let stderrOutput = '';
-        let parserError: Error | null = null;
-
-        const appendStdoutChunk = (chunk: Buffer<ArrayBufferLike>): void => {
-            if (chunk.length === 0) {
-                return;
-            }
-            stdoutQueue.push(chunk);
-            stdoutQueueBytes += chunk.length;
-        };
-
-        const takeStdoutBytes = (byteCount: number): Buffer<ArrayBufferLike> | null => {
-            if (byteCount < 0 || stdoutQueueBytes < byteCount) {
-                return null;
-            }
-            if (byteCount === 0) {
-                return Buffer.alloc(0);
-            }
-
-            const output = Buffer.allocUnsafe(byteCount);
-            let outputOffset = 0;
-            let remaining = byteCount;
-
-            while (remaining > 0) {
-                const head = stdoutQueue[0];
-                if (!head) {
-                    return null;
-                }
-
-                const copyCount = Math.min(head.length, remaining);
-                head.copy(output, outputOffset, 0, copyCount);
-                outputOffset += copyCount;
-                remaining -= copyCount;
-                stdoutQueueBytes -= copyCount;
-
-                if (copyCount === head.length) {
-                    stdoutQueue.shift();
-                } else {
-                    stdoutQueue[0] = head.subarray(copyCount);
-                }
-            }
-
-            return output;
-        };
-
-        const takeStdoutLine = (): string | null => {
-            let scannedBytes = 0;
-            let newlineOffset = -1;
-
-            for (const chunk of stdoutQueue) {
-                const chunkNewlineIndex = chunk.indexOf(0x0a);
-                if (chunkNewlineIndex !== -1) {
-                    newlineOffset = scannedBytes + chunkNewlineIndex;
-                    break;
-                }
-                scannedBytes += chunk.length;
-            }
-
-            if (newlineOffset === -1) {
-                return null;
-            }
-
-            const lineBuffer = takeStdoutBytes(newlineOffset + 1);
-            if (!lineBuffer) {
-                return null;
-            }
-            return lineBuffer.subarray(0, lineBuffer.length - 1).toString('utf8');
-        };
-
-        const processStdout = (): void => {
-            while (true) {
-                if (parserError) {
-                    return;
-                }
-                if (pendingContentBytes === null) {
-                    const header = takeStdoutLine();
-                    if (header === null) {
-                        return;
-                    }
-
-                    if (completedCount >= stageCount) {
-                        parserError = new Error(`Unexpected extra output from git cat-file --batch for ${relativePath}`);
-                        return;
-                    }
-
-                    const stage = pendingStages[completedCount];
-                    if (!stage) {
-                        parserError = new Error(`Missing stage metadata while parsing git output for ${relativePath}`);
-                        return;
-                    }
-
-                    if (header.endsWith(' missing')) {
-                        results[stage] = null;
-                        completedCount += 1;
-                        continue;
-                    }
-
-                    const headerParts = header.split(' ');
-                    const sizeToken = headerParts[headerParts.length - 1];
-                    const contentSize = Number(sizeToken);
-                    if (!Number.isFinite(contentSize) || contentSize < 0) {
-                        parserError = new Error(`Invalid git cat-file --batch header for ${relativePath}: ${header}`);
-                        return;
-                    }
-
-                    pendingContentBytes = contentSize;
-                    pendingContentStage = stage;
-                }
-
-                if (pendingContentBytes !== null) {
-                    const requiredBytes = pendingContentBytes + 1;
-                    const payload = takeStdoutBytes(requiredBytes);
-                    if (!payload) {
-                        return;
-                    }
-
-                    const content = payload.subarray(0, pendingContentBytes);
-                    const trailingByte = payload[pendingContentBytes];
-                    if (trailingByte !== 0x0a) {
-                        parserError = new Error(`Malformed git cat-file --batch payload for ${relativePath}`);
-                        return;
-                    }
-
-                    const stage = pendingContentStage;
-                    if (!stage) {
-                        parserError = new Error(`Missing pending stage while parsing git output for ${relativePath}`);
-                        return;
-                    }
-
-                    results[stage] = content.toString('utf8');
-                    completedCount += 1;
-                    pendingContentBytes = null;
-                    pendingContentStage = null;
-                }
-            }
-        };
-
-        stdout.on('data', (chunk: Buffer | string) => {
-            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-            appendStdoutChunk(buffer);
-            processStdout();
-        });
-
-        stderr.setEncoding('utf8');
-        stderr.on('data', (chunk: string) => {
-            stderrOutput += chunk;
-        });
-
-        gitShow.once('error', (error) => {
-            reject(error);
-        });
-
-        gitShow.once('close', (code) => {
-            processStdout();
-            if (parserError) {
-                reject(parserError);
-                return;
-            }
-
-            if (code !== 0) {
-                const fallback = `git cat-file --batch failed with exit code ${String(code)}`;
-                reject(new Error(stderrOutput.trim() || fallback));
-                return;
-            }
-
-            if (completedCount !== stageCount) {
-                reject(new Error(`Incomplete git cat-file --batch output for ${relativePath}`));
-                return;
-            }
-
-            resolve(results);
-        });
-
-        stdin.on('error', (error) => {
-            reject(error);
-        });
-        for (const stage of stages) {
-            stdin.write(`:${stage}:${relativePath}\n`);
-        }
-        stdin.end();
-    });
-}
-
-function canUseBatchStageRead(relativePath: string): boolean {
-    // `git cat-file --batch` reads one object spec per line.
-    // Newline characters in paths cannot be represented safely in that protocol.
-    return !relativePath.includes('\n') && !relativePath.includes('\r');
-}
-
-async function resolveGitFileContext(filePath: string): Promise<GitFileContext | null> {
-    try {
-        const gitRoot = await getGitRoot(filePath);
-        if (!gitRoot) {
+function mapGitStatusToUnmergedStatus(status: number): GitUnmergedStatus | null {
+    switch (status) {
+        case GIT_STATUS_BOTH_MODIFIED:
+            return 'UU';
+        case GIT_STATUS_BOTH_ADDED:
+            return 'AA';
+        case GIT_STATUS_BOTH_DELETED:
+            return 'DD';
+        case GIT_STATUS_ADDED_BY_US:
+            return 'AU';
+        case GIT_STATUS_ADDED_BY_THEM:
+            return 'UA';
+        case GIT_STATUS_DELETED_BY_US:
+            return 'DU';
+        case GIT_STATUS_DELETED_BY_THEM:
+            return 'UD';
+        default:
             return null;
-        }
-
-        const relativePath = await resolveGitPathForFile(gitRoot, filePath);
-        if (!relativePath) {
-            return null;
-        }
-
-        return {
-            gitRoot,
-            relativePath
-        };
-    } catch {
-        return null;
     }
 }
 
-async function getVersionForStage(context: GitFileContext, stage: GitStageNumber): Promise<string | null> {
-    try {
-        return await readGitShowFromStage(context.gitRoot, context.relativePath, stage);
-    } catch {
-        return null;
+function resolveRepoPathFromChange(repository: Repository, change: Change): string | null {
+    const candidatePaths = [
+        change.uri?.fsPath,
+        change.originalUri?.fsPath,
+        change.renameUri?.fsPath
+    ];
+
+    for (const candidatePath of candidatePaths) {
+        if (!candidatePath) {
+            continue;
+        }
+        const relative = toGitPath(path.relative(repository.rootUri.fsPath, candidatePath));
+        if (isRepoRelativePath(relative)) {
+            return relative;
+        }
     }
+
+    return null;
 }
 
-async function readGitShowFromStagesFallback(
-    context: GitFileContext
-): Promise<Record<GitStageNumber, string | null>> {
-    const [base, current, incoming] = await Promise.all([
-        getVersionForStage(context, '1'),
-        getVersionForStage(context, '2'),
-        getVersionForStage(context, '3')
-    ]);
+function queryUnmergedFilesFromRepository(repository: Repository): GitFileStatus[] {
+    cacheRepository(repository);
+    const filesByRepoPath = new Map<string, GitFileStatus>();
 
-    return {
-        '1': base,
-        '2': current,
-        '3': incoming
-    };
+    for (const change of repository.state.mergeChanges) {
+        const unmergedStatus = mapGitStatusToUnmergedStatus(change.status);
+        if (!unmergedStatus) {
+            continue;
+        }
+
+        const repoPath = resolveRepoPathFromChange(repository, change);
+        if (!repoPath) {
+            continue;
+        }
+
+        const fullPath = path.join(repository.rootUri.fsPath, repoPath);
+        filesByRepoPath.set(normalizeForComparison(repoPath), {
+            path: fullPath,
+            repoPath,
+            status: unmergedStatus,
+            isUnmerged: true
+        });
+    }
+
+    return [...filesByRepoPath.values()];
+}
+
+function getCachedRepositoryForPath(filePath: string): Repository | null {
+    for (const repository of repositoryCacheByRoot.values()) {
+        if (isPathWithinRoot(filePath, repository.rootUri.fsPath)) {
+            return repository;
+        }
+    }
+    return null;
+}
+
+async function getRepositoryForPath(filePath: string): Promise<Repository | null> {
+    const cached = getCachedRepositoryForPath(filePath);
+    if (cached) {
+        return cached;
+    }
+
+    if (!vscode) {
+        return null;
+    }
+
+    const gitApi = await getGitApi();
+    if (!gitApi) {
+        return null;
+    }
+
+    const directMatch = gitApi.getRepository(vscode.Uri.file(filePath));
+    if (directMatch) {
+        cacheRepository(directMatch);
+        return directMatch;
+    }
+
+    for (const repository of gitApi.repositories) {
+        cacheRepository(repository);
+        if (isPathWithinRoot(filePath, repository.rootUri.fsPath)) {
+            return repository;
+        }
+    }
+
+    return null;
+}
+
+async function getRepositoriesForPathHint(pathHint?: string): Promise<Repository[]> {
+    const gitApi = await getGitApi();
+    if (!gitApi) {
+        return [];
+    }
+
+    for (const repository of gitApi.repositories) {
+        cacheRepository(repository);
+    }
+
+    if (!pathHint) {
+        return [...gitApi.repositories];
+    }
+
+    const matched = await getRepositoryForPath(pathHint);
+    return matched ? [matched] : [];
 }
 
 async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]> {
-    const unmergedFiles: GitFileStatus[] = [];
-    let pathCount = 0;
-
-    try {
-        await streamGitUnmergedPaths(gitRoot, (repoPath) => {
-            pathCount += 1;
-            const fullPath = path.join(gitRoot, repoPath);
-            unmergedFiles.push({
-                path: fullPath,
-                repoPath,
-                // `git diff --diff-filter=U` only reports unresolved merge paths.
-                // Keep `status` as a generic unmerged marker for compatibility.
-                status: 'UU',
-                isUnmerged: true
-            });
-        });
-        console.log(`[GitIntegration] getUnmergedFiles: ${pathCount} unmerged path(s) in ${gitRoot}`);
-    } catch (error) {
-        const errorDetails = error instanceof Error ? error.message : String(error);
-        const message = `MergeNB failed to query unmerged files for ${gitRoot}: ${errorDetails}`;
-        console.error(`[GitIntegration] ${message}`, error);
-        if (vscode) {
-            void vscode.window.showErrorMessage(message);
-        }
-        throw error instanceof Error ? error : new Error(errorDetails);
+    const repository = await getRepositoryForPath(gitRoot);
+    if (!repository) {
+        warnApiStrictOnce(
+            `repo:missing:${getGitRootCacheKey(gitRoot)}`,
+            `No VS Code Git repository found for ${gitRoot}.`
+        );
+        return [];
     }
-
-    return unmergedFiles;
+    return queryUnmergedFilesFromRepository(repository);
 }
 
 async function refreshUnmergedFilesSnapshotForRoot(gitRoot: string): Promise<GitFileStatus[]> {
@@ -1109,27 +926,26 @@ async function getUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]
 }
 
 /**
- * Refresh cached unmerged status by querying Git once per repository root.
- * Intended to be called from Git state listeners (e.g. vscode.git onDidChange)
- * and at extension startup.
+ * Refresh cached unmerged status by querying VS Code Git API once per repository root.
+ * Intended to be called from Git state listeners and at extension startup.
  */
 export async function refreshUnmergedFilesSnapshot(workspaceFolderOrPath?: any): Promise<void> {
     const pathHint =
         typeof workspaceFolderOrPath === 'string'
             ? workspaceFolderOrPath
             : workspaceFolderOrPath?.uri?.fsPath;
-    const gitRoots = await resolveGitRoots(pathHint);
-    if (gitRoots.length === 0) {
+    const repositories = await getRepositoriesForPathHint(pathHint);
+    if (repositories.length === 0) {
         return;
     }
 
-    await Promise.all(gitRoots.map((gitRoot) => refreshUnmergedFilesSnapshotForRoot(gitRoot)));
+    await Promise.all(repositories.map((repository) => refreshUnmergedFilesSnapshotForRoot(repository.rootUri.fsPath)));
 }
 
-async function resolveStatusPathForFile(gitRoot: string, filePath: string): Promise<string | null> {
+async function resolveStatusEntryForFile(gitRoot: string, filePath: string): Promise<GitFileStatus | null> {
     const unmergedFiles = await getUnmergedFilesForRoot(gitRoot);
 
-    const indexedMatch = tryResolveStatusPathFromIndex(gitRoot, filePath);
+    const indexedMatch = tryResolveStatusEntryFromIndex(gitRoot, filePath);
     if (indexedMatch) {
         return indexedMatch;
     }
@@ -1137,7 +953,7 @@ async function resolveStatusPathForFile(gitRoot: string, filePath: string): Prom
     const targetPath = getNormalizedPathInfo(filePath);
     for (const file of unmergedFiles) {
         if (pathsLikelySameFileToTarget(file.path, targetPath, file.repoPath)) {
-            return file.repoPath || null;
+            return file;
         }
     }
 
@@ -1146,51 +962,87 @@ async function resolveStatusPathForFile(gitRoot: string, filePath: string): Prom
 
 async function resolveGitPathForFile(gitRoot: string, filePath: string): Promise<string | null> {
     const relativePath = gitRelativePath(gitRoot, filePath);
-    if (relativePath && relativePath !== '.' && !relativePath.startsWith('..')) {
+    if (isRepoRelativePath(relativePath)) {
         return relativePath;
     }
 
-    const statusPath = await resolveStatusPathForFile(gitRoot, filePath);
-    if (statusPath) {
-        console.log(`[GitIntegration] Resolved git-relative path from status entries: ${statusPath}`);
-        return statusPath;
+    const statusEntry = await resolveStatusEntryForFile(gitRoot, filePath);
+    if (statusEntry?.repoPath) {
+        return statusEntry.repoPath;
     }
 
-    console.warn(`[GitIntegration] Could not resolve git-relative path for ${filePath}`);
     return null;
 }
 
+async function resolveGitFileContext(filePath: string): Promise<GitFileContext | null> {
+    const repository = await getRepositoryForPath(filePath);
+    if (!repository) {
+        warnApiStrictOnce(
+            `repo:file-context:${normalizeForComparison(filePath)}`,
+            `No VS Code Git repository found for ${filePath}; stage content reads are unavailable.`
+        );
+        return null;
+    }
+
+    const gitRoot = repository.rootUri.fsPath;
+    const relativePath = await resolveGitPathForFile(gitRoot, filePath);
+    if (!relativePath) {
+        return null;
+    }
+
+    return {
+        repository,
+        gitRoot,
+        relativePath
+    };
+}
+
+async function getVersionForStage(context: GitFileContext, stage: GitStageNumber): Promise<string | null> {
+    try {
+        return await context.repository.show(`:${stage}`, context.relativePath);
+    } catch {
+        return null;
+    }
+}
+
 /**
- * Get the Git repository root for a given file path
+ * Get the Git repository root for a given file path.
  */
 export async function getGitRoot(filePath: string): Promise<string | null> {
+    const repository = await getRepositoryForPath(filePath);
+    if (repository) {
+        return repository.rootUri.fsPath;
+    }
     return resolveGitRootForPath(filePath);
 }
 
 /**
- * Check if a file has unmerged status (UU) in Git
+ * Get a file's explicit Git unmerged status code.
+ */
+export async function getUnmergedFileStatus(filePath: string): Promise<GitUnmergedStatus | null> {
+    try {
+        const repository = await getRepositoryForPath(filePath);
+        if (!repository) {
+            warnApiStrictOnce(
+                `repo:status:${normalizeForComparison(filePath)}`,
+                `No VS Code Git repository found for ${filePath}; cannot determine unmerged status.`
+            );
+            return null;
+        }
+
+        const statusEntry = await resolveStatusEntryForFile(repository.rootUri.fsPath, filePath);
+        return statusEntry?.status ?? null;
+    } catch (error) {
+        console.error(`[GitIntegration] Error in getUnmergedFileStatus: ${String(error)}`);
+        return null;
+    }
+}
+
+/**
+ * Check whether a file has any Git unmerged status.
  */
 export async function isUnmergedFile(filePath: string): Promise<boolean> {
-    try {
-        const gitRoot = await getGitRoot(filePath);
-        console.log(`[GitIntegration] Checking if unmerged: ${filePath} (gitRoot: ${gitRoot})`);
-        if (!gitRoot) {
-            console.log(`[GitIntegration] No git root found for ${filePath}`);
-            return false;
-        }
-
-        const statusPath = await resolveStatusPathForFile(gitRoot, filePath);
-        if (statusPath) {
-            console.log(`[GitIntegration] MATCHED: ${filePath} is unmerged at ${statusPath}`);
-            return true;
-        }
-
-        console.log(`[GitIntegration] No unmerged status found for ${filePath}`);
-        return false;
-    } catch (error) {
-        console.error(`[GitIntegration] Error in isUnmergedFile: ${error}`);
-        return false;
-    }
+    return (await getUnmergedFileStatus(filePath)) !== null;
 }
 
 /**
@@ -1202,43 +1054,34 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
         typeof workspaceFolderOrPath === 'string'
             ? workspaceFolderOrPath
             : workspaceFolderOrPath?.uri?.fsPath;
-    const gitRoots = await resolveGitRoots(pathHint);
-
-    if (gitRoots.length === 0) {
-        console.log('[GitIntegration] getUnmergedFiles: no git roots found, returning empty');
+    const repositories = await getRepositoriesForPathHint(pathHint);
+    if (repositories.length === 0) {
         return [];
     }
 
-    const unmergedFilesPerRoot = await Promise.all(
-        gitRoots.map((gitRoot) => getUnmergedFilesForRoot(gitRoot))
-    );
+    const roots = [...new Set(repositories.map((repository) => repository.rootUri.fsPath))];
+    const unmergedFilesPerRoot = await Promise.all(roots.map((root) => getUnmergedFilesForRoot(root)));
 
     const unmergedFiles: GitFileStatus[] = [];
     for (const files of unmergedFilesPerRoot) {
-        for (const file of files) {
-            unmergedFiles.push(file);
-        }
+        unmergedFiles.push(...files);
     }
-
     return unmergedFiles;
 }
 
 /**
- * Get the base version of a file from Git staging area (stage :1:)
- * This is the common ancestor version before the merge
+ * Get the base version of a file from Git staging area (stage :1:).
  */
 export async function getBaseVersion(filePath: string): Promise<string | null> {
     const context = await resolveGitFileContext(filePath);
     if (!context) {
         return null;
     }
-    // File might not exist in base (newly added in both branches).
     return getVersionForStage(context, '1');
 }
 
 /**
- * Get the current version of a file from Git staging area (stage :2:)
- * This is the "ours" version (current branch)
+ * Get the current version of a file from Git staging area (stage :2:).
  */
 export async function getCurrentVersion(filePath: string): Promise<string | null> {
     const context = await resolveGitFileContext(filePath);
@@ -1249,8 +1092,7 @@ export async function getCurrentVersion(filePath: string): Promise<string | null
 }
 
 /**
- * Get the incoming version of a file from Git staging area (stage :3:)
- * This is the "theirs" version (incoming branch)
+ * Get the incoming version of a file from Git staging area (stage :3:).
  */
 export async function getIncomingVersion(filePath: string): Promise<string | null> {
     const context = await resolveGitFileContext(filePath);
@@ -1261,7 +1103,7 @@ export async function getIncomingVersion(filePath: string): Promise<string | nul
 }
 
 /**
- * Get all three versions (base, current, incoming) of a file
+ * Get all three versions (base, current, incoming) of a file.
  */
 export async function getThreeWayVersions(filePath: string): Promise<{
     base: string | null;
@@ -1273,20 +1115,11 @@ export async function getThreeWayVersions(filePath: string): Promise<{
         return null;
     }
 
-    let stagedVersions: Record<GitStageNumber, string | null>;
-    if (canUseBatchStageRead(context.relativePath)) {
-        try {
-            stagedVersions = await readGitShowFromStages(context.gitRoot, context.relativePath, ['1', '2', '3']);
-        } catch {
-            stagedVersions = await readGitShowFromStagesFallback(context);
-        }
-    } else {
-        stagedVersions = await readGitShowFromStagesFallback(context);
-    }
-
-    const base = stagedVersions['1'];
-    const current = stagedVersions['2'];
-    const incoming = stagedVersions['3'];
+    const [base, current, incoming] = await Promise.all([
+        getVersionForStage(context, '1'),
+        getVersionForStage(context, '2'),
+        getVersionForStage(context, '3')
+    ]);
 
     if (base === null && current === null && incoming === null) {
         return null;
@@ -1295,50 +1128,60 @@ export async function getThreeWayVersions(filePath: string): Promise<{
     return { base, current, incoming };
 }
 
-/**
- * Check if a file is a semantic conflict (unmerged status)
- */
-export async function isSemanticConflict(filePath: string, content: string): Promise<boolean> {
-    return await isUnmergedFile(filePath);
-}
+export async function stageFile(filePath: string): Promise<boolean> {
+    const context = await resolveGitFileContext(filePath);
+    if (!context) {
+        return false;
+    }
 
-/**
- * Get current branch name
- */
-export async function getCurrentBranch(filePath: string): Promise<string | null> {
     try {
-        const gitRoot = await getGitRoot(filePath);
-        if (!gitRoot) return null;
-
-        const { stdout } = await execAsync('git branch --show-current', { cwd: gitRoot });
-        return stdout.trim() || null;
+        await context.repository.add([context.relativePath]);
+        return true;
     } catch (error) {
-        return null;
+        console.error(`[GitIntegration] Failed to stage ${filePath}: ${String(error)}`);
+        return false;
     }
 }
 
 /**
- * Get the branch being merged into current branch
+ * Check if a file is a semantic conflict (unmerged status).
+ */
+export async function isSemanticConflict(filePath: string, content: string): Promise<boolean> {
+    return isUnmergedFile(filePath);
+}
+
+/**
+ * Get current branch name.
+ */
+export async function getCurrentBranch(filePath: string): Promise<string | null> {
+    const repository = await getRepositoryForPath(filePath);
+    return repository?.state.HEAD?.name ?? null;
+}
+
+/**
+ * Get the branch being merged into current branch.
  */
 export async function getMergeBranch(filePath: string): Promise<string | null> {
     try {
-        const gitRoot = await getGitRoot(filePath);
-        if (!gitRoot) return null;
+        const repository = await getRepositoryForPath(filePath);
+        const gitRoot = repository?.rootUri.fsPath ?? await resolveGitRootForPath(filePath);
+        if (!gitRoot) {
+            return null;
+        }
 
         const { stdout } = await execAsync('git rev-parse MERGE_HEAD', { cwd: gitRoot });
         const mergeHead = stdout.trim();
-        
-        // Try to get branch name
+
         try {
             const { stdout: branchName } = await execAsync(
-                `git name-rev --name-only ${mergeHead}`, 
+                `git name-rev --name-only ${mergeHead}`,
                 { cwd: gitRoot }
             );
             return branchName.trim();
         } catch {
-            return mergeHead.substring(0, 7); // Short hash as fallback
+            return mergeHead.substring(0, 7);
         }
-    } catch (error) {
+    } catch {
         return null;
     }
 }

@@ -727,7 +727,7 @@ export function ConflictResolver({
                             checked={markAsResolved}
                             onChange={e => handleToggleMarkAsResolved(e.target.checked)}
                         />
-                        Mark as resolved (git add)
+                        Mark as resolved (stage in Git)
                     </label>
                     <button className="btn btn-secondary" onClick={onCancel}>
                         Cancel

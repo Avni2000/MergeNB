@@ -56,7 +56,7 @@ function hasUnmergedConflict(statusOutput: string): boolean {
     return statusOutput
         .split('\n')
         .map((line) => line.trim())
-        .some((line) => line.startsWith('UU ') && line.includes('conflict.ipynb'));
+        .some((line) => /^(UU|AA|DD|AU|UA|DU|UD)\s+conflict\.ipynb$/.test(line));
 }
 
 async function getStatusBarState(): Promise<StatusBarState> {
@@ -117,14 +117,14 @@ async function waitForIndicatorState(
 function ensureNoUnmergedConflict(workspacePath: string, context: string): void {
     const status = git(workspacePath, ['status', '--porcelain']);
     if (hasUnmergedConflict(status)) {
-        throw new Error(`Expected no UU conflict ${context}, got:\n${status}`);
+        throw new Error(`Expected no unmerged conflict ${context}, got:\n${status}`);
     }
 }
 
 function ensureHasUnmergedConflict(workspacePath: string, context: string): void {
     const status = git(workspacePath, ['status', '--porcelain']);
     if (!hasUnmergedConflict(status)) {
-        throw new Error(`Expected UU conflict ${context}, got:\n${status}`);
+        throw new Error(`Expected unmerged conflict ${context}, got:\n${status}`);
     }
 }
 
