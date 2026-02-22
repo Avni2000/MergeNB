@@ -970,6 +970,12 @@ function readGitShowFromStages(
     });
 }
 
+function canUseBatchStageRead(relativePath: string): boolean {
+    // `git cat-file --batch` reads one object spec per line.
+    // Newline characters in paths cannot be represented safely in that protocol.
+    return !relativePath.includes('\n') && !relativePath.includes('\r');
+}
+
 async function resolveGitFileContext(filePath: string): Promise<GitFileContext | null> {
     try {
         const gitRoot = await getGitRoot(filePath);
@@ -1268,9 +1274,13 @@ export async function getThreeWayVersions(filePath: string): Promise<{
     }
 
     let stagedVersions: Record<GitStageNumber, string | null>;
-    try {
-        stagedVersions = await readGitShowFromStages(context.gitRoot, context.relativePath, ['1', '2', '3']);
-    } catch {
+    if (canUseBatchStageRead(context.relativePath)) {
+        try {
+            stagedVersions = await readGitShowFromStages(context.gitRoot, context.relativePath, ['1', '2', '3']);
+        } catch {
+            stagedVersions = await readGitShowFromStagesFallback(context);
+        }
+    } else {
         stagedVersions = await readGitShowFromStagesFallback(context);
     }
 
