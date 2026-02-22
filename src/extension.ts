@@ -172,8 +172,11 @@ async function getNotebookConflictDecoration(uri: vscode.Uri): Promise<vscode.Fi
 				color: new vscode.ThemeColor('gitDecoration.conflictingResourceForeground')
 			};
 		}
-	} catch {
-		// Ignore errors
+	} catch (error) {
+		console.error('[MergeNB] Failed to provide notebook conflict decoration:', error);
+		const message = error instanceof Error ? error.message : String(error);
+		void vscode.window.showErrorMessage(`MergeNB failed to check notebook conflict decoration: ${message}`);
+		throw error;
 	}
 
 	return undefined;
