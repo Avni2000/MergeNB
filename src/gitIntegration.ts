@@ -18,7 +18,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import { exec, execFile } from 'child_process';
+import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 
 // VSCode is optional - only needed for workspace-aware helpers.
@@ -562,7 +562,6 @@ interface UnmergedFilesCacheEntry {
 }
 
 const UNMERGED_FILES_CACHE_TTL_MS = 500;
-const GIT_STATUS_MAX_BUFFER_BYTES = 1024 * 1024;
 const unmergedFilesCacheByRoot = new Map<string, UnmergedFilesCacheEntry>();
 const unmergedFilesSnapshotByRoot = new Map<string, GitFileStatus[]>();
 const unmergedFilesFetchPromisesByRoot = new Map<string, Promise<GitFileStatus[]>>();
@@ -607,29 +606,77 @@ function setCachedUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]):
     });
 }
 
-function isStdoutMaxBufferError(error: unknown): boolean {
-    if (!(error instanceof Error)) {
-        return false;
-    }
+function streamGitStatusPorcelain(gitRoot: string, onLine: (line: string) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const gitStatus = spawn('git', ['status', '--porcelain'], {
+            cwd: gitRoot,
+            stdio: ['ignore', 'pipe', 'pipe']
+        });
 
-    const code = (error as NodeJS.ErrnoException).code;
-    return code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' || /stdout maxBuffer length exceeded/i.test(error.message);
+        const stdout = gitStatus.stdout;
+        const stderr = gitStatus.stderr;
+        if (!stdout || !stderr) {
+            reject(new Error('Unable to capture git status output streams.'));
+            return;
+        }
+
+        stdout.setEncoding('utf8');
+        stderr.setEncoding('utf8');
+
+        let bufferedLine = '';
+        let stderrOutput = '';
+
+        stdout.on('data', (chunk: string) => {
+            bufferedLine += chunk;
+
+            let newlineIndex = bufferedLine.indexOf('\n');
+            while (newlineIndex !== -1) {
+                const rawLine = bufferedLine.slice(0, newlineIndex);
+                bufferedLine = bufferedLine.slice(newlineIndex + 1);
+                const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+                if (line.length > 0) {
+                    onLine(line);
+                }
+                newlineIndex = bufferedLine.indexOf('\n');
+            }
+        });
+
+        stderr.on('data', (chunk: string) => {
+            stderrOutput += chunk;
+        });
+
+        gitStatus.once('error', (error) => {
+            reject(error);
+        });
+
+        gitStatus.once('close', (code) => {
+            const trailingLine = bufferedLine.endsWith('\r') ? bufferedLine.slice(0, -1) : bufferedLine;
+            if (trailingLine.length > 0) {
+                onLine(trailingLine);
+            }
+
+            if (code !== 0) {
+                const message =
+                    stderrOutput.trim() || `git status --porcelain failed with exit code ${String(code)}`;
+                reject(new Error(message));
+                return;
+            }
+
+            resolve();
+        });
+    });
 }
 
 async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]> {
     const unmergedFiles: GitFileStatus[] = [];
+    let lineCount = 0;
 
     try {
-        const { stdout } = await execAsync('git status --porcelain', {
-            cwd: gitRoot,
-            maxBuffer: GIT_STATUS_MAX_BUFFER_BYTES
-        });
-        console.log(`[GitIntegration] getUnmergedFiles git status output for ${gitRoot}:\n${stdout}`);
-
-        const lines = stdout.split('\n').filter((line) => line.trim());
-        console.log(`[GitIntegration] getUnmergedFiles: ${lines.length} non-empty lines in ${gitRoot}`);
-
-        for (const line of lines) {
+        await streamGitStatusPorcelain(gitRoot, (line) => {
+            if (!line.trim()) {
+                return;
+            }
+            lineCount += 1;
             const status = line.substring(0, 2);
             const filePath = normalizeStatusPath(line.substring(3));
             console.log(`[GitIntegration]   Line: "${line}" -> status="${status}" path="${filePath}"`);
@@ -644,15 +691,9 @@ async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus
                     isUnmerged: true
                 });
             }
-        }
+        });
+        console.log(`[GitIntegration] getUnmergedFiles: ${lineCount} non-empty lines in ${gitRoot}`);
     } catch (error) {
-        if (isStdoutMaxBufferError(error)) {
-            const message = `MergeNB could not read unmerged files for ${path.basename(gitRoot)} because git status output exceeded ${Math.round(GIT_STATUS_MAX_BUFFER_BYTES / (1024 * 1024))}MB.`;
-            if (vscode) {
-                void vscode.window.showErrorMessage(message);
-            }
-            throw new Error(message);
-        }
         console.error(`[GitIntegration] Error getting unmerged files for ${gitRoot}:`, error);
     }
 
