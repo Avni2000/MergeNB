@@ -535,20 +535,6 @@ function pathsLikelySameFile(firstPath: string, secondPath: string, repoPath?: s
     return pathHasSuffix(firstNorm, repoNorm) && pathHasSuffix(secondNorm, repoNorm);
 }
 
-function isUnmergedStatus(status: string): boolean {
-    return status === 'UU' || status === 'AA' || status === 'DD';
-}
-
-function normalizeStatusPath(statusPath: string): string {
-    let normalized = statusPath.trim();
-
-    if (normalized.startsWith('"') && normalized.endsWith('"')) {
-        normalized = normalized.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-    }
-
-    return toGitPath(normalized);
-}
-
 export interface GitFileStatus {
     path: string;
     repoPath?: string;
@@ -606,38 +592,38 @@ function setCachedUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]):
     });
 }
 
-function streamGitStatusPorcelain(gitRoot: string, onLine: (line: string) => void): Promise<void> {
+function streamGitUnmergedPaths(gitRoot: string, onPath: (repoPath: string) => void): Promise<void> {
     return new Promise((resolve, reject) => {
-        const gitStatus = spawn('git', ['status', '--porcelain'], {
+        // Query only unresolved merge paths. Using `-z` avoids path quoting/escaping.
+        const gitDiff = spawn('git', ['diff', '--name-only', '--diff-filter=U', '-z'], {
             cwd: gitRoot,
             stdio: ['ignore', 'pipe', 'pipe']
         });
 
-        const stdout = gitStatus.stdout;
-        const stderr = gitStatus.stderr;
+        const stdout = gitDiff.stdout;
+        const stderr = gitDiff.stderr;
         if (!stdout || !stderr) {
-            reject(new Error('Unable to capture git status output streams.'));
+            reject(new Error('Unable to capture git diff output streams.'));
             return;
         }
 
         stdout.setEncoding('utf8');
         stderr.setEncoding('utf8');
 
-        let bufferedLine = '';
+        let bufferedPath = '';
         let stderrOutput = '';
 
         stdout.on('data', (chunk: string) => {
-            bufferedLine += chunk;
+            bufferedPath += chunk;
 
-            let newlineIndex = bufferedLine.indexOf('\n');
-            while (newlineIndex !== -1) {
-                const rawLine = bufferedLine.slice(0, newlineIndex);
-                bufferedLine = bufferedLine.slice(newlineIndex + 1);
-                const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
-                if (line.length > 0) {
-                    onLine(line);
+            let delimiterIndex = bufferedPath.indexOf('\0');
+            while (delimiterIndex !== -1) {
+                const rawPath = bufferedPath.slice(0, delimiterIndex);
+                bufferedPath = bufferedPath.slice(delimiterIndex + 1);
+                if (rawPath.length > 0) {
+                    onPath(toGitPath(rawPath));
                 }
-                newlineIndex = bufferedLine.indexOf('\n');
+                delimiterIndex = bufferedPath.indexOf('\0');
             }
         });
 
@@ -645,19 +631,18 @@ function streamGitStatusPorcelain(gitRoot: string, onLine: (line: string) => voi
             stderrOutput += chunk;
         });
 
-        gitStatus.once('error', (error) => {
+        gitDiff.once('error', (error) => {
             reject(error);
         });
 
-        gitStatus.once('close', (code) => {
-            const trailingLine = bufferedLine.endsWith('\r') ? bufferedLine.slice(0, -1) : bufferedLine;
-            if (trailingLine.length > 0) {
-                onLine(trailingLine);
+        gitDiff.once('close', (code) => {
+            if (bufferedPath.length > 0) {
+                onPath(toGitPath(bufferedPath));
             }
 
             if (code !== 0) {
                 const message =
-                    stderrOutput.trim() || `git status --porcelain failed with exit code ${String(code)}`;
+                    stderrOutput.trim() || `git diff --name-only --diff-filter=U -z failed with exit code ${String(code)}`;
                 reject(new Error(message));
                 return;
             }
@@ -759,28 +744,22 @@ async function getVersionForStage(context: GitFileContext, stage: GitStageNumber
 
 async function queryUnmergedFilesForRoot(gitRoot: string): Promise<GitFileStatus[]> {
     const unmergedFiles: GitFileStatus[] = [];
-    let lineCount = 0;
+    let pathCount = 0;
 
     try {
-        await streamGitStatusPorcelain(gitRoot, (line) => {
-            if (!line.trim()) {
-                return;
-            }
-            lineCount += 1;
-            const status = line.substring(0, 2);
-            const filePath = normalizeStatusPath(line.substring(3));
-
-            if (isUnmergedStatus(status)) {
-                const fullPath = path.join(gitRoot, filePath);
-                unmergedFiles.push({
-                    path: fullPath,
-                    repoPath: filePath,
-                    status,
-                    isUnmerged: true
-                });
-            }
+        await streamGitUnmergedPaths(gitRoot, (repoPath) => {
+            pathCount += 1;
+            const fullPath = path.join(gitRoot, repoPath);
+            unmergedFiles.push({
+                path: fullPath,
+                repoPath,
+                // `git diff --diff-filter=U` only reports unresolved merge paths.
+                // Keep `status` as a generic unmerged marker for compatibility.
+                status: 'UU',
+                isUnmerged: true
+            });
         });
-        console.log(`[GitIntegration] getUnmergedFiles: ${lineCount} non-empty lines in ${gitRoot}`);
+        console.log(`[GitIntegration] getUnmergedFiles: ${pathCount} unmerged path(s) in ${gitRoot}`);
     } catch (error) {
         const errorDetails = error instanceof Error ? error.message : String(error);
         const message = `MergeNB failed to query unmerged files for ${gitRoot}: ${errorDetails}`;
