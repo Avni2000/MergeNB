@@ -746,6 +746,156 @@ function readGitShowFromStage(gitRoot: string, relativePath: string, stage: GitS
     });
 }
 
+function readGitShowFromStages(
+    gitRoot: string,
+    relativePath: string,
+    stages: GitStageNumber[]
+): Promise<Record<GitStageNumber, string | null>> {
+    return new Promise((resolve, reject) => {
+        const gitShow = spawn('git', ['cat-file', '--batch'], {
+            cwd: gitRoot,
+            stdio: ['pipe', 'pipe', 'pipe']
+        });
+
+        const stdout = gitShow.stdout;
+        const stderr = gitShow.stderr;
+        const stdin = gitShow.stdin;
+        if (!stdout || !stderr || !stdin) {
+            reject(new Error('Unable to capture git cat-file --batch streams.'));
+            return;
+        }
+
+        const results: Record<GitStageNumber, string | null> = {
+            '1': null,
+            '2': null,
+            '3': null
+        };
+        const pendingStages = [...stages];
+        const stageCount = pendingStages.length;
+        let completedCount = 0;
+        let pendingContentBytes: number | null = null;
+        let pendingContentStage: GitStageNumber | null = null;
+        let stdoutBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
+        let stderrOutput = '';
+        let parserError: Error | null = null;
+
+        const processStdout = (): void => {
+            while (true) {
+                if (parserError) {
+                    return;
+                }
+                if (pendingContentBytes === null) {
+                    const newlineIndex = stdoutBuffer.indexOf(0x0a);
+                    if (newlineIndex === -1) {
+                        return;
+                    }
+
+                    const header = stdoutBuffer.subarray(0, newlineIndex).toString('utf8');
+                    stdoutBuffer = stdoutBuffer.subarray(newlineIndex + 1);
+
+                    if (completedCount >= stageCount) {
+                        parserError = new Error(`Unexpected extra output from git cat-file --batch for ${relativePath}`);
+                        return;
+                    }
+
+                    const stage = pendingStages[completedCount];
+                    if (!stage) {
+                        parserError = new Error(`Missing stage metadata while parsing git output for ${relativePath}`);
+                        return;
+                    }
+
+                    if (header.endsWith(' missing')) {
+                        results[stage] = null;
+                        completedCount += 1;
+                        continue;
+                    }
+
+                    const headerParts = header.split(' ');
+                    const sizeToken = headerParts[headerParts.length - 1];
+                    const contentSize = Number(sizeToken);
+                    if (!Number.isFinite(contentSize) || contentSize < 0) {
+                        parserError = new Error(`Invalid git cat-file --batch header for ${relativePath}: ${header}`);
+                        return;
+                    }
+
+                    pendingContentBytes = contentSize;
+                    pendingContentStage = stage;
+                }
+
+                if (pendingContentBytes !== null) {
+                    const requiredBytes = pendingContentBytes + 1;
+                    if (stdoutBuffer.length < requiredBytes) {
+                        return;
+                    }
+
+                    const content = stdoutBuffer.subarray(0, pendingContentBytes);
+                    const trailingByte = stdoutBuffer[pendingContentBytes];
+                    if (trailingByte !== 0x0a) {
+                        parserError = new Error(`Malformed git cat-file --batch payload for ${relativePath}`);
+                        return;
+                    }
+
+                    stdoutBuffer = stdoutBuffer.subarray(requiredBytes);
+                    const stage = pendingContentStage;
+                    if (!stage) {
+                        parserError = new Error(`Missing pending stage while parsing git output for ${relativePath}`);
+                        return;
+                    }
+
+                    results[stage] = content.toString('utf8');
+                    completedCount += 1;
+                    pendingContentBytes = null;
+                    pendingContentStage = null;
+                }
+            }
+        };
+
+        stdout.on('data', (chunk: Buffer | string) => {
+            const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+            stdoutBuffer = stdoutBuffer.length === 0 ? buffer : Buffer.concat([stdoutBuffer, buffer]);
+            processStdout();
+        });
+
+        stderr.setEncoding('utf8');
+        stderr.on('data', (chunk: string) => {
+            stderrOutput += chunk;
+        });
+
+        gitShow.once('error', (error) => {
+            reject(error);
+        });
+
+        gitShow.once('close', (code) => {
+            processStdout();
+            if (parserError) {
+                reject(parserError);
+                return;
+            }
+
+            if (code !== 0) {
+                const fallback = `git cat-file --batch failed with exit code ${String(code)}`;
+                reject(new Error(stderrOutput.trim() || fallback));
+                return;
+            }
+
+            if (completedCount !== stageCount) {
+                reject(new Error(`Incomplete git cat-file --batch output for ${relativePath}`));
+                return;
+            }
+
+            resolve(results);
+        });
+
+        stdin.on('error', (error) => {
+            reject(error);
+        });
+        for (const stage of stages) {
+            stdin.write(`:${stage}:${relativePath}\n`);
+        }
+        stdin.end();
+    });
+}
+
 async function resolveGitFileContext(filePath: string): Promise<GitFileContext | null> {
     try {
         const gitRoot = await getGitRoot(filePath);
@@ -1026,11 +1176,20 @@ export async function getThreeWayVersions(filePath: string): Promise<{
         return null;
     }
 
-    const [base, current, incoming] = await Promise.all([
-        getVersionForStage(context, '1'),
-        getVersionForStage(context, '2'),
-        getVersionForStage(context, '3')
-    ]);
+    let stagedVersions: Record<GitStageNumber, string | null>;
+    try {
+        stagedVersions = await readGitShowFromStages(context.gitRoot, context.relativePath, ['1', '2', '3']);
+    } catch {
+        stagedVersions = {
+            '1': await getVersionForStage(context, '1'),
+            '2': await getVersionForStage(context, '2'),
+            '3': await getVersionForStage(context, '3')
+        };
+    }
+
+    const base = stagedVersions['1'];
+    const current = stagedVersions['2'];
+    const incoming = stagedVersions['3'];
 
     if (base === null && current === null && incoming === null) {
         return null;
