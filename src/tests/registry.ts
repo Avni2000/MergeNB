@@ -183,6 +183,12 @@ export const TEST_GROUPS: TestGroup[] = [
                 notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
                 testModule: './duUdPickOneRegression.test.js',
             },
+            {
+                id: 'regression_au_ua_pick_one',
+                description: 'AU/UA add-only pick flow (apply-and-stage/cancel) stages correctly',
+                notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
+                testModule: './auUaPickOneRegression.test.js',
+            },
         ],
     },
     {
