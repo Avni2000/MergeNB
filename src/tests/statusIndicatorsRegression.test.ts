@@ -94,7 +94,7 @@ async function waitForIndicatorState(
         lastDecoration = await getDecorationState(filePath);
 
         const statusBarMatches = shouldShow
-            ? lastStatusBar.visible && (lastStatusBar.text || '').includes('1 conflict')
+            ? lastStatusBar.visible && /\d+ conflicts?/.test(lastStatusBar.text || '')
             : !lastStatusBar.visible;
         const decorationMatches = shouldShow
             ? lastDecoration.hasDecoration

@@ -1223,8 +1223,16 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
     const unmergedFilesPerRoot = await Promise.all(roots.map((root) => getUnmergedFilesForRoot(root)));
 
     const unmergedFiles: GitFileStatus[] = [];
+    const seenPaths = new Set<string>();
     for (const files of unmergedFilesPerRoot) {
-        unmergedFiles.push(...files);
+        for (const file of files) {
+            const key = normalizeForComparison(resolveRealPath(file.path));
+            if (seenPaths.has(key)) {
+                continue;
+            }
+            seenPaths.add(key);
+            unmergedFiles.push(file);
+        }
     }
     return unmergedFiles;
 }
