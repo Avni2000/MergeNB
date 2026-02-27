@@ -623,7 +623,7 @@ async function getGitApi(): Promise<GitAPI | null> {
         return gitApiPromise;
     }
 
-    gitApiPromise = (async () => {
+    const request = (async () => {
         if (!vscode) {
             warnApiStrictOnce('api:missing-vscode', 'VS Code API unavailable; API-first unmerged support is disabled.');
             return null;
@@ -652,7 +652,13 @@ async function getGitApi(): Promise<GitAPI | null> {
         }
     })();
 
-    return gitApiPromise;
+    gitApiPromise = request;
+    const api = await request;
+    if (!api) {
+        // Allow retries on subsequent calls after transient failures/startup races.
+        gitApiPromise = null;
+    }
+    return api;
 }
 
 function cacheRepository(repository: Repository): void {
@@ -793,8 +799,12 @@ function resolveRepoPathFromChange(repository: Repository, change: Change): stri
 function queryUnmergedFilesFromRepository(repository: Repository): GitFileStatus[] {
     cacheRepository(repository);
     const filesByRepoPath = new Map<string, GitFileStatus>();
+    const mergeChanges = repository.state.mergeChanges;
+    if (!mergeChanges) {
+        return [];
+    }
 
-    for (const change of repository.state.mergeChanges) {
+    for (const change of mergeChanges) {
         const unmergedStatus = mapGitStatusToUnmergedStatus(change.status);
         if (!unmergedStatus) {
             continue;
@@ -1114,6 +1124,19 @@ async function getVersionForStage(context: GitFileContext, stage: GitStageNumber
     }
 }
 
+async function getVersionForStageCli(context: GitCliFileContext, stage: GitStageNumber): Promise<string | null> {
+    try {
+        const { stdout } = await execFileAsync(
+            'git',
+            ['show', `:${stage}:${context.relativePath}`],
+            { cwd: context.gitRoot, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 }
+        );
+        return typeof stdout === 'string' ? stdout : String(stdout);
+    } catch {
+        return null;
+    }
+}
+
 function getStagePathCandidates(gitRoot: string, filePath: string, preferredPath?: string): string[] {
     const candidates: string[] = [];
 
@@ -1242,10 +1265,11 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
  */
 export async function getBaseVersion(filePath: string): Promise<string | null> {
     const context = await resolveGitFileContext(filePath);
-    if (!context) {
-        return null;
+    if (context) {
+        return getVersionForStage(context, '1');
     }
-    return getVersionForStage(context, '1');
+    const cliContext = await resolveCliFileContext(filePath);
+    return cliContext ? getVersionForStageCli(cliContext, '1') : null;
 }
 
 /**
@@ -1253,10 +1277,11 @@ export async function getBaseVersion(filePath: string): Promise<string | null> {
  */
 export async function getCurrentVersion(filePath: string): Promise<string | null> {
     const context = await resolveGitFileContext(filePath);
-    if (!context) {
-        return null;
+    if (context) {
+        return getVersionForStage(context, '2');
     }
-    return getVersionForStage(context, '2');
+    const cliContext = await resolveCliFileContext(filePath);
+    return cliContext ? getVersionForStageCli(cliContext, '2') : null;
 }
 
 /**
@@ -1264,10 +1289,11 @@ export async function getCurrentVersion(filePath: string): Promise<string | null
  */
 export async function getIncomingVersion(filePath: string): Promise<string | null> {
     const context = await resolveGitFileContext(filePath);
-    if (!context) {
-        return null;
+    if (context) {
+        return getVersionForStage(context, '3');
     }
-    return getVersionForStage(context, '3');
+    const cliContext = await resolveCliFileContext(filePath);
+    return cliContext ? getVersionForStageCli(cliContext, '3') : null;
 }
 
 /**
@@ -1279,14 +1305,19 @@ export async function getThreeWayVersions(filePath: string): Promise<{
     incoming: string | null;
 } | null> {
     const context = await resolveGitFileContext(filePath);
-    if (!context) {
+    const cliContext = !context ? await resolveCliFileContext(filePath) : null;
+
+    if (!context && !cliContext) {
         return null;
     }
 
+    const getStage = (stage: GitStageNumber) =>
+        context ? getVersionForStage(context, stage) : getVersionForStageCli(cliContext!, stage);
+
     const [base, current, incoming] = await Promise.all([
-        getVersionForStage(context, '1'),
-        getVersionForStage(context, '2'),
-        getVersionForStage(context, '3')
+        getStage('1'),
+        getStage('2'),
+        getStage('3')
     ]);
 
     if (base === null && current === null && incoming === null) {
@@ -1344,7 +1375,23 @@ export async function isSemanticConflict(filePath: string, content: string): Pro
  */
 export async function getCurrentBranch(filePath: string): Promise<string | null> {
     const repository = await getRepositoryForPath(filePath);
-    return repository?.state.HEAD?.name ?? null;
+    const apiBranch = repository?.state.HEAD?.name;
+    if (apiBranch) {
+        return apiBranch;
+    }
+
+    const gitRoot = repository?.rootUri.fsPath ?? await resolveGitRootForPath(filePath);
+    if (!gitRoot) {
+        return null;
+    }
+
+    try {
+        const { stdout } = await execFileAsync('git', ['branch', '--show-current'], { cwd: gitRoot, encoding: 'utf8' });
+        const branch = typeof stdout === 'string' ? stdout.trim() : String(stdout).trim();
+        return branch || null;
+    } catch {
+        return null;
+    }
 }
 
 /**
