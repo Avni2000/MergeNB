@@ -479,15 +479,18 @@ function shouldTrustOutputMimeType(mimeType: string): boolean {
     return mimeType === 'image/svg+xml';
 }
 
-function getCurrentSessionId(): string {
-    if (typeof window === 'undefined') return 'default';
+function getCurrentSessionCredentials(): { sessionId: string; token: string } {
+    if (typeof window === 'undefined') return { sessionId: 'default', token: '' };
     const params = new URLSearchParams(window.location.search);
-    return params.get('session') || 'default';
+    return {
+        sessionId: params.get('session') || 'default',
+        token: params.get('token') || '',
+    };
 }
 
 function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
-    const sessionId = getCurrentSessionId();
-    const cacheKey = `${sessionId}::${notebookPath ?? ''}`;
+    const { sessionId, token } = getCurrentSessionCredentials();
+    const cacheKey = `${sessionId}::${token}::${notebookPath ?? ''}`;
     const cached = renderMimeRegistryCache.get(cacheKey);
     if (cached) {
         renderMimeRegistryCache.delete(cacheKey);
@@ -497,7 +500,7 @@ function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
 
     const registry = new RenderMimeRegistry({
         initialFactories: standardRendererFactories,
-        resolver: createNotebookAssetResolver(sessionId),
+        resolver: createNotebookAssetResolver(sessionId, token),
         latexTypesetter: renderMimeKatexTypesetter,
         markdownParser: renderMimeMarkdownParser,
     });
@@ -536,13 +539,13 @@ function disposeRenderMimeRegistry(registry: RenderMimeRegistry | undefined): vo
     }
 }
 
-function createNotebookAssetResolver(sessionId: string): IRenderMime.IResolver {
+function createNotebookAssetResolver(sessionId: string, token: string): IRenderMime.IResolver {
     return {
         async resolveUrl(url: string): Promise<string> {
             return normalizeLocalPath(url);
         },
         async getDownloadUrl(urlPath: string): Promise<string> {
-            return buildNotebookAssetUrl(sessionId, urlPath);
+            return buildNotebookAssetUrl(sessionId, token, urlPath);
         },
         isLocal(url: string, allowRoot = false): boolean {
             return isNotebookLocalPath(url, allowRoot);
@@ -550,9 +553,10 @@ function createNotebookAssetResolver(sessionId: string): IRenderMime.IResolver {
     };
 }
 
-function buildNotebookAssetUrl(sessionId: string, pathValue: string): string {
+function buildNotebookAssetUrl(sessionId: string, token: string, pathValue: string): string {
     const params = new URLSearchParams({
         session: sessionId,
+        token,
         path: pathValue,
     });
     return `/notebook-asset?${params.toString()}`;

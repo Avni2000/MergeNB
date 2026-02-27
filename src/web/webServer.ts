@@ -16,6 +16,7 @@
 import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
+import { randomBytes, randomUUID } from 'crypto';
 import WebSocket, { WebSocketServer } from 'ws';
 
 // VSCode is optional - only needed for openExternal
@@ -47,6 +48,7 @@ export interface PendingConnection {
 /** Session data stored for each active conflict resolution */
 export interface SessionData {
     htmlContent: string;
+    sessionToken: string;
     theme: 'dark' | 'light';
     notebookFilePath?: string;
     conflictData?: unknown;
@@ -82,6 +84,7 @@ export class ConflictResolverWebServer {
     
     // Extension URI for resolving static assets
     private extensionUri: UriLike | undefined;
+    private latestSessionUrl: string | undefined;
 
     private constructor() {}
 
@@ -211,7 +214,14 @@ export class ConflictResolverWebServer {
      * Generate a unique session ID.
      */
     public generateSessionId(): string {
-        return `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        return `session-${this.generateSecret()}`;
+    }
+
+    /**
+     * Get the latest session URL (test/debug helper).
+     */
+    public getLatestSessionUrl(): string | undefined {
+        return this.latestSessionUrl;
     }
 
     /**
@@ -230,9 +240,12 @@ export class ConflictResolverWebServer {
         theme: 'dark' | 'light' = 'light',
         notebookFilePath?: string
     ): Promise<WebSocket> {
+        const sessionToken = this.generateSecret();
+
         // Store session data
         this.sessions.set(sessionId, {
             htmlContent,
+            sessionToken,
             theme,
             notebookFilePath,
             onMessage
@@ -255,7 +268,8 @@ export class ConflictResolverWebServer {
         });
 
         // Open the browser to the session URL
-        const sessionUrl = `${this.getServerUrl()}/?session=${encodeURIComponent(sessionId)}`;
+        const sessionUrl = `${this.getServerUrl()}/?session=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(sessionToken)}`;
+        this.latestSessionUrl = sessionUrl;
         console.log(`[MergeNB Web] Opening browser to: ${sessionUrl}`);
         if (vscode) {
             await vscode.env.openExternal(vscode.Uri.parse(sessionUrl));
@@ -317,11 +331,17 @@ export class ConflictResolverWebServer {
         const url = new URL(req.url || '/', `http://${req.headers.host}`);
         const pathname = url.pathname;
         const sessionId = url.searchParams.get('session');
+        const sessionToken = url.searchParams.get('token');
+        const origin = req.headers.origin;
+        const expectedOrigin = `${url.protocol}//${url.host}`;
 
-        // Set CORS headers for local development
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        // Only allow same-origin requests.
+        if (origin && origin === expectedOrigin) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            res.setHeader('Vary', 'Origin');
+        }
 
         if (req.method === 'OPTIONS') {
             res.writeHead(200);
@@ -333,7 +353,7 @@ export class ConflictResolverWebServer {
             // Serve minimal HTML shell that loads the React app
             const session = sessionId ? this.sessions.get(sessionId) : undefined;
             
-            if (session) {
+            if (session && sessionToken && sessionToken === session.sessionToken) {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
                 res.end(this.getHtmlShell(sessionId || 'default', session.theme));
             } else {
@@ -372,8 +392,7 @@ export class ConflictResolverWebServer {
                 status: 'ok', 
                 port: this.port,
                 activeSessions: this.sessions.size,
-                activeConnections: this.connections.size,
-                sessionIds: Array.from(this.sessions.keys())
+                activeConnections: this.connections.size
             }));
         } else {
             // 404 for other paths
@@ -436,16 +455,17 @@ export class ConflictResolverWebServer {
      */
     private serveNotebookAsset(url: URL, res: http.ServerResponse): void {
         const sessionId = url.searchParams.get('session');
+        const sessionToken = url.searchParams.get('token');
         const requestedPath = url.searchParams.get('path');
 
-        if (!sessionId || !requestedPath) {
+        if (!sessionId || !sessionToken || !requestedPath) {
             res.writeHead(400, { 'Content-Type': 'text/plain' });
-            res.end('Missing session or path');
+            res.end('Missing session, token, or path');
             return;
         }
 
         const session = this.sessions.get(sessionId);
-        if (!session?.notebookFilePath) {
+        if (!session?.notebookFilePath || session.sessionToken !== sessionToken) {
             res.writeHead(404, { 'Content-Type': 'text/plain' });
             res.end('Session not found');
             return;
@@ -583,7 +603,19 @@ export class ConflictResolverWebServer {
      */
     private handleWebSocketConnection(ws: WebSocket, req: http.IncomingMessage): void {
         const url = new URL(req.url || '/', `http://${req.headers.host}`);
-        const sessionId = url.searchParams.get('session') || 'default';
+        const sessionId = url.searchParams.get('session');
+        const sessionToken = url.searchParams.get('token');
+
+        if (!sessionId || !sessionToken) {
+            ws.close(1008, 'Missing session credentials');
+            return;
+        }
+
+        const session = this.sessions.get(sessionId);
+        if (!session || session.sessionToken !== sessionToken) {
+            ws.close(1008, 'Invalid session credentials');
+            return;
+        }
 
         console.log(`[MergeNB Web] WebSocket connected for session: ${sessionId}`);
 
@@ -599,8 +631,6 @@ export class ConflictResolverWebServer {
         }
 
         // Get session data
-        const session = this.sessions.get(sessionId);
-
         // Handle incoming messages
         ws.on('message', (data: WebSocket.Data) => {
             try {
@@ -629,6 +659,13 @@ export class ConflictResolverWebServer {
             type: 'connected',
             sessionId: sessionId
         }));
+    }
+
+    private generateSecret(): string {
+        if (typeof randomUUID === 'function') {
+            return randomUUID();
+        }
+        return randomBytes(16).toString('hex');
     }
 }
 

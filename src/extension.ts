@@ -409,6 +409,12 @@ export function activate(context: vscode.ExtensionContext) {
 			})
 		);
 		context.subscriptions.push(
+			vscode.commands.registerCommand('merge-nb.getLatestWebSessionUrl', () => {
+				const webServer = getWebServer();
+				return webServer.getLatestSessionUrl();
+			})
+		);
+		context.subscriptions.push(
 			vscode.commands.registerCommand('merge-nb.getStatusBarState', async () => {
 				if (backgroundConflictMonitoringEnabled) {
 					await updateStatusBar();
