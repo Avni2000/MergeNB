@@ -470,7 +470,7 @@ function toGitPath(filePath: string): string {
  * (e.g. RUNNER~1 → runneradmin) so that path.relative() works correctly
  * when comparing paths from different sources (os.tmpdir vs git output).
  */
-function resolveRealPath(p: string): string {
+function resolveRealPathSync(p: string): string {
     try {
         return fs.realpathSync(p);
     } catch {
@@ -478,7 +478,7 @@ function resolveRealPath(p: string): string {
     }
 }
 
-async function resolveRealPathAsync(p: string): Promise<string> {
+async function resolveRealPath(p: string): Promise<string> {
     try {
         return await fs.promises.realpath(p);
     } catch {
@@ -492,11 +492,19 @@ async function resolveRealPathAsync(p: string): Promise<string> {
  * resolved to their canonical long-name forms before computing the relative path.
  */
 function gitRelativePath(gitRoot: string, filePath: string): string {
-    return toGitPath(path.relative(resolveRealPath(gitRoot), resolveRealPath(filePath)));
+    return toGitPath(path.relative(resolveRealPathSync(gitRoot), resolveRealPathSync(filePath)));
 }
 
 function normalizeForComparison(filePath: string): string {
-    const normalized = toGitPath(path.normalize(filePath));
+    const withoutNamespacePrefix =
+        process.platform === 'win32'
+            ? filePath.startsWith('\\\\?\\UNC\\')
+                ? `\\\\${filePath.slice('\\\\?\\UNC\\'.length)}`
+                : filePath.startsWith('\\\\?\\')
+                    ? filePath.slice('\\\\?\\'.length)
+                    : filePath
+            : filePath;
+    const normalized = toGitPath(path.normalize(withoutNamespacePrefix));
     return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
 
@@ -530,13 +538,13 @@ interface NormalizedPathInfo {
 
 function getNormalizedPathInfo(filePath: string): NormalizedPathInfo {
     return {
-        realPath: normalizeForComparison(resolveRealPath(filePath)),
+        realPath: normalizeForComparison(resolveRealPathSync(filePath)),
         normalizedPath: normalizeForComparison(filePath)
     };
 }
 
 function pathsLikelySameFileToTarget(firstPath: string, targetPath: NormalizedPathInfo, repoPath?: string): boolean {
-    const firstReal = normalizeForComparison(resolveRealPath(firstPath));
+    const firstReal = normalizeForComparison(resolveRealPathSync(firstPath));
     if (firstReal === targetPath.realPath) {
         return true;
     }
@@ -565,7 +573,7 @@ function isRepoRelativePath(relativePath: string): boolean {
 }
 
 function isPathWithinRoot(filePath: string, rootPath: string): boolean {
-    const relative = toGitPath(path.relative(resolveRealPath(rootPath), resolveRealPath(filePath)));
+    const relative = toGitPath(path.relative(resolveRealPathSync(rootPath), resolveRealPathSync(filePath)));
     return relative === '' || relative === '.' || isRepoRelativePath(relative);
 }
 
@@ -615,7 +623,7 @@ const apiStrictWarningKeys = new Set<string>();
 let gitApiPromise: Promise<GitAPI | null> | null = null;
 
 function getGitRootCacheKey(gitRoot: string): string {
-    return normalizeForComparison(resolveRealPath(gitRoot));
+    return normalizeForComparison(resolveRealPathSync(gitRoot));
 }
 
 function warnApiStrictOnce(key: string, message: string): void {
@@ -1164,14 +1172,14 @@ function getStagePathCandidates(gitRoot: string, filePath: string, preferredPath
         pushCandidate(directRelative);
     }
 
-    const realRelative = toGitPath(path.relative(resolveRealPath(gitRoot), resolveRealPath(filePath)));
+    const realRelative = toGitPath(path.relative(resolveRealPathSync(gitRoot), resolveRealPathSync(filePath)));
     if (isRepoRelativePath(realRelative)) {
         pushCandidate(realRelative);
     }
 
     pushCandidate(filePath);
 
-    const realFilePath = resolveRealPath(filePath);
+    const realFilePath = resolveRealPathSync(filePath);
     if (realFilePath !== filePath) {
         pushCandidate(realFilePath);
     }
@@ -1253,11 +1261,36 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
 
     const unmergedFilesPerRoot = await Promise.all(roots.map((root) => getUnmergedFilesForRoot(root)));
 
+    const resolvedRealPathCache = new Map<string, Promise<string>>();
+    const resolveRealPathCached = (targetPath: string): Promise<string> => {
+        const cached = resolvedRealPathCache.get(targetPath);
+        if (cached) {
+            return cached;
+        }
+        const request = resolveRealPath(targetPath);
+        resolvedRealPathCache.set(targetPath, request);
+        return request;
+    };
+
     const unmergedFiles: GitFileStatus[] = [];
     const seenPaths = new Set<string>();
     for (const files of unmergedFilesPerRoot) {
         for (const file of files) {
-            const key = normalizeForComparison(await resolveRealPathAsync(file.path));
+            let key: string;
+
+            // Prefer repoPath + canonical root to dedupe reliably even when the file
+            // is staged-only and missing from the working tree (realpath would fail).
+            if (file.repoPath && isRepoRelativePath(file.repoPath)) {
+                const depth = splitPathSegments(file.repoPath).length;
+                const rootPath = depth > 0
+                    ? path.resolve(file.path, ...Array(depth).fill('..'))
+                    : path.dirname(file.path);
+                const rootKey = normalizeForComparison(await resolveRealPathCached(rootPath));
+                key = `${rootKey}\0${normalizeForComparison(file.repoPath)}`;
+            } else {
+                key = normalizeForComparison(await resolveRealPathCached(file.path));
+            }
+
             if (seenPaths.has(key)) {
                 continue;
             }
