@@ -478,6 +478,14 @@ function resolveRealPath(p: string): string {
     }
 }
 
+async function resolveRealPathAsync(p: string): Promise<string> {
+    try {
+        return await fs.promises.realpath(p);
+    } catch {
+        return p;
+    }
+}
+
 /**
  * Compute the git-relative path for a file, handling Windows short-path mismatches.
  * Both gitRoot (from `git rev-parse`) and filePath (from VSCode/os.tmpdir) are
@@ -1249,7 +1257,7 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
     const seenPaths = new Set<string>();
     for (const files of unmergedFilesPerRoot) {
         for (const file of files) {
-            const key = normalizeForComparison(resolveRealPath(file.path));
+            const key = normalizeForComparison(await resolveRealPathAsync(file.path));
             if (seenPaths.has(key)) {
                 continue;
             }
