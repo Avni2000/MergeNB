@@ -171,6 +171,24 @@ export const TEST_GROUPS: TestGroup[] = [
                 notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
                 testModule: './statusIndicatorsRegression.test.js',
             },
+            {
+                id: 'regression_unmerged_status_matrix',
+                description: 'Detect all unmerged statuses and enforce DD discoverability exclusion',
+                notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
+                testModule: './unmergedStatusMatrix.test.js',
+            },
+            {
+                id: 'regression_du_ud_pick_one',
+                description: 'DU/UD file-level pick flow (keep-content/keep-delete) stages correctly',
+                notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
+                testModule: './duUdPickOneRegression.test.js',
+            },
+            {
+                id: 'regression_au_ua_pick_one',
+                description: 'AU/UA add-only pick flow (apply-and-stage/cancel) stages correctly',
+                notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
+                testModule: './auUaPickOneRegression.test.js',
+            },
         ],
     },
     {

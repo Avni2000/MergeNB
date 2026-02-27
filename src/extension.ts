@@ -3,7 +3,7 @@
  * @description VS Code extension entry point for MergeNB.
  * 
  * Registers the `merge-nb.findConflicts` command which:
- * 1. Checks the active notebook for conflicts (semantic / Git UU status)
+ * 1. Checks the active notebook for conflicts (semantic / Git unmerged status)
  * 2. If none active, scans workspace for all conflicted notebooks
  * 3. Presents a quick-pick menu to select which notebook to resolve
  * 4. Opens the browser-based conflict resolution UI
@@ -73,7 +73,7 @@ function getQuickPickItems(files: ConflictedNotebook[], activeUri?: vscode.Uri):
 		.map((f) => ({
 			label: `$(notebook) ${vscode.workspace.asRelativePath(f.uri)}`,
 			description: activePath && f.uri.fsPath === activePath ? 'Active file' : undefined,
-			detail: 'Notebook merge conflict (Git unmerged status)',
+			detail: `Notebook merge conflict (${f.unmergedStatus})`,
 			uri: f.uri
 		}));
 }
@@ -292,7 +292,7 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	// Command: Find all notebooks with conflicts (semantic / Git UU status)
+	// Command: Find all notebooks with conflicts (semantic / Git unmerged status)
 	context.subscriptions.push(
 		vscode.commands.registerCommand('merge-nb.findConflicts', async () => {
 			console.log('[Extension] merge-nb.findConflicts command triggered');
@@ -409,7 +409,10 @@ export function activate(context: vscode.ExtensionContext) {
 			})
 		);
 		context.subscriptions.push(
-			vscode.commands.registerCommand('merge-nb.getStatusBarState', () => {
+			vscode.commands.registerCommand('merge-nb.getStatusBarState', async () => {
+				if (backgroundConflictMonitoringEnabled) {
+					await updateStatusBar();
+				}
 				return {
 					visible: statusBarVisible,
 					text: statusBarItem.text,

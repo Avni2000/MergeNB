@@ -3,7 +3,7 @@
  * @description Main conflict resolution orchestrator for MergeNB.
  * 
  * The NotebookConflictResolver class coordinates the entire resolution workflow:
- * 1. Scans workspace for notebooks with Git UU status
+ * 1. Scans workspace for notebooks with Git unmerged status
  * 2. Detects semantic conflicts and retrieves base/current/incoming versions from Git
  * 3. Applies auto-resolutions for trivial conflicts (execution counts, outputs)
  * 4. Opens the browser-based UI for manual resolution of remaining conflicts
@@ -14,17 +14,13 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
-import { serializeNotebook, renumberExecutionCounts } from './notebookParser';
+import { parseNotebook, serializeNotebook, renumberExecutionCounts } from './notebookParser';
 import { selectNonConflictMergedCell } from './notebookUtils';
 import { WebConflictPanel } from './web/WebConflictPanel';
 import { UnifiedConflict, UnifiedResolution } from './web/webTypes';
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
-import { promisify } from 'util';
-import { exec as execCallback } from 'child_process';
-
-const exec = promisify(execCallback);
 
 function stableStringify(value: unknown): string {
     if (value === undefined) return 'undefined';
@@ -180,20 +176,66 @@ export const onDidResolveConflict = new vscode.EventEmitter<vscode.Uri>();
  */
 export interface ResolvedConflictDetails {
     uri: vscode.Uri;
-    resolvedNotebook: Notebook;
+    resolvedNotebook?: Notebook;
     resolvedRows?: import('./web/webTypes').ResolvedRow[];
     markAsResolved: boolean;
     renumberExecutionCounts: boolean;
+    fileDeleted?: boolean;
 }
 
 export const onDidResolveConflictWithDetails = new vscode.EventEmitter<ResolvedConflictDetails>();
 
 /**
- * Represents a notebook with semantic conflicts (Git UU status)
+ * Resolver prompt hooks for deterministic test execution without UI interaction.
+ */
+export type AddOnlyResolutionAction = 'apply-and-stage' | 'open-semantic' | 'cancel';
+export type DeleteVsModifyResolutionAction = 'keep-content' | 'keep-delete' | 'cancel';
+
+export interface AddOnlyPromptContext {
+    status: 'AU' | 'UA';
+    filePath: string;
+    availableSide: 'current' | 'incoming';
+}
+
+export interface DeleteVsModifyPromptContext {
+    status: 'DU' | 'UD';
+    filePath: string;
+    keepContentSide: 'current' | 'incoming';
+}
+
+export interface ResolverConfirmationContext {
+    status: gitIntegration.GitUnmergedStatus;
+    filePath: string;
+    actionId: string;
+    actionLabel: string;
+    message: string;
+}
+
+export interface ResolverPromptTestHooks {
+    pickAddOnlyAction?: (
+        context: AddOnlyPromptContext
+    ) => Promise<AddOnlyResolutionAction | undefined> | AddOnlyResolutionAction | undefined;
+    pickDeleteVsModifyAction?: (
+        context: DeleteVsModifyPromptContext
+    ) => Promise<DeleteVsModifyResolutionAction | undefined> | DeleteVsModifyResolutionAction | undefined;
+    confirmAction?: (
+        context: ResolverConfirmationContext
+    ) => Promise<boolean> | boolean;
+}
+
+let resolverPromptTestHooks: ResolverPromptTestHooks | undefined;
+
+export function setResolverPromptTestHooks(hooks?: ResolverPromptTestHooks): void {
+    resolverPromptTestHooks = hooks;
+}
+
+/**
+ * Represents a notebook with Git unmerged status.
  */
 export interface ConflictedNotebook {
     uri: vscode.Uri;
     hasSemanticConflicts: boolean;
+    unmergedStatus: gitIntegration.GitUnmergedStatus;
 }
 
 /**
@@ -203,27 +245,28 @@ export class NotebookConflictResolver {
     constructor(private readonly extensionUri: vscode.Uri) { }
 
     /**
-     * Check if a file has semantic conflicts (Git UU status).
+     * Check if a file has semantic conflicts (status supports cell-level UI).
      */
     async hasSemanticConflicts(uri: vscode.Uri): Promise<boolean> {
         try {
-            return await gitIntegration.isUnmergedFile(uri.fsPath);
+            const status = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
+            return status === 'UU' || status === 'AA' || status === 'AU' || status === 'UA';
         } catch {
             return false;
         }
     }
 
     /**
-     * Check if a file has conflicts (Git UU status).
+     * Check if a file has any unmerged Git status.
      */
     async hasAnyConflicts(uri: vscode.Uri): Promise<ConflictedNotebook | null> {
         try {
-            const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
-
-            if (isUnmerged) {
+            const status = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
+            if (status) {
                 return {
                     uri,
-                    hasSemanticConflicts: true
+                    hasSemanticConflicts: status === 'UU' || status === 'AA' || status === 'AU' || status === 'UA',
+                    unmergedStatus: status
                 };
             }
             return null;
@@ -233,7 +276,7 @@ export class NotebookConflictResolver {
     }
 
     /**
-     * Find all notebook files with conflicts (Git UU status) in the workspace.
+     * Find all notebook files with conflicts (Git unmerged status) in the workspace.
      * Only queries Git for unmerged files, no file scanning.
      */
     async findNotebooksWithConflicts(): Promise<ConflictedNotebook[]> {
@@ -252,12 +295,18 @@ export class NotebookConflictResolver {
                 continue;
             }
 
+            if (file.status === 'DD') {
+                console.log(`[Resolver] Skipping DD (both deleted) notebook: ${file.path}`);
+                continue;
+            }
+
             console.log(`[Resolver] Found conflicted notebook: ${file.path}`);
             const uri = vscode.Uri.file(file.path);
 
             withConflicts.push({
                 uri,
-                hasSemanticConflicts: true
+                hasSemanticConflicts: file.status === 'UU' || file.status === 'AA' || file.status === 'AU' || file.status === 'UA',
+                unmergedStatus: file.status
             });
         }
 
@@ -266,20 +315,37 @@ export class NotebookConflictResolver {
     }
 
     /**
-     * Resolve semantic conflicts in a notebook.
+     * Resolve conflicts in a notebook based on explicit unmerged status.
      */
     async resolveConflicts(uri: vscode.Uri): Promise<void> {
-        // Check for semantic conflicts (Git UU status)
-        const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
-        if (isUnmerged) {
-            await this.resolveSemanticConflicts(uri);
-        } else {
+        const status = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
+        if (!status) {
             vscode.window.showInformationMessage('No merge conflicts found in this notebook.');
+            return;
         }
+
+        if (status === 'DD') {
+            vscode.window.showInformationMessage('Both-deleted (DD) conflicts are not handled by MergeNB.');
+            return;
+        }
+
+        if (status === 'DU' || status === 'UD') {
+            await this.resolveDeleteVsModifyConflict(uri, status);
+            return;
+        }
+
+        if (status === 'AU' || status === 'UA') {
+            const handled = await this.resolveAddOnlyConflict(uri, status);
+            if (handled) {
+                return;
+            }
+        }
+
+        await this.resolveSemanticConflicts(uri);
     }
 
     /**
-     * Resolve semantic conflicts (Git UU status).
+     * Resolve semantic conflicts (Git unmerged status).
      * Auto-resolves execution count and kernel version differences based on settings.
      */
     async resolveSemanticConflicts(uri: vscode.Uri): Promise<void> {
@@ -368,6 +434,244 @@ export class NotebookConflictResolver {
             this.extensionUri,
             unifiedConflict,
             resolutionCallback
+        );
+    }
+
+    private async pickAddOnlyAction(context: AddOnlyPromptContext): Promise<AddOnlyResolutionAction | undefined> {
+        if (resolverPromptTestHooks?.pickAddOnlyAction) {
+            return resolverPromptTestHooks.pickAddOnlyAction(context);
+        }
+
+        const applyLabel = `Apply ${context.availableSide} version + stage`;
+        const openLabel = 'Open semantic resolver';
+        const cancelLabel = 'Cancel';
+
+        const picked = await vscode.window.showQuickPick(
+            [applyLabel, openLabel, cancelLabel],
+            {
+                title: `Add-only conflict (${context.status})`,
+                placeHolder: `Choose how to resolve ${path.basename(context.filePath)}`
+            }
+        );
+
+        if (picked === applyLabel) {
+            return 'apply-and-stage';
+        }
+        if (picked === openLabel) {
+            return 'open-semantic';
+        }
+        if (picked === cancelLabel) {
+            return 'cancel';
+        }
+        return undefined;
+    }
+
+    private async pickDeleteVsModifyAction(
+        context: DeleteVsModifyPromptContext
+    ): Promise<DeleteVsModifyResolutionAction | undefined> {
+        if (resolverPromptTestHooks?.pickDeleteVsModifyAction) {
+            return resolverPromptTestHooks.pickDeleteVsModifyAction(context);
+        }
+
+        const keepContentLabel = `Keep ${context.keepContentSide} content`;
+        const keepDeleteLabel = 'Keep deletion';
+        const cancelLabel = 'Cancel';
+
+        const picked = await vscode.window.showQuickPick(
+            [keepContentLabel, keepDeleteLabel, cancelLabel],
+            {
+                title: `Delete/modify conflict (${context.status})`,
+                placeHolder: `Choose a file-level resolution for ${path.basename(context.filePath)}`
+            }
+        );
+
+        if (picked === keepContentLabel) {
+            return 'keep-content';
+        }
+        if (picked === keepDeleteLabel) {
+            return 'keep-delete';
+        }
+        if (picked === cancelLabel) {
+            return 'cancel';
+        }
+        return undefined;
+    }
+
+    private async confirmResolutionAction(context: ResolverConfirmationContext): Promise<boolean> {
+        if (resolverPromptTestHooks?.confirmAction) {
+            return resolverPromptTestHooks.confirmAction(context);
+        }
+
+        const picked = await vscode.window.showWarningMessage(
+            context.message,
+            { modal: true },
+            context.actionLabel
+        );
+        return picked === context.actionLabel;
+    }
+
+    private async writeNotebookBlob(uri: vscode.Uri, notebookContent: string): Promise<void> {
+        const encoder = new TextEncoder();
+        await vscode.workspace.fs.writeFile(uri, encoder.encode(notebookContent));
+    }
+
+    private async deleteFileIfPresent(uri: vscode.Uri): Promise<void> {
+        try {
+            await vscode.workspace.fs.delete(uri, { useTrash: false });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (/not.*found|entry.*not.*found/i.test(message)) {
+                return;
+            }
+            throw error;
+        }
+    }
+
+    private async resolveAddOnlyConflict(
+        uri: vscode.Uri,
+        status: 'AU' | 'UA'
+    ): Promise<boolean> {
+        const versions = await gitIntegration.getThreeWayVersions(uri.fsPath);
+        if (!versions) {
+            return false;
+        }
+
+        const availableSide: 'current' | 'incoming' = status === 'AU' ? 'current' : 'incoming';
+        const availableContent = status === 'AU' ? versions.current : versions.incoming;
+        const missingContent = status === 'AU' ? versions.incoming : versions.current;
+
+        // Conditional auto-accept only applies when exactly one side is available.
+        if (!availableContent || missingContent !== null) {
+            return false;
+        }
+
+        let resolvedNotebook: Notebook | undefined;
+        try {
+            resolvedNotebook = parseNotebook(availableContent);
+        } catch {
+            // Non-parseable blobs should fall back to semantic resolver path.
+            return false;
+        }
+
+        const action = await this.pickAddOnlyAction({
+            status,
+            filePath: uri.fsPath,
+            availableSide
+        });
+        if (!action || action === 'cancel') {
+            return true;
+        }
+        if (action === 'open-semantic') {
+            return false;
+        }
+
+        const actionLabel = `Apply ${availableSide} version`;
+        const confirmed = await this.confirmResolutionAction({
+            status,
+            filePath: uri.fsPath,
+            actionId: 'add-only-apply-stage',
+            actionLabel,
+            message: `${actionLabel} and stage ${path.basename(uri.fsPath)}?`
+        });
+        if (!confirmed) {
+            return true;
+        }
+
+        await this.writeNotebookBlob(uri, availableContent);
+        await this.markFileAsResolved(uri, { suppressSuccessMessage: true });
+        onDidResolveConflict.fire(uri);
+        onDidResolveConflictWithDetails.fire({
+            uri,
+            resolvedNotebook,
+            resolvedRows: [],
+            markAsResolved: true,
+            renumberExecutionCounts: false
+        });
+
+        vscode.window.showInformationMessage(
+            `Applied ${availableSide} version and staged ${path.basename(uri.fsPath)}`
+        );
+        return true;
+    }
+
+    private async resolveDeleteVsModifyConflict(
+        uri: vscode.Uri,
+        status: 'DU' | 'UD'
+    ): Promise<void> {
+        const keepContentSide: 'current' | 'incoming' = status === 'DU' ? 'incoming' : 'current';
+        const keepContentBlob = status === 'DU'
+            ? await gitIntegration.getIncomingVersion(uri.fsPath)
+            : await gitIntegration.getCurrentVersion(uri.fsPath);
+
+        if (!keepContentBlob) {
+            vscode.window.showErrorMessage(
+                `Cannot resolve ${status} conflict: missing ${keepContentSide} notebook content.`
+            );
+            return;
+        }
+
+        const action = await this.pickDeleteVsModifyAction({
+            status,
+            filePath: uri.fsPath,
+            keepContentSide
+        });
+        if (!action || action === 'cancel') {
+            return;
+        }
+
+        const actionLabel = action === 'keep-content'
+            ? `Keep ${keepContentSide} content`
+            : 'Keep deletion';
+        const confirmed = await this.confirmResolutionAction({
+            status,
+            filePath: uri.fsPath,
+            actionId: action,
+            actionLabel,
+            message: `${actionLabel} for ${path.basename(uri.fsPath)} and stage the result?`
+        });
+        if (!confirmed) {
+            return;
+        }
+
+        if (action === 'keep-content') {
+            let resolvedNotebook: Notebook | undefined;
+            try {
+                resolvedNotebook = parseNotebook(keepContentBlob);
+            } catch {
+                resolvedNotebook = undefined;
+            }
+
+            await this.writeNotebookBlob(uri, keepContentBlob);
+            await this.markFileAsResolved(uri, { suppressSuccessMessage: true });
+
+            onDidResolveConflict.fire(uri);
+            onDidResolveConflictWithDetails.fire({
+                uri,
+                resolvedNotebook,
+                resolvedRows: [],
+                markAsResolved: true,
+                renumberExecutionCounts: false
+            });
+
+            vscode.window.showInformationMessage(
+                `Kept ${keepContentSide} content and staged ${path.basename(uri.fsPath)}`
+            );
+            return;
+        }
+
+        await this.deleteFileIfPresent(uri);
+        await this.markFileAsResolved(uri, { suppressSuccessMessage: true });
+        onDidResolveConflict.fire(uri);
+        onDidResolveConflictWithDetails.fire({
+            uri,
+            resolvedRows: [],
+            markAsResolved: true,
+            renumberExecutionCounts: false,
+            fileDeleted: true
+        });
+
+        vscode.window.showInformationMessage(
+            `Kept deletion and staged ${path.basename(uri.fsPath)}`
         );
     }
 
@@ -574,7 +878,7 @@ export class NotebookConflictResolver {
         const encoder = new TextEncoder();
         await vscode.workspace.fs.writeFile(uri, encoder.encode(content));
 
-        // Mark as resolved with git add if requested
+        // Mark as resolved by staging in Git if requested
         if (markAsResolved) {
             await this.markFileAsResolved(uri);
         }
@@ -589,19 +893,23 @@ export class NotebookConflictResolver {
     }
 
     /**
-     * Mark a file as resolved by staging it with git add.
+     * Mark a file as resolved by staging it through the VS Code Git API.
      */
-    private async markFileAsResolved(uri: vscode.Uri): Promise<void> {
+    private async markFileAsResolved(
+        uri: vscode.Uri,
+        options?: { suppressSuccessMessage?: boolean }
+    ): Promise<void> {
         try {
-            const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-            if (!workspaceFolder) {
-                vscode.window.showWarningMessage('Cannot mark file as resolved: not in a workspace');
+            const staged = await gitIntegration.stageFile(uri.fsPath);
+            if (!staged) {
+                vscode.window.showWarningMessage(`MergeNB could not stage ${path.basename(uri.fsPath)} automatically.`);
                 return;
             }
 
-            const relativePath = vscode.workspace.asRelativePath(uri, false);
-            await exec(`git add "${relativePath}"`, { cwd: workspaceFolder.uri.fsPath });
-            vscode.window.showInformationMessage(`Marked ${relativePath} as resolved`);
+            if (!options?.suppressSuccessMessage) {
+                const relativePath = vscode.workspace.asRelativePath(uri, false);
+                vscode.window.showInformationMessage(`Marked ${relativePath} as resolved`);
+            }
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to mark file as resolved: ${error}`);
         }

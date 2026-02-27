@@ -117,11 +117,12 @@ export function createMergeConflictRepo(
     const statusOutput = git(tmpDir, 'status', '--porcelain');
     console.log(`[RepoSetup] Git status after merge:\n${statusOutput}`);
     
-    if (!statusOutput.includes('UU')) {
-        console.warn(`[RepoSetup] WARNING: No UU status found after merge! Merge may have succeeded or failed incorrectly.`);
+    const hasUnmergedStatus = /^(UU|AA|DD|AU|UA|DU|UD)\s+conflict\.ipynb$/m.test(statusOutput);
+    if (!hasUnmergedStatus) {
+        console.warn('[RepoSetup] WARNING: No unmerged status found after merge! Merge may have succeeded or failed incorrectly.');
         console.log(`[RepoSetup] Merge output was: ${mergeOutput}`);
     } else {
-        console.log(`[RepoSetup] Merge conflict created successfully (found UU status)`);
+        console.log('[RepoSetup] Merge conflict created successfully (found unmerged status)');
     }
 
     return tmpDir;

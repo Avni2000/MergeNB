@@ -118,7 +118,7 @@ export interface ConflictResolution {
 }
 
 /**
- * Semantic conflict types (Git UU status)
+ * Semantic conflict types (Git unmerged status)
  */
 
 export type SemanticConflictType = 
