@@ -1266,7 +1266,10 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
 export async function getBaseVersion(filePath: string): Promise<string | null> {
     const context = await resolveGitFileContext(filePath);
     if (context) {
-        return getVersionForStage(context, '1');
+        const apiVersion = await getVersionForStage(context, '1');
+        if (apiVersion !== null) {
+            return apiVersion;
+        }
     }
     const cliContext = await resolveCliFileContext(filePath);
     return cliContext ? getVersionForStageCli(cliContext, '1') : null;
@@ -1278,7 +1281,10 @@ export async function getBaseVersion(filePath: string): Promise<string | null> {
 export async function getCurrentVersion(filePath: string): Promise<string | null> {
     const context = await resolveGitFileContext(filePath);
     if (context) {
-        return getVersionForStage(context, '2');
+        const apiVersion = await getVersionForStage(context, '2');
+        if (apiVersion !== null) {
+            return apiVersion;
+        }
     }
     const cliContext = await resolveCliFileContext(filePath);
     return cliContext ? getVersionForStageCli(cliContext, '2') : null;
@@ -1290,7 +1296,10 @@ export async function getCurrentVersion(filePath: string): Promise<string | null
 export async function getIncomingVersion(filePath: string): Promise<string | null> {
     const context = await resolveGitFileContext(filePath);
     if (context) {
-        return getVersionForStage(context, '3');
+        const apiVersion = await getVersionForStage(context, '3');
+        if (apiVersion !== null) {
+            return apiVersion;
+        }
     }
     const cliContext = await resolveCliFileContext(filePath);
     return cliContext ? getVersionForStageCli(cliContext, '3') : null;
@@ -1305,20 +1314,40 @@ export async function getThreeWayVersions(filePath: string): Promise<{
     incoming: string | null;
 } | null> {
     const context = await resolveGitFileContext(filePath);
-    const cliContext = !context ? await resolveCliFileContext(filePath) : null;
+    let cliContext: GitCliFileContext | null = null;
+
+    let base: string | null = null;
+    let current: string | null = null;
+    let incoming: string | null = null;
+
+    if (context) {
+        [base, current, incoming] = await Promise.all([
+            getVersionForStage(context, '1'),
+            getVersionForStage(context, '2'),
+            getVersionForStage(context, '3')
+        ]);
+    }
+
+    const needsCliFallback = !context || base === null || current === null || incoming === null;
+    if (needsCliFallback) {
+        cliContext = await resolveCliFileContext(filePath);
+    }
 
     if (!context && !cliContext) {
         return null;
     }
 
-    const getStage = (stage: GitStageNumber) =>
-        context ? getVersionForStage(context, stage) : getVersionForStageCli(cliContext!, stage);
+    if (cliContext) {
+        const [cliBase, cliCurrent, cliIncoming] = await Promise.all([
+            base === null ? getVersionForStageCli(cliContext, '1') : Promise.resolve(base),
+            current === null ? getVersionForStageCli(cliContext, '2') : Promise.resolve(current),
+            incoming === null ? getVersionForStageCli(cliContext, '3') : Promise.resolve(incoming)
+        ]);
 
-    const [base, current, incoming] = await Promise.all([
-        getStage('1'),
-        getStage('2'),
-        getStage('3')
-    ]);
+        base = cliBase;
+        current = cliCurrent;
+        incoming = cliIncoming;
+    }
 
     if (base === null && current === null && incoming === null) {
         return null;
