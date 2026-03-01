@@ -51,8 +51,6 @@ interface CellContentProps {
     diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
     showCellHeaders?: boolean;
-    onDragStart?: (e: React.DragEvent) => void;
-    onDragEnd?: () => void;
 }
 
 export function CellContentInner({
@@ -66,8 +64,6 @@ export function CellContentInner({
     diffMode = 'base',
     showOutputs = true,
     showCellHeaders = false,
-    onDragStart,
-    onDragEnd,
 }: CellContentProps): React.ReactElement {
     const renderMimeRegistry = useMemo(
         () => getRenderMimeRegistry(notebookPath),
@@ -98,9 +94,6 @@ export function CellContentInner({
     return (
         <div
             className={cellClasses}
-            draggable={Boolean(isConflict && onDragStart)}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
             data-cell={encodedCell}
             data-cell-type={cellType}
         >
