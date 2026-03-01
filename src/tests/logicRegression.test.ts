@@ -10,7 +10,7 @@ import { selectNonConflictMergedCell } from '../notebookUtils';
 import { renumberExecutionCounts } from '../notebookParser';
 import { analyzeSemanticConflictsFromMappings } from '../conflictDetector';
 import { inferPreferredSide } from '../resolver';
-import { collectRowConflictIndexes, hasUnmappedReorderConflict } from '../web/client/ConflictResolver';
+import { collectRowConflictIndexes, hasUnmappedReorderConflict } from '../web/client/conflictRowUtils';
 import type { MergeRow as MergeRowType } from '../web/client/types';
 import type { NotebookCell, Notebook, SemanticConflict } from '../types';
 import type { CellMapping } from '../types';
