@@ -1064,8 +1064,6 @@ body {
     background: var(--bg-secondary);
 }
 
-
-
 /* Conflict row - red border for actual conflicts
    (consolidated rule moved earlier to avoid duplicate definitions) */
 
@@ -1107,7 +1105,6 @@ body {
     border-radius: 4px;
     background: var(--cell-placeholder-bg);
 }
-
 
 /* Delete button */
 .btn-delete {

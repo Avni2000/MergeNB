@@ -9,13 +9,12 @@ import {
     clickHistoryUndo,
     clickHistoryRedo,
     waitForResolvedCount,
+    type MergeSide,
 } from './integrationUtils';
 import {
     readTestConfig,
     setupConflictResolver,
 } from './testHarness';
-
-type MergeSide = 'base' | 'current' | 'incoming';
 
 async function pickBranchButton(row: Locator): Promise<{ selector: string; side: MergeSide }> {
     const options: Array<{ selector: string; side: MergeSide }> = [

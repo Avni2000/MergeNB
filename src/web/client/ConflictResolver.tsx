@@ -31,8 +31,6 @@ interface ResolutionState {
     resolvedContent: string;
 }
 
-
-
 type TakeAllChoice = 'base' | 'current' | 'incoming';
 
 interface ResolverSnapshot {
@@ -102,8 +100,6 @@ export function ConflictResolver({
     const [historyOpen, setHistoryOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
-
-
 
     const choicesRef = useRef(choices);
     const rowsRef = useRef(rows);
@@ -214,7 +210,6 @@ export function ConflictResolver({
             window.removeEventListener('keydown', handleEscape);
         };
     }, [historyOpen]);
-
 
     /** Handle user selecting a branch choice (sets both choice and initial content) */
     const handleSelectChoice = useCallback((index: number, choice: ResolutionChoice, resolvedContent: string) => {
