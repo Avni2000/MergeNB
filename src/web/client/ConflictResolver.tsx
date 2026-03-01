@@ -939,7 +939,9 @@ function buildMergeRowsFromSemantic(
 
     conflict.semanticConflicts.forEach((c, i) => {
         const key = `${c.baseCellIndex ?? 'x'}-${c.currentCellIndex ?? 'x'}-${c.incomingCellIndex ?? 'x'}`;
-        conflictMap.set(key, { conflict: c, index: i });
+        if (!conflictMap.has(key)) {
+            conflictMap.set(key, { conflict: c, index: i });
+        }
     });
 
     for (const mapping of conflict.cellMappings) {
