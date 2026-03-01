@@ -28,6 +28,7 @@ export interface ExpectedCell {
     isDeleted?: boolean;
     metadata?: Record<string, unknown>;
     hasOutputs?: boolean;
+    outputs?: Array<Record<string, unknown>>;
 }
 
 /** Config written to disk by the runner, read by the test */

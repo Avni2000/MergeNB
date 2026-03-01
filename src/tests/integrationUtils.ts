@@ -201,12 +201,16 @@ export async function collectExpectedCellsFromUI(
                 resolvedCellType === 'code' &&
                 Array.isArray(cell.outputs) &&
                 cell.outputs.length > 0;
+            const normalizedOutputs = includeOutputs && hasOutputs
+                ? JSON.parse(JSON.stringify(cell.outputs))
+                : undefined;
             expected.push({
                 rowIndex: i,
                 source: getCellSource(cell),
                 cellType: resolvedCellType,
                 metadata: includeMetadata ? (cell.metadata || {}) : undefined,
                 hasOutputs: includeOutputs ? hasOutputs : undefined,
+                outputs: normalizedOutputs,
                 isConflict: false,
                 isDeleted: false,
             });
@@ -254,6 +258,7 @@ export async function collectExpectedCellsFromUI(
 
             let metadata: Record<string, unknown> | undefined;
             let hasOutputs = false;
+            let normalizedOutputs: Array<Record<string, unknown>> | undefined;
             if ((includeMetadata || includeOutputs) && (choice === 'base' || choice === 'current' || choice === 'incoming')) {
                 const referenceCell = await getColumnCell(row, choice, i);
                 if (!referenceCell) {
@@ -266,6 +271,9 @@ export async function collectExpectedCellsFromUI(
                     hasOutputs = cellType === 'code' &&
                         Array.isArray((referenceCell as any).outputs) &&
                         (referenceCell as any).outputs.length > 0;
+                    if (hasOutputs) {
+                        normalizedOutputs = JSON.parse(JSON.stringify((referenceCell as any).outputs));
+                    }
                 }
             }
 
@@ -275,6 +283,7 @@ export async function collectExpectedCellsFromUI(
                 cellType,
                 metadata,
                 hasOutputs: includeOutputs ? hasOutputs : undefined,
+                outputs: normalizedOutputs,
                 isConflict: true,
                 isDeleted: false,
             });

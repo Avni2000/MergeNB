@@ -199,6 +199,7 @@ export function assertNotebookMatches(
     let typeMismatches = 0;
     let metadataMismatches = 0;
     let executionMismatches = 0;
+    let outputMismatches = 0;
     let nextExecutionCount = 1;
 
     for (let i = 0; i < expectedNonDeleted.length; i++) {
@@ -227,6 +228,16 @@ export function assertNotebookMatches(
             }
         }
 
+        if (expected.outputs !== undefined) {
+            const actualOutputs = (actual as any).outputs || [];
+            if (JSON.stringify(expected.outputs) !== JSON.stringify(actualOutputs)) {
+                outputMismatches++;
+                console.log(`Outputs mismatch at cell ${i}:`);
+                console.log(`  Expected: ${JSON.stringify(expected.outputs).substring(0, 100)}...`);
+                console.log(`  Actual:   ${JSON.stringify(actualOutputs).substring(0, 100)}...`);
+            }
+        }
+
         if (options.compareExecutionCounts && expected.cellType === 'code') {
             const expectedExecutionCount = options.renumberEnabled
                 ? (expected.hasOutputs ? nextExecutionCount++ : null)
@@ -249,6 +260,10 @@ export function assertNotebookMatches(
 
     if (metadataMismatches > 0) {
         throw new Error(`${metadataMismatches} cells have metadata mismatches`);
+    }
+
+    if (outputMismatches > 0) {
+        throw new Error(`${outputMismatches} cells have output mismatches`);
     }
 
     if (executionMismatches > 0) {
