@@ -12,7 +12,6 @@
 
 import * as vscode from 'vscode';
 import * as logger from '../logger';
-import { ResolutionChoice } from '../types';
 import { getWebServer } from './webServer';
 import { UnifiedConflict, UnifiedResolution, ResolvedRow } from './webTypes';
 
@@ -138,10 +137,10 @@ export class WebConflictPanel {
         const msg = message as {
             command?: string;
             type?: string;
-            resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>;
             resolvedRows?: ResolvedRow[];
             semanticChoice?: string;
-            markAsResolved?: boolean
+            markAsResolved?: boolean;
+            renumberExecutionCounts?: boolean;
         };
 
         logger.debug('[WebConflictPanel] Received message:', msg.command || msg.type);
@@ -163,26 +162,17 @@ export class WebConflictPanel {
 
     private async _handleResolution(message: {
         type?: string;
-        resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>;
         resolvedRows?: ResolvedRow[];
         semanticChoice?: string;
         markAsResolved?: boolean;
         renumberExecutionCounts?: boolean;
     }): Promise<void> {
         if (this._conflict?.type === 'semantic') {
-            const semanticResolutionMap = new Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>();
-            for (const r of (message.resolutions || [])) {
-                semanticResolutionMap.set(r.index, {
-                    choice: r.choice as 'base' | 'current' | 'incoming',
-                    resolvedContent: r.resolvedContent
-                });
-            }
             if (this._onResolutionComplete) {
                 try {
                     await this._onResolutionComplete({
                         type: 'semantic',
                         semanticChoice: message.semanticChoice as 'base' | 'current' | 'incoming' | undefined,
-                        semanticResolutions: semanticResolutionMap,
                         resolvedRows: message.resolvedRows,
                         markAsResolved: message.markAsResolved ?? false,
                         renumberExecutionCounts: message.renumberExecutionCounts ?? false

@@ -7,7 +7,7 @@ import React, { useEffect } from 'react';
 import { useWebSocket } from './useWebSocket';
 import { ConflictResolver } from './ConflictResolver';
 import { injectStyles } from './styles';
-import type { ConflictChoice, ResolvedRow } from './types';
+import type { ResolvedRow } from './types';
 
 export function App(): React.ReactElement {
     const { connected, conflictData, sendMessage, resolutionStatus, resolutionMessage } = useWebSocket();
@@ -20,7 +20,6 @@ export function App(): React.ReactElement {
     }, [conflictData?.theme]);
 
     const handleResolve = (
-        resolutions: ConflictChoice[],
         markAsResolved: boolean,
         renumberExecutionCounts: boolean,
         resolvedRows: ResolvedRow[],
@@ -29,7 +28,6 @@ export function App(): React.ReactElement {
         sendMessage({
             command: 'resolve',
             type: 'semantic',
-            resolutions,
             resolvedRows,
             semanticChoice,
             markAsResolved,
