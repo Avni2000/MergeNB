@@ -54,7 +54,7 @@ From the repo root:
 3. **If it needs a merge-conflict repo**, use `createMergeConflictRepo` from [repoSetup.ts](repoSetup.ts)
 4. **If it needs UI interaction**, use Playwright helpers from [integrationUtils.ts](integrationUtils.ts) and setup from [testHarness.ts](testHarness.ts)
 5. **If it's pure logic**, just use Node's built-in `assert` — no VS Code or browser needed
-6. **If you add notebook fixtures**, place them in [test/](../../test/) using the existing naming scheme (e.g. `base_05.ipynb`, `current_05.ipynb`, `incoming_05.ipynb`)
+6. **If you add notebook fixtures**, place them in [test/](../../test/) using the existing naming scheme (e.g. `05_base.ipynb`, `05_incoming_.ipynb`, `05_incoming.ipynb`)
 
 ### Test Registration Example
 
