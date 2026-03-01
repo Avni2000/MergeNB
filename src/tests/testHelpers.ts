@@ -17,7 +17,6 @@ export interface HealthResponse {
     port: number;
     activeSessions: number;
     activeConnections: number;
-    sessionIds: string[];
 }
 
 /** A cell we expect to find on disk after resolution */
@@ -141,17 +140,30 @@ export async function waitForServer(
     throw new Error('Web server did not start within timeout');
 }
 
-/** Wait for a session to appear on the server. Returns the session ID. */
-export async function waitForSession(port: number, timeoutMs = 15000): Promise<string> {
+/** Wait for a session URL to be published by the extension test command. */
+export async function waitForSessionUrl(
+    getSessionUrl: () => Promise<string | undefined> | string | undefined,
+    timeoutMs = 15000
+): Promise<string> {
     const maxAttempts = Math.ceil(timeoutMs / 500);
     for (let i = 0; i < maxAttempts; i++) {
         await new Promise(r => setTimeout(r, 500));
-        const healthInfo = await getHealthInfo(port);
-        if (healthInfo && healthInfo.sessionIds.length > 0) {
-            return healthInfo.sessionIds[0];
+        const raw = await Promise.resolve(getSessionUrl());
+        if (typeof raw !== 'string') continue;
+
+        let parsed: URL;
+        try {
+            parsed = new URL(raw);
+        } catch {
+            continue;
         }
+
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') continue;
+        if (!parsed.searchParams.has('session') || !parsed.searchParams.has('token')) continue;
+
+        return raw;
     }
-    throw new Error('No session was created within timeout');
+    throw new Error('No valid session URL was created within timeout (requires http(s) with session & token params)');
 }
 
 /** Validate that a resolved notebook has valid .ipynb structure */

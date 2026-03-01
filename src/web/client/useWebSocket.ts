@@ -27,10 +27,11 @@ export function useWebSocket(): UseWebSocketResult {
         // Get session ID from URL
         const params = new URLSearchParams(window.location.search);
         const session = params.get('session') || 'default';
+        const token = params.get('token') || '';
 
         // Connect WebSocket
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/?session=${encodeURIComponent(session)}`;
+        const wsUrl = `${protocol}//${window.location.host}/?session=${encodeURIComponent(session)}&token=${encodeURIComponent(token)}`;
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;

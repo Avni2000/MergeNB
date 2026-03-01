@@ -8,7 +8,7 @@ import {
     type TestConfig,
     getCellSource,
     waitForServer,
-    waitForSession,
+    waitForSessionUrl,
     waitForFileWrite,
 } from './testHelpers';
 import { ensureCheckboxChecked } from './integrationUtils';
@@ -19,6 +19,7 @@ export interface ConflictSession {
     conflictFile: string;
     serverPort: number;
     sessionId: string;
+    sessionUrl: string;
     browser: Browser;
     page: Page;
 }
@@ -76,14 +77,17 @@ export async function setupConflictResolver(
     );
     console.log(`[TestHarness] Server started on port ${serverPort}`);
 
-    const sessionId = await waitForSession(serverPort, options.sessionTimeoutMs);
+    const sessionUrl = await waitForSessionUrl(
+        () => Promise.resolve(vscode.commands.executeCommand<string>('merge-nb.getLatestWebSessionUrl')),
+        options.sessionTimeoutMs
+    );
+    const sessionId = new URL(sessionUrl).searchParams.get('session') || 'unknown';
     console.log(`Session created: ${sessionId}`);
 
     const browser = await chromium.launch({ headless: options.headless ?? true });
     try {
         const page = await browser.newPage();
 
-        const sessionUrl = `http://127.0.0.1:${serverPort}/?session=${sessionId}`;
         await page.goto(sessionUrl);
         await sleep(options.afterNavigateDelayMs ?? 3000);
 
@@ -101,6 +105,7 @@ export async function setupConflictResolver(
             conflictFile,
             serverPort,
             sessionId,
+            sessionUrl,
             browser,
             page,
         };

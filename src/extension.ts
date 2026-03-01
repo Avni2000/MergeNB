@@ -402,10 +402,17 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	if (isTestMode) {
+		getWebServer().setTestMode(true);
 		context.subscriptions.push(
 			vscode.commands.registerCommand('merge-nb.getWebServerPort', () => {
 				const webServer = getWebServer();
 				return webServer.isRunning() ? webServer.getPort() : 0;
+			})
+		);
+		context.subscriptions.push(
+			vscode.commands.registerCommand('merge-nb.getLatestWebSessionUrl', () => {
+				const webServer = getWebServer();
+				return webServer.getLatestSessionUrl();
 			})
 		);
 		context.subscriptions.push(
