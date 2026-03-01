@@ -925,10 +925,20 @@ function buildMergeRowsFromSemantic(
 ): MergeRowType[] {
     const rows: MergeRowType[] = [];
     const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();
+    const conflictPriority: Record<string, number> = {
+        'cell-modified': 0,
+        'metadata-changed': 1,
+        'outputs-changed': 2,
+        'execution-count-changed': 3
+    };
 
     conflict.semanticConflicts.forEach((c, i) => {
         const key = `${c.baseCellIndex ?? 'x'}-${c.currentCellIndex ?? 'x'}-${c.incomingCellIndex ?? 'x'}`;
-        if (!conflictMap.has(key)) {
+        const existing = conflictMap.get(key);
+        const nextRank = conflictPriority[c.type] ?? Number.MAX_SAFE_INTEGER;
+        const existingRank = existing ? conflictPriority[existing.conflict.type] ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+
+        if (!existing || nextRank < existingRank) {
             conflictMap.set(key, { conflict: c, index: i });
         }
     });
