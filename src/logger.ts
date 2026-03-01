@@ -16,6 +16,9 @@
  * Check if debug logging is enabled.
  */
 function isDebugEnabled(): boolean {
+    if (typeof process === 'undefined' || typeof process.env === 'undefined') {
+        return false;
+    }
     return (
         process.env.__VSCODE_EXTENSION_DEVELOPMENT__ === 'true' ||
         process.env.CI === 'true' ||
