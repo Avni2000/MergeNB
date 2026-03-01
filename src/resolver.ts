@@ -817,8 +817,15 @@ export class NotebookConflictResolver {
                 } as NotebookCell;
 
                 if (cellType === 'code') {
-                    (cellToUse as any).execution_count = null;
-                    (cellToUse as any).outputs = [];
+                    if (settings.stripOutputs) {
+                        (cellToUse as any).execution_count = null;
+                        (cellToUse as any).outputs = [];
+                    } else {
+                        (cellToUse as any).execution_count = (referenceCell as any)?.execution_count ?? null;
+                        (cellToUse as any).outputs = (referenceCell as any)?.outputs
+                            ? JSON.parse(JSON.stringify((referenceCell as any).outputs))
+                            : [];
+                    }
                 }
             } else if (preferredSide === 'base' || preferredSide === 'current' || preferredSide === 'incoming') {
                 // For uniform "take all", only include cells that exist on the preferred side.
