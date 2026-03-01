@@ -10,7 +10,6 @@ import { normalizeCellSource } from '../../notebookUtils';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
-    ConflictChoice,
     NotebookSemanticConflict,
     CellMapping,
     SemanticConflict,
@@ -76,7 +75,6 @@ function cloneRows(source: MergeRowType[]): MergeRowType[] {
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
     onResolve: (
-        resolutions: ConflictChoice[],
         markAsResolved: boolean,
         renumberExecutionCounts: boolean,
         resolvedRows: import('./types').ResolvedRow[],
@@ -385,15 +383,6 @@ export function ConflictResolver({
     }, [enableUndoRedoHotkeys, handleRedo, handleUndo, isMac, isEditableTarget]);
 
     const handleResolve = () => {
-        const resolutions: ConflictChoice[] = [];
-        for (const [index, state] of choices) {
-            resolutions.push({
-                index,
-                choice: state.choice,
-                resolvedContent: state.resolvedContent
-            });
-        }
-
         // Build resolved rows - this is the source of truth for reconstruction
         const resolvedRows: import('./types').ResolvedRow[] = rows.map((row) => {
             const conflictIdx = row.conflictIndex ?? -1;
@@ -419,7 +408,7 @@ export function ConflictResolver({
         )
             ? takeAllChoice
             : inferTakeAllChoice(rows, choices);
-        onResolve(resolutions, markAsResolved, renumberExecutionCounts, resolvedRows, semanticChoice);
+        onResolve(markAsResolved, renumberExecutionCounts, resolvedRows, semanticChoice);
     };
 
     // Cell drag handlers
@@ -936,10 +925,25 @@ function buildMergeRowsFromSemantic(
 ): MergeRowType[] {
     const rows: MergeRowType[] = [];
     const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();
+    const conflictPriority: Record<SemanticConflict['type'], number> = {
+        'cell-modified': 0,
+        'cell-added': 1,
+        'cell-deleted': 2,
+        'cell-reordered': 3,
+        'metadata-changed': 4,
+        'outputs-changed': 5,
+        'execution-count-changed': 6
+    };
 
     conflict.semanticConflicts.forEach((c, i) => {
         const key = `${c.baseCellIndex ?? 'x'}-${c.currentCellIndex ?? 'x'}-${c.incomingCellIndex ?? 'x'}`;
-        conflictMap.set(key, { conflict: c, index: i });
+        const existing = conflictMap.get(key);
+        const nextRank = conflictPriority[c.type] ?? Number.MAX_SAFE_INTEGER;
+        const existingRank = existing ? conflictPriority[existing.conflict.type] ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
+
+        if (!existing || nextRank < existingRank) {
+            conflictMap.set(key, { conflict: c, index: i });
+        }
     });
 
     for (const mapping of conflict.cellMappings) {

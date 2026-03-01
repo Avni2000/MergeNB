@@ -72,7 +72,6 @@ export interface ResolvedRow {
 export interface UnifiedResolution {
     type: 'semantic';
     semanticChoice?: 'base' | 'current' | 'incoming';
-    semanticResolutions?: Map<number, { choice: ResolutionChoice; resolvedContent: string }>;
     /** The complete resolved row structure from the UI (source of truth) */
     resolvedRows?: ResolvedRow[];
     // Whether to mark file as resolved by staging in Git
@@ -174,32 +173,14 @@ export type BrowserToExtensionMessage =
     | {
         command: 'resolve';
         type: 'semantic';
-        resolutions: Array<{
-            index: number;
-            choice: string;
-            customContent?: string;
-        }>;
         /** The complete resolved row structure from the UI (source of truth) */
         resolvedRows: ResolvedRow[];
         semanticChoice?: 'base' | 'current' | 'incoming';
         markAsResolved?: boolean;
+        renumberExecutionCounts?: boolean;
     }
     | { command: 'cancel' }
     | { command: 'ready' };
-
-/**
- * Resolution data structure returned from the browser.
- */
-export interface WebResolutionData {
-    type: 'semantic';
-    resolutions: Array<{
-        index: number;
-        choice: ResolutionChoice | 'base';
-        customContent?: string;
-    }>;
-    semanticChoice?: 'base' | 'current' | 'incoming';
-    markAsResolved: boolean;
-}
 
 /**
  * Convert NotebookSemanticConflict to WebSemanticConflict.
