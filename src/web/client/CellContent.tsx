@@ -11,6 +11,7 @@ import renderMathInElement from 'katex/contrib/auto-render';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
+import * as logger from '../../logger';
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
@@ -172,7 +173,7 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
             Widget.attach(renderer, host);
 
             void renderer.renderModel(model).catch((err: unknown) => {
-                console.warn('[MergeNB] Failed to render markdown via rendermime:', err);
+                logger.warn('[MergeNB] Failed to render markdown via rendermime:', err);
                 if (!disposed) {
                     disposeRenderer(renderer, host);
                     model?.dispose?.();
@@ -182,7 +183,7 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
                 }
             });
         } catch (err) {
-            console.warn('[MergeNB] Failed to initialize rendermime markdown renderer:', err);
+            logger.warn('[MergeNB] Failed to initialize rendermime markdown renderer:', err);
             disposeRenderer(renderer, host);
             model?.dispose?.();
             model = null;
@@ -388,7 +389,7 @@ function RenderMimeOutput({
             Widget.attach(renderer, host);
 
             void renderer.renderModel(model).catch((err: unknown) => {
-                console.warn('[MergeNB] Failed to render output via rendermime:', err);
+                logger.warn('[MergeNB] Failed to render output via rendermime:', err);
                 if (!disposed) {
                     disposeRenderer(renderer, host);
                     renderer = null;
@@ -398,7 +399,7 @@ function RenderMimeOutput({
                 }
             });
         } catch (err) {
-            console.warn('[MergeNB] Failed to initialize rendermime output model:', err);
+            logger.warn('[MergeNB] Failed to initialize rendermime output model:', err);
             setFallback(getOutputTextFallback(output));
             disposeRenderer(renderer, host);
             model?.dispose();
@@ -528,14 +529,14 @@ function disposeRenderMimeRegistry(registry: RenderMimeRegistry | undefined): vo
     try {
         resolver?.dispose?.();
     } catch (err) {
-        console.warn('[MergeNB] Failed to dispose rendermime resolver:', err);
+        logger.warn('[MergeNB] Failed to dispose rendermime resolver:', err);
     }
 
     const disposableRegistry = registry as RenderMimeRegistry & { dispose?: () => void };
     try {
         disposableRegistry.dispose?.();
     } catch (err) {
-        console.warn('[MergeNB] Failed to dispose rendermime registry:', err);
+        logger.warn('[MergeNB] Failed to dispose rendermime registry:', err);
     }
 }
 
@@ -599,7 +600,7 @@ function disposeRenderer(
             host.removeChild(renderer.node);
         }
     } catch (err) {
-        console.warn('[MergeNB] Failed to detach rendermime renderer:', err);
+        logger.warn('[MergeNB] Failed to detach rendermime renderer:', err);
         if (renderer.node.parentElement === host) {
             host.removeChild(renderer.node);
         }
@@ -608,7 +609,7 @@ function disposeRenderer(
     try {
         renderer.dispose();
     } catch (err) {
-        console.warn('[MergeNB] Failed to dispose rendermime renderer:', err);
+        logger.warn('[MergeNB] Failed to dispose rendermime renderer:', err);
     }
 }
 

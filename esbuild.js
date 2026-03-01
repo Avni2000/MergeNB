@@ -117,6 +117,9 @@ async function main() {
 		external: [],
 		logLevel: 'silent',
 		jsx: 'automatic',
+		define: {
+			'process.env.NODE_ENV': JSON.stringify(production ? 'production' : 'development'),
+		},
 		loader: {
 			'.css': 'text',
 			'.svg': 'dataurl',

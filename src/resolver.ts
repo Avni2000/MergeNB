@@ -21,6 +21,7 @@ import { UnifiedConflict, UnifiedResolution } from './web/webTypes';
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
+import * as logger from './logger';
 
 function stableStringify(value: unknown): string {
     if (value === undefined) return 'undefined';
@@ -280,27 +281,27 @@ export class NotebookConflictResolver {
      * Only queries Git for unmerged files, no file scanning.
      */
     async findNotebooksWithConflicts(): Promise<ConflictedNotebook[]> {
-        console.log('[Resolver] findNotebooksWithConflicts: scanning for unmerged files');
+        logger.debug('[Resolver] findNotebooksWithConflicts: scanning for unmerged files');
         const withConflicts: ConflictedNotebook[] = [];
 
         // Get unmerged files from Git status
         const unmergedFiles = await gitIntegration.getUnmergedFiles();
-        console.log(`[Resolver] findNotebooksWithConflicts: found ${unmergedFiles.length} unmerged file(s)`);
+        logger.debug(`[Resolver] findNotebooksWithConflicts: found ${unmergedFiles.length} unmerged file(s)`);
 
         for (const file of unmergedFiles) {
-            console.log(`[Resolver] Checking unmerged file: ${file.path}`);
+            logger.debug(`[Resolver] Checking unmerged file: ${file.path}`);
             // Only process .ipynb files
             if (!file.path.endsWith('.ipynb')) {
-                console.log(`[Resolver] Skipping non-ipynb: ${file.path}`);
+                logger.debug(`[Resolver] Skipping non-ipynb: ${file.path}`);
                 continue;
             }
 
             if (file.status === 'DD') {
-                console.log(`[Resolver] Skipping DD (both deleted) notebook: ${file.path}`);
+                logger.debug(`[Resolver] Skipping DD (both deleted) notebook: ${file.path}`);
                 continue;
             }
 
-            console.log(`[Resolver] Found conflicted notebook: ${file.path}`);
+            logger.debug(`[Resolver] Found conflicted notebook: ${file.path}`);
             const uri = vscode.Uri.file(file.path);
 
             withConflicts.push({
@@ -310,7 +311,7 @@ export class NotebookConflictResolver {
             });
         }
 
-        console.log(`[Resolver] findNotebooksWithConflicts: returning ${withConflicts.length} notebook(s)`);
+        logger.debug(`[Resolver] findNotebooksWithConflicts: returning ${withConflicts.length} notebook(s)`);
         return withConflicts;
     }
 

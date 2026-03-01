@@ -18,6 +18,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { randomBytes, randomUUID } from 'crypto';
 import WebSocket, { WebSocketServer } from 'ws';
+import * as logger from '../logger';
 
 // VSCode is optional - only needed for openExternal
 let vscode: typeof import('vscode') | undefined;
@@ -141,7 +142,7 @@ export class ConflictResolverWebServer {
             });
 
             this.wss.on('error', (error: Error) => {
-                console.error('[MergeNB Web] WebSocket server error:', error);
+                logger.error('[MergeNB Web] WebSocket server error:', error);
             });
 
             // Use port 0 to get an available port
@@ -151,7 +152,7 @@ export class ConflictResolverWebServer {
                 const address = this.httpServer!.address();
                 if (address && typeof address === 'object') {
                     this.port = address.port;
-                    console.log(`[MergeNB Web] Server started at http://${this.host}:${this.port}`);
+                    logger.debug(`[MergeNB Web] Server started at http://${this.host}:${this.port}`);
                     resolve(this.port);
                 } else {
                     reject(new Error('Could not get server address'));
@@ -159,7 +160,7 @@ export class ConflictResolverWebServer {
             });
 
             this.httpServer.on('error', (error: Error) => {
-                console.error('[MergeNB Web] HTTP server error:', error);
+                logger.error('[MergeNB Web] HTTP server error:', error);
                 reject(error);
             });
         });
@@ -189,7 +190,7 @@ export class ConflictResolverWebServer {
                     if (this.httpServer) {
                         this.httpServer.close(() => {
                             this.port = 0;
-                            console.log('[MergeNB Web] Server stopped');
+                            logger.debug('[MergeNB Web] Server stopped');
                             resolve();
                         });
                     } else {
@@ -286,11 +287,11 @@ export class ConflictResolverWebServer {
             this.latestSessionUrl = sessionUrl;
         }
         const redactedUrl = `${this.getServerUrl()}/?session=${encodeURIComponent(sessionId)}&token=REDACTED`;
-        console.log(`[MergeNB Web] Opening browser to: ${redactedUrl}`);
+        logger.debug(`[MergeNB Web] Opening browser to: ${redactedUrl}`);
         if (vscode) {
             await vscode.env.openExternal(vscode.Uri.parse(sessionUrl));
         } else {
-            console.log(`[MergeNB Web] VSCode not available, skipping browser open. URL: ${redactedUrl}`);
+            logger.debug(`[MergeNB Web] VSCode not available, skipping browser open. URL: ${redactedUrl}`);
         }
 
         return connectionPromise;
@@ -305,7 +306,7 @@ export class ConflictResolverWebServer {
             ws.send(JSON.stringify(message));
             return true;
         }
-        console.warn(`[MergeNB Web] Cannot send message - no active connection for session: ${sessionId}`);
+        logger.warn(`[MergeNB Web] Cannot send message - no active connection for session: ${sessionId}`);
         return false;
     }
 
@@ -337,7 +338,7 @@ export class ConflictResolverWebServer {
             this.pendingConnections.delete(sessionId);
         }
         
-        console.log(`[MergeNB Web] Session closed: ${sessionId}`);
+        logger.debug(`[MergeNB Web] Session closed: ${sessionId}`);
     }
 
     /**
@@ -439,7 +440,7 @@ export class ConflictResolverWebServer {
         
         // Reject pathnames containing ".." to prevent directory traversal
         if (fileName.includes('..')) {
-            console.warn(`[MergeNB Web] Rejected path with ".." traversal: ${pathname}`);
+            logger.warn(`[MergeNB Web] Rejected path with ".." traversal: ${pathname}`);
             res.writeHead(403, { 'Content-Type': 'text/plain' });
             res.end('Forbidden');
             return;
@@ -456,7 +457,7 @@ export class ConflictResolverWebServer {
         const resolvedFilePath = path.resolve(filePath);
 
         if (!resolvedFilePath.startsWith(resolvedBasePath + path.sep) && resolvedFilePath !== resolvedBasePath) {
-            console.warn(`[MergeNB Web] Path traversal attempt blocked: ${pathname} -> ${resolvedFilePath}`);
+            logger.warn(`[MergeNB Web] Path traversal attempt blocked: ${pathname} -> ${resolvedFilePath}`);
             res.writeHead(403, { 'Content-Type': 'text/plain' });
             res.end('Forbidden');
             return;
@@ -464,7 +465,7 @@ export class ConflictResolverWebServer {
 
         fs.readFile(filePath, (err, data) => {
             if (err) {
-                console.error(`[MergeNB Web] Failed to read ${filePath}:`, err.message);
+                logger.error(`[MergeNB Web] Failed to read ${filePath}:`, err.message);
                 res.writeHead(404, { 'Content-Type': 'text/plain' });
                 res.end('Not Found');
             } else {
@@ -528,7 +529,7 @@ export class ConflictResolverWebServer {
             !resolvedAssetPath.startsWith(resolvedNotebookDir + path.sep) &&
             resolvedAssetPath !== resolvedNotebookDir
         ) {
-            console.warn(`[MergeNB Web] Notebook asset traversal blocked: ${requestedPath} -> ${resolvedAssetPath}`);
+            logger.warn(`[MergeNB Web] Notebook asset traversal blocked: ${requestedPath} -> ${resolvedAssetPath}`);
             res.writeHead(403, { 'Content-Type': 'text/plain' });
             res.end('Forbidden');
             return;
@@ -642,7 +643,7 @@ export class ConflictResolverWebServer {
             return;
         }
 
-        console.log(`[MergeNB Web] WebSocket connected for session: ${sessionId}`);
+        logger.debug(`[MergeNB Web] WebSocket connected for session: ${sessionId}`);
 
         // Store the connection
         this.connections.set(sessionId, ws);
@@ -660,23 +661,23 @@ export class ConflictResolverWebServer {
         ws.on('message', (data: WebSocket.Data) => {
             try {
                 const message = JSON.parse(data.toString());
-                console.log(`[MergeNB Web] Received message from session ${sessionId}:`, message.command || message.type);
+                logger.debug(`[MergeNB Web] Received message from session ${sessionId}:`, message.command || message.type);
                 
                 if (session?.onMessage) {
                     session.onMessage(message);
                 }
             } catch (error) {
-                console.error('[MergeNB Web] Error parsing WebSocket message:', error);
+                logger.error('[MergeNB Web] Error parsing WebSocket message:', error);
             }
         });
 
         ws.on('close', () => {
-            console.log(`[MergeNB Web] WebSocket closed for session: ${sessionId}`);
+            logger.debug(`[MergeNB Web] WebSocket closed for session: ${sessionId}`);
             this.connections.delete(sessionId);
         });
 
         ws.on('error', (error: Error) => {
-            console.error(`[MergeNB Web] WebSocket error for session ${sessionId}:`, error);
+            logger.error(`[MergeNB Web] WebSocket error for session ${sessionId}:`, error);
         });
 
         // Send ready message to browser

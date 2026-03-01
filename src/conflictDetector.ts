@@ -18,6 +18,7 @@ import * as gitIntegration from './gitIntegration';
 import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
 import { getSettings, MergeNBSettings } from './settings';
+import * as logger from './logger';
 
 function stableStringify(value: unknown): string {
     if (value === undefined) return 'undefined';
@@ -80,13 +81,13 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         const { base, current, incoming } = versions;
 
         // Debug: Check if we're getting different versions
-        console.log('[MergeNB] detectSemanticConflicts for:', filePath);
-        console.log('[MergeNB] base length:', base?.length ?? 0);
-        console.log('[MergeNB] current length:', current?.length ?? 0);
-        console.log('[MergeNB] incoming length:', incoming?.length ?? 0);
-        console.log('[MergeNB] base === current:', base === current);
-        console.log('[MergeNB] base === incoming:', base === incoming);
-        console.log('[MergeNB] current === incoming:', current === incoming);
+        logger.debug('[MergeNB] detectSemanticConflicts for:', filePath);
+        logger.debug('[MergeNB] base length:', base?.length ?? 0);
+        logger.debug('[MergeNB] current length:', current?.length ?? 0);
+        logger.debug('[MergeNB] incoming length:', incoming?.length ?? 0);
+        logger.debug('[MergeNB] base === current:', base === current);
+        logger.debug('[MergeNB] base === incoming:', base === incoming);
+        logger.debug('[MergeNB] current === incoming:', current === incoming);
 
         // Parse each version as a notebook
         let baseNotebook: Notebook | undefined;
@@ -96,19 +97,19 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         try {
             if (base) baseNotebook = parseNotebook(base);
         } catch (error) {
-            console.warn('Failed to parse base notebook:', error);
+            logger.warn('Failed to parse base notebook:', error);
         }
 
         try {
             if (current) currentNotebook = parseNotebook(current);
         } catch (error) {
-            console.warn('Failed to parse current notebook:', error);
+            logger.warn('Failed to parse current notebook:', error);
         }
 
         try {
             if (incoming) incomingNotebook = parseNotebook(incoming);
         } catch (error) {
-            console.warn('Failed to parse incoming notebook:', error);
+            logger.warn('Failed to parse incoming notebook:', error);
         }
 
 
@@ -140,7 +141,7 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
             incomingBranch: incomingBranch || undefined
         };
     } catch (error) {
-        console.error('Error detecting semantic conflicts:', error);
+        logger.error('Error detecting semantic conflicts:', error);
         return null;
     }
 }
