@@ -230,7 +230,15 @@ export function assertNotebookMatches(
 
         if (expected.outputs !== undefined) {
             const actualOutputs = (actual as any).outputs || [];
-            if (JSON.stringify(expected.outputs) !== JSON.stringify(actualOutputs)) {
+            // Strip execution_count from execute_result outputs before comparing —
+            // renumberExecutionCounts() updates that field on the disk copy, but the
+            // expected snapshot captured from the UI still carries the original value.
+            // Cell-level execution_count is already verified separately above.
+            const stripExecCount = (outs: any[]) =>
+                outs.map(o => o.output_type === 'execute_result'
+                    ? (({ execution_count: _ec, ...rest }) => rest)(o)
+                    : o);
+            if (JSON.stringify(stripExecCount(expected.outputs)) !== JSON.stringify(stripExecCount(actualOutputs))) {
                 outputMismatches++;
                 console.log(`Outputs mismatch at cell ${i}:`);
                 console.log(`  Expected: ${JSON.stringify(expected.outputs).substring(0, 100)}...`);
