@@ -149,7 +149,7 @@ npm run lint
 
 Test runner:
 
-See [Tests Overview](src/tests/TESTS.md) for details on test structure and how to run them.
+See [Tests Overview](src/tests/README.md) for details on test structure and how to run them.
 
 ```bash
 npm run test # pick a test (or multiple) to run from an interactive menu. You can also run sandboxes from here. 
