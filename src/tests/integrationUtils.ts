@@ -253,12 +253,20 @@ export async function collectExpectedCellsFromUI(
             }
 
             let metadata: Record<string, unknown> | undefined;
-            if (includeMetadata && (choice === 'base' || choice === 'current' || choice === 'incoming')) {
+            let hasOutputs = false;
+            if ((includeMetadata || includeOutputs) && (choice === 'base' || choice === 'current' || choice === 'incoming')) {
                 const referenceCell = await getColumnCell(row, choice, i);
                 if (!referenceCell) {
                     throw new Error(`Row ${i}: could not read ${choice} cell data`);
                 }
-                metadata = referenceCell.metadata || {};
+                if (includeMetadata) {
+                    metadata = referenceCell.metadata || {};
+                }
+                if (includeOutputs) {
+                    hasOutputs = cellType === 'code' &&
+                        Array.isArray((referenceCell as any).outputs) &&
+                        (referenceCell as any).outputs.length > 0;
+                }
             }
 
             expected.push({
@@ -266,7 +274,7 @@ export async function collectExpectedCellsFromUI(
                 source: resolvedContent,
                 cellType,
                 metadata,
-                hasOutputs: includeOutputs ? false : undefined,
+                hasOutputs: includeOutputs ? hasOutputs : undefined,
                 isConflict: true,
                 isDeleted: false,
             });
