@@ -9,7 +9,10 @@
  * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import CodeMirror from '@uiw/react-codemirror';
+import { LanguageDescription } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
@@ -28,6 +31,7 @@ interface MergeRowProps {
     rowIndex: number;
     conflictIndex: number;
     notebookPath?: string;
+    kernelLanguage?: string;
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onUpdateContent: (index: number, resolvedContent: string) => void;
@@ -43,6 +47,7 @@ export function MergeRowInner({
     rowIndex,
     conflictIndex,
     notebookPath,
+    kernelLanguage = 'python',
     resolutionState,
     onSelectChoice,
     onUpdateContent,
@@ -57,6 +62,12 @@ export function MergeRowInner({
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
     const [showWarning, setShowWarning] = useState(false);
+    const [langExtension, setLangExtension] = useState<any[]>([]);
+
+    useEffect(() => {
+        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        desc?.load().then(lang => setLangExtension([lang]));
+    }, [kernelLanguage]);
 
     // Get content for a given choice
     const getContentForChoice = (choice: ResolutionChoice): string => {
@@ -101,9 +112,9 @@ export function MergeRowInner({
         setPendingChoice(null);
     };
 
-    // Handle content editing in the resolved text area
-    const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        onUpdateContent(conflictIndex, e.target.value);
+    // Handle content editing in the resolved editor
+    const handleContentChange = (value: string) => {
+        onUpdateContent(conflictIndex, value);
     };
 
     // Commit content to history on blur
@@ -290,13 +301,14 @@ export function MergeRowInner({
                             {isContentModified && <span className="modified-badge">(edited)</span>}
                         </span>
                     </div>
-                    <textarea
-                        className="resolved-content-input"
+                    <CodeMirror
                         value={resolutionState.resolvedContent}
                         onChange={handleContentChange}
                         onBlur={handleBlur}
+                        extensions={langExtension}
                         placeholder="Enter cell content..."
-                        rows={Math.max(5, resolutionState.resolvedContent.split('\n').length + 1)}
+                        className="resolved-content-input"
+                        basicSetup={{ lineNumbers: false, foldGutter: false }}
                     />
                 </div>
             )}

@@ -174,6 +174,13 @@ export function ConflictResolver({
         return Boolean(element.closest('[contenteditable="true"]'));
     }, []);
 
+    const kernelLanguage = useMemo(() => {
+        const meta = conflict.semanticConflict?.base?.metadata
+            ?? conflict.semanticConflict?.current?.metadata
+            ?? conflict.semanticConflict?.incoming?.metadata;
+        return meta?.kernelspec?.language ?? meta?.language_info?.name ?? 'python';
+    }, [conflict.semanticConflict]);
+
     const conflictRows = useMemo(() => rows.filter(r => r.type === 'conflict'), [rows]);
     const totalConflicts = conflictRows.length;
     const resolvedCount = choices.size;
@@ -625,6 +632,7 @@ export function ConflictResolver({
                                     rowIndex={i}
                                     conflictIndex={conflictIdx}
                                     notebookPath={conflict.filePath}
+                                    kernelLanguage={kernelLanguage}
                                     resolutionState={resolutionState}
                                     onSelectChoice={handleSelectChoice}
                                     onUpdateContent={handleUpdateContent}
