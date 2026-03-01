@@ -8,6 +8,7 @@ import MarkdownIt from 'markdown-it';
 import katex from '@vscode/markdown-it-katex';
 import DOMPurify from 'dompurify';
 import { escapeHtml } from '../../notebookUtils';
+import * as logger from '../../logger';
 
 // Initialize markdown-it with KaTeX plugin
 const md = MarkdownIt({
@@ -26,7 +27,7 @@ export function renderMarkdown(source: string): string {
         // Sanitize HTML to prevent XSS
         return DOMPurify.sanitize(rawHtml);
     } catch (err) {
-        console.error('[MergeNB] Markdown render error:', err);
+        logger.error('[MergeNB] Markdown render error:', err);
         return `<pre>${escapeHtml(source)}</pre>`;
     }
 }

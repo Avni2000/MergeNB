@@ -21,6 +21,7 @@ import * as fs from 'fs';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import type { API as GitAPI, Change, GitExtension, Repository } from './typings/git';
+import * as logger from './logger';
 
 // VSCode is optional - only needed for workspace-aware helpers.
 let vscode: typeof import('vscode') | undefined;
@@ -460,7 +461,7 @@ export async function ensureSupportedMergeTool(
 function toGitPath(filePath: string): string {
     const converted = filePath.replace(/\\/g, '/');
     if (converted !== filePath) {
-        console.log(`[GitIntegration] Path conversion: '${filePath}' -> '${converted}'`);
+        logger.debug(`[GitIntegration] Path conversion: '${filePath}' -> '${converted}'`);
     }
     return converted;
 }
@@ -631,7 +632,7 @@ function warnApiStrictOnce(key: string, message: string): void {
         return;
     }
     apiStrictWarningKeys.add(key);
-    console.warn(`[GitIntegration] ${message}`);
+    logger.warn(`[GitIntegration] ${message}`);
 }
 
 async function getGitApi(): Promise<GitAPI | null> {
@@ -1199,7 +1200,7 @@ async function stageFileWithGitCli(gitRoot: string, pathCandidates: string[]): P
     }
 
     if (lastError) {
-        console.error(`[GitIntegration] Failed to stage via Git CLI in ${gitRoot}: ${String(lastError)}`);
+        logger.error(`[GitIntegration] Failed to stage via Git CLI in ${gitRoot}: ${String(lastError)}`);
     }
     return false;
 }
@@ -1233,7 +1234,7 @@ export async function getUnmergedFileStatus(filePath: string): Promise<GitUnmerg
         const statusEntry = await resolveStatusEntryForFile(gitRoot, filePath);
         return statusEntry?.status ?? null;
     } catch (error) {
-        console.error(`[GitIntegration] Error in getUnmergedFileStatus: ${String(error)}`);
+        logger.error(`[GitIntegration] Error in getUnmergedFileStatus: ${String(error)}`);
         return null;
     }
 }
@@ -1413,7 +1414,7 @@ export async function stageFile(filePath: string): Promise<boolean> {
                 invalidateUnmergedCachesForRoot(context.gitRoot);
                 return true;
             }
-            console.error(`[GitIntegration] Failed to stage ${filePath}: ${String(error)}`);
+            logger.error(`[GitIntegration] Failed to stage ${filePath}: ${String(error)}`);
             return false;
         }
     }
