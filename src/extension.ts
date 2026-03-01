@@ -402,6 +402,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	if (isTestMode) {
+		getWebServer().setTestMode(true);
 		context.subscriptions.push(
 			vscode.commands.registerCommand('merge-nb.getWebServerPort', () => {
 				const webServer = getWebServer();

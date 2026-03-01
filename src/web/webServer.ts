@@ -85,6 +85,7 @@ export class ConflictResolverWebServer {
     // Extension URI for resolving static assets
     private extensionUri: UriLike | undefined;
     private latestSessionUrl: string | undefined;
+    private testMode: boolean = false;
 
     private constructor() {}
 
@@ -103,6 +104,18 @@ export class ConflictResolverWebServer {
      */
     public setExtensionUri(uri: UriLike): void {
         this.extensionUri = uri;
+    }
+
+    /**
+     * Enable test mode. When enabled, the full session URL (including token)
+     * is stored so that test harnesses can retrieve it via getLatestSessionUrl().
+     * This should never be enabled in production.
+     */
+    public setTestMode(enabled: boolean): void {
+        this.testMode = enabled;
+        if (!enabled) {
+            this.latestSessionUrl = undefined;
+        }
     }
 
     /**
@@ -269,12 +282,15 @@ export class ConflictResolverWebServer {
 
         // Open the browser to the session URL
         const sessionUrl = `${this.getServerUrl()}/?session=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(sessionToken)}`;
-        this.latestSessionUrl = sessionUrl;
-        console.log(`[MergeNB Web] Opening browser to: ${sessionUrl}`);
+        if (this.testMode) {
+            this.latestSessionUrl = sessionUrl;
+        }
+        const redactedUrl = `${this.getServerUrl()}/?session=${encodeURIComponent(sessionId)}&token=REDACTED`;
+        console.log(`[MergeNB Web] Opening browser to: ${redactedUrl}`);
         if (vscode) {
             await vscode.env.openExternal(vscode.Uri.parse(sessionUrl));
         } else {
-            console.log(`[MergeNB Web] VSCode not available, skipping browser open. URL: ${sessionUrl}`);
+            console.log(`[MergeNB Web] VSCode not available, skipping browser open. URL: ${redactedUrl}`);
         }
 
         return connectionPromise;
@@ -325,17 +341,30 @@ export class ConflictResolverWebServer {
     }
 
     /**
+     * Set baseline security headers on every response.
+     */
+    private setSecurityHeaders(res: http.ServerResponse): void {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'");
+        res.setHeader('Referrer-Policy', 'no-referrer');
+        res.setHeader('Cache-Control', 'no-store');
+    }
+
+    /**
      * Handle HTTP requests.
      */
     private handleHttpRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+        this.setSecurityHeaders(res);
+
         const url = new URL(req.url || '/', `http://${req.headers.host}`);
         const pathname = url.pathname;
         const sessionId = url.searchParams.get('session');
         const sessionToken = url.searchParams.get('token');
         const origin = req.headers.origin;
-        const expectedOrigin = `${url.protocol}//${url.host}`;
+        const expectedOrigin = `http://${this.host}:${this.port}`;
 
-        // Only allow same-origin requests.
+        // Only allow same-origin requests (compared against server-bound address, not request headers).
         if (origin && origin === expectedOrigin) {
             res.setHeader('Access-Control-Allow-Origin', origin);
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -364,7 +393,6 @@ export class ConflictResolverWebServer {
 <body style="font-family: system-ui; padding: 40px; background: #1e1e1e; color: #d4d4d4;">
     <h1>Session Not Found</h1>
     <p>The requested conflict resolution session could not be found.</p>
-    <p>Session ID: ${sessionId || 'none'}</p>
     <p>This may happen if:</p>
     <ul>
         <li>The session has expired or been closed</li>
@@ -584,15 +612,12 @@ export class ConflictResolverWebServer {
     </style>
 </head>
 <body>
-    <div id="root">
+    <div id="root" data-theme="${theme === 'dark' ? 'dark' : 'light'}">
         <div class="loading-container">
             <div class="spinner"></div>
             <p>Loading MergeNB...</p>
         </div>
     </div>
-    <script>
-        window.__MERGENB_INITIAL_THEME = '${theme === 'dark' ? 'dark' : 'light'}';
-    </script>
     <script type="module" src="/client.js"></script>
 </body>
 </html>`;

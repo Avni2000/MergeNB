@@ -148,12 +148,22 @@ export async function waitForSessionUrl(
     const maxAttempts = Math.ceil(timeoutMs / 500);
     for (let i = 0; i < maxAttempts; i++) {
         await new Promise(r => setTimeout(r, 500));
-        const sessionUrl = await Promise.resolve(getSessionUrl());
-        if (typeof sessionUrl === 'string' && sessionUrl.startsWith('http://')) {
-            return sessionUrl;
+        const raw = await Promise.resolve(getSessionUrl());
+        if (typeof raw !== 'string') continue;
+
+        let parsed: URL;
+        try {
+            parsed = new URL(raw);
+        } catch {
+            continue;
         }
+
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') continue;
+        if (!parsed.searchParams.has('session') || !parsed.searchParams.has('token')) continue;
+
+        return raw;
     }
-    throw new Error('No session URL was created within timeout');
+    throw new Error('No valid session URL was created within timeout (requires http(s) with session & token params)');
 }
 
 /** Validate that a resolved notebook has valid .ipynb structure */
