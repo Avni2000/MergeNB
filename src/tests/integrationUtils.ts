@@ -1,3 +1,14 @@
+/**
+ * @file integrationUtils.ts
+ * @description Playwright helpers for driving the MergeNB conflict resolution UI.
+ *
+ * Provides utilities for:
+ * - Reading cell data from merge row columns
+ * - Verifying textarea content matches a chosen side
+ * - Polling conflict counters
+ * - Interacting with the undo/redo history panel
+ * - Building the expected cell list from the live UI before applying a resolution
+ */
 
 import { type Page, type Locator } from 'playwright';
 import { type ExpectedCell, getCellSource, parseCellFromAttribute } from './testHelpers';
@@ -131,6 +142,7 @@ export async function waitForAllConflictsResolved(
     return last;
 }
 
+/** Wait until the resolved count reaches `expectedResolved` or timeout. */
 export async function waitForResolvedCount(
     page: Page,
     expectedResolved: number,
@@ -149,18 +161,21 @@ export async function waitForResolvedCount(
     return last;
 }
 
+/** Click the undo button in the history panel. */
 export async function clickHistoryUndo(page: Page): Promise<void> {
     const button = page.locator('[data-testid="history-undo"]');
     await button.waitFor({ timeout: 5000 });
     await button.click();
 }
 
+/** Click the redo button in the history panel. */
 export async function clickHistoryRedo(page: Page): Promise<void> {
     const button = page.locator('[data-testid="history-redo"]');
     await button.waitFor({ timeout: 5000 });
     await button.click();
 }
 
+/** Return the text of every entry in the history panel, in order. */
 export async function getHistoryEntries(page: Page): Promise<string[]> {
     const items = page.locator('[data-testid="history-item"]');
     const count = await items.count();
@@ -171,6 +186,17 @@ export async function getHistoryEntries(page: Page): Promise<string[]> {
     return entries;
 }
 
+/**
+ * Walk all merge rows in the UI and build the list of cells we expect to find
+ * on disk after the resolution is applied.
+ *
+ * For **identical rows** the cell data is read directly from the DOM attribute.
+ * For **conflict rows** the `resolveConflictChoice` callback is invoked so the
+ * caller can drive the UI (click a side, delete, etc.) and return which choice
+ * was made. The resolved textarea value is then captured as the expected source.
+ *
+ * Call this *before* clicking Apply so the UI state is still intact.
+ */
 export async function collectExpectedCellsFromUI(
     page: Page,
     options: {
