@@ -39,8 +39,6 @@ export interface MergeRow {
     anchorPosition?: number;
     /** Whether this row is in edit mode */
     isEditing?: boolean;
-    /** Whether this row is being dragged */
-    isDragging?: boolean;
 }
 
 /**
@@ -61,7 +59,7 @@ export interface UnifiedConflictData {
 }
 
 /**
- * Resolved row from the UI - represents the final state after drag/drop and user edits.
+ * Resolved row from the UI - represents the final state after user edits.
  * This is the source of truth for reconstructing the notebook.
  */
 export interface ResolvedRow {

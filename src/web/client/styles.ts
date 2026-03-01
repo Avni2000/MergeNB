@@ -5,7 +5,7 @@
 
 export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     const isDark = theme === 'dark';
-    
+
     // Checkered background gradients
     const DARK_GRID_GRADIENT = `linear-gradient(to right, rgba(255,255,255,0.04) 1px, transparent 1px),
         linear-gradient(to bottom, rgba(255,255,255,0.04) 1px, transparent 1px)`;
@@ -1064,47 +1064,7 @@ body {
     background: var(--bg-secondary);
 }
 
-/* Drag and drop styles */
-.row-drag-handle {
-    position: absolute;
-    top: 8px;
-    left: 8px;
-    width: 18px;
-    height: 18px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-tertiary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    font-size: 10px;
-    color: var(--text-secondary);
-    cursor: grab;
-    user-select: none;
-    z-index: 2;
-}
 
-.row-drag-handle:hover {
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-}
-
-.row-drag-handle:active {
-    cursor: grabbing;
-}
-
-.merge-row.dragging {
-    opacity: 0.5;
-    cursor: move;
-}
-
-.merge-row[draggable="true"] {
-    cursor: grab;
-}
-
-.merge-row[draggable="true"]:active {
-    cursor: grabbing;
-}
 
 /* Conflict row - red border for actual conflicts
    (consolidated rule moved earlier to avoid duplicate definitions) */
@@ -1134,23 +1094,6 @@ body {
     padding-bottom: 16px;
 }
 
-/* Drop zones for drag and drop */
-.drop-zone {
-    min-height: 40px;
-    border: 2px dashed transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    font-size: 12px;
-    margin: 4px 0;
-}
-
-.drop-zone.drop-target {
-    border-color: var(--accent-blue);
-    background: rgba(0, 122, 204, 0.15);
-}
-
 /* Cell placeholder (for deleted/not present cells) */
 .cell-placeholder {
     min-height: 60px;
@@ -1165,30 +1108,6 @@ body {
     background: var(--cell-placeholder-bg);
 }
 
-.cell-placeholder.drop-target {
-    border-color: var(--accent-blue);
-    border-style: solid;
-    background: rgba(0, 122, 204, 0.2);
-}
-
-.cell-placeholder.drop-target .placeholder-text {
-    display: none;
-}
-
-/* Make cells in unmatched rows draggable */
-.merge-row.unmatched-row .notebook-cell {
-    cursor: grab;
-}
-
-.merge-row.unmatched-row .notebook-cell:active {
-    cursor: grabbing;
-}
-
-/* While actively dragging a cell */
-.merge-row.dragging .notebook-cell {
-    opacity: 0.5;
-    outline: 2px dashed var(--accent-blue);
-}
 
 /* Delete button */
 .btn-delete {

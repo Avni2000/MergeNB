@@ -40,7 +40,7 @@ export interface UnifiedConflict {
 }
 
 /**
- * Resolved row from the UI - represents the final state after drag/drop and user edits.
+ * Resolved row from the UI - represents the final state after user edits.
  * This is the source of truth for reconstructing the notebook.
  */
 export interface ResolvedRow {
@@ -67,7 +67,7 @@ export interface ResolvedRow {
  * Resolution result from the panel.
  * 
  * The resolvedRows field is now the primary source of truth - it contains the complete
- * cell structure after all drag/drop operations and user edits.
+ * cell structure after user edits.
  */
 export interface UnifiedResolution {
     type: 'semantic';
