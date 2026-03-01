@@ -1,3 +1,15 @@
+/**
+ * @file testHarness.ts
+ * @description VS Code extension host lifecycle helpers for integration tests.
+ *
+ * Runs inside the `@vscode/test-electron` extension host. Provides:
+ * - `readTestConfig`  — reads the JSON config written by the runner before launch
+ * - `setupConflictResolver` — opens the conflict file, starts the web server,
+ *   and connects a Playwright browser to the live session UI
+ * - `applyResolutionAndReadNotebook` — clicks Apply and reads the resolved notebook
+ * - `assertNotebookMatches` — compares the resolved notebook against expected cells
+ */
+
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -50,11 +62,19 @@ function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** Read the test config JSON written to disk by the runner before VS Code launched. */
 export function readTestConfig(): TestConfig {
     const configPath = path.join(os.tmpdir(), 'mergenb-test-config.json');
     return JSON.parse(fs.readFileSync(configPath, 'utf8'));
 }
 
+/**
+ * Open the conflict notebook, run `merge-nb.findConflicts`, wait for the web
+ * server, and connect a Playwright browser to the session UI.
+ *
+ * Returns a `ConflictSession` with the `page` ready for UI interactions.
+ * Closes the browser and rethrows if navigation or header verification fails.
+ */
 export async function setupConflictResolver(
     config: TestConfig,
     options: SetupOptions = {}
@@ -115,6 +135,10 @@ export async function setupConflictResolver(
     }
 }
 
+/**
+ * Check "Mark as resolved", click Apply, wait for the file to be written,
+ * then read and return the resolved notebook from disk.
+ */
 export async function applyResolutionAndReadNotebook(
     page: Page,
     conflictFile: string,
@@ -144,6 +168,10 @@ export async function applyResolutionAndReadNotebook(
     return JSON.parse(notebookContent);
 }
 
+/**
+ * Build an `ExpectedCell[]` directly from a notebook file (used when you want
+ * to compare two resolved notebooks rather than UI state against disk state).
+ */
 export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
     if (!notebook || !Array.isArray(notebook.cells)) {
         return [];
@@ -163,6 +191,16 @@ export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
     });
 }
 
+/**
+ * Assert that a resolved notebook on disk matches the expected cell list.
+ *
+ * Checks (in order): cell count, source, cell_type, metadata (if
+ * `compareMetadata`), outputs, and execution counts (if `compareExecutionCounts`).
+ * When `renumberEnabled` is true, execution counts are expected to increment
+ * from 1 for every code cell that has outputs.
+ *
+ * Throws a descriptive error on the first category of mismatch found.
+ */
 export function assertNotebookMatches(
     expectedCells: ExpectedCell[],
     resolvedNotebook: any,
