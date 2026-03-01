@@ -44,7 +44,7 @@ jobs:
         run: echo "dir=$(npm config get cache)" >> "$GITHUB_OUTPUT"
 
       - name: Cache npm deps
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ steps.npm-cache-dir.outputs.dir }}
           key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
@@ -53,7 +53,7 @@ jobs:
 
       - name: Cache node_modules
         id: node-modules-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: node_modules
           key: ${{ runner.os }}-modules-vscode-${{ matrix.vscode-version }}-pw-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
@@ -76,7 +76,7 @@ jobs:
       - name: Cache Playwright browsers (Linux)
         if: runner.os == 'Linux'
         id: playwright-cache-linux
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
@@ -87,7 +87,7 @@ jobs:
       - name: Cache Playwright browsers (Windows)
         if: runner.os == 'Windows'
         id: playwright-cache-windows
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
@@ -98,7 +98,7 @@ jobs:
       - name: Cache Playwright browsers (macOS)
         if: runner.os == 'macOS'
         id: playwright-cache-macos
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
           key: ${{ runner.os }}-playwright-${{ matrix.playwright-version }}-${{ hashFiles('package-lock.json') }}
@@ -108,7 +108,7 @@ jobs:
 
       # Cache VS Code test resources
       - name: Cache VS Code test resources
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .vscode-test
           key: ${{ runner.os }}-vscode-${{ matrix.vscode-version }}-${{ hashFiles('package-lock.json') }}
