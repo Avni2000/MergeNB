@@ -439,7 +439,7 @@ export function ConflictResolver({
                         </span>
                         {unmappedReorderConflict && !takeAllChoice && (
                             <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginRight: 10 }}>
-                                Resolve order with an "All ..." choice
+                                Reorder conflict unresolved. Choose All Base, All Current, or All Incoming to set final cell order.
                             </span>
                         )}
                         <div className="header-group">

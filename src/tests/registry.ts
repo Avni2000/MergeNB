@@ -237,6 +237,20 @@ export const TEST_GROUPS: TestGroup[] = [
                 kind: 'manual',
                 includeInAll: false,
             },
+            {
+                id: 'manual_07',
+                description: 'Manual sandbox with 07 reorder-only fixtures',
+                notebooks: ['07_base.ipynb', '07_current.ipynb', '07_incoming.ipynb'],
+                kind: 'manual',
+                includeInAll: false,
+            },
+            {
+                id: 'manual_08',
+                description: 'Manual sandbox with 08 mixed reorder fixtures',
+                notebooks: ['08_base.ipynb', '08_current.ipynb', '08_incoming.ipynb'],
+                kind: 'manual',
+                includeInAll: false,
+            },
         ],
     },
 ];
