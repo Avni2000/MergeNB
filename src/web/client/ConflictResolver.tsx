@@ -51,6 +51,49 @@ interface HistoryState {
     index: number;
 }
 
+function conflictHasCellIndices(conflict: SemanticConflict): boolean {
+    return (
+        conflict.baseCellIndex !== undefined ||
+        conflict.currentCellIndex !== undefined ||
+        conflict.incomingCellIndex !== undefined
+    );
+}
+
+export function collectRowConflictIndexes(rows: MergeRowType[]): Set<number> {
+    const indexes = new Set<number>();
+    for (const row of rows) {
+        if (row.type === 'conflict' && row.conflictIndex !== undefined) {
+            indexes.add(row.conflictIndex);
+        }
+    }
+    return indexes;
+}
+
+export function hasUnmappedReorderConflict(
+    semanticConflicts: SemanticConflict[] | undefined,
+    rowConflictIndexes: Set<number>
+): boolean {
+    if (!semanticConflicts) return false;
+    return semanticConflicts.some((c, index) =>
+        c.type === 'cell-reordered' &&
+        !conflictHasCellIndices(c) &&
+        !rowConflictIndexes.has(index)
+    );
+}
+
+function countResolvedRowConflicts(
+    rowConflictIndexes: Set<number>,
+    choices: Map<number, ResolutionState>
+): number {
+    let resolved = 0;
+    for (const index of rowConflictIndexes) {
+        if (choices.has(index)) {
+            resolved++;
+        }
+    }
+    return resolved;
+}
+
 function cloneChoices(source: Map<number, ResolutionState>): Map<number, ResolutionState> {
     return new Map(Array.from(source.entries()).map(([key, value]) => [key, { ...value }]));
 }
@@ -175,8 +218,15 @@ export function ConflictResolver({
     }, []);
 
     const conflictRows = useMemo(() => rows.filter(r => r.type === 'conflict'), [rows]);
-    const totalConflicts = conflictRows.length;
-    const resolvedCount = choices.size;
+    const rowConflictIndexes = useMemo(() => collectRowConflictIndexes(rows), [rows]);
+    const unmappedReorderConflict = useMemo(() => hasUnmappedReorderConflict(
+        conflict.semanticConflict?.semanticConflicts,
+        rowConflictIndexes
+    ), [conflict.semanticConflict?.semanticConflicts, rowConflictIndexes]);
+    const totalConflicts = rowConflictIndexes.size + (unmappedReorderConflict ? 1 : 0);
+    const resolvedCount = countResolvedRowConflicts(rowConflictIndexes, choices) + (
+        unmappedReorderConflict && takeAllChoice ? 1 : 0
+    );
     const allResolved = resolvedCount === totalConflicts;
     const canUndo = history.index > 0;
     const canRedo = history.index < history.entries.length - 1;
@@ -220,9 +270,12 @@ export function ConflictResolver({
             resolvedContent
         });
         setChoices(next);
-        setTakeAllChoice(undefined);
-        recordHistory(`Resolve conflict ${index + 1} (${choice})`, next, rowsRef.current, { takeAllChoice: undefined });
-    }, [recordHistory]);
+        const nextTakeAllChoice = unmappedReorderConflict ? takeAllChoiceRef.current : undefined;
+        if (!unmappedReorderConflict) {
+            setTakeAllChoice(undefined);
+        }
+        recordHistory(`Resolve conflict ${index + 1} (${choice})`, next, rowsRef.current, { takeAllChoice: nextTakeAllChoice });
+    }, [recordHistory, unmappedReorderConflict]);
 
     /** Handle user editing the resolved content (just updates the text) */
     const handleUpdateContent = useCallback((index: number, resolvedContent: string) => {
@@ -276,7 +329,8 @@ export function ConflictResolver({
             });
             didChange = true;
         });
-        if (!didChange) return;
+        const shouldResolveUnmappedReorder = unmappedReorderConflict && takeAllChoiceRef.current !== choice;
+        if (!didChange && !shouldResolveUnmappedReorder) return;
         setChoices(next);
         setTakeAllChoice(choice);
         recordHistory(`Accept all ${choice}`, next, rowsRef.current, { takeAllChoice: choice });
@@ -373,12 +427,14 @@ export function ConflictResolver({
             };
         });
 
-        const semanticChoice = (
-            takeAllChoice &&
-            isTakeAllChoiceConsistent(rows, choices, takeAllChoice, true)
-        )
+        const semanticChoice = unmappedReorderConflict
             ? takeAllChoice
-            : inferTakeAllChoice(rows, choices);
+            : (
+                takeAllChoice &&
+                isTakeAllChoiceConsistent(rows, choices, takeAllChoice, true)
+            )
+                ? takeAllChoice
+                : inferTakeAllChoice(rows, choices);
         onResolve(markAsResolved, renumberExecutionCounts, resolvedRows, semanticChoice);
     };
 
@@ -405,11 +461,16 @@ export function ConflictResolver({
                     </div>
                     <span className="file-path">{fileName}</span>
                 </div>
-                <div className="header-right">
-                    <span className="conflict-counter">
-                        {resolvedCount} / {totalConflicts} resolved
-                    </span>
-                    <div className="header-group">
+                    <div className="header-right">
+                        <span className="conflict-counter">
+                            {resolvedCount} / {totalConflicts} resolved
+                        </span>
+                        {unmappedReorderConflict && !takeAllChoice && (
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)', marginRight: 10 }}>
+                                Resolve order with an "All ..." choice
+                            </span>
+                        )}
+                        <div className="header-group">
                         <button
                             className="btn btn-secondary"
                             onClick={handleUndo}

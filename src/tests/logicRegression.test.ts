@@ -9,8 +9,12 @@ import * as assert from 'assert';
 import { selectNonConflictMergedCell } from '../notebookUtils';
 import { renumberExecutionCounts } from '../notebookParser';
 import { analyzeSemanticConflictsFromMappings } from '../conflictDetector';
-import type { NotebookCell, Notebook } from '../types';
+import { inferPreferredSide } from '../resolver';
+import { collectRowConflictIndexes, hasUnmappedReorderConflict } from '../web/client/ConflictResolver';
+import type { MergeRow as MergeRowType } from '../web/client/types';
+import type { NotebookCell, Notebook, SemanticConflict } from '../types';
 import type { CellMapping } from '../types';
+import type { ResolvedRow } from '../web/webTypes';
 
 export async function run(): Promise<void> {
     // ---------------------------------------------------------------------
@@ -262,5 +266,77 @@ export async function run(): Promise<void> {
     assert.ok(
         multiConflicts.indexOf(cellModified) < multiConflicts.indexOf(metadataChanged),
         'cell-modified should appear before metadata-changed in the conflict list'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: reorder-only semantic conflicts (no cell indices) must be
+    // detectable as "unmapped reorder" so UI accounting cannot drop them.
+    // ---------------------------------------------------------------------
+    const rows: MergeRowType[] = [
+        { type: 'identical', currentCellIndex: 0, incomingCellIndex: 0 },
+        { type: 'conflict', conflictIndex: 4, currentCellIndex: 1, incomingCellIndex: 1 },
+        { type: 'conflict', conflictIndex: 4, currentCellIndex: 2, incomingCellIndex: 2 },
+    ];
+    const rowConflictIndexes = collectRowConflictIndexes(rows);
+    assert.deepStrictEqual([...rowConflictIndexes], [4], 'Row conflict indexes should be deduplicated');
+
+    const reorderOnly: SemanticConflict[] = [{
+        type: 'cell-reordered',
+        description: 'Cells reordered',
+    }];
+    assert.strictEqual(
+        hasUnmappedReorderConflict(reorderOnly, new Set<number>()),
+        true,
+        'Expected reorder-only conflict with no indices to be treated as unmapped'
+    );
+    assert.strictEqual(
+        hasUnmappedReorderConflict(reorderOnly, new Set<number>([0])),
+        false,
+        'Expected reorder-only conflict mapped by row index to not be treated as unmapped'
+    );
+    assert.strictEqual(
+        hasUnmappedReorderConflict([{
+            type: 'cell-reordered',
+            currentCellIndex: 0,
+            description: 'Indexed reorder',
+        }], new Set<number>()),
+        false,
+        'Expected indexed reorder conflict to not be treated as unmapped'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: explicit semanticChoice hint should drive ordering even when
+    // there are no per-row resolution choices (reorder-only flow).
+    // ---------------------------------------------------------------------
+    const hintOnlyRows: ResolvedRow[] = [
+        { currentCellIndex: 0, incomingCellIndex: 1 },
+    ];
+    assert.strictEqual(
+        inferPreferredSide(hintOnlyRows, 'incoming'),
+        'incoming',
+        'Expected preferredSideHint to be used when rows have no explicit resolutions'
+    );
+
+    const mixedRows: ResolvedRow[] = [
+        {
+            currentCell: { cell_type: 'code', source: 'a', metadata: {} },
+            incomingCell: { cell_type: 'code', source: 'a', metadata: {} },
+            resolution: { choice: 'current', resolvedContent: 'a' },
+        },
+        {
+            currentCell: { cell_type: 'code', source: 'b', metadata: {} },
+            incomingCell: { cell_type: 'code', source: 'b', metadata: {} },
+            resolution: { choice: 'incoming', resolvedContent: 'b' },
+        },
+    ];
+    assert.strictEqual(
+        inferPreferredSide(mixedRows),
+        undefined,
+        'Expected mixed manual choices to not infer a global preferred side'
+    );
+    assert.strictEqual(
+        inferPreferredSide(mixedRows, 'current'),
+        'current',
+        'Expected explicit preferredSideHint to override mixed per-row choices'
     );
 }

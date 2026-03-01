@@ -139,11 +139,13 @@ function isConsistentTakeAllSelection(
     return sawSideSelection;
 }
 
-function inferPreferredSide(
+export function inferPreferredSide(
     resolvedRows: import('./web/webTypes').ResolvedRow[],
     preferredSideHint?: PreferredSide
 ): PreferredSide | undefined {
-    if (preferredSideHint && isConsistentTakeAllSelection(resolvedRows, preferredSideHint, true)) {
+    // The UI now emits an explicit semanticChoice for reorder-only conflicts,
+    // where there may be zero per-row resolution objects.
+    if (preferredSideHint) {
         return preferredSideHint;
     }
 
@@ -759,7 +761,7 @@ export class NotebookConflictResolver {
         const resolvedCells: NotebookCell[] = [];
 
         // Detect a uniform "take all" action (e.g. all base/current/incoming).
-        // If the UI provides an explicit choice (semanticChoice), use it when valid.
+        // Prefer an explicit semanticChoice from UI (including reorder-only flows).
         // Otherwise infer with strict delete-side consistency checks.
         const preferredSide = inferPreferredSide(resolvedRows, preferredSideHint);
 
