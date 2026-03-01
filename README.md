@@ -149,8 +149,10 @@ npm run lint
 
 Test runner:
 
+See [Tests Overview](src/tests/TESTS.md) for details on test structure and how to run them.
+
 ```bash
-npm run test
+npm run test # pick a test (or multiple) to run from an interactive menu. You can also run sandboxes from here. 
 npm run test:all
 npm run test:list
 ```
@@ -168,13 +170,6 @@ node out/tests/runIntegrationTest.js --manual manual_02
 # optional: override deterministic sandbox path
 MERGENB_MANUAL_SANDBOX_DIR=/path/to/sandbox npm run test --manual 02
 ```
-
-Manual sandboxes default to a deterministic workspace at `$TMP/.mergenb/manual-sandbox`
-and launch with `code --reuse-window` so one VS Code window can be reused.
-`--manual` accepts exactly one fixture per run (for example, `02`).
-Each sandbox starts with an active merge conflict in `conflict.ipynb` and includes
-`{original-notebooks}/base.ipynb`, `{original-notebooks}/current.ipynb`, and
-`{original-notebooks}/incoming.ipynb` for quick reference.
 
 ## Contributing
 
