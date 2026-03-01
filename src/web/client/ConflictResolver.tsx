@@ -925,11 +925,14 @@ function buildMergeRowsFromSemantic(
 ): MergeRowType[] {
     const rows: MergeRowType[] = [];
     const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();
-    const conflictPriority: Record<string, number> = {
+    const conflictPriority: Record<SemanticConflict['type'], number> = {
         'cell-modified': 0,
-        'metadata-changed': 1,
-        'outputs-changed': 2,
-        'execution-count-changed': 3
+        'cell-added': 1,
+        'cell-deleted': 2,
+        'cell-reordered': 3,
+        'metadata-changed': 4,
+        'outputs-changed': 5,
+        'execution-count-changed': 6
     };
 
     conflict.semanticConflicts.forEach((c, i) => {
