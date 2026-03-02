@@ -11,12 +11,12 @@
 
 import React, { useState, useEffect } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { LanguageDescription, syntaxHighlighting } from '@codemirror/language';
+import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
-import { classHighlighter } from '@lezer/highlight';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
+import { createMergeNBTheme, mergeNBEditorStructure } from './editorTheme';
 
 /** Resolution state for a cell */
 interface ResolutionState {
@@ -40,6 +40,7 @@ interface MergeRowProps {
     showOutputs?: boolean;
     showBaseColumn?: boolean;
     showCellHeaders?: boolean;
+    theme?: 'dark' | 'light';
     'data-testid'?: string;
 }
 
@@ -56,6 +57,7 @@ export function MergeRowInner({
     showOutputs = true,
     showBaseColumn = true,
     showCellHeaders = false,
+    theme = 'light',
     'data-testid': testId,
 }: MergeRowProps): React.ReactElement {
     const isConflict = row.type === 'conflict';
@@ -70,9 +72,8 @@ export function MergeRowInner({
         desc?.load().then(lang => setLangExtension([lang]));
     }, [kernelLanguage]);
 
-    // classHighlighter adds predictable .tok-* CSS classes on top of the
-    // defaultHighlightStyle colours already provided by basicSetup.
-    const editorExtensions = [...langExtension, syntaxHighlighting(classHighlighter)];
+    // createMergeNBTheme handles all syntax coloring; no separate classHighlighter needed.
+    const editorExtensions = [...langExtension, mergeNBEditorStructure];
 
     // Get content for a given choice
     const getContentForChoice = (choice: ResolutionChoice): string => {
@@ -148,6 +149,8 @@ export function MergeRowInner({
                             cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
                             side="current"
                             notebookPath={notebookPath}
+                            kernelLanguage={kernelLanguage}
+                            theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
                         />
@@ -210,6 +213,8 @@ export function MergeRowInner({
                                 notebookPath={notebookPath}
                                 isConflict={true}
                                 compareCell={row.currentCell || row.incomingCell}
+                                kernelLanguage={kernelLanguage}
+                                theme={theme}
                                 showOutputs={showOutputs}
                                 showCellHeaders={showCellHeaders}
                             />
@@ -231,6 +236,8 @@ export function MergeRowInner({
                             compareCell={row.incomingCell || row.baseCell}
                             baseCell={row.baseCell}
                             diffMode={diffMode}
+                            kernelLanguage={kernelLanguage}
+                            theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
                         />
@@ -251,6 +258,8 @@ export function MergeRowInner({
                             compareCell={row.currentCell || row.baseCell}
                             baseCell={row.baseCell}
                             diffMode={diffMode}
+                            kernelLanguage={kernelLanguage}
+                            theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
                         />
@@ -314,7 +323,7 @@ export function MergeRowInner({
                         placeholder="Enter cell content..."
                         className="resolved-content-input"
                         basicSetup={{ lineNumbers: false, foldGutter: false }}
-                        
+                        theme={createMergeNBTheme(theme)}
                     />
                 </div>
             )}

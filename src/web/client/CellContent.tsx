@@ -4,6 +4,9 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import CodeMirror from '@uiw/react-codemirror';
+import { LanguageDescription } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
 import { IRenderMime, MimeModel, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 import MarkdownIt from 'markdown-it';
@@ -12,6 +15,7 @@ import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
 import * as logger from '../../logger';
+import { createMergeNBTheme, mergeNBEditorStructure } from './editorTheme';
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
@@ -51,6 +55,8 @@ interface CellContentProps {
     diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
     showCellHeaders?: boolean;
+    kernelLanguage?: string;
+    theme?: 'dark' | 'light';
 }
 
 export function CellContentInner({
@@ -64,6 +70,8 @@ export function CellContentInner({
     diffMode = 'base',
     showOutputs = true,
     showCellHeaders = false,
+    kernelLanguage,
+    theme = 'light',
 }: CellContentProps): React.ReactElement {
     const renderMimeRegistry = useMemo(
         () => getRenderMimeRegistry(notebookPath),
@@ -73,6 +81,15 @@ export function CellContentInner({
         () => (cell ? encodeURIComponent(JSON.stringify(cell)) : ''),
         [cell]
     );
+
+    // Load syntax language extension for CodeMirror code cells.
+    // Must be declared before any early returns (Rules of Hooks).
+    const [langExtension, setLangExtension] = useState<any[]>([]);
+    useEffect(() => {
+        if (!kernelLanguage) return;
+        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        desc?.load().then(lang => setLangExtension([lang]));
+    }, [kernelLanguage]);
 
     if (!cell) {
         return (
@@ -122,7 +139,19 @@ export function CellContentInner({
                         side={side}
                         diffMode={diffMode}
                     />
+                ) : cellType !== 'markdown' ? (
+                    // Non-markdown cells: syntax-highlighted read-only CodeMirror
+                    <CodeMirror
+                        value={source}
+                        readOnly={true}
+                        editable={false}
+                        extensions={[...langExtension, mergeNBEditorStructure]}
+                        theme={createMergeNBTheme(theme)}
+                        basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
+                        className="cell-source-cm"
+                    />
                 ) : (
+                    // Markdown in conflict mode: plain pre (diff view takes over)
                     <pre>{source}</pre>
                 )}
             </div>

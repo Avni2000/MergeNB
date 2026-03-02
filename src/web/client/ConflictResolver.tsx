@@ -633,6 +633,7 @@ export function ConflictResolver({
                                     conflictIndex={conflictIdx}
                                     notebookPath={conflict.filePath}
                                     kernelLanguage={kernelLanguage}
+                                    theme={conflict.theme ?? 'light'}
                                     resolutionState={resolutionState}
                                     onSelectChoice={handleSelectChoice}
                                     onUpdateContent={handleUpdateContent}

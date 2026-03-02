@@ -509,6 +509,32 @@ body {
     border-left: 3px solid var(--accent-blue);
 }
 
+/* CodeMirror read-only code cell display */
+.cell-source-cm.cm-editor {
+    border-radius: 4px;
+    outline: none !important;
+    cursor: default;
+}
+
+.cell-source-cm .cm-scroller {
+    overflow: auto;
+}
+
+.cell-source-cm .cm-content {
+    padding: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.cell-source-cm .cm-line {
+    padding: 0;
+}
+
+/* Replicate the left-border accent that <pre> had for code cells */
+.code-cell .cell-content .cell-source-cm.cm-editor {
+    border-left: 3px solid var(--accent-blue);
+}
+
 .markdown-cell .cell-content {
     padding: 12px;
     background: var(--cell-surface);
@@ -920,24 +946,31 @@ body {
     font-size: 11px;
 }
 
-.resolved-content-input {
+/* CodeMirror resolved editor — className="resolved-content-input" targets .cm-editor */
+.resolved-content-input.cm-editor {
     width: 100%;
-    min-height: 120px;
-    padding: 12px;
-    background: var(--cell-surface);
-    color: var(--text-primary);
     border: 1px solid rgba(78, 201, 176, 0.4);
     border-radius: 4px;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-    font-size: 13px;
-    resize: vertical;
-    line-height: 1.5;
+    outline: none !important;
 }
 
-.resolved-content-input:focus {
-    outline: none;
+.resolved-content-input.cm-editor.cm-focused {
     border-color: var(--accent-green);
     box-shadow: 0 0 0 2px rgba(78, 201, 176, 0.2);
+    outline: none !important;
+}
+
+.resolved-content-input .cm-scroller {
+    min-height: 100px;
+    overflow: auto;
+}
+
+.resolved-content-input .cm-content {
+    padding: 10px 12px;
+}
+
+.resolved-content-input .cm-line {
+    padding: 0;
 }
 
 /* Resolved deleted cell */
