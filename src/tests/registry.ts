@@ -192,6 +192,19 @@ export const TEST_GROUPS: TestGroup[] = [
         ],
     },
     {
+        id: 'syntaxHighlighting',
+        name: 'Syntax Highlighting',
+        description: 'Verify CodeMirror renders with Python keyword tokens in the resolved-content editor',
+        tests: [
+            {
+                id: 'syntaxHighlighting_python',
+                description: 'Resolved editor shows .cm-editor and .tok-keyword spans for Python code',
+                notebooks: ['07_syntax_base.ipynb', '07_syntax_current.ipynb', '07_syntax_incoming.ipynb'],
+                testModule: './syntaxHighlighting.test.js',
+            },
+        ],
+    },
+    {
         id: 'renderMime',
         name: 'RenderMime Outputs',
         description: 'Validate JupyterLab rendermime output rendering in web UI',

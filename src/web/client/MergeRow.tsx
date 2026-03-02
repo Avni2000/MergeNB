@@ -11,8 +11,9 @@
 
 import React, { useState, useEffect } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { LanguageDescription } from '@codemirror/language';
+import { LanguageDescription, syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
+import { classHighlighter } from '@lezer/highlight';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
@@ -68,6 +69,10 @@ export function MergeRowInner({
         const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
         desc?.load().then(lang => setLangExtension([lang]));
     }, [kernelLanguage]);
+
+    // classHighlighter adds predictable .tok-* CSS classes on top of the
+    // defaultHighlightStyle colours already provided by basicSetup.
+    const editorExtensions = [...langExtension, syntaxHighlighting(classHighlighter)];
 
     // Get content for a given choice
     const getContentForChoice = (choice: ResolutionChoice): string => {
@@ -305,10 +310,11 @@ export function MergeRowInner({
                         value={resolutionState.resolvedContent}
                         onChange={handleContentChange}
                         onBlur={handleBlur}
-                        extensions={langExtension}
+                        extensions={editorExtensions}
                         placeholder="Enter cell content..."
                         className="resolved-content-input"
                         basicSetup={{ lineNumbers: false, foldGutter: false }}
+                        
                     />
                 </div>
             )}
