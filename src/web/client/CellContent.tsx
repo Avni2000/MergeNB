@@ -7,6 +7,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
+import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
+import { StateField, RangeSetBuilder } from '@codemirror/state';
 import { IRenderMime, MimeModel, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 import MarkdownIt from 'markdown-it';
@@ -132,12 +134,14 @@ export function CellContentInner({
                         renderMimeRegistry={renderMimeRegistry}
                     />
                 ) : isConflict && (compareCell || baseCell) ? (
-                    // Show conflict diffs as raw text (no markdown rendering)
+                    // Show conflict diffs with syntax highlighting + diff decorations
                     <DiffContent
                         source={source}
                         compareSource={normalizeCellSource((compareCell ?? baseCell)!.source)}
                         side={side}
                         diffMode={diffMode}
+                        langExtension={langExtension}
+                        theme={theme}
                     />
                 ) : cellType !== 'markdown' ? (
                     // Non-markdown cells: syntax-highlighted read-only CodeMirror
@@ -235,37 +239,75 @@ interface DiffContentProps {
     compareSource: string;
     side?: 'base' | 'current' | 'incoming';
     diffMode: 'base' | 'conflict';
+    langExtension: any[];
+    theme: 'dark' | 'light';
 }
 
-function DiffContent({ source, compareSource, side, diffMode }: DiffContentProps): React.ReactElement {
+/**
+ * Build a CodeMirror StateField extension that decorates changed lines and
+ * inline character ranges using the same CSS classes as the previous <pre>
+ * implementation.  Syntax highlighting from the language extension is layered
+ * underneath — the diff decorations only add backgrounds, not text colours.
+ */
+function createDiffExtension(
+    allDiffLines: DiffLine[],
+    side: 'base' | 'current' | 'incoming',
+    diffMode: 'base' | 'conflict',
+): DecorationSet {
+    return StateField.define<DecorationSet>({
+        create(state) {
+            const builder = new RangeSetBuilder<Decoration>();
+            // allDiffLines maps 1:1 to source lines — must NOT be pre-filtered.
+            // Using a filtered array breaks the index→line-number correspondence and
+            // causes inline mark `to` values to exceed the next line's `from`,
+            // which throws "Ranges must be added sorted by from position and startSide".
+            for (let i = 0; i < allDiffLines.length; i++) {
+                if (i >= state.doc.lines) break;
+                const diffLine = allDiffLines[i];
+                if (diffLine.type === 'unchanged') continue;
+
+                const line = state.doc.line(i + 1);
+                const whitespaceOnly = isWhitespaceOnlyLineChange(diffLine);
+                const lineClass = getDiffLineClass(diffLine, side, diffMode, whitespaceOnly);
+                builder.add(line.from, line.from, Decoration.line({ class: lineClass }));
+
+                if (diffLine.inlineChanges) {
+                    let pos = line.from;
+                    for (const change of diffLine.inlineChanges) {
+                        const end = Math.min(pos + change.text.length, line.to);
+                        if (change.type !== 'unchanged' && end > pos) {
+                            const inlineClass = getInlineChangeClass(change.type, side, diffMode, whitespaceOnly);
+                            builder.add(pos, end, Decoration.mark({ class: inlineClass }));
+                        }
+                        pos = pos + change.text.length;
+                        if (pos >= line.to) break;
+                    }
+                }
+            }
+            return builder.finish();
+        },
+        update(deco) { return deco; },
+        provide: f => EditorView.decorations.from(f),
+    }) as unknown as DecorationSet; // StateField satisfies Extension; cast for useMemo typing
+}
+
+function DiffContent({ source, compareSource, side, diffMode, langExtension, theme }: DiffContentProps): React.ReactElement {
     const diff = useMemo(() => computeLineDiff(compareSource, source), [compareSource, source]);
-    // Use the right side for display (shows the "new" content with change markers)
-    const diffLines = diff.right;
-    // Filter out empty alignment lines to avoid unnecessary whitespace
-    const visibleLines = diffLines.filter(line => line.type !== 'unchanged' || line.content !== '');
+    const diffExtension = useMemo(
+        () => createDiffExtension(diff.right, side ?? 'current', diffMode),
+        [diff.right, side, diffMode]
+    );
 
     return (
-        <pre>
-            {visibleLines.map((line, i) => {
-                const whitespaceOnly = isWhitespaceOnlyLineChange(line);
-                return (
-                    <React.Fragment key={i}>
-                        <span className={getDiffLineClass(line, side ?? 'current', diffMode, whitespaceOnly)}>
-                            {line.inlineChanges ? (
-                                line.inlineChanges.map((change, j) => (
-                                    <span key={j} className={getInlineChangeClass(change.type, side ?? 'current', diffMode, whitespaceOnly)}>
-                                        {change.text}
-                                    </span>
-                                ))
-                            ) : (
-                                line.content
-                            )}
-                        </span>
-                        {i < visibleLines.length - 1 ? '\n' : ''}
-                    </React.Fragment>
-                );
-            })}
-        </pre>
+        <CodeMirror
+            value={source}
+            readOnly={true}
+            editable={false}
+            extensions={[...langExtension, mergeNBEditorStructure, diffExtension]}
+            theme={createMergeNBTheme(theme)}
+            basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
+            className="cell-source-cm"
+        />
     );
 }
 

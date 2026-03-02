@@ -625,33 +625,7 @@ body {
     box-shadow: 0 0 0 2px var(--accent-blue);
 }
 
-/* Diff highlighting */
-.diff-line {
-    display: block;
-    padding: 0 4px;
-    margin: 0 -4px;
-}
-
-.diff-line.added {
-    background: var(--diff-add);
-}
-
-.diff-line.removed {
-    background: var(--diff-remove);
-}
-
-.diff-line.changed {
-    background: var(--diff-change);
-}
-
-.diff-line.modified-old {
-    background: var(--diff-remove);
-}
-
-.diff-line.modified-new {
-    background: var(--diff-add);
-}
-
+/* Diff highlighting — applied as CodeMirror line decorations on .cm-line elements */
 .diff-line.diff-line-conflict {
     background: var(--diff-remove);
 }
@@ -871,6 +845,21 @@ body {
     padding-left: 16px;
     margin: 8px 0;
     color: var(--text-secondary);
+}
+
+/* Hide automatic heading permalink anchors (pilcrow/¶) inserted
+   by the markdown renderer (e.g. markdown-it-anchor / rendermime). */
+.markdown-content a.anchor-link,
+.markdown-content .anchor-link,
+.markdown-content a.header-link,
+.markdown-content .header-anchor,
+.markdown-content h1 > a,
+.markdown-content h2 > a,
+.markdown-content h3 > a,
+.markdown-content h4 > a,
+.markdown-content h5 > a,
+.markdown-content h6 > a {
+    display: none !important;
 }
 
 /* KaTeX styles */
@@ -1156,25 +1145,18 @@ body {
     font-weight: 600;
 }
 
-/* Enhanced inline diff highlighting - branch-based coloring */
-/* The color tells you which branch the content comes from, not whether it's added/removed */
-.diff-inline-unchanged {
-    color: var(--text-primary);
-}
-
+/* Inline diff highlighting — applied as CodeMirror mark decorations.
+   No color override so syntax highlighting colours show through. */
 .diff-inline-conflict {
     background: var(--diff-remove);
-    color: var(--text-primary);
 }
 
 .diff-inline-current {
     background: var(--diff-add);
-    color: var(--text-primary);
 }
 
 .diff-inline-incoming {
     background: rgba(86, 156, 214, 0.35);
-    color: var(--text-primary);
 }
 `;
 }
