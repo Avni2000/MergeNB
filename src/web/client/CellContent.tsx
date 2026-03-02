@@ -86,12 +86,34 @@ export function CellContentInner({
 
     // Load syntax language extension for CodeMirror code cells.
     // Must be declared before any early returns (Rules of Hooks).
-    const [langExtension, setLangExtension] = useState<any[]>([]);
+    //
+    // Lazy init: LanguageDescription.support is populated once the pack has been
+    // loaded (by this or any other component).  Starting with it synchronously
+    // means cells that mount *after* the first load skip the [] → [lang] transition
+    // entirely — no second render, no virtualizer height recalculation.
+    const [langExtension, setLangExtension] = useState<any[]>(() => {
+        if (!kernelLanguage) return [];
+        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        return desc?.support ? [desc.support] : [];
+    });
     useEffect(() => {
         if (!kernelLanguage) return;
         const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        if (desc?.support) {
+            setLangExtension(prev => (prev.length > 0 ? prev : [desc.support!]));
+            return;
+        }
         desc?.load().then(lang => setLangExtension([lang]));
     }, [kernelLanguage]);
+
+    // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
+    // (deps: [theme, extensions, ...]) only fires StateEffect.reconfigure when
+    // these values truly change — not on every render due to new object/array refs.
+    const cmTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    const cellExtensions = useMemo(
+        () => [...langExtension, mergeNBEditorStructure],
+        [langExtension]
+    );
 
     if (!cell) {
         return (
@@ -149,8 +171,8 @@ export function CellContentInner({
                         value={source}
                         readOnly={true}
                         editable={false}
-                        extensions={[...langExtension, mergeNBEditorStructure]}
-                        theme={createMergeNBTheme(theme)}
+                        extensions={cellExtensions}
+                        theme={cmTheme}
                         basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
                         className="cell-source-cm"
                     />
@@ -297,14 +319,19 @@ function DiffContent({ source, compareSource, side, diffMode, langExtension, the
         () => createDiffExtension(diff.right, side ?? 'current', diffMode),
         [diff.right, side, diffMode]
     );
+    const cmTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    const allExtensions = useMemo(
+        () => [...langExtension, mergeNBEditorStructure, diffExtension],
+        [langExtension, diffExtension]
+    );
 
     return (
         <CodeMirror
             value={source}
             readOnly={true}
             editable={false}
-            extensions={[...langExtension, mergeNBEditorStructure, diffExtension]}
-            theme={createMergeNBTheme(theme)}
+            extensions={allExtensions}
+            theme={cmTheme}
             basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
             className="cell-source-cm"
         />

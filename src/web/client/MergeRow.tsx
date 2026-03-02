@@ -9,7 +9,7 @@
  * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
@@ -65,15 +65,31 @@ export function MergeRowInner({
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
     const [showWarning, setShowWarning] = useState(false);
-    const [langExtension, setLangExtension] = useState<any[]>([]);
+    // Lazy init: if the language was already loaded by another cell in this session
+    // (LanguageDescription.support is populated after the first load), start with
+    // it synchronously so the editor never renders with an empty extensions list.
+    const [langExtension, setLangExtension] = useState<any[]>(() => {
+        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        return desc?.support ? [desc.support] : [];
+    });
 
     useEffect(() => {
         const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        if (desc?.support) {
+            setLangExtension(prev => (prev.length > 0 ? prev : [desc.support!]));
+            return;
+        }
         desc?.load().then(lang => setLangExtension([lang]));
     }, [kernelLanguage]);
 
-    // createMergeNBTheme handles all syntax coloring; no separate classHighlighter needed.
-    const editorExtensions = [...langExtension, mergeNBEditorStructure];
+    // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
+    // (which triggers StateEffect.reconfigure) only fires when these values actually
+    // change — not on every render because of new object/array references.
+    const resolvedEditorTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    const editorExtensions = useMemo(
+        () => [...langExtension, mergeNBEditorStructure],
+        [langExtension]
+    );
 
     // Get content for a given choice
     const getContentForChoice = (choice: ResolutionChoice): string => {
@@ -323,7 +339,7 @@ export function MergeRowInner({
                         placeholder="Enter cell content..."
                         className="resolved-content-input"
                         basicSetup={{ lineNumbers: false, foldGutter: false }}
-                        theme={createMergeNBTheme(theme)}
+                        theme={resolvedEditorTheme}
                     />
                 </div>
             )}
