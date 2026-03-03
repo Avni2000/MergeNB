@@ -59,7 +59,7 @@ interface CellContentProps {
     languageExtensions?: Extension[];
     theme?: 'dark' | 'light';
 }
-
+const EMPTY_EXTENSIONS: Extension[] = [];
 export function CellContentInner({
     cell,
     cellIndex,
@@ -71,7 +71,7 @@ export function CellContentInner({
     diffMode = 'base',
     showOutputs = true,
     showCellHeaders = false,
-    languageExtensions = [],
+    languageExtensions = EMPTY_EXTENSIONS,
     theme = 'light',
 }: CellContentProps): React.ReactElement {
     const renderMimeRegistry = useMemo(

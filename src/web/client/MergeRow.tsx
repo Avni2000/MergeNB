@@ -41,13 +41,14 @@ interface MergeRowProps {
     theme?: 'dark' | 'light';
     'data-testid'?: string;
 }
+const EMPTY_EXTENSIONS: Extension[] = [];
 
 export function MergeRowInner({
     row,
     rowIndex,
     conflictIndex,
     notebookPath,
-    languageExtensions = [],
+    languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
     onSelectChoice,
     onUpdateContent,
