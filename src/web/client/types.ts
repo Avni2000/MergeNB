@@ -47,7 +47,7 @@ export interface MergeRow {
 export interface UnifiedConflictData {
     filePath: string;
     /** Stable conflict instance key for client-side state reset behavior */
-    conflictKey?: string;
+    conflictKey: string;
     type: 'semantic';
     semanticConflict?: import('../../types').NotebookSemanticConflict;
     autoResolveResult?: AutoResolveResult;

@@ -28,20 +28,47 @@ export type ConflictChoiceResolver = (
 ) => Promise<ConflictChoiceInfo>;
 
 /**
- * Read the text content of a CodeMirror `.resolved-content-input` editor.
- * 
- * In development, reads from `data-resolved-content` attribute on the `.resolved-cell` wrapper.
- * CodeMirror uses DOM virtualization so the full content may not be in the visible DOM.
+ * Read the full text content of a CodeMirror `.resolved-content-input` editor.
+ *
+ * Prefer CodeMirror state when available to avoid viewport-only DOM text.
+ * Fall back to `.cm-content.textContent` if the internal view handle is unavailable.
  */
 export async function getResolvedEditorValue(editorLocator: Locator): Promise<string> {
-    return await editorLocator.evaluate((el) => {
-        // In development, the component exposes data-resolved-content on the wrapper
-        const wrapper = el.closest('.resolved-cell') as HTMLElement | null;
-        if (wrapper?.dataset.resolvedContent) {
-            return wrapper.dataset.resolvedContent;
-        }
-        return "";
+    return await editorLocator.evaluate(el => {
+        type CodeMirrorDoc = { toString: () => string };
+        type CodeMirrorViewState = { doc?: CodeMirrorDoc };
+        type CodeMirrorView = { state?: CodeMirrorViewState };
+        type CodeMirrorTile = { root?: { view?: CodeMirrorView } };
+        type CodeMirrorInternal = HTMLElement & {
+            cmTile?: CodeMirrorTile;
+            cmView?: { view?: CodeMirrorView };
+        };
 
+        const editorRoot = (el.classList.contains('cm-editor') ? el : el.querySelector('.cm-editor')) as HTMLElement | null;
+        if (!editorRoot) {
+            return '';
+        }
+
+        const content = editorRoot.querySelector('.cm-content') as CodeMirrorInternal | null;
+        const maybeInternal = editorRoot as CodeMirrorInternal;
+        const doc =
+            content?.cmTile?.root?.view?.state?.doc ??
+            content?.cmView?.view?.state?.doc ??
+            maybeInternal.cmTile?.root?.view?.state?.doc ??
+            maybeInternal.cmView?.view?.state?.doc;
+        if (doc && typeof doc.toString === 'function') {
+            return doc.toString();
+        }
+
+        if (content) {
+            const lines = Array.from(content.querySelectorAll('.cm-line')).map(line => line.textContent ?? '');
+            if (lines.length > 0) {
+                return lines.join('\n');
+            }
+            return content.textContent ?? '';
+        }
+
+        return '';
     });
 }
 

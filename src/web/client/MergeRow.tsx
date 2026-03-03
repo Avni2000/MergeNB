@@ -310,10 +310,7 @@ export function MergeRowInner({
 
             {/* Resolved content editor - appears after selecting a branch */}
             {resolutionState && resolutionState.choice !== 'delete' && (
-                <div
-                    className="resolved-cell"
-                    {...(process.env.NODE_ENV === 'development' ? { 'data-resolved-content': draftResolvedContent } : {})}
-                >
+                <div className="resolved-cell">
                     <div className="resolved-header">
                         <span className="resolved-label">✓ Resolved</span>
                         <span className="resolved-base">

@@ -49,7 +49,7 @@ export function ConflictResolver({
 
     // Recreate resolver state only when the conflict instance key changes.
     // This avoids resets caused by object identity churn on re-sent payloads.
-    const resolverStoreKey = conflict.conflictKey ?? conflict.filePath;
+    const resolverStoreKey = conflict.conflictKey;
     const resolverStore = useMemo(
         () => createResolverStore(initialRows),
         [resolverStoreKey]

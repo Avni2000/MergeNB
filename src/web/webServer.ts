@@ -19,6 +19,7 @@ import * as fs from 'fs';
 import { randomBytes, randomUUID } from 'crypto';
 import WebSocket, { WebSocketServer } from 'ws';
 import * as logger from '../logger';
+import type { WebConflictData } from './webTypes';
 
 // VSCode is optional - only needed for openExternal
 let vscode: typeof import('vscode') | undefined;
@@ -314,7 +315,7 @@ export class ConflictResolverWebServer {
      * Send conflict data to a session.
      * This is called after the browser connects to send the initial conflict data.
      */
-    public sendConflictData(sessionId: string, conflictData: unknown): boolean {
+    public sendConflictData(sessionId: string, conflictData: WebConflictData): boolean {
         return this.sendMessage(sessionId, {
             type: 'conflict-data',
             data: conflictData
