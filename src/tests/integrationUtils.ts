@@ -27,6 +27,29 @@ export type ConflictChoiceResolver = (
     rowIndex: number,
 ) => Promise<ConflictChoiceInfo>;
 
+/**
+ * Read the text content of a CodeMirror `.resolved-content-input` editor.
+ * `.inputValue()` cannot be used because the element is a `<div>`, not `<textarea>`.
+ */
+export async function getResolvedEditorValue(editorLocator: Locator): Promise<string> {
+    return editorLocator.evaluate((el) => {
+        const lines = el.querySelectorAll('.cm-line');
+        return Array.from(lines).map((l) => (l as HTMLElement).textContent ?? '').join('\n');
+    });
+}
+
+/**
+ * Replace the content of a CodeMirror `.resolved-content-input` editor.
+ * `.fill()` cannot be used because CodeMirror manages a `contenteditable` div, not a `<textarea>`.
+ */
+export async function fillResolvedEditor(editorLocator: Locator, value: string): Promise<void> {
+    const page = editorLocator.page();
+    const content = editorLocator.locator('.cm-content');
+    await content.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.insertText(value);
+}
+
 /** Get a cell reference from a column in a conflict row */
 export async function getColumnCell(row: Locator, column: MergeSide, rowIndex: number) {
     const cellEl = row.locator(`.${column}-column .notebook-cell`);
@@ -89,7 +112,7 @@ export async function verifyAllConflictsMatchSide(
             continue;
         }
 
-        const actualValue = await textarea.inputValue();
+        const actualValue = await getResolvedEditorValue(textarea);
         if (actualValue !== expectedSource) {
             mismatches.push(
                 `Row ${i}: textarea mismatch\n` +
@@ -269,7 +292,7 @@ export async function collectExpectedCellsFromUI(
             if (await textarea.count() === 0) {
                 throw new Error(`Row ${i}: missing resolved content input`);
             }
-            const resolvedContent = await textarea.inputValue();
+            const resolvedContent = await getResolvedEditorValue(textarea);
 
             const choiceInfo = await options.resolveConflictChoice(row, conflictIdx, i);
             const choice = choiceInfo.choice;
