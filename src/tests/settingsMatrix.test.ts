@@ -1,17 +1,41 @@
 /**
  * @file settingsMatrix.test.ts
- * @description End-to-end settings matrix test for MergeNB using VS Code test host + Playwright.
+ * @description Settings matrix tests for MergeNB.
  *
- * This test exercises every contributed setting through real extension wiring:
- * VS Code configuration -> resolver -> web payload -> React UI behavior.
+ * SECTION A: Backend logic tests -- directly test applyAutoResolutions and
+ * analyzeSemanticConflictsFromMappings with synthetic data. Several tests
+ * are designed to FAIL against current code, exposing known bugs:
+ *   A1: Dead settings parameter in analyzeSemanticConflictsFromMappings
+ *   A2: Kernel-only diff silently swallowed when autoResolveKernelVersion=false
+ *   A3: stripOutputs masking autoResolveExecutionCount
+ *
+ * SECTION B: UI integration tests -- Playwright-based scenarios that verify
+ * settings flow correctly from VS Code config through to the React UI.
  */
 
+import * as assert from 'assert';
 import * as vscode from 'vscode';
 import type { Locator, Page } from 'playwright';
+import {
+    applyAutoResolutions,
+    analyzeSemanticConflictsFromMappings,
+} from '../conflictDetector';
+import type { MergeNBSettings } from '../settings';
+import type {
+    Notebook,
+    NotebookCell,
+    NotebookSemanticConflict,
+    CellMapping,
+} from '../types';
 import {
     readTestConfig,
     setupConflictResolver,
 } from './testHarness';
+import type { TestConfig } from './testHelpers';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 type Theme = 'dark' | 'light';
 type SettingKey =
@@ -25,13 +49,6 @@ type SettingKey =
     | 'ui.showBaseColumn'
     | 'ui.theme';
 
-type SettingsState = Record<SettingKey, boolean | Theme>;
-
-type AutoSummary = {
-    conflictCount: number;
-    bannerText: string | null;
-};
-
 const SETTING_KEYS: SettingKey[] = [
     'autoResolve.executionCount',
     'autoResolve.kernelVersion',
@@ -44,7 +61,9 @@ const SETTING_KEYS: SettingKey[] = [
     'ui.theme',
 ];
 
-const BASE_SETTINGS: SettingsState = {
+type SettingsState = Record<SettingKey, boolean | Theme>;
+
+const BASE_UI_SETTINGS: SettingsState = {
     'autoResolve.executionCount': false,
     'autoResolve.kernelVersion': false,
     'autoResolve.stripOutputs': false,
@@ -56,50 +75,81 @@ const BASE_SETTINGS: SettingsState = {
     'ui.theme': 'dark',
 };
 
-function buildSettings(overrides: Partial<SettingsState>): SettingsState {
-    return { ...BASE_SETTINGS, ...overrides };
+function buildUISettings(overrides: Partial<SettingsState>): SettingsState {
+    return { ...BASE_UI_SETTINGS, ...overrides };
 }
 
-function assert(condition: unknown, message: string): asserts condition {
-    if (!condition) {
-        throw new Error(message);
-    }
+/** All-false/off backend settings baseline. */
+const ALL_OFF: MergeNBSettings = {
+    autoResolveExecutionCount: false,
+    autoResolveKernelVersion: false,
+    stripOutputs: false,
+    autoResolveWhitespace: false,
+    hideNonConflictOutputs: false,
+    showCellHeaders: false,
+    enableUndoRedoHotkeys: true,
+    showBaseColumn: true,
+    theme: 'dark',
+};
+
+function settingsWith(overrides: Partial<MergeNBSettings>): MergeNBSettings {
+    return { ...ALL_OFF, ...overrides };
 }
 
-async function applySettings(config: vscode.WorkspaceConfiguration, settings: SettingsState): Promise<void> {
+function makeNotebook(
+    cells: NotebookCell[],
+    metadata?: Notebook['metadata']
+): Notebook {
+    return {
+        nbformat: 4,
+        nbformat_minor: 5,
+        metadata: metadata ?? {},
+        cells,
+    };
+}
+
+function makeCodeCell(
+    source: string,
+    opts?: { execution_count?: number | null; outputs?: any[] }
+): NotebookCell {
+    return {
+        cell_type: 'code',
+        source,
+        metadata: {},
+        execution_count: opts?.execution_count ?? null,
+        outputs: opts?.outputs ?? [],
+    };
+}
+
+async function applyVSCodeSettings(
+    config: vscode.WorkspaceConfiguration,
+    settings: SettingsState
+): Promise<void> {
     for (const key of SETTING_KEYS) {
         await config.update(key, settings[key], vscode.ConfigurationTarget.Workspace);
     }
 }
 
-async function runScenario(
+async function runUIScenario(
     scenarioName: string,
     settings: SettingsState,
-    config: import('./testHelpers').TestConfig,
+    testConfig: TestConfig,
     callback: (page: Page) => Promise<void>
 ): Promise<void> {
-    console.log(`\n=== Scenario: ${scenarioName} ===`);
+    console.log(`\n=== UI Scenario: ${scenarioName} ===`);
 
     const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
-    await applySettings(mergeNBConfig, settings);
+    await applyVSCodeSettings(mergeNBConfig, settings);
 
-    const session = await setupConflictResolver(config);
+    const session = await setupConflictResolver(testConfig);
     const { page, browser } = session;
 
     try {
         await callback(page);
-        console.log(`✓ Scenario passed: ${scenarioName}`);
+        console.log(`  pass: ${scenarioName}`);
     } finally {
-        try {
-            await page.close();
-        } catch {
-            // ignore cleanup errors
-        }
-        try {
-            await browser.close();
-        } catch {
-            // ignore cleanup errors
-        }
+        try { await page.close(); } catch { /* ignore */ }
+        try { await browser.close(); } catch { /* ignore */ }
     }
 }
 
@@ -116,7 +166,6 @@ async function findStableIdenticalRow(page: Page): Promise<Locator> {
     await row.waitFor({ timeout: 10000 });
     return row;
 }
-
 
 async function findOutputConflictRow(page: Page): Promise<Locator> {
     const row = page
@@ -136,17 +185,417 @@ async function findExecutionConflictRow(page: Page): Promise<Locator> {
     return row;
 }
 
-async function getAutoSummary(page: Page): Promise<AutoSummary> {
-    await page.locator('.header-title').waitFor({ timeout: 10000 });
-    const conflictCount = await page.locator('.merge-row.conflict-row').count();
-    const banner = page.locator('.auto-resolve-banner .text').first();
-    const bannerExists = (await banner.count()) > 0;
-    const bannerText = bannerExists ? ((await banner.textContent()) ?? '').trim() : null;
-    return { conflictCount, bannerText };
-}
+// ===========================================================================
+// Main test runner
+// ===========================================================================
 
 export async function run(): Promise<void> {
-    console.log('Starting settings matrix integration test...');
+    console.log('Starting settings matrix test...');
+
+    // -----------------------------------------------------------------------
+    // SECTION A -- Backend logic tests (direct function calls, no browser)
+    // -----------------------------------------------------------------------
+    console.log('\n====== SECTION A: Backend Logic Tests ======');
+
+    // --- A1: analyzeSemanticConflictsFromMappings ignores settings param ---
+    //
+    // BUG (conflictDetector.ts:152-159): The function accepts a settings
+    // parameter and has a getSettings() fallback, but never references the
+    // settings object in any detection logic.  If the parameter is meaningful,
+    // passing different settings should yield different results.  Since it
+    // doesn't, this assertion fails, proving the parameter is dead code.
+    {
+        console.log('\n--- A1: settings parameter dead in analyzeSemanticConflictsFromMappings ---');
+
+        const base = makeCodeCell('x = 1', {
+            execution_count: 1,
+            outputs: [{ output_type: 'execute_result', data: { 'text/plain': '1' } }],
+        });
+        const current = makeCodeCell('x = 1  ', {     // trailing whitespace
+            execution_count: 2,
+            outputs: [{ output_type: 'execute_result', data: { 'text/plain': '1' } }],
+        });
+        const incoming = makeCodeCell('x = 1\t', {     // trailing tab
+            execution_count: 3,
+            outputs: [{ output_type: 'stream', text: '1\n', name: 'stdout' }],
+        });
+
+        const mappings: CellMapping[] = [{
+            baseIndex: 0,
+            currentIndex: 0,
+            incomingIndex: 0,
+            matchConfidence: 1,
+            baseCell: base,
+            currentCell: current,
+            incomingCell: incoming,
+        }];
+
+        const conflictsAutoOn = analyzeSemanticConflictsFromMappings(mappings, settingsWith({
+            autoResolveExecutionCount: true,
+            stripOutputs: true,
+            autoResolveWhitespace: true,
+        }));
+
+        const conflictsAutoOff = analyzeSemanticConflictsFromMappings(mappings, settingsWith({
+            autoResolveExecutionCount: false,
+            stripOutputs: false,
+            autoResolveWhitespace: false,
+        }));
+
+        // If the settings parameter were wired, auto-on would suppress some
+        // conflict types during detection.  Since both calls return the same
+        // conflicts, the parameter is dead.
+        assert.notDeepStrictEqual(
+            conflictsAutoOn.map(c => c.type).sort(),
+            conflictsAutoOff.map(c => c.type).sort(),
+            'BUG: analyzeSemanticConflictsFromMappings ignores its settings parameter -- ' +
+            'both invocations return identical conflict types: ' +
+            JSON.stringify(conflictsAutoOn.map(c => c.type))
+        );
+        console.log('  pass: A1');
+    }
+
+    // --- A2: kernel-only diff silently swallowed when setting is off ---
+    //
+    // BUG: When the only difference between current and incoming is notebook-
+    // level metadata (kernelspec / language_info) and autoResolveKernelVersion
+    // is false, applyAutoResolutions returns remainingConflicts=[] AND
+    // autoResolvedCount=0.  In resolver.ts:297 this triggers the early exit
+    // "no conflicts detected", silently dropping the metadata diff.
+    //
+    // The kernel diff should either surface as a remaining conflict or be
+    // counted so the resolver doesn't exit early.
+    {
+        console.log('\n--- A2: kernel-only diff not swallowed ---');
+
+        const cell = makeCodeCell('x = 1');
+        const currentNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.10', language: 'python', name: 'python3' },
+            language_info: { name: 'python', version: '3.10.0' },
+        });
+        const incomingNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.11', language: 'python', name: 'python3' },
+            language_info: { name: 'python', version: '3.11.0' },
+        });
+        const baseNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.9', language: 'python', name: 'python3' },
+            language_info: { name: 'python', version: '3.9.0' },
+        });
+
+        const semanticConflict: NotebookSemanticConflict = {
+            filePath: '/test/kernel-only.ipynb',
+            semanticConflicts: [],      // no cell-level conflicts
+            cellMappings: [{
+                baseIndex: 0, currentIndex: 0, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: baseNb.cells[0],
+                currentCell: currentNb.cells[0],
+                incomingCell: incomingNb.cells[0],
+            }],
+            base: baseNb,
+            current: currentNb,
+            incoming: incomingNb,
+        };
+
+        const result = applyAutoResolutions(
+            semanticConflict,
+            settingsWith({ autoResolveKernelVersion: false })
+        );
+
+        // With the setting OFF, the kernel diff must not vanish.  Either it
+        // lands in remainingConflicts or increments autoResolvedCount so the
+        // resolver knows something happened.
+        const surfaced =
+            result.remainingConflicts.length > 0 ||
+            result.autoResolvedCount > 0;
+
+        assert.ok(
+            surfaced,
+            'BUG: kernel-only metadata diff is silently swallowed when ' +
+            'autoResolveKernelVersion=false -- remainingConflicts=' +
+            result.remainingConflicts.length +
+            ', autoResolvedCount=' + result.autoResolvedCount +
+            '.  Resolver will exit with "no conflicts detected".'
+        );
+        console.log('  pass: A2');
+    }
+
+    // --- A3: stripOutputs masks autoResolveExecutionCount ---
+    //
+    // BUG (conflictDetector.ts:456-457): When stripOutputs auto-resolves an
+    // outputs-changed conflict (source identical), it ALSO sets
+    //   resolvedNotebook.cells[i].execution_count = null
+    // regardless of the autoResolveExecutionCount flag.  This means
+    // autoResolveExecutionCount=false is effectively dead when stripOutputs
+    // is true and the cell has an output diff.
+    {
+        console.log('\n--- A3: stripOutputs masks executionCount ---');
+
+        const source = 'print("hello")';
+        const base = makeCodeCell(source, {
+            execution_count: 1,
+            outputs: [{ output_type: 'stream', text: 'hello\n', name: 'stdout' }],
+        });
+        const current = makeCodeCell(source, {
+            execution_count: 5,
+            outputs: [{ output_type: 'stream', text: 'hello world\n', name: 'stdout' }],
+        });
+        const incoming = makeCodeCell(source, {
+            execution_count: 10,
+            outputs: [{ output_type: 'stream', text: 'hello!\n', name: 'stdout' }],
+        });
+
+        const conflict: NotebookSemanticConflict = {
+            filePath: '/test/strip-masks-exec.ipynb',
+            semanticConflicts: [{
+                type: 'outputs-changed',
+                baseCellIndex: 0,
+                currentCellIndex: 0,
+                incomingCellIndex: 0,
+                baseContent: base,
+                currentContent: current,
+                incomingContent: incoming,
+                description: 'outputs differ',
+            }],
+            cellMappings: [{
+                baseIndex: 0, currentIndex: 0, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: base, currentCell: current, incomingCell: incoming,
+            }],
+            current: makeNotebook([current]),
+            incoming: makeNotebook([incoming]),
+            base: makeNotebook([base]),
+        };
+
+        const result = applyAutoResolutions(conflict, settingsWith({
+            stripOutputs: true,
+            autoResolveExecutionCount: false,   // explicitly OFF
+        }));
+
+        // stripOutputs should clear outputs but must NOT override
+        // autoResolveExecutionCount.  The execution_count should be preserved.
+        const resolvedCell = result.resolvedNotebook.cells[0];
+        assert.notStrictEqual(
+            resolvedCell.execution_count,
+            null,
+            'BUG: stripOutputs=true nulls execution_count even when ' +
+            'autoResolveExecutionCount=false -- execution_count=' +
+            resolvedCell.execution_count
+        );
+        console.log('  pass: A3');
+    }
+
+    // --- A4: stripOutputs side-effect on remaining conflicts ---
+    //
+    // When stripOutputs=true, outputs are stripped even from conflicts that
+    // were NOT auto-resolved (conflictDetector.ts:549-560).  This validates
+    // that the side-effect is present and consistent.
+    {
+        console.log('\n--- A4: stripOutputs strips remaining conflict outputs ---');
+
+        const base = makeCodeCell('x = 1', {
+            outputs: [{ output_type: 'stream', text: 'old\n', name: 'stdout' }],
+        });
+        const current = makeCodeCell('x = 2', {
+            outputs: [{ output_type: 'stream', text: 'curr\n', name: 'stdout' }],
+        });
+        const incoming = makeCodeCell('x = 3', {
+            outputs: [{ output_type: 'stream', text: 'inc\n', name: 'stdout' }],
+        });
+
+        const conflict: NotebookSemanticConflict = {
+            filePath: '/test/strip-remaining.ipynb',
+            semanticConflicts: [{
+                type: 'cell-modified',
+                baseCellIndex: 0,
+                currentCellIndex: 0,
+                incomingCellIndex: 0,
+                baseContent: base,
+                currentContent: current,
+                incomingContent: incoming,
+                description: 'source differs',
+            }],
+            cellMappings: [{
+                baseIndex: 0, currentIndex: 0, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: base, currentCell: current, incomingCell: incoming,
+            }],
+            current: makeNotebook([current]),
+            incoming: makeNotebook([incoming]),
+            base: makeNotebook([base]),
+        };
+
+        const result = applyAutoResolutions(conflict, settingsWith({
+            stripOutputs: true,
+        }));
+
+        assert.strictEqual(
+            result.remainingConflicts.length, 1,
+            'cell-modified conflict with different source should remain unresolved'
+        );
+        assert.deepStrictEqual(
+            result.resolvedNotebook.cells[0].outputs, [],
+            'Remaining conflict outputs should be stripped when stripOutputs=true'
+        );
+        console.log('  pass: A4');
+    }
+
+    // --- A5: executionCount auto-resolve independent when stripOutputs=false ---
+    {
+        console.log('\n--- A5: executionCount auto-resolve independent of stripOutputs ---');
+
+        const base = makeCodeCell('a = 1', { execution_count: 1 });
+        const current = makeCodeCell('a = 1', { execution_count: 5 });
+        const incoming = makeCodeCell('a = 1', { execution_count: 10 });
+
+        const conflict: NotebookSemanticConflict = {
+            filePath: '/test/exec-count-toggle.ipynb',
+            semanticConflicts: [{
+                type: 'execution-count-changed',
+                baseCellIndex: 0,
+                currentCellIndex: 0,
+                incomingCellIndex: 0,
+                baseContent: base,
+                currentContent: current,
+                incomingContent: incoming,
+            }],
+            cellMappings: [{
+                baseIndex: 0, currentIndex: 0, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: base, currentCell: current, incomingCell: incoming,
+            }],
+            current: makeNotebook([current]),
+            incoming: makeNotebook([incoming]),
+            base: makeNotebook([base]),
+        };
+
+        // ON: auto-resolves
+        const on = applyAutoResolutions(conflict, settingsWith({
+            autoResolveExecutionCount: true,
+            stripOutputs: false,
+        }));
+        assert.strictEqual(on.autoResolvedCount, 1,
+            'Should auto-resolve 1 execution-count conflict');
+        assert.strictEqual(on.remainingConflicts.length, 0,
+            'No remaining conflicts when exec count auto-resolved');
+        assert.strictEqual(on.resolvedNotebook.cells[0].execution_count, null,
+            'execution_count should be null after auto-resolve');
+
+        // OFF: remains as conflict
+        const off = applyAutoResolutions(conflict, settingsWith({
+            autoResolveExecutionCount: false,
+            stripOutputs: false,
+        }));
+        assert.strictEqual(off.autoResolvedCount, 0,
+            'Should not auto-resolve when autoResolveExecutionCount=false');
+        assert.strictEqual(off.remainingConflicts.length, 1,
+            'Execution count conflict should remain unresolved');
+        console.log('  pass: A5');
+    }
+
+    // --- A6: whitespace auto-resolve toggles ---
+    {
+        console.log('\n--- A6: whitespace auto-resolve toggles ---');
+
+        const base = makeCodeCell('x = 1\n');
+        const current = makeCodeCell('x = 1  \n');     // trailing space
+        const incoming = makeCodeCell('x = 1\t\n');     // trailing tab
+
+        const conflict: NotebookSemanticConflict = {
+            filePath: '/test/whitespace-toggle.ipynb',
+            semanticConflicts: [{
+                type: 'cell-modified',
+                baseCellIndex: 0,
+                currentCellIndex: 0,
+                incomingCellIndex: 0,
+                baseContent: base,
+                currentContent: current,
+                incomingContent: incoming,
+            }],
+            cellMappings: [{
+                baseIndex: 0, currentIndex: 0, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: base, currentCell: current, incomingCell: incoming,
+            }],
+            current: makeNotebook([current]),
+            incoming: makeNotebook([incoming]),
+            base: makeNotebook([base]),
+        };
+
+        // ON: whitespace-only diff auto-resolved
+        const on = applyAutoResolutions(conflict, settingsWith({
+            autoResolveWhitespace: true,
+        }));
+        assert.strictEqual(on.autoResolvedCount, 1,
+            'Whitespace diff should be auto-resolved when setting is on');
+        assert.strictEqual(on.remainingConflicts.length, 0,
+            'No remaining conflicts for whitespace-only diff');
+
+        // OFF: remains as conflict
+        const off = applyAutoResolutions(conflict, settingsWith({
+            autoResolveWhitespace: false,
+        }));
+        assert.strictEqual(off.autoResolvedCount, 0,
+            'Whitespace diff should not be auto-resolved when setting is off');
+        assert.strictEqual(off.remainingConflicts.length, 1,
+            'Whitespace diff should remain as conflict');
+        console.log('  pass: A6');
+    }
+
+    // --- A7: kernel auto-resolve ON correctly resolves ---
+    {
+        console.log('\n--- A7: kernel auto-resolve ON ---');
+
+        const cell = makeCodeCell('x = 1');
+        const currentNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.10', language: 'python', name: 'python3' },
+            language_info: { name: 'python', version: '3.10.0' },
+        });
+        const incomingNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.11', language: 'python', name: 'python3' },
+            language_info: { name: 'python', version: '3.11.0' },
+        });
+        const baseNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.9', language: 'python', name: 'python3' },
+            language_info: { name: 'python', version: '3.9.0' },
+        });
+
+        const semanticConflict: NotebookSemanticConflict = {
+            filePath: '/test/kernel-on.ipynb',
+            semanticConflicts: [],
+            cellMappings: [{
+                baseIndex: 0, currentIndex: 0, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: baseNb.cells[0],
+                currentCell: currentNb.cells[0],
+                incomingCell: incomingNb.cells[0],
+            }],
+            base: baseNb,
+            current: currentNb,
+            incoming: incomingNb,
+        };
+
+        const result = applyAutoResolutions(
+            semanticConflict,
+            settingsWith({ autoResolveKernelVersion: true })
+        );
+
+        assert.ok(result.kernelAutoResolved,
+            'Kernel should be auto-resolved when autoResolveKernelVersion=true');
+        assert.ok(result.autoResolvedCount > 0,
+            'autoResolvedCount should be >0 for kernel auto-resolution');
+        assert.ok(
+            result.autoResolvedDescriptions.some(d => /kernel|python/i.test(d)),
+            'Expected kernel/python description, got: ' +
+            result.autoResolvedDescriptions.join(', ')
+        );
+        console.log('  pass: A7');
+    }
+
+    // -----------------------------------------------------------------------
+    // SECTION B -- UI integration tests (Playwright against real web UI)
+    // -----------------------------------------------------------------------
+    console.log('\n====== SECTION B: UI Integration Tests ======');
 
     const testConfig = readTestConfig();
     const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
@@ -157,239 +606,222 @@ export async function run(): Promise<void> {
     }
 
     try {
-        // 1) UI matrix: theme=light, base column off, headers off, outputs visible.
-        await runScenario(
-            'ui-light-no-base-no-headers',
-            buildSettings({
-                'ui.theme': 'light',
-                'ui.showBaseColumn': false,
-                'ui.showCellHeaders': false,
-                'ui.hideNonConflictOutputs': false,
-            }),
+        // B1: Theme applied
+        await runUIScenario(
+            'ui-theme-light',
+            buildUISettings({ 'ui.theme': 'light' }),
             testConfig,
             async (page) => {
                 const theme = await getTheme(page);
-                assert(theme === 'light', `Expected theme=light, got ${theme}`);
-
-                const allBaseButtonCount = await page.locator('button:has-text("All Base")').count();
-                assert(allBaseButtonCount === 0, 'All Base button should be hidden when showBaseColumn=false');
-
-                const baseLabelCount = await page.locator('.column-label.base').count();
-                assert(baseLabelCount === 0, 'Base column label should be hidden when showBaseColumn=false');
-
-                const baseColumnCount = await page.locator('.merge-row.conflict-row .base-column').count();
-                assert(baseColumnCount === 0, 'Base column cells should be hidden when showBaseColumn=false');
-
-                const headers = await page.locator('.cell-header').count();
-                assert(headers === 0, 'Cell headers should be hidden when ui.showCellHeaders=false');
-
-                const stableRow = await findStableIdenticalRow(page);
-                const stableOutputs = await stableRow.locator('.cell-outputs').count();
-                assert(stableOutputs > 0, 'Non-conflict outputs should be visible when hideNonConflictOutputs=false');
+                assert.strictEqual(theme, 'light',
+                    `Expected data-theme=light, got ${theme}`);
             }
         );
 
-        // 2) UI matrix: theme=dark, base column on, headers on.
-        await runScenario(
-            'ui-dark-with-base-with-headers',
-            buildSettings({
-                'ui.theme': 'dark',
-                'ui.showBaseColumn': true,
-                'ui.showCellHeaders': true,
-                'ui.hideNonConflictOutputs': false,
-            }),
+        // B2: Base column visibility
+        await runUIScenario(
+            'ui-base-column-off',
+            buildUISettings({ 'ui.showBaseColumn': false }),
             testConfig,
             async (page) => {
-                const theme = await getTheme(page);
-                assert(theme === 'dark', `Expected theme=dark, got ${theme}`);
+                const baseLabels = await page.locator('.column-label.base').count();
+                assert.strictEqual(baseLabels, 0,
+                    'Base column label should be absent when showBaseColumn=false');
 
-                const allBaseButtonCount = await page.locator('button:has-text("All Base")').count();
-                assert(allBaseButtonCount > 0, 'All Base button should be visible when showBaseColumn=true');
+                const baseCells = await page.locator('.merge-row.conflict-row .base-column').count();
+                assert.strictEqual(baseCells, 0,
+                    'Base column cells should be absent when showBaseColumn=false');
 
-                const baseLabelCount = await page.locator('.column-label.base').count();
-                assert(baseLabelCount > 0, 'Base column label should be visible when showBaseColumn=true');
-
-                const baseColumnCount = await page.locator('.merge-row.conflict-row .base-column').count();
-                assert(baseColumnCount > 0, 'Base column cells should be visible when showBaseColumn=true');
-
-                const headers = await page.locator('.cell-header').count();
-                assert(headers > 0, 'Cell headers should be visible when ui.showCellHeaders=true');
+                const allBaseBtn = await page.locator('button:has-text("All Base")').count();
+                assert.strictEqual(allBaseBtn, 0,
+                    '"All Base" button should be absent when showBaseColumn=false');
             }
         );
 
-        // 3) UI matrix: hide outputs for non-conflict rows only.
-        await runScenario(
+        await runUIScenario(
+            'ui-base-column-on',
+            buildUISettings({ 'ui.showBaseColumn': true }),
+            testConfig,
+            async (page) => {
+                const baseLabels = await page.locator('.column-label.base').count();
+                assert.ok(baseLabels > 0,
+                    'Base column label should be visible when showBaseColumn=true');
+
+                const allBaseBtn = await page.locator('button:has-text("All Base")').count();
+                assert.ok(allBaseBtn > 0,
+                    '"All Base" button should be visible when showBaseColumn=true');
+            }
+        );
+
+        // B3: Cell headers visibility
+        await runUIScenario(
+            'ui-cell-headers-off',
+            buildUISettings({ 'ui.showCellHeaders': false, 'ui.showBaseColumn': true }),
+            testConfig,
+            async (page) => {
+                const headers = await page.locator('.cell-header').count();
+                assert.strictEqual(headers, 0,
+                    'Cell headers should be absent when showCellHeaders=false');
+            }
+        );
+
+        await runUIScenario(
+            'ui-cell-headers-on',
+            buildUISettings({ 'ui.showCellHeaders': true, 'ui.showBaseColumn': true }),
+            testConfig,
+            async (page) => {
+                const headers = await page.locator('.cell-header').count();
+                assert.ok(headers > 0,
+                    'Cell headers should be visible when showCellHeaders=true');
+            }
+        );
+
+        // B4: Hide non-conflict outputs
+        await runUIScenario(
             'ui-hide-non-conflict-outputs',
-            buildSettings({
+            buildUISettings({
                 'ui.hideNonConflictOutputs': true,
                 'ui.showBaseColumn': true,
-                'ui.showCellHeaders': true,
             }),
             testConfig,
             async (page) => {
                 const stableRow = await findStableIdenticalRow(page);
                 const stableOutputs = await stableRow.locator('.cell-outputs').count();
-                assert(stableOutputs === 0, 'Non-conflict outputs should be hidden when hideNonConflictOutputs=true');
+                assert.strictEqual(stableOutputs, 0,
+                    'Non-conflict outputs should be hidden when hideNonConflictOutputs=true');
 
-                const outputConflictRow = await findOutputConflictRow(page);
-                const conflictOutputs = await outputConflictRow.locator('.current-column .cell-outputs').count();
-                assert(conflictOutputs > 0, 'Conflict-row outputs must remain visible when hideNonConflictOutputs=true');
+                const conflictRow = await findOutputConflictRow(page);
+                const conflictOutputs = await conflictRow
+                    .locator('.current-column .cell-outputs').count();
+                assert.ok(conflictOutputs > 0,
+                    'Conflict-row outputs must remain visible');
             }
         );
 
-        // 4) Hotkeys enabled: Ctrl/Cmd+Z undoes row resolution.
-        await runScenario(
-            'hotkeys-enabled',
-            buildSettings({
+        await runUIScenario(
+            'ui-show-non-conflict-outputs',
+            buildUISettings({
+                'ui.hideNonConflictOutputs': false,
+                'ui.showBaseColumn': true,
+            }),
+            testConfig,
+            async (page) => {
+                const stableRow = await findStableIdenticalRow(page);
+                const stableOutputs = await stableRow.locator('.cell-outputs').count();
+                assert.ok(stableOutputs > 0,
+                    'Non-conflict outputs should be visible when hideNonConflictOutputs=false');
+            }
+        );
+
+        // B5: Undo/redo hotkeys enabled
+        await runUIScenario(
+            'ui-hotkeys-enabled',
+            buildUISettings({
                 'ui.enableUndoRedoHotkeys': true,
                 'ui.showBaseColumn': true,
             }),
             testConfig,
             async (page) => {
-                const primaryModifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+                const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
                 const row = await findExecutionConflictRow(page);
 
                 await row.locator('.btn-current').click();
                 await row.locator('.resolved-content-input').waitFor({ timeout: 5000 });
 
                 await page.click('.header-title');
-                await page.keyboard.press(`${primaryModifier}+Z`);
-                await row.locator('.resolved-content-input').waitFor({ state: 'detached', timeout: 5000 });
+                await page.keyboard.press(`${mod}+Z`);
+                await row.locator('.resolved-content-input').waitFor({
+                    state: 'detached', timeout: 5000,
+                });
 
                 await page.click('.header-title');
-                await page.keyboard.press(`${primaryModifier}+Shift+Z`);
+                await page.keyboard.press(`${mod}+Shift+Z`);
                 await row.locator('.resolved-content-input').waitFor({ timeout: 5000 });
             }
         );
 
-        // 5) Hotkeys disabled: Ctrl/Cmd+Z should not undo row resolution.
-        await runScenario(
-            'hotkeys-disabled',
-            buildSettings({
+        // B6: Undo/redo hotkeys disabled
+        await runUIScenario(
+            'ui-hotkeys-disabled',
+            buildUISettings({
                 'ui.enableUndoRedoHotkeys': false,
                 'ui.showBaseColumn': true,
             }),
             testConfig,
             async (page) => {
-                const primaryModifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+                const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
                 const row = await findExecutionConflictRow(page);
 
                 await row.locator('.btn-current').click();
                 await row.locator('.resolved-content-input').waitFor({ timeout: 5000 });
 
                 await page.click('.header-title');
-                await page.keyboard.press(`${primaryModifier}+Z`);
+                await page.keyboard.press(`${mod}+Z`);
                 await page.waitForTimeout(400);
 
                 const stillResolved = await row.locator('.resolved-content-input').count();
-                assert(stillResolved > 0, 'Resolution should remain when undo hotkeys are disabled');
+                assert.ok(stillResolved > 0,
+                    'Resolution should remain when undo hotkeys are disabled');
             }
         );
 
-        // 6) Auto-resolve baseline (all auto settings off).
-        let baselineConflictCount = 0;
-        await runScenario(
-            'auto-baseline-all-off',
-            buildSettings({
-                'autoResolve.executionCount': false,
-                'autoResolve.kernelVersion': false,
-                'autoResolve.stripOutputs': false,
-                'autoResolve.whitespace': false,
-                'ui.showBaseColumn': true,
-                'ui.hideNonConflictOutputs': false,
+        // B7: Payload completeness -- all 5 UI settings reach the browser
+        //
+        // Set every UI setting to a non-default value and verify each one
+        // has observable effects, proving the full pipeline (VS Code config ->
+        // resolver -> WebSocket -> React) is intact for every setting.
+        await runUIScenario(
+            'ui-payload-completeness',
+            buildUISettings({
+                'ui.hideNonConflictOutputs': true,
+                'ui.showCellHeaders': true,
+                'ui.enableUndoRedoHotkeys': false,
+                'ui.showBaseColumn': false,
+                'ui.theme': 'light',
             }),
             testConfig,
             async (page) => {
-                const summary = await getAutoSummary(page);
-                baselineConflictCount = summary.conflictCount;
-                assert(summary.conflictCount >= 3, `Expected at least 3 conflicts with all auto settings off, got ${summary.conflictCount}`);
-                assert(!summary.bannerText, 'Auto-resolve banner should be absent when all auto settings are disabled');
+                await page.locator('#root').waitFor({ timeout: 10000 });
+
+                // theme
+                const theme = await page.locator('#root').getAttribute('data-theme');
+                assert.strictEqual(theme, 'light',
+                    'ui.theme=light did not reach browser');
+
+                // showBaseColumn=false
+                const baseLabels = await page.locator('.column-label.base').count();
+                assert.strictEqual(baseLabels, 0,
+                    'ui.showBaseColumn=false did not reach browser');
+
+                // showCellHeaders=true
+                const headers = await page.locator('.cell-header').count();
+                assert.ok(headers > 0,
+                    'ui.showCellHeaders=true did not reach browser');
+
+                // hideNonConflictOutputs=true
+                const stableRow = await findStableIdenticalRow(page);
+                const stableOutputs = await stableRow.locator('.cell-outputs').count();
+                assert.strictEqual(stableOutputs, 0,
+                    'ui.hideNonConflictOutputs=true did not reach browser');
+
+                // enableUndoRedoHotkeys=false -- undo should not revert
+                const conflictRow = await findExecutionConflictRow(page);
+                await conflictRow.locator('.btn-current').click();
+                await conflictRow.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+                await page.click('.header-title');
+                const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+                await page.keyboard.press(`${mod}+Z`);
+                await page.waitForTimeout(400);
+                const stillResolved = await conflictRow
+                    .locator('.resolved-content-input').count();
+                assert.ok(stillResolved > 0,
+                    'ui.enableUndoRedoHotkeys=false did not reach browser');
             }
         );
 
-        // 7) autoResolve.executionCount
-        await runScenario(
-            'auto-execution-count',
-            buildSettings({
-                'autoResolve.executionCount': true,
-                'autoResolve.kernelVersion': false,
-                'autoResolve.stripOutputs': false,
-                'autoResolve.whitespace': false,
-            }),
-            testConfig,
-            async (page) => {
-                const summary = await getAutoSummary(page);
-                assert(summary.bannerText !== null, 'Expected auto-resolve banner for execution_count setting');
-                assert(/Execution count set to null/i.test(summary.bannerText), `Unexpected execution_count banner text: ${summary.bannerText}`);
-                assert(summary.conflictCount < baselineConflictCount,
-                    `Expected fewer conflicts with execution-count auto-resolve (baseline=${baselineConflictCount}, now=${summary.conflictCount})`);
-            }
-        );
-
-        // 8) autoResolve.stripOutputs
-        await runScenario(
-            'auto-strip-outputs',
-            buildSettings({
-                'autoResolve.executionCount': false,
-                'autoResolve.kernelVersion': false,
-                'autoResolve.stripOutputs': true,
-                'autoResolve.whitespace': false,
-            }),
-            testConfig,
-            async (page) => {
-                const summary = await getAutoSummary(page);
-                assert(summary.bannerText !== null, 'Expected auto-resolve banner for stripOutputs setting');
-                assert(/Outputs (cleared|stripped)/i.test(summary.bannerText), `Unexpected stripOutputs banner text: ${summary.bannerText}`);
-
-                const outputConflictRow = await findOutputConflictRow(page);
-                const currentOutputs = await outputConflictRow.locator('.current-column .cell-outputs').count();
-                const incomingOutputs = await outputConflictRow.locator('.incoming-column .cell-outputs').count();
-                assert(currentOutputs === 0, 'Current-side outputs should be stripped when autoResolve.stripOutputs=true');
-                assert(incomingOutputs > 0, 'Incoming-side outputs should remain visible in conflict view');
-            }
-        );
-
-        // 9) autoResolve.whitespace
-        await runScenario(
-            'auto-whitespace',
-            buildSettings({
-                'autoResolve.executionCount': false,
-                'autoResolve.kernelVersion': false,
-                'autoResolve.stripOutputs': false,
-                'autoResolve.whitespace': true,
-            }),
-            testConfig,
-            async (page) => {
-                const summary = await getAutoSummary(page);
-                assert(summary.bannerText !== null, 'Expected auto-resolve banner for whitespace setting');
-                assert(/Whitespace-only/i.test(summary.bannerText), `Unexpected whitespace banner text: ${summary.bannerText}`);
-                assert(summary.conflictCount < baselineConflictCount,
-                    `Expected fewer conflicts with whitespace auto-resolve (baseline=${baselineConflictCount}, now=${summary.conflictCount})`);
-            }
-        );
-
-        // 10) autoResolve.kernelVersion
-        await runScenario(
-            'auto-kernel-version',
-            buildSettings({
-                'autoResolve.executionCount': false,
-                'autoResolve.kernelVersion': true,
-                'autoResolve.stripOutputs': false,
-                'autoResolve.whitespace': false,
-            }),
-            testConfig,
-            async (page) => {
-                const summary = await getAutoSummary(page);
-                assert(summary.bannerText !== null, 'Expected auto-resolve banner for kernel version setting');
-                assert(/Kernel version|Python version/i.test(summary.bannerText),
-                    `Unexpected kernelVersion banner text: ${summary.bannerText}`);
-                assert(summary.conflictCount === baselineConflictCount,
-                    `Kernel metadata auto-resolve should not change cell conflict count (baseline=${baselineConflictCount}, now=${summary.conflictCount})`);
-            }
-        );
-
-        console.log('\n=== SETTINGS MATRIX TEST PASSED ===');
+        console.log('\n=== SETTINGS MATRIX TEST COMPLETE ===');
     } finally {
+        // Restore previous workspace settings
         for (const key of SETTING_KEYS) {
             await mergeNBConfig.update(
                 key,
