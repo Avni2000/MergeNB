@@ -117,7 +117,7 @@ export class WebConflictPanel {
 
         const server = getWebServer();
         const conflictKey = `${this._sessionId}:v${this._conflictVersion}`;
-        const fileName = this._conflict.filePath.split('/').pop() || 'notebook.ipynb';
+        const fileName = path.basename(this._conflict.filePath) || 'notebook.ipynb';
 
         // Build the data payload for the React app
         const data: WebConflictData = {
