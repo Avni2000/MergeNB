@@ -13,7 +13,7 @@
 import * as vscode from 'vscode';
 import * as logger from '../logger';
 import { getWebServer } from './webServer';
-import { UnifiedConflict, UnifiedResolution, ResolvedRow } from './webTypes';
+import { UnifiedConflict, UnifiedResolution, ResolvedRow, type WebConflictData } from './webTypes';
 
 /**
  * Web-based panel for resolving notebook conflicts in the browser.
@@ -32,6 +32,7 @@ export class WebConflictPanel {
     private _conflict: UnifiedConflict | undefined;
     private _onResolutionComplete: ((resolution: UnifiedResolution) => Promise<void>) | undefined;
     private _sessionId: string | undefined;
+    private _conflictVersion: number = 1;
     private _isDisposed: boolean = false;
 
     public static async createOrShow(
@@ -66,6 +67,10 @@ export class WebConflictPanel {
     ): void {
         this._conflict = conflict;
         this._onResolutionComplete = onResolutionComplete;
+        this._conflictVersion += 1;
+        if (this._sessionId) {
+            this._sendConflictData();
+        }
     }
 
     private async _openInBrowser(): Promise<void> {
@@ -111,10 +116,14 @@ export class WebConflictPanel {
         if (!this._sessionId || !this._conflict) return;
 
         const server = getWebServer();
+        const conflictKey = `${this._sessionId}:v${this._conflictVersion}`;
+        const fileName = path.basename(this._conflict.filePath) || 'notebook.ipynb';
 
         // Build the data payload for the React app
-        const data = {
+        const data: WebConflictData = {
             filePath: this._conflict.filePath,
+            conflictKey,
+            fileName,
             type: this._conflict.type,
             semanticConflict: this._conflict.semanticConflict,
             autoResolveResult: this._conflict.autoResolveResult,

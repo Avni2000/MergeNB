@@ -7,6 +7,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
+import { useStore } from 'zustand';
 import { sortByPosition } from '../../positionUtils';
 import { normalizeCellSource } from '../../notebookUtils';
 import type {
@@ -16,50 +17,13 @@ import type {
     CellMapping,
     SemanticConflict,
     NotebookCell,
-    ResolutionChoice,
 } from './types';
 import { MergeRow } from './MergeRow';
-
-const INITIAL_MARK_AS_RESOLVED = true;
-const INITIAL_RENUMBER_EXECUTION_COUNTS = true;
-
-/** Resolution state tracking for a cell conflict */
-interface ResolutionState {
-    /** The branch choice that determines outputs, metadata, etc. */
-    choice: ResolutionChoice;
-    /** The original content from the chosen branch (for detecting modifications) */
-    originalContent: string;
-    /** The current resolved content (may be edited by user) */
-    resolvedContent: string;
-}
-
-type TakeAllChoice = 'base' | 'current' | 'incoming';
-
-interface ResolverSnapshot {
-    choices: Map<number, ResolutionState>;
-    rows: MergeRowType[];
-    markAsResolved: boolean;
-    renumberExecutionCounts: boolean;
-    takeAllChoice?: TakeAllChoice;
-}
-
-interface HistoryEntry {
-    label: string;
-    snapshot: ResolverSnapshot;
-}
-
-interface HistoryState {
-    entries: HistoryEntry[];
-    index: number;
-}
-
-function cloneChoices(source: Map<number, ResolutionState>): Map<number, ResolutionState> {
-    return new Map(Array.from(source.entries()).map(([key, value]) => [key, { ...value }]));
-}
-
-function cloneRows(source: MergeRowType[]): MergeRowType[] {
-    return source.map(row => ({ ...row }));
-}
+import {
+    createResolverStore,
+    type ResolutionState,
+    type TakeAllChoice,
+} from './resolverStore';
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
@@ -77,96 +41,42 @@ export function ConflictResolver({
     onResolve,
     onCancel,
 }: ConflictResolverProps): React.ReactElement {
-    const initialRows = conflict.type === 'semantic' && conflict.semanticConflict
-        ? buildMergeRowsFromSemantic(conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook)
-        : [];
+    const initialRows = useMemo(() => (
+        conflict.type === 'semantic' && conflict.semanticConflict
+            ? buildMergeRowsFromSemantic(conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook)
+            : []
+    ), [conflict.type, conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook]);
 
-    const [choices, setChoices] = useState<Map<number, ResolutionState>>(new Map());
-    const [markAsResolved, setMarkAsResolved] = useState(INITIAL_MARK_AS_RESOLVED);
-    const [renumberExecutionCounts, setRenumberExecutionCounts] = useState(INITIAL_RENUMBER_EXECUTION_COUNTS);
-    const [takeAllChoice, setTakeAllChoice] = useState<TakeAllChoice | undefined>(undefined);
-    const [rows, setRows] = useState<MergeRowType[]>(initialRows);
-    const [history, setHistory] = useState<HistoryState>(() => ({
-        entries: [{
-            label: 'Initial state',
-            snapshot: {
-                choices: cloneChoices(new Map()),
-                rows: cloneRows(initialRows),
-                markAsResolved: INITIAL_MARK_AS_RESOLVED,
-                renumberExecutionCounts: INITIAL_RENUMBER_EXECUTION_COUNTS,
-                takeAllChoice: undefined,
-            },
-        }],
-        index: 0,
-    }));
+    // Recreate resolver state only when the conflict instance key changes.
+    // This avoids resets caused by object identity churn on re-sent payloads.
+    const resolverStoreKey = conflict.conflictKey;
+    const resolverStore = useMemo(
+        () => createResolverStore(initialRows),
+        [resolverStoreKey]
+    );
     const [historyOpen, setHistoryOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
 
-    const choicesRef = useRef(choices);
-    const rowsRef = useRef(rows);
-    const markAsResolvedRef = useRef(markAsResolved);
-    const renumberExecutionCountsRef = useRef(renumberExecutionCounts);
-    const takeAllChoiceRef = useRef(takeAllChoice);
-    const historyRef = useRef(history);
+    const choices = useStore(resolverStore, state => state.choices);
+    const rows = useStore(resolverStore, state => state.rows);
+    const markAsResolved = useStore(resolverStore, state => state.markAsResolved);
+    const renumberExecutionCounts = useStore(resolverStore, state => state.renumberExecutionCounts);
+    const takeAllChoice = useStore(resolverStore, state => state.takeAllChoice);
+    const history = useStore(resolverStore, state => state.history);
+
+    const handleSelectChoice = useStore(resolverStore, state => state.selectChoice);
+    const handleCommitContent = useStore(resolverStore, state => state.commitContent);
+    const handleAcceptAll = useStore(resolverStore, state => state.acceptAll);
+    const handleToggleRenumberExecutionCounts = useStore(resolverStore, state => state.setRenumberExecutionCounts);
+    const handleToggleMarkAsResolved = useStore(resolverStore, state => state.setMarkAsResolved);
+    const handleJumpToHistory = useStore(resolverStore, state => state.jumpToHistory);
+    const handleUndo = useStore(resolverStore, state => state.undo);
+    const handleRedo = useStore(resolverStore, state => state.redo);
 
     useEffect(() => {
-        choicesRef.current = choices;
-    }, [choices]);
-
-    useEffect(() => {
-        rowsRef.current = rows;
-    }, [rows]);
-
-    useEffect(() => {
-        markAsResolvedRef.current = markAsResolved;
-    }, [markAsResolved]);
-
-    useEffect(() => {
-        renumberExecutionCountsRef.current = renumberExecutionCounts;
-    }, [renumberExecutionCounts]);
-
-    useEffect(() => {
-        takeAllChoiceRef.current = takeAllChoice;
-    }, [takeAllChoice]);
-
-    useEffect(() => {
-        historyRef.current = history;
-    }, [history]);
-
-    const recordHistory = useCallback((
-        label: string,
-        nextChoices: Map<number, ResolutionState>,
-        nextRows: MergeRowType[],
-        overrides?: {
-            markAsResolved?: boolean;
-            renumberExecutionCounts?: boolean;
-            takeAllChoice?: TakeAllChoice;
-        }
-    ) => {
-        setHistory(prev => {
-            const entries = prev.entries.slice(0, prev.index + 1);
-            entries.push({
-                label,
-                snapshot: {
-                    choices: cloneChoices(nextChoices),
-                    rows: cloneRows(nextRows),
-                    markAsResolved: overrides?.markAsResolved ?? markAsResolvedRef.current,
-                    renumberExecutionCounts: overrides?.renumberExecutionCounts ?? renumberExecutionCountsRef.current,
-                    takeAllChoice: overrides?.takeAllChoice ?? takeAllChoiceRef.current,
-                },
-            });
-            return { entries, index: entries.length - 1 };
-        });
-    }, []);
-
-    const applySnapshot = useCallback((snapshot: ResolverSnapshot) => {
-        setChoices(cloneChoices(snapshot.choices));
-        setRows(cloneRows(snapshot.rows));
-        setMarkAsResolved(snapshot.markAsResolved);
-        setRenumberExecutionCounts(snapshot.renumberExecutionCounts);
-        setTakeAllChoice(snapshot.takeAllChoice);
-    }, []);
+        setHistoryOpen(false);
+    }, [resolverStore]);
 
     const isEditableTarget = useCallback((target: EventTarget | null): boolean => {
         if (!target || !(target as HTMLElement).closest) return false;
@@ -259,126 +169,6 @@ export function ConflictResolver({
         };
     }, [historyOpen]);
 
-    /** Handle user selecting a branch choice (sets both choice and initial content) */
-    const handleSelectChoice = useCallback((index: number, choice: ResolutionChoice, resolvedContent: string) => {
-        const next = new Map(choicesRef.current);
-        next.set(index, {
-            choice,
-            originalContent: resolvedContent,
-            resolvedContent
-        });
-        setChoices(next);
-        setTakeAllChoice(undefined);
-        recordHistory(`Resolve conflict ${index + 1} (${choice})`, next, rowsRef.current, { takeAllChoice: undefined });
-    }, [recordHistory]);
-
-    /** Handle user editing the resolved content (just updates the text) */
-    const handleUpdateContent = useCallback((index: number, resolvedContent: string) => {
-        setChoices(prev => {
-            const existing = prev.get(index);
-            if (!existing || existing.resolvedContent === resolvedContent) return prev;
-            const next = new Map(prev);
-            next.set(index, { ...existing, resolvedContent });
-            return next;
-        });
-    }, []);
-
-    const handleCommitContent = useCallback((index: number) => {
-        const current = choicesRef.current.get(index);
-        if (!current) return;
-        const h = historyRef.current;
-        const lastSnapshot = h.entries[h.index]?.snapshot;
-        const lastChoice = lastSnapshot?.choices.get(index);
-        if (lastChoice && lastChoice.resolvedContent === current.resolvedContent && lastChoice.choice === current.choice) {
-            return;
-        }
-        recordHistory(`Edit conflict ${index + 1}`, choicesRef.current, rowsRef.current);
-    }, [recordHistory]);
-
-    /** Handle "Accept All" action */
-    const handleAcceptAll = (choice: 'base' | 'current' | 'incoming') => {
-        const next = new Map(choicesRef.current);
-        let didChange = false;
-        conflictRows.forEach(row => {
-            const conflictIdx = row.conflictIndex ?? -1;
-            if (conflictIdx < 0) return;
-            if (next.has(conflictIdx)) {
-                // Respect any already-resolved conflicts when taking all
-                return;
-            }
-
-            let cell: NotebookCell | undefined;
-            if (choice === 'base') cell = row.baseCell;
-            else if (choice === 'current') cell = row.currentCell;
-            else if (choice === 'incoming') cell = row.incomingCell;
-
-            // If cell exists on the chosen side, use it.
-            // If not (e.g. side deleted the cell), we resolve to "delete" (empty).
-            const effectiveChoice: ResolutionChoice = cell ? choice : 'delete';
-            const content = cell ? normalizeCellSource(cell.source) : '';
-
-            next.set(conflictIdx, {
-                choice: effectiveChoice,
-                originalContent: content,
-                resolvedContent: content
-            });
-            didChange = true;
-        });
-        if (!didChange) return;
-        setChoices(next);
-        setTakeAllChoice(choice);
-        recordHistory(`Accept all ${choice}`, next, rowsRef.current, { takeAllChoice: choice });
-    };
-
-    const handleToggleRenumberExecutionCounts = (checked: boolean) => {
-        if (checked === renumberExecutionCountsRef.current) return;
-        setRenumberExecutionCounts(checked);
-        recordHistory(
-            `Renumber execution counts ${checked ? 'on' : 'off'}`,
-            choicesRef.current,
-            rowsRef.current,
-            { renumberExecutionCounts: checked }
-        );
-    };
-
-    const handleToggleMarkAsResolved = (checked: boolean) => {
-        if (checked === markAsResolvedRef.current) return;
-        setMarkAsResolved(checked);
-        recordHistory(
-            `Mark as resolved ${checked ? 'on' : 'off'}`,
-            choicesRef.current,
-            rowsRef.current,
-            { markAsResolved: checked }
-        );
-    };
-
-    const handleJumpToHistory = (targetIndex: number) => {
-        setHistory(prev => {
-            if (targetIndex === prev.index) return prev;
-            if (targetIndex < 0 || targetIndex >= prev.entries.length) return prev;
-            applySnapshot(prev.entries[targetIndex].snapshot);
-            return { ...prev, index: targetIndex };
-        });
-    };
-
-    const handleUndo = useCallback(() => {
-        setHistory(prev => {
-            if (prev.index === 0) return prev;
-            const nextIndex = prev.index - 1;
-            applySnapshot(prev.entries[nextIndex].snapshot);
-            return { ...prev, index: nextIndex };
-        });
-    }, [applySnapshot]);
-
-    const handleRedo = useCallback(() => {
-        setHistory(prev => {
-            if (prev.index >= prev.entries.length - 1) return prev;
-            const nextIndex = prev.index + 1;
-            applySnapshot(prev.entries[nextIndex].snapshot);
-            return { ...prev, index: nextIndex };
-        });
-    }, [applySnapshot]);
-
     useEffect(() => {
         if (!enableUndoRedoHotkeys) return;
 
@@ -402,10 +192,17 @@ export function ConflictResolver({
     }, [enableUndoRedoHotkeys, handleRedo, handleUndo, isMac, isEditableTarget]);
 
     const handleResolve = () => {
+        const {
+            rows: liveRows,
+            choices: liveChoices,
+            takeAllChoice: liveTakeAllChoice,
+            markAsResolved: liveMarkAsResolved,
+            renumberExecutionCounts: liveRenumberExecutionCounts,
+        } = resolverStore.getState();
         // Build resolved rows - this is the source of truth for reconstruction
-        const resolvedRows: import('./types').ResolvedRow[] = rows.map((row) => {
+        const resolvedRows: import('./types').ResolvedRow[] = liveRows.map((row) => {
             const conflictIdx = row.conflictIndex ?? -1;
-            const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+            const resolutionState = conflictIdx >= 0 ? liveChoices.get(conflictIdx) : undefined;
 
             return {
                 baseCell: row.baseCell,
@@ -422,12 +219,12 @@ export function ConflictResolver({
         });
 
         const semanticChoice = (
-            takeAllChoice &&
-            isTakeAllChoiceConsistent(rows, choices, takeAllChoice, true)
+            liveTakeAllChoice &&
+            isTakeAllChoiceConsistent(liveRows, liveChoices, liveTakeAllChoice, true)
         )
-            ? takeAllChoice
-            : inferTakeAllChoice(rows, choices);
-        onResolve(markAsResolved, renumberExecutionCounts, resolvedRows, semanticChoice);
+            ? liveTakeAllChoice
+            : inferTakeAllChoice(liveRows, liveChoices);
+        onResolve(liveMarkAsResolved, liveRenumberExecutionCounts, resolvedRows, semanticChoice);
     };
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
@@ -715,7 +512,6 @@ export function ConflictResolver({
                                     theme={conflict.theme ?? 'light'}
                                     resolutionState={resolutionState}
                                     onSelectChoice={handleSelectChoice}
-                                    onUpdateContent={handleUpdateContent}
                                     onCommitContent={handleCommitContent}
                                     showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
                                     showBaseColumn={showBaseColumn}

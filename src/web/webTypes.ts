@@ -86,6 +86,8 @@ export interface UnifiedResolution {
  */
 export interface WebConflictData {
     filePath: string;
+    /** Stable conflict instance key for client-side state reset behavior */
+    conflictKey: string;
     fileName: string;
     type: 'semantic';
 
@@ -98,6 +100,8 @@ export interface WebConflictData {
     // Display options
     hideNonConflictOutputs?: boolean;
     showCellHeaders?: boolean;
+    enableUndoRedoHotkeys?: boolean;
+    showBaseColumn?: boolean;
 
     // Branch information
     currentBranch?: string;

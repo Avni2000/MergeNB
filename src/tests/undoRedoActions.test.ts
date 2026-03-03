@@ -34,6 +34,26 @@ async function pickBranchButton(row: Locator): Promise<{ selector: string; side:
     throw new Error('No branch selection buttons found for conflict row');
 }
 
+async function waitForResolvedEditorText(
+    textarea: Locator,
+    expected: string,
+    timeoutMs = 5000,
+    pollMs = 100,
+): Promise<string> {
+    const start = Date.now();
+    let last = await getResolvedEditorValue(textarea);
+
+    while (Date.now() - start < timeoutMs) {
+        last = await getResolvedEditorValue(textarea);
+        if (last === expected) {
+            return last;
+        }
+        await new Promise(resolve => setTimeout(resolve, pollMs));
+    }
+
+    return last;
+}
+
 
 
 export async function run(): Promise<void> {
@@ -108,19 +128,33 @@ export async function run(): Promise<void> {
         await textarea.waitFor({ timeout: 5000 });
         const original = await getResolvedEditorValue(textarea);
         const edited = `${original}\n(edited)`;
+        const historyItemsForEdit = page.locator('[data-testid="history-item"]');
+        const historyCountBeforeEdit = await historyItemsForEdit.count();
         await fillResolvedEditor(textarea, edited);
         await textarea.locator('.cm-content').blur();
 
+        const historyCommitStart = Date.now();
+        while (Date.now() - historyCommitStart < 5000) {
+            if (await historyItemsForEdit.count() > historyCountBeforeEdit) {
+                break;
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
         await clickHistoryUndo(page);
-        const afterUndo = await getResolvedEditorValue(textarea);
+        const afterUndo = await waitForResolvedEditorText(textarea, original);
         if (afterUndo !== original) {
-            throw new Error('Undo did not restore original content after edit');
+            throw new Error(
+                `Undo did not restore original content after edit (expected len=${original.length}, actual len=${afterUndo.length})`
+            );
         }
 
         await clickHistoryRedo(page);
-        const afterRedo = await getResolvedEditorValue(textarea);
+        const afterRedo = await waitForResolvedEditorText(textarea, edited);
         if (afterRedo !== edited) {
-            throw new Error('Redo did not restore edited content after edit');
+            throw new Error(
+                `Redo did not restore edited content after edit (expected len=${edited.length}, actual len=${afterRedo.length})`
+            );
         }
         console.log('  ✓ Undo/redo restored edited content');
 
