@@ -9,7 +9,9 @@
 
 import { createTheme } from '@uiw/codemirror-themes';
 import { tags as t } from '@lezer/highlight';
+import { classHighlighter } from '@lezer/highlight';
 import { EditorView } from '@codemirror/view';
+import { syntaxHighlighting } from '@codemirror/language';
 import type { Extension } from '@codemirror/state';
 
 /**
@@ -104,3 +106,9 @@ export const mergeNBEditorStructure: Extension = EditorView.theme({
         display: 'none',
     },
 });
+
+/**
+ * Lezer classHighlighter emits token classes like `.tok-keyword`, which our
+ * integration tests and CSS hooks rely on.
+ */
+export const mergeNBSyntaxClassHighlighter: Extension = syntaxHighlighting(classHighlighter);

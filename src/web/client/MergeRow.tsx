@@ -9,14 +9,12 @@
  * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { LanguageDescription } from '@codemirror/language';
-import { languages } from '@codemirror/language-data';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
-import { createMergeNBTheme, mergeNBEditorStructure } from './editorTheme';
+import { createMergeNBTheme, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './editorTheme';
 
 /** Resolution state for a cell */
 interface ResolutionState {
@@ -32,7 +30,7 @@ interface MergeRowProps {
     rowIndex: number;
     conflictIndex: number;
     notebookPath?: string;
-    kernelLanguage?: string;
+    languageExtensions?: any[];
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onUpdateContent: (index: number, resolvedContent: string) => void;
@@ -49,7 +47,7 @@ export function MergeRowInner({
     rowIndex,
     conflictIndex,
     notebookPath,
-    kernelLanguage = 'python',
+    languageExtensions = [],
     resolutionState,
     onSelectChoice,
     onUpdateContent,
@@ -65,30 +63,14 @@ export function MergeRowInner({
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
     const [showWarning, setShowWarning] = useState(false);
-    // Lazy init: if the language was already loaded by another cell in this session
-    // (LanguageDescription.support is populated after the first load), start with
-    // it synchronously so the editor never renders with an empty extensions list.
-    const [langExtension, setLangExtension] = useState<any[]>(() => {
-        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
-        return desc?.support ? [desc.support] : [];
-    });
-
-    useEffect(() => {
-        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
-        if (desc?.support) {
-            setLangExtension(prev => (prev.length > 0 ? prev : [desc.support!]));
-            return;
-        }
-        desc?.load().then(lang => setLangExtension([lang]));
-    }, [kernelLanguage]);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (which triggers StateEffect.reconfigure) only fires when these values actually
     // change — not on every render because of new object/array references.
     const resolvedEditorTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
     const editorExtensions = useMemo(
-        () => [...langExtension, mergeNBEditorStructure],
-        [langExtension]
+        () => [...languageExtensions, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
+        [languageExtensions]
     );
 
     // Get content for a given choice
@@ -165,7 +147,7 @@ export function MergeRowInner({
                             cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
                             side="current"
                             notebookPath={notebookPath}
-                            kernelLanguage={kernelLanguage}
+                            languageExtensions={languageExtensions}
                             theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
@@ -229,7 +211,7 @@ export function MergeRowInner({
                                 notebookPath={notebookPath}
                                 isConflict={true}
                                 compareCell={row.currentCell || row.incomingCell}
-                                kernelLanguage={kernelLanguage}
+                                languageExtensions={languageExtensions}
                                 theme={theme}
                                 showOutputs={showOutputs}
                                 showCellHeaders={showCellHeaders}
@@ -252,7 +234,7 @@ export function MergeRowInner({
                             compareCell={row.incomingCell || row.baseCell}
                             baseCell={row.baseCell}
                             diffMode={diffMode}
-                            kernelLanguage={kernelLanguage}
+                            languageExtensions={languageExtensions}
                             theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
@@ -274,7 +256,7 @@ export function MergeRowInner({
                             compareCell={row.currentCell || row.baseCell}
                             baseCell={row.baseCell}
                             diffMode={diffMode}
-                            kernelLanguage={kernelLanguage}
+                            languageExtensions={languageExtensions}
                             theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}

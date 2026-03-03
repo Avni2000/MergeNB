@@ -5,6 +5,8 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { LanguageDescription } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
 import { sortByPosition } from '../../positionUtils';
 import { normalizeCellSource } from '../../notebookUtils';
 import type {
@@ -180,6 +182,52 @@ export function ConflictResolver({
             ?? conflict.semanticConflict?.incoming?.metadata;
         return meta?.kernelspec?.language ?? meta?.language_info?.name ?? 'python';
     }, [conflict.semanticConflict]);
+    const [languageSupport, setLanguageSupport] = useState<any | null>(() => {
+        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        return desc?.support ?? null;
+    });
+    const [languageReady, setLanguageReady] = useState<boolean>(() => {
+        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        return !desc || Boolean(desc.support);
+    });
+    const languageExtensions = useMemo(
+        () => (languageSupport ? [languageSupport] : []),
+        [languageSupport]
+    );
+
+    useEffect(() => {
+        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        if (!desc) {
+            setLanguageSupport(null);
+            setLanguageReady(true);
+            return;
+        }
+        if (desc.support) {
+            setLanguageSupport(desc.support);
+            setLanguageReady(true);
+            return;
+        }
+
+        let cancelled = false;
+        setLanguageReady(false);
+
+        desc.load()
+            .then(support => {
+                if (cancelled) return;
+                setLanguageSupport(support);
+                setLanguageReady(true);
+            })
+            .catch(err => {
+                console.warn('[MergeNB] Failed to load CodeMirror language support:', err);
+                if (cancelled) return;
+                setLanguageSupport(null);
+                setLanguageReady(true);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [kernelLanguage]);
 
     const conflictRows = useMemo(() => rows.filter(r => r.type === 'conflict'), [rows]);
     const totalConflicts = conflictRows.length;
@@ -390,13 +438,24 @@ export function ConflictResolver({
     };
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
+    const getScrollElement = useCallback(() => mainContentRef.current, []);
+    const estimateRowSize = useCallback(() => 80, []);
     const rowVirtualizer = useVirtualizer({
-        count: rows.length,
-        getScrollElement: () => mainContentRef.current,
-        estimateSize: () => 240,
+        count: languageReady ? rows.length : 0,
+        getScrollElement,
+        estimateSize: estimateRowSize,
         overscan: 6,
     });
     const virtualRows = rowVirtualizer.getVirtualItems();
+    // Track the maximum total size to prevent flicker from measurement
+    // recalculations that can temporarily shrink getTotalSize().
+    const totalSize = rowVirtualizer.getTotalSize();
+    const stableTotalSizeRef = useRef(0);
+    if (languageReady) {
+        stableTotalSizeRef.current = Math.max(stableTotalSizeRef.current, totalSize);
+    } else {
+        stableTotalSizeRef.current = 0;
+    }
 
     return (
         <div className="app-container">
@@ -599,54 +658,66 @@ export function ConflictResolver({
                     </div>
                 </div>
 
-                <div
-                    style={{
-                        height: rowVirtualizer.getTotalSize(),
-                        position: 'relative',
-                    }}
-                >
-                    {virtualRows.map((virtualRow) => {
-                        const i = virtualRow.index;
-                        const row = rows[i];
-                        const conflictIdx = row?.conflictIndex ?? -1;
-                        const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+                {!languageReady ? (
+                    <div
+                        style={{
+                            padding: '12px 16px',
+                            color: 'var(--text-secondary)',
+                            fontSize: 13,
+                        }}
+                    >
+                        Preparing syntax highlighting...
+                    </div>
+                ) : (
+                    <div
+                        style={{
+                            height: stableTotalSizeRef.current,
+                            position: 'relative',
+                        }}
+                    >
+                        {virtualRows.map((virtualRow) => {
+                            const i = virtualRow.index;
+                            const row = rows[i];
+                            const conflictIdx = row?.conflictIndex ?? -1;
+                            const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
 
-                        if (!row) return null;
+                            if (!row) return null;
 
-                        return (
-                            <div
-                                key={virtualRow.key}
-                                data-index={virtualRow.index}
-                                ref={rowVirtualizer.measureElement}
-                                className="virtual-row"
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    transform: `translateY(${virtualRow.start}px)`,
-                                }}
-                            >
-                                <MergeRow
-                                    row={row}
-                                    rowIndex={i}
-                                    conflictIndex={conflictIdx}
-                                    notebookPath={conflict.filePath}
-                                    kernelLanguage={kernelLanguage}
-                                    theme={conflict.theme ?? 'light'}
-                                    resolutionState={resolutionState}
-                                    onSelectChoice={handleSelectChoice}
-                                    onUpdateContent={handleUpdateContent}
-                                    onCommitContent={handleCommitContent}
-                                    showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
-                                    showBaseColumn={showBaseColumn}
-                                    showCellHeaders={showCellHeaders}
-                                    data-testid={conflictIdx >= 0 ? `conflict-row-${conflictIdx}` : `row-${i}`}
-                                />
-                            </div>
-                        );
-                    })}
-                </div>
+                            return (
+                                <div
+                                    key={virtualRow.key}
+                                    data-index={virtualRow.index}
+                                    ref={rowVirtualizer.measureElement}
+                                    className="virtual-row"
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        transform: `translateY(${virtualRow.start}px)`,
+                                    }}
+                                >
+                                    <MergeRow
+                                        row={row}
+                                        rowIndex={i}
+                                        conflictIndex={conflictIdx}
+                                        notebookPath={conflict.filePath}
+                                        languageExtensions={languageExtensions}
+                                        theme={conflict.theme ?? 'light'}
+                                        resolutionState={resolutionState}
+                                        onSelectChoice={handleSelectChoice}
+                                        onUpdateContent={handleUpdateContent}
+                                        onCommitContent={handleCommitContent}
+                                        showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
+                                        showBaseColumn={showBaseColumn}
+                                        showCellHeaders={showCellHeaders}
+                                        data-testid={conflictIdx >= 0 ? `conflict-row-${conflictIdx}` : `row-${i}`}
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </main>
         </div>
     );

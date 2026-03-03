@@ -5,8 +5,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { LanguageDescription } from '@codemirror/language';
-import { languages } from '@codemirror/language-data';
 import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
 import { StateField, RangeSetBuilder } from '@codemirror/state';
 import { IRenderMime, MimeModel, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
@@ -17,7 +15,7 @@ import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
 import * as logger from '../../logger';
-import { createMergeNBTheme, mergeNBEditorStructure } from './editorTheme';
+import { createMergeNBTheme, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './editorTheme';
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
@@ -57,7 +55,7 @@ interface CellContentProps {
     diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
     showCellHeaders?: boolean;
-    kernelLanguage?: string;
+    languageExtensions?: any[];
     theme?: 'dark' | 'light';
 }
 
@@ -72,7 +70,7 @@ export function CellContentInner({
     diffMode = 'base',
     showOutputs = true,
     showCellHeaders = false,
-    kernelLanguage,
+    languageExtensions = [],
     theme = 'light',
 }: CellContentProps): React.ReactElement {
     const renderMimeRegistry = useMemo(
@@ -84,35 +82,13 @@ export function CellContentInner({
         [cell]
     );
 
-    // Load syntax language extension for CodeMirror code cells.
-    // Must be declared before any early returns (Rules of Hooks).
-    //
-    // Lazy init: LanguageDescription.support is populated once the pack has been
-    // loaded (by this or any other component).  Starting with it synchronously
-    // means cells that mount *after* the first load skip the [] → [lang] transition
-    // entirely — no second render, no virtualizer height recalculation.
-    const [langExtension, setLangExtension] = useState<any[]>(() => {
-        if (!kernelLanguage) return [];
-        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
-        return desc?.support ? [desc.support] : [];
-    });
-    useEffect(() => {
-        if (!kernelLanguage) return;
-        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
-        if (desc?.support) {
-            setLangExtension(prev => (prev.length > 0 ? prev : [desc.support!]));
-            return;
-        }
-        desc?.load().then(lang => setLangExtension([lang]));
-    }, [kernelLanguage]);
-
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (deps: [theme, extensions, ...]) only fires StateEffect.reconfigure when
     // these values truly change — not on every render due to new object/array refs.
     const cmTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
     const cellExtensions = useMemo(
-        () => [...langExtension, mergeNBEditorStructure],
-        [langExtension]
+        () => [...languageExtensions, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
+        [languageExtensions]
     );
 
     if (!cell) {
@@ -162,7 +138,7 @@ export function CellContentInner({
                         compareSource={normalizeCellSource((compareCell ?? baseCell)!.source)}
                         side={side}
                         diffMode={diffMode}
-                        langExtension={langExtension}
+                        langExtension={languageExtensions}
                         theme={theme}
                     />
                 ) : cellType !== 'markdown' ? (
@@ -321,7 +297,7 @@ function DiffContent({ source, compareSource, side, diffMode, langExtension, the
     );
     const cmTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
     const allExtensions = useMemo(
-        () => [...langExtension, mergeNBEditorStructure, diffExtension],
+        () => [...langExtension, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure, diffExtension],
         [langExtension, diffExtension]
     );
 

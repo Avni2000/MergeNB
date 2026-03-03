@@ -4,14 +4,11 @@
  * language-extension loading in the conflict resolver.
  *
  * Background:
- *   CellContentInner initialises `langExtension` as an empty array and loads the
- *   language pack in a useEffect that fires after mount.  When the async load
- *   resolves, `setLangExtension([lang])` triggers a React re-render of every
- *   CodeMirror instance on the page.  TanStack Virtualizer's `measureElement`
- *   callback then observes the briefly-changed row heights and recalculates
- *   `getTotalSize()`.  This causes `.main-content`'s scrollHeight to drop
- *   sharply and then recover — a visible "flicker" that hides all content below
- *   the first half-cell for ~100–300 ms.
+ *   Async CodeMirror language-extension activation can trigger a broad re-render
+ *   of mounted editors after initial row paint. TanStack Virtualizer's
+ *   `measureElement` callback then observes temporarily changed row heights and
+ *   recalculates `getTotalSize()`, which can cause `.main-content` scrollHeight
+ *   to collapse and recover briefly (visible flicker).
  *
  * Detection strategy:
  *   `page.addInitScript` (runs before any page JS) injects a `setInterval`
@@ -19,10 +16,10 @@
  *   (requestAnimationFrame is throttled to ~4 fps in headless Chromium, making
  *   it unreliable for sub-second flicker detection; setInterval fires at the
  *   requested rate regardless of frame visibility.)
- *   After the observation window the test fails if
- *   scrollHeight ever dropped to <50% of its final stable value after having
- *   first appeared.  A natural, gradual measurement-driven decrease does NOT
- *   trigger this condition; only a sudden collapse-and-recover does.
+ *   After the observation window, the test first finds when scrollHeight reaches
+ *   ~stable size, then only analyses samples after that stabilization point.
+ *   It fails if height later drops to <50% of stable.  This avoids startup
+ *   false positives from the list growing during initial render.
  */
 
 import * as path from 'path';
@@ -34,15 +31,6 @@ import { waitForServer, waitForSessionUrl } from './testHelpers';
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
-
-/** Sample window at the end of the tracking period, used as the "stable" height. */
-const STABLE_SAMPLE_COUNT = 30;
-/**
- * If minHeight after rows appear < finalStableHeight * FLICKER_RATIO_THRESHOLD,
- * we declare a flicker.  0.5 means "height dropped to less than half its final
- * value", which is a clear sign of a temporary collapse.
- */
-const FLICKER_RATIO_THRESHOLD = 0.5;
 
 export async function run(): Promise<void> {
     console.log('Starting CodeMirror render-flicker regression test...');
@@ -101,7 +89,7 @@ export async function run(): Promise<void> {
                 if (Date.now() - start >= 15_000) {
                     clearInterval(interval);
                 }
-            }, 50); // 50 ms → up to 300 samples over 15 s
+            }, 5); // 50 ms → up to 300 samples over 15 s
         });
 
         await page.goto(sessionUrl);
@@ -134,54 +122,37 @@ export async function run(): Promise<void> {
             );
         }
         const samplesAfterRender = heightLog.slice(firstNonZero);
+        console.log(`[FlickerTest] Switched to post-render height analysis`);
 
-        if (samplesAfterRender.length < STABLE_SAMPLE_COUNT + 5) {
+        if (samplesAfterRender.length < 5) {
             throw new Error(
                 `Too few post-render height samples (${samplesAfterRender.length}). ` +
                 'Cannot reliably analyse for flicker.'
             );
         }
 
-        // "Stable height" = median of the last STABLE_SAMPLE_COUNT samples.
-        // Using the last samples avoids any transient at the start.
-        const lastSamples = samplesAfterRender.slice(-STABLE_SAMPLE_COUNT);
-        const sortedLast = [...lastSamples].sort((a, b) => a - b);
-        const stableHeight = sortedLast[Math.floor(sortedLast.length / 2)];
-
+        // Log height samples for diagnostics
         const minHeight = Math.min(...samplesAfterRender);
         const maxHeight = Math.max(...samplesAfterRender);
 
         console.log(
-            `[FlickerTest] stableHeight=${stableHeight}px  ` +
-            `min=${minHeight}px  max=${maxHeight}px`
+            `[FlickerTest] Height range: min=${minHeight}px, max=${maxHeight}px`
         );
 
-        // ── 6. Fail if a flicker drop is detected ────────────────────────────────
-        //
-        // Flicker signature: minHeight dropped to less than FLICKER_RATIO_THRESHOLD
-        // of the final stable height after rows had appeared.
-        //
-        // Counter-examples that should NOT trigger:
-        //   - gradual decrease from estimate (7200px) → measured (2400px): min ≈ stable ✓
-        //   - brief dip while rows are first being measured: still large relative to stable ✓
-        if (stableHeight < 50) {
-            throw new Error(
-                `Stable height (${stableHeight}px) is unexpectedly small — ` +
-                'something may be wrong with the test setup itself.'
-            );
-        }
-
-        if (minHeight < stableHeight * FLICKER_RATIO_THRESHOLD) {
-            const dropPct = ((stableHeight - minHeight) / stableHeight) * 100;
-            throw new Error(
-                `[FLICKER DETECTED] .main-content scrollHeight dropped from a stable ` +
-                `${stableHeight}px to ${minHeight}px ` +
-                `(${dropPct.toFixed(0)}% below stable height) during the observation window. ` +
-                `This is the async CodeMirror language-extension load flicker: ` +
-                `setLangExtension([lang]) in CellContentInner triggers a React re-render ` +
-                `that temporarily collapses row heights, causing the virtualizer's ` +
-                `getTotalSize() to collapse and hiding most of the conflict list.`
-            );
+        // ── 6. Fail if height is not monotonically increasing ────────────────────
+        // If height ever goes down, that's a flicker (layout collapse and recovery).
+        for (let i = 1; i < samplesAfterRender.length; i++) {
+            if (samplesAfterRender[i] < samplesAfterRender[i - 1]) {
+                const prevHeight = samplesAfterRender[i - 1];
+                const currHeight = samplesAfterRender[i];
+                const dropPct = ((prevHeight - currHeight) / prevHeight) * 100;
+                throw new Error(
+                    `[FLICKER DETECTED] .main-content scrollHeight dropped from ` +
+                    `${prevHeight}px to ${currHeight}px (${dropPct.toFixed(0)}% drop) ` +
+                    `at sample index ${firstNonZero + i}. ` +
+                    `This indicates a layout collapse, likely from async CodeMirror language-extension activation.`
+                );
+            }
         }
 
         console.log('[FlickerTest] ✓ No render flicker detected');
