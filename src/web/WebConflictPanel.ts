@@ -9,7 +9,7 @@
  * 
  * The actual UI is rendered by the React app in src/web/client/.
  */
-
+import path from 'path';
 import * as vscode from 'vscode';
 import * as logger from '../logger';
 import { getWebServer } from './webServer';
