@@ -313,14 +313,14 @@ export async function collectExpectedCellsFromUI(
                 continue;
             }
 
+            const choiceInfo = await options.resolveConflictChoice(row, conflictIdx, i);
+            const choice = choiceInfo.choice;
+
             const textarea = row.locator('.resolved-content-input');
             if (await textarea.count() === 0) {
                 throw new Error(`Row ${i}: missing resolved content input`);
             }
             const resolvedContent = await getResolvedEditorValue(textarea);
-
-            const choiceInfo = await options.resolveConflictChoice(row, conflictIdx, i);
-            const choice = choiceInfo.choice;
             let cellType = choiceInfo.chosenCellType;
 
             if (!cellType && (choice === 'base' || choice === 'current' || choice === 'incoming')) {

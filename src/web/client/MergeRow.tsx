@@ -11,6 +11,7 @@
 
 import React, { useState, useMemo } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
+import type { Extension } from '@codemirror/state';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
@@ -30,7 +31,7 @@ interface MergeRowProps {
     rowIndex: number;
     conflictIndex: number;
     notebookPath?: string;
-    languageExtensions?: any[];
+    languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onUpdateContent: (index: number, resolvedContent: string) => void;

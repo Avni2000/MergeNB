@@ -203,6 +203,8 @@ export function ConflictResolver({
         }
 
         let cancelled = false;
+        // Avoid showing stale highlighting from previous language while loading.
+        setLanguageSupport(null);
 
         desc.load()
             .then(support => {
@@ -210,6 +212,8 @@ export function ConflictResolver({
                 setLanguageSupport(support);
             })
             .catch(err => {
+                if (cancelled) return;
+                setLanguageSupport(null);
                 console.warn('[MergeNB] Failed to load CodeMirror language support:', err);
             });
 
@@ -428,17 +432,23 @@ export function ConflictResolver({
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
     const getScrollElement = useCallback(() => mainContentRef.current, []);
-    // Estimate row height by counting source lines across all cells in the row.
+    // Precompute per-row height estimates once per rows change so estimateSize is O(1).
     // This overestimates rather than underestimates — items are placed too far
     // apart initially (harmless gaps) rather than overlapping (visible flicker).
-    const estimateRowSize = useCallback((index: number) => {
-        const row = rows[index];
-        if (!row) return 200;
-        const cells = [row.currentCell, row.incomingCell, row.baseCell].filter(Boolean);
-        const maxLines = Math.max(...cells.map(c => normalizeCellSource(c!.source).split('\n').length), 3);
-        // 22px per line + 80px overhead (borders, headers, padding)
-        return Math.max(120, maxLines * 22 + 80);
+    const estimatedRowHeights = useMemo(() => {
+        return rows.map(row => {
+            const cells = [row.currentCell, row.incomingCell, row.baseCell].filter(Boolean);
+            const maxLines = Math.max(
+                ...cells.map(c => normalizeCellSource(c!.source).split('\n').length),
+                3
+            );
+            // 22px per line + 80px overhead (borders, headers, padding)
+            return Math.max(120, maxLines * 22 + 80);
+        });
     }, [rows]);
+    const estimateRowSize = useCallback((index: number) => {
+        return estimatedRowHeights[index] ?? 200;
+    }, [estimatedRowHeights]);
     const rowVirtualizer = useVirtualizer({
         count: rows.length,
         getScrollElement,

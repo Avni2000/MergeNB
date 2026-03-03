@@ -89,7 +89,7 @@ export async function run(): Promise<void> {
                 if (Date.now() - start >= 15_000) {
                     clearInterval(interval);
                 }
-            }, 5); // 50 ms → up to 300 samples over 15 s
+            }, 50); // 50 ms → up to 300 samples over 15 s
         });
 
         await page.goto(sessionUrl);
