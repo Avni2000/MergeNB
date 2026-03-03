@@ -70,15 +70,17 @@ export async function run(): Promise<void> {
         await keywordSpan.waitFor({ timeout: 8_000 });
 
         // Verify it actually has a color style applied
-        const color = await keywordSpan.evaluate(
-        el => window.getComputedStyle(el).color
-        );
+        const color = await keywordSpan.evaluate(el => window.getComputedStyle(el).color);
+        const defaultTextColor = await cmEditor
+            .locator('.cm-content')
+            .first()
+            .evaluate(el => window.getComputedStyle(el).color);
 
         console.log(`Found .tok-keyword span with color: ${color}`);
-        if (color === 'rgb(239, 231, 219)') {
+        if (color === defaultTextColor) {
             throw new Error(
-                `.tok-keyword exists but has no highlight color applied (got: ${color}) — theme extension missing`
-        );
+                `.tok-keyword color matches default editor text color (${color}) — highlight not applied`
+            );
         }
         console.log(`✓ Keyword span has color: ${color}`);
         // ── 5. Spot-check the keyword text is a real Python keyword ──────────────
