@@ -161,9 +161,9 @@ export const TEST_GROUPS: TestGroup[] = [
             },
             {
                 id: 'regression_settings',
-                description: 'Each MergeNBSettings field is propagated and respected',
-                notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
-                testModule: './settingsRegression.test.js',
+                description: 'Settings matrix: end-to-end config -> UI behavior + auto-resolve paths',
+                notebooks: ['08_settings_base.ipynb', '08_settings_current.ipynb', '08_settings_incoming.ipynb'],
+                testModule: './settingsMatrix.test.js',
             },
             {
                 id: 'regression_status_indicators',
