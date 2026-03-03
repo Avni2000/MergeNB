@@ -186,10 +186,6 @@ export function ConflictResolver({
         const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
         return desc?.support ?? null;
     });
-    const [languageReady, setLanguageReady] = useState<boolean>(() => {
-        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
-        return !desc || Boolean(desc.support);
-    });
     const languageExtensions = useMemo(
         () => (languageSupport ? [languageSupport] : []),
         [languageSupport]
@@ -199,29 +195,22 @@ export function ConflictResolver({
         const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
         if (!desc) {
             setLanguageSupport(null);
-            setLanguageReady(true);
             return;
         }
         if (desc.support) {
             setLanguageSupport(desc.support);
-            setLanguageReady(true);
             return;
         }
 
         let cancelled = false;
-        setLanguageReady(false);
 
         desc.load()
             .then(support => {
                 if (cancelled) return;
                 setLanguageSupport(support);
-                setLanguageReady(true);
             })
             .catch(err => {
                 console.warn('[MergeNB] Failed to load CodeMirror language support:', err);
-                if (cancelled) return;
-                setLanguageSupport(null);
-                setLanguageReady(true);
             });
 
         return () => {
@@ -439,23 +428,44 @@ export function ConflictResolver({
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
     const getScrollElement = useCallback(() => mainContentRef.current, []);
-    const estimateRowSize = useCallback(() => 80, []);
+    // Estimate row height by counting source lines across all cells in the row.
+    // This overestimates rather than underestimates — items are placed too far
+    // apart initially (harmless gaps) rather than overlapping (visible flicker).
+    const estimateRowSize = useCallback((index: number) => {
+        const row = rows[index];
+        if (!row) return 200;
+        const cells = [row.currentCell, row.incomingCell, row.baseCell].filter(Boolean);
+        const maxLines = Math.max(...cells.map(c => normalizeCellSource(c!.source).split('\n').length), 3);
+        // 22px per line + 80px overhead (borders, headers, padding)
+        return Math.max(120, maxLines * 22 + 80);
+    }, [rows]);
     const rowVirtualizer = useVirtualizer({
-        count: languageReady ? rows.length : 0,
+        count: rows.length,
         getScrollElement,
         estimateSize: estimateRowSize,
         overscan: 6,
     });
     const virtualRows = rowVirtualizer.getVirtualItems();
-    // Track the maximum total size to prevent flicker from measurement
-    // recalculations that can temporarily shrink getTotalSize().
+
+    // Defer measureElement by one animation frame so CodeMirror's useEffect
+    // has time to create the EditorView before TanStack samples the DOM height.
+    // Without this, the initial measurement captures the empty CodeMirror shell
+    // (near-zero height), causing subsequent rows to overlap ("flicker").
+    const virtualizerRef = useRef(rowVirtualizer);
+    virtualizerRef.current = rowVirtualizer;
+    const deferredMeasureRef = useCallback((node: HTMLElement | null) => {
+        if (!node) return;
+        requestAnimationFrame(() => {
+            if (node.isConnected) {
+                virtualizerRef.current.measureElement(node);
+            }
+        });
+    }, []);
+    // Keep the container height monotonically non-decreasing so the scrollbar
+    // doesn't jump when TanStack refines its measurements.
     const totalSize = rowVirtualizer.getTotalSize();
     const stableTotalSizeRef = useRef(0);
-    if (languageReady) {
-        stableTotalSizeRef.current = Math.max(stableTotalSizeRef.current, totalSize);
-    } else {
-        stableTotalSizeRef.current = 0;
-    }
+    stableTotalSizeRef.current = Math.max(stableTotalSizeRef.current, totalSize);
 
     return (
         <div className="app-container">
@@ -658,66 +668,54 @@ export function ConflictResolver({
                     </div>
                 </div>
 
-                {!languageReady ? (
-                    <div
-                        style={{
-                            padding: '12px 16px',
-                            color: 'var(--text-secondary)',
-                            fontSize: 13,
-                        }}
-                    >
-                        Preparing syntax highlighting...
-                    </div>
-                ) : (
-                    <div
-                        style={{
-                            height: stableTotalSizeRef.current,
-                            position: 'relative',
-                        }}
-                    >
-                        {virtualRows.map((virtualRow) => {
-                            const i = virtualRow.index;
-                            const row = rows[i];
-                            const conflictIdx = row?.conflictIndex ?? -1;
-                            const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+                <div
+                    style={{
+                        height: stableTotalSizeRef.current,
+                        position: 'relative',
+                    }}
+                >
+                    {virtualRows.map((virtualRow) => {
+                        const i = virtualRow.index;
+                        const row = rows[i];
+                        const conflictIdx = row?.conflictIndex ?? -1;
+                        const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
 
-                            if (!row) return null;
+                        if (!row) return null;
 
-                            return (
-                                <div
-                                    key={virtualRow.key}
-                                    data-index={virtualRow.index}
-                                    ref={rowVirtualizer.measureElement}
-                                    className="virtual-row"
-                                    style={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        width: '100%',
-                                        transform: `translateY(${virtualRow.start}px)`,
-                                    }}
-                                >
-                                    <MergeRow
-                                        row={row}
-                                        rowIndex={i}
-                                        conflictIndex={conflictIdx}
-                                        notebookPath={conflict.filePath}
-                                        languageExtensions={languageExtensions}
-                                        theme={conflict.theme ?? 'light'}
-                                        resolutionState={resolutionState}
-                                        onSelectChoice={handleSelectChoice}
-                                        onUpdateContent={handleUpdateContent}
-                                        onCommitContent={handleCommitContent}
-                                        showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
-                                        showBaseColumn={showBaseColumn}
-                                        showCellHeaders={showCellHeaders}
-                                        data-testid={conflictIdx >= 0 ? `conflict-row-${conflictIdx}` : `row-${i}`}
-                                    />
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
+                        return (
+                            <div
+                                key={virtualRow.key}
+                                data-index={virtualRow.index}
+                                ref={deferredMeasureRef}
+                                className="virtual-row"
+                                style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    transform: `translateY(${virtualRow.start}px)`,
+                                }}
+                            >
+                                <MergeRow
+                                    row={row}
+                                    rowIndex={i}
+                                    conflictIndex={conflictIdx}
+                                    notebookPath={conflict.filePath}
+                                    languageExtensions={languageExtensions}
+                                    theme={conflict.theme ?? 'light'}
+                                    resolutionState={resolutionState}
+                                    onSelectChoice={handleSelectChoice}
+                                    onUpdateContent={handleUpdateContent}
+                                    onCommitContent={handleCommitContent}
+                                    showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
+                                    showBaseColumn={showBaseColumn}
+                                    showCellHeaders={showCellHeaders}
+                                    data-testid={conflictIdx >= 0 ? `conflict-row-${conflictIdx}` : `row-${i}`}
+                                />
+                            </div>
+                        );
+                    })}
+                </div>
             </main>
         </div>
     );
