@@ -9,7 +9,7 @@
  * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
@@ -33,8 +33,7 @@ interface MergeRowProps {
     languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
-    onUpdateContent: (index: number, resolvedContent: string) => void;
-    onCommitContent: (index: number) => void;
+    onCommitContent: (index: number, resolvedContent: string) => void;
     showOutputs?: boolean;
     showBaseColumn?: boolean;
     showCellHeaders?: boolean;
@@ -51,7 +50,6 @@ export function MergeRowInner({
     languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
     onSelectChoice,
-    onUpdateContent,
     onCommitContent,
     showOutputs = true,
     showBaseColumn = true,
@@ -64,6 +62,11 @@ export function MergeRowInner({
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
     const [showWarning, setShowWarning] = useState(false);
+    const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
+
+    useEffect(() => {
+        setDraftResolvedContent(resolutionState?.resolvedContent ?? '');
+    }, [resolutionState?.choice, resolutionState?.resolvedContent, conflictIndex]);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (which triggers StateEffect.reconfigure) only fires when these values actually
@@ -85,7 +88,7 @@ export function MergeRowInner({
 
     // Check if content has been modified from the original
     const isContentModified = resolutionState
-        ? resolutionState.resolvedContent !== resolutionState.originalContent
+        ? draftResolvedContent !== resolutionState.originalContent
         : false;
 
     // Handle branch selection
@@ -119,12 +122,13 @@ export function MergeRowInner({
 
     // Handle content editing in the resolved editor
     const handleContentChange = (value: string) => {
-        onUpdateContent(conflictIndex, value);
+        setDraftResolvedContent(value);
     };
 
     // Commit content to history on blur
     const handleBlur = () => {
-        onCommitContent(conflictIndex);
+        if (!resolutionState) return;
+        onCommitContent(conflictIndex, draftResolvedContent);
     };
 
     // For identical rows, show a unified single cell
@@ -308,7 +312,7 @@ export function MergeRowInner({
             {resolutionState && resolutionState.choice !== 'delete' && (
                 <div
                     className="resolved-cell"
-                    {...(process.env.NODE_ENV === 'development' ? { 'data-resolved-content': resolutionState.resolvedContent } : {})}
+                    {...(process.env.NODE_ENV === 'development' ? { 'data-resolved-content': draftResolvedContent } : {})}
                 >
                     <div className="resolved-header">
                         <span className="resolved-label">✓ Resolved</span>
@@ -318,7 +322,7 @@ export function MergeRowInner({
                         </span>
                     </div>
                     <CodeMirror
-                        value={resolutionState.resolvedContent}
+                        value={draftResolvedContent}
                         onChange={handleContentChange}
                         onBlur={handleBlur}
                         extensions={editorExtensions}

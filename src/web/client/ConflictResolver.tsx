@@ -161,11 +161,18 @@ export function ConflictResolver({
     }, []);
 
     const applySnapshot = useCallback((snapshot: ResolverSnapshot) => {
-        setChoices(cloneChoices(snapshot.choices));
-        setRows(cloneRows(snapshot.rows));
+        const snapshotChoices = cloneChoices(snapshot.choices);
+        const snapshotRows = cloneRows(snapshot.rows);
+        setChoices(snapshotChoices);
+        setRows(snapshotRows);
         setMarkAsResolved(snapshot.markAsResolved);
         setRenumberExecutionCounts(snapshot.renumberExecutionCounts);
         setTakeAllChoice(snapshot.takeAllChoice);
+        choicesRef.current = snapshotChoices;
+        rowsRef.current = snapshotRows;
+        markAsResolvedRef.current = snapshot.markAsResolved;
+        renumberExecutionCountsRef.current = snapshot.renumberExecutionCounts;
+        takeAllChoiceRef.current = snapshot.takeAllChoice;
     }, []);
 
     const isEditableTarget = useCallback((target: EventTarget | null): boolean => {
@@ -267,32 +274,40 @@ export function ConflictResolver({
             originalContent: resolvedContent,
             resolvedContent
         });
+        choicesRef.current = next;
         setChoices(next);
+        takeAllChoiceRef.current = undefined;
         setTakeAllChoice(undefined);
         recordHistory(`Resolve conflict ${index + 1} (${choice})`, next, rowsRef.current, { takeAllChoice: undefined });
     }, [recordHistory]);
 
-    /** Handle user editing the resolved content (just updates the text) */
-    const handleUpdateContent = useCallback((index: number, resolvedContent: string) => {
-        setChoices(prev => {
-            const existing = prev.get(index);
-            if (!existing || existing.resolvedContent === resolvedContent) return prev;
-            const next = new Map(prev);
-            next.set(index, { ...existing, resolvedContent });
-            return next;
-        });
-    }, []);
-
-    const handleCommitContent = useCallback((index: number) => {
+    const handleCommitContent = useCallback((index: number, resolvedContent: string) => {
         const current = choicesRef.current.get(index);
         if (!current) return;
+        let nextChoices = choicesRef.current;
+
+        if (current.resolvedContent !== resolvedContent) {
+            nextChoices = new Map(choicesRef.current);
+            nextChoices.set(index, { ...current, resolvedContent });
+            choicesRef.current = nextChoices;
+            setChoices(nextChoices);
+            takeAllChoiceRef.current = undefined;
+            setTakeAllChoice(undefined);
+        }
+
         const h = historyRef.current;
         const lastSnapshot = h.entries[h.index]?.snapshot;
         const lastChoice = lastSnapshot?.choices.get(index);
-        if (lastChoice && lastChoice.resolvedContent === current.resolvedContent && lastChoice.choice === current.choice) {
+        const nextChoice = nextChoices.get(index);
+        if (
+            lastChoice &&
+            nextChoice &&
+            lastChoice.resolvedContent === nextChoice.resolvedContent &&
+            lastChoice.choice === nextChoice.choice
+        ) {
             return;
         }
-        recordHistory(`Edit conflict ${index + 1}`, choicesRef.current, rowsRef.current);
+        recordHistory(`Edit conflict ${index + 1}`, nextChoices, rowsRef.current, { takeAllChoice: undefined });
     }, [recordHistory]);
 
     /** Handle "Accept All" action */
@@ -325,7 +340,9 @@ export function ConflictResolver({
             didChange = true;
         });
         if (!didChange) return;
+        choicesRef.current = next;
         setChoices(next);
+        takeAllChoiceRef.current = choice;
         setTakeAllChoice(choice);
         recordHistory(`Accept all ${choice}`, next, rowsRef.current, { takeAllChoice: choice });
     };
@@ -403,9 +420,11 @@ export function ConflictResolver({
 
     const handleResolve = () => {
         // Build resolved rows - this is the source of truth for reconstruction
-        const resolvedRows: import('./types').ResolvedRow[] = rows.map((row) => {
+        const liveRows = rowsRef.current;
+        const liveChoices = choicesRef.current;
+        const resolvedRows: import('./types').ResolvedRow[] = liveRows.map((row) => {
             const conflictIdx = row.conflictIndex ?? -1;
-            const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+            const resolutionState = conflictIdx >= 0 ? liveChoices.get(conflictIdx) : undefined;
 
             return {
                 baseCell: row.baseCell,
@@ -423,10 +442,10 @@ export function ConflictResolver({
 
         const semanticChoice = (
             takeAllChoice &&
-            isTakeAllChoiceConsistent(rows, choices, takeAllChoice, true)
+            isTakeAllChoiceConsistent(liveRows, liveChoices, takeAllChoice, true)
         )
             ? takeAllChoice
-            : inferTakeAllChoice(rows, choices);
+            : inferTakeAllChoice(liveRows, liveChoices);
         onResolve(markAsResolved, renumberExecutionCounts, resolvedRows, semanticChoice);
     };
 
@@ -715,7 +734,6 @@ export function ConflictResolver({
                                     theme={conflict.theme ?? 'light'}
                                     resolutionState={resolutionState}
                                     onSelectChoice={handleSelectChoice}
-                                    onUpdateContent={handleUpdateContent}
                                     onCommitContent={handleCommitContent}
                                     showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
                                     showBaseColumn={showBaseColumn}
