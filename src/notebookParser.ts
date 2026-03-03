@@ -18,7 +18,7 @@ import { Notebook, NotebookCell } from './types';
  */
 export function parseNotebook(content: string): Notebook {
     const parsed = JSON.parse(content);
-    
+
     // Validate basic structure
     if (!parsed.cells || !Array.isArray(parsed.cells)) {
         throw new Error('Invalid notebook: missing cells array');
@@ -67,9 +67,4 @@ export function renumberExecutionCounts(notebook: Notebook): Notebook {
     return { ...notebook, cells };
 }
 
-/**
- * Deep clone a notebook to avoid mutations.
- */
-export function cloneNotebook(notebook: Notebook): Notebook {
-    return JSON.parse(JSON.stringify(notebook));
-}
+

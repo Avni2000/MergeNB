@@ -8,7 +8,7 @@
 
 import { NotebookCell } from './types';
 
-function stableStringify(value: unknown): string {
+export function stableStringify(value: unknown): string {
     if (value === undefined) return 'undefined';
     if (value === null) return 'null';
     const t = typeof value;

@@ -18,26 +18,10 @@ import * as gitIntegration from './gitIntegration';
 import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
 import { getSettings, MergeNBSettings } from './settings';
+import { stableStringify } from './notebookUtils';
 import * as logger from './logger';
 
-function stableStringify(value: unknown): string {
-    if (value === undefined) return 'undefined';
-    if (value === null) return 'null';
-    const t = typeof value;
-    if (t === 'string' || t === 'number' || t === 'boolean') return JSON.stringify(value);
 
-    if (Array.isArray(value)) {
-        return '[' + value.map(stableStringify).join(',') + ']';
-    }
-
-    if (t === 'object') {
-        const obj = value as Record<string, unknown>;
-        const keys = Object.keys(obj).sort();
-        return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
-    }
-
-    return JSON.stringify(String(value));
-}
 
 function stripAllWhitespace(text: string): string {
     return text.replace(/\r\n/g, '\n');
@@ -410,7 +394,7 @@ export function applyAutoResolutions(
     let kernelAutoResolved = false;
 
     // Start with a deep copy of the current notebook as our resolved version
-    const resolvedNotebook: Notebook = semanticConflict.current 
+    const resolvedNotebook: Notebook = semanticConflict.current
         ? JSON.parse(JSON.stringify(semanticConflict.current))
         : JSON.parse(JSON.stringify(semanticConflict.incoming!));
 
@@ -446,10 +430,10 @@ export function applyAutoResolutions(
         if (conflict.type === 'outputs-changed' && effectiveSettings.stripOutputs) {
             const currentSource = conflict.currentContent?.source;
             const incomingSource = conflict.incomingContent?.source;
-            
+
             const currentSourceStr = Array.isArray(currentSource) ? currentSource.join('') : (currentSource || '');
             const incomingSourceStr = Array.isArray(incomingSource) ? incomingSource.join('') : (incomingSource || '');
-            
+
             // If source is identical, this is purely an output difference - auto-resolve
             if (currentSourceStr === incomingSourceStr) {
                 const resolvedCellIndex = getResolvedCellIndex(conflict);
@@ -515,7 +499,7 @@ export function applyAutoResolutions(
             const incomingKernelStr = stableStringify(incomingKernel);
             const baseKernelStr = baseKernel ? stableStringify(baseKernel) : '';
 
-            if (currentKernelStr !== incomingKernelStr && 
+            if (currentKernelStr !== incomingKernelStr &&
                 (currentKernelStr !== baseKernelStr || incomingKernelStr !== baseKernelStr)) {
                 // Use current kernel (already in resolvedNotebook)
                 kernelAutoResolved = true;
@@ -534,7 +518,7 @@ export function applyAutoResolutions(
             const incomingLangStr = stableStringify(incomingLangInfo);
             const baseLangStr = baseLangInfo ? stableStringify(baseLangInfo) : '';
 
-            if (currentLangStr !== incomingLangStr && 
+            if (currentLangStr !== incomingLangStr &&
                 (currentLangStr !== baseLangStr || incomingLangStr !== baseLangStr)) {
                 // Use current language_info (already in resolvedNotebook)
                 if (!kernelAutoResolved) {

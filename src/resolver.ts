@@ -15,7 +15,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
 import { parseNotebook, serializeNotebook, renumberExecutionCounts } from './notebookParser';
-import { selectNonConflictMergedCell } from './notebookUtils';
+import { selectNonConflictMergedCell, stableStringify } from './notebookUtils';
 import { WebConflictPanel } from './web/WebConflictPanel';
 import { UnifiedConflict, UnifiedResolution } from './web/webTypes';
 import { ResolutionChoice, NotebookSemanticConflict, Notebook, NotebookCell } from './types';
@@ -23,24 +23,7 @@ import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
 import * as logger from './logger';
 
-function stableStringify(value: unknown): string {
-    if (value === undefined) return 'undefined';
-    if (value === null) return 'null';
-    const t = typeof value;
-    if (t === 'string' || t === 'number' || t === 'boolean') return JSON.stringify(value);
 
-    if (Array.isArray(value)) {
-        return '[' + value.map(stableStringify).join(',') + ']';
-    }
-
-    if (t === 'object') {
-        const obj = value as Record<string, unknown>;
-        const keys = Object.keys(obj).sort();
-        return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
-    }
-
-    return JSON.stringify(String(value));
-}
 
 function chooseMetadataValue(
     baseValue: unknown,
