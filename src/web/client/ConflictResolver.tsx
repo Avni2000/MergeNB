@@ -47,7 +47,12 @@ export function ConflictResolver({
             : []
     ), [conflict.type, conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook]);
 
-    const [resolverStore] = useState(() => createResolverStore(initialRows));
+    // Recreate resolver state when a new conflict payload is delivered.
+    // This prevents stale selections/history from leaking across conflicts.
+    const resolverStore = useMemo(
+        () => createResolverStore(initialRows),
+        [conflict]
+    );
     const [historyOpen, setHistoryOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
@@ -67,6 +72,10 @@ export function ConflictResolver({
     const handleJumpToHistory = useStore(resolverStore, state => state.jumpToHistory);
     const handleUndo = useStore(resolverStore, state => state.undo);
     const handleRedo = useStore(resolverStore, state => state.redo);
+
+    useEffect(() => {
+        setHistoryOpen(false);
+    }, [resolverStore]);
 
     const isEditableTarget = useCallback((target: EventTarget | null): boolean => {
         if (!target || !(target as HTMLElement).closest) return false;
