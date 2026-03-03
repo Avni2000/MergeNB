@@ -177,8 +177,10 @@
     "@uiw/react-codemirror": "^4.25.5",
     "@vscode/markdown-it-katex": "^1.1.2",
     "dompurify": "^3.3.1",
+    "immer": "^11.1.4",
     "katex": "^0.16.32",
     "markdown-it": "^14.1.1",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zustand": "^5.0.11"
   }
 }
