@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
 import { StateField, RangeSetBuilder } from '@codemirror/state';
+import type { Extension } from '@codemirror/state';
 import { IRenderMime, MimeModel, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 import MarkdownIt from 'markdown-it';
@@ -55,7 +56,7 @@ interface CellContentProps {
     diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
     showCellHeaders?: boolean;
-    languageExtensions?: any[];
+    languageExtensions?: Extension[];
     theme?: 'dark' | 'light';
 }
 
@@ -237,7 +238,7 @@ interface DiffContentProps {
     compareSource: string;
     side?: 'base' | 'current' | 'incoming';
     diffMode: 'base' | 'conflict';
-    langExtension: any[];
+    langExtension: Extension[];
     theme: 'dark' | 'light';
 }
 
@@ -251,7 +252,7 @@ function createDiffExtension(
     allDiffLines: DiffLine[],
     side: 'base' | 'current' | 'incoming',
     diffMode: 'base' | 'conflict',
-): DecorationSet {
+): Extension {
     return StateField.define<DecorationSet>({
         create(state) {
             const builder = new RangeSetBuilder<Decoration>();
@@ -286,7 +287,7 @@ function createDiffExtension(
         },
         update(deco) { return deco; },
         provide: f => EditorView.decorations.from(f),
-    }) as unknown as DecorationSet; // StateField satisfies Extension; cast for useMemo typing
+    });
 }
 
 function DiffContent({ source, compareSource, side, diffMode, langExtension, theme }: DiffContentProps): React.ReactElement {

@@ -14,6 +14,8 @@ import { EditorView } from '@codemirror/view';
 import { syntaxHighlighting } from '@codemirror/language';
 import type { Extension } from '@codemirror/state';
 
+const EDITOR_FONT_FAMILY = "'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace";
+
 /**
  * Creates a syntax-highlight theme matched to MergeNB's warm palette.
  * Pass the result to the `theme` prop of <CodeMirror>.
@@ -34,7 +36,7 @@ export function createMergeNBTheme(mode: 'dark' | 'light'): Extension {
                 ? 'rgba(127, 185, 199, 0.15)'
                 : 'rgba(164, 212, 222, 0.22)',
             lineHighlight: 'transparent',
-            fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace",
+            fontFamily: EDITOR_FONT_FAMILY,
         },
         styles: [
             // Keywords: if/for/def/import/return …
@@ -88,7 +90,7 @@ export const mergeNBEditorStructure: Extension = EditorView.theme({
     },
     // Content area: inherit font from CSS, reset CM default padding
     '.cm-content': {
-        fontFamily: "'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace",
+        fontFamily: EDITOR_FONT_FAMILY,
         fontSize: '13px',
         lineHeight: '1.5',
         padding: '0',
