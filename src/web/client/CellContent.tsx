@@ -17,6 +17,7 @@ import { normalizeCellSource } from '../../notebookUtils';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
 import * as logger from '../../logger';
 import { createMergeNBTheme, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './editorTheme';
+import DOMPurify from 'dompurify';
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
@@ -500,7 +501,11 @@ function normalizeOutputForRenderMime(output: CellOutput): Record<string, unknow
     if (output.data) {
         const normalizedData: Record<string, unknown> = {};
         for (const [mimeType, value] of Object.entries(output.data)) {
-            normalizedData[mimeType] = normalizeMimeValue(value);
+            let normalizedValue = normalizeMimeValue(value);
+            if (mimeType === 'image/svg+xml' && typeof normalizedValue === 'string') {
+                normalizedValue = DOMPurify.sanitize(normalizedValue, { USE_PROFILES: { svg: true } });
+            }
+            normalizedData[mimeType] = normalizedValue;
         }
         normalizedOutput.data = normalizedData;
     }
