@@ -509,6 +509,32 @@ body {
     border-left: 3px solid var(--accent-blue);
 }
 
+/* CodeMirror read-only code cell display */
+.cell-source-cm.cm-editor {
+    border-radius: 4px;
+    outline: none !important;
+    cursor: default;
+}
+
+.cell-source-cm .cm-scroller {
+    overflow: auto;
+}
+
+.cell-source-cm .cm-content {
+    padding: 12px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.cell-source-cm .cm-line {
+    padding: 0;
+}
+
+/* Replicate the left-border accent that <pre> had for code cells */
+.code-cell .cell-content .cell-source-cm.cm-editor {
+    border-left: 3px solid var(--accent-blue);
+}
+
 .markdown-cell .cell-content {
     padding: 12px;
     background: var(--cell-surface);
@@ -599,33 +625,7 @@ body {
     box-shadow: 0 0 0 2px var(--accent-blue);
 }
 
-/* Diff highlighting */
-.diff-line {
-    display: block;
-    padding: 0 4px;
-    margin: 0 -4px;
-}
-
-.diff-line.added {
-    background: var(--diff-add);
-}
-
-.diff-line.removed {
-    background: var(--diff-remove);
-}
-
-.diff-line.changed {
-    background: var(--diff-change);
-}
-
-.diff-line.modified-old {
-    background: var(--diff-remove);
-}
-
-.diff-line.modified-new {
-    background: var(--diff-add);
-}
-
+/* Diff highlighting — applied as CodeMirror line decorations on .cm-line elements */
 .diff-line.diff-line-conflict {
     background: var(--diff-remove);
 }
@@ -847,6 +847,21 @@ body {
     color: var(--text-secondary);
 }
 
+/* Hide automatic heading permalink anchors (pilcrow/¶) inserted
+   by the markdown renderer (e.g. markdown-it-anchor / rendermime). */
+.markdown-content a.anchor-link,
+.markdown-content .anchor-link,
+.markdown-content a.header-link,
+.markdown-content .header-anchor,
+.markdown-content h1 > a,
+.markdown-content h2 > a,
+.markdown-content h3 > a,
+.markdown-content h4 > a,
+.markdown-content h5 > a,
+.markdown-content h6 > a {
+    display: none !important;
+}
+
 /* KaTeX styles */
 .katex-display {
     margin: 16px 0;
@@ -920,24 +935,31 @@ body {
     font-size: 11px;
 }
 
-.resolved-content-input {
+/* CodeMirror resolved editor — className="resolved-content-input" targets .cm-editor */
+.resolved-content-input.cm-editor {
     width: 100%;
-    min-height: 120px;
-    padding: 12px;
-    background: var(--cell-surface);
-    color: var(--text-primary);
     border: 1px solid rgba(78, 201, 176, 0.4);
     border-radius: 4px;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
-    font-size: 13px;
-    resize: vertical;
-    line-height: 1.5;
+    outline: none !important;
 }
 
-.resolved-content-input:focus {
-    outline: none;
+.resolved-content-input.cm-editor.cm-focused {
     border-color: var(--accent-green);
     box-shadow: 0 0 0 2px rgba(78, 201, 176, 0.2);
+    outline: none !important;
+}
+
+.resolved-content-input .cm-scroller {
+    min-height: 100px;
+    overflow: auto;
+}
+
+.resolved-content-input .cm-content {
+    padding: 10px 12px;
+}
+
+.resolved-content-input .cm-line {
+    padding: 0;
 }
 
 /* Resolved deleted cell */
@@ -1123,25 +1145,18 @@ body {
     font-weight: 600;
 }
 
-/* Enhanced inline diff highlighting - branch-based coloring */
-/* The color tells you which branch the content comes from, not whether it's added/removed */
-.diff-inline-unchanged {
-    color: var(--text-primary);
-}
-
+/* Inline diff highlighting — applied as CodeMirror mark decorations.
+   No color override so syntax highlighting colours show through. */
 .diff-inline-conflict {
     background: var(--diff-remove);
-    color: var(--text-primary);
 }
 
 .diff-inline-current {
     background: var(--diff-add);
-    color: var(--text-primary);
 }
 
 .diff-inline-incoming {
     background: rgba(86, 156, 214, 0.35);
-    color: var(--text-primary);
 }
 `;
 }

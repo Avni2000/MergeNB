@@ -9,6 +9,8 @@ import {
     clickHistoryUndo,
     clickHistoryRedo,
     waitForResolvedCount,
+    getResolvedEditorValue,
+    fillResolvedEditor,
     type MergeSide,
 } from './integrationUtils';
 import {
@@ -104,19 +106,19 @@ export async function run(): Promise<void> {
         }
         const textarea = firstRow.locator('.resolved-content-input');
         await textarea.waitFor({ timeout: 5000 });
-        const original = await textarea.inputValue();
+        const original = await getResolvedEditorValue(textarea);
         const edited = `${original}\n(edited)`;
-        await textarea.fill(edited);
-        await textarea.blur();
+        await fillResolvedEditor(textarea, edited);
+        await textarea.locator('.cm-content').blur();
 
         await clickHistoryUndo(page);
-        const afterUndo = await textarea.inputValue();
+        const afterUndo = await getResolvedEditorValue(textarea);
         if (afterUndo !== original) {
             throw new Error('Undo did not restore original content after edit');
         }
 
         await clickHistoryRedo(page);
-        const afterRedo = await textarea.inputValue();
+        const afterRedo = await getResolvedEditorValue(textarea);
         if (afterRedo !== edited) {
             throw new Error('Redo did not restore edited content after edit');
         }

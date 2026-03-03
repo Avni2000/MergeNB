@@ -9,10 +9,12 @@
  * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
+import { createMergeNBTheme, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './editorTheme';
 
 /** Resolution state for a cell */
 interface ResolutionState {
@@ -28,6 +30,7 @@ interface MergeRowProps {
     rowIndex: number;
     conflictIndex: number;
     notebookPath?: string;
+    languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onUpdateContent: (index: number, resolvedContent: string) => void;
@@ -35,14 +38,17 @@ interface MergeRowProps {
     showOutputs?: boolean;
     showBaseColumn?: boolean;
     showCellHeaders?: boolean;
+    theme?: 'dark' | 'light';
     'data-testid'?: string;
 }
+const EMPTY_EXTENSIONS: Extension[] = [];
 
 export function MergeRowInner({
     row,
     rowIndex,
     conflictIndex,
     notebookPath,
+    languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
     onSelectChoice,
     onUpdateContent,
@@ -50,6 +56,7 @@ export function MergeRowInner({
     showOutputs = true,
     showBaseColumn = true,
     showCellHeaders = false,
+    theme = 'light',
     'data-testid': testId,
 }: MergeRowProps): React.ReactElement {
     const isConflict = row.type === 'conflict';
@@ -57,6 +64,15 @@ export function MergeRowInner({
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
     const [showWarning, setShowWarning] = useState(false);
+
+    // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
+    // (which triggers StateEffect.reconfigure) only fires when these values actually
+    // change — not on every render because of new object/array references.
+    const resolvedEditorTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    const editorExtensions = useMemo(
+        () => [...languageExtensions, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
+        [languageExtensions]
+    );
 
     // Get content for a given choice
     const getContentForChoice = (choice: ResolutionChoice): string => {
@@ -101,9 +117,9 @@ export function MergeRowInner({
         setPendingChoice(null);
     };
 
-    // Handle content editing in the resolved text area
-    const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        onUpdateContent(conflictIndex, e.target.value);
+    // Handle content editing in the resolved editor
+    const handleContentChange = (value: string) => {
+        onUpdateContent(conflictIndex, value);
     };
 
     // Commit content to history on blur
@@ -132,6 +148,8 @@ export function MergeRowInner({
                             cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
                             side="current"
                             notebookPath={notebookPath}
+                            languageExtensions={languageExtensions}
+                            theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
                         />
@@ -194,6 +212,8 @@ export function MergeRowInner({
                                 notebookPath={notebookPath}
                                 isConflict={true}
                                 compareCell={row.currentCell || row.incomingCell}
+                                languageExtensions={languageExtensions}
+                                theme={theme}
                                 showOutputs={showOutputs}
                                 showCellHeaders={showCellHeaders}
                             />
@@ -215,6 +235,8 @@ export function MergeRowInner({
                             compareCell={row.incomingCell || row.baseCell}
                             baseCell={row.baseCell}
                             diffMode={diffMode}
+                            languageExtensions={languageExtensions}
+                            theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
                         />
@@ -235,6 +257,8 @@ export function MergeRowInner({
                             compareCell={row.currentCell || row.baseCell}
                             baseCell={row.baseCell}
                             diffMode={diffMode}
+                            languageExtensions={languageExtensions}
+                            theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
                         />
@@ -282,7 +306,10 @@ export function MergeRowInner({
 
             {/* Resolved content editor - appears after selecting a branch */}
             {resolutionState && resolutionState.choice !== 'delete' && (
-                <div className="resolved-cell">
+                <div
+                    className="resolved-cell"
+                    {...(process.env.NODE_ENV === 'development' ? { 'data-resolved-content': resolutionState.resolvedContent } : {})}
+                >
                     <div className="resolved-header">
                         <span className="resolved-label">✓ Resolved</span>
                         <span className="resolved-base">
@@ -290,13 +317,15 @@ export function MergeRowInner({
                             {isContentModified && <span className="modified-badge">(edited)</span>}
                         </span>
                     </div>
-                    <textarea
-                        className="resolved-content-input"
+                    <CodeMirror
                         value={resolutionState.resolvedContent}
                         onChange={handleContentChange}
                         onBlur={handleBlur}
+                        extensions={editorExtensions}
                         placeholder="Enter cell content..."
-                        rows={Math.max(5, resolutionState.resolvedContent.split('\n').length + 1)}
+                        className="resolved-content-input"
+                        basicSetup={{ lineNumbers: false, foldGutter: false }}
+                        theme={resolvedEditorTheme}
                     />
                 </div>
             )}

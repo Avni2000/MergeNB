@@ -5,6 +5,8 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { LanguageDescription } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
 import { sortByPosition } from '../../positionUtils';
 import { normalizeCellSource } from '../../notebookUtils';
 import type {
@@ -173,6 +175,52 @@ export function ConflictResolver({
         if (element.isContentEditable) return true;
         return Boolean(element.closest('[contenteditable="true"]'));
     }, []);
+
+    const kernelLanguage = useMemo(() => {
+        const meta = conflict.semanticConflict?.base?.metadata
+            ?? conflict.semanticConflict?.current?.metadata
+            ?? conflict.semanticConflict?.incoming?.metadata;
+        return meta?.kernelspec?.language ?? meta?.language_info?.name ?? 'python';
+    }, [conflict.semanticConflict]);
+    const [languageSupport, setLanguageSupport] = useState<any | null>(() => {
+        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        return desc?.support ?? null;
+    });
+    const languageExtensions = useMemo(
+        () => (languageSupport ? [languageSupport] : []),
+        [languageSupport]
+    );
+
+    useEffect(() => {
+        const desc = LanguageDescription.matchLanguageName(languages, kernelLanguage, true);
+        if (!desc) {
+            setLanguageSupport(null);
+            return;
+        }
+        if (desc.support) {
+            setLanguageSupport(desc.support);
+            return;
+        }
+
+        let cancelled = false;
+        // Avoid showing stale highlighting from previous language while loading.
+        setLanguageSupport(null);
+
+        desc.load()
+            .then(support => {
+                if (cancelled) return;
+                setLanguageSupport(support);
+            })
+            .catch(err => {
+                if (cancelled) return;
+                setLanguageSupport(null);
+                console.warn('[MergeNB] Failed to load CodeMirror language support:', err);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [kernelLanguage]);
 
     const conflictRows = useMemo(() => rows.filter(r => r.type === 'conflict'), [rows]);
     const totalConflicts = conflictRows.length;
@@ -383,13 +431,51 @@ export function ConflictResolver({
     };
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
+    const getScrollElement = useCallback(() => mainContentRef.current, []);
+    // Precompute per-row height estimates once per rows change so estimateSize is O(1).
+    // This overestimates rather than underestimates — items are placed too far
+    // apart initially (harmless gaps) rather than overlapping (visible flicker).
+    const estimatedRowHeights = useMemo(() => {
+        return rows.map(row => {
+            const cells = [row.currentCell, row.incomingCell, row.baseCell].filter(Boolean);
+            const maxLines = Math.max(
+                ...cells.map(c => normalizeCellSource(c!.source).split('\n').length),
+                3
+            );
+            // 22px per line + 80px overhead (borders, headers, padding)
+            return Math.max(120, maxLines * 22 + 80);
+        });
+    }, [rows]);
+    const estimateRowSize = useCallback((index: number) => {
+        return estimatedRowHeights[index] ?? 200;
+    }, [estimatedRowHeights]);
     const rowVirtualizer = useVirtualizer({
         count: rows.length,
-        getScrollElement: () => mainContentRef.current,
-        estimateSize: () => 240,
+        getScrollElement,
+        estimateSize: estimateRowSize,
         overscan: 6,
     });
     const virtualRows = rowVirtualizer.getVirtualItems();
+
+    // Defer measureElement by one animation frame so CodeMirror's useEffect
+    // has time to create the EditorView before TanStack samples the DOM height.
+    // Without this, the initial measurement captures the empty CodeMirror shell
+    // (near-zero height), causing subsequent rows to overlap ("flicker").
+    const virtualizerRef = useRef(rowVirtualizer);
+    virtualizerRef.current = rowVirtualizer;
+    const deferredMeasureRef = useCallback((node: HTMLElement | null) => {
+        if (!node) return;
+        requestAnimationFrame(() => {
+            if (node.isConnected) {
+                virtualizerRef.current.measureElement(node);
+            }
+        });
+    }, []);
+    // Keep the container height monotonically non-decreasing so the scrollbar
+    // doesn't jump when TanStack refines its measurements.
+    const totalSize = rowVirtualizer.getTotalSize();
+    const stableTotalSizeRef = useRef(0);
+    stableTotalSizeRef.current = Math.max(stableTotalSizeRef.current, totalSize);
 
     return (
         <div className="app-container">
@@ -594,7 +680,7 @@ export function ConflictResolver({
 
                 <div
                     style={{
-                        height: rowVirtualizer.getTotalSize(),
+                        height: stableTotalSizeRef.current,
                         position: 'relative',
                     }}
                 >
@@ -610,7 +696,7 @@ export function ConflictResolver({
                             <div
                                 key={virtualRow.key}
                                 data-index={virtualRow.index}
-                                ref={rowVirtualizer.measureElement}
+                                ref={deferredMeasureRef}
                                 className="virtual-row"
                                 style={{
                                     position: 'absolute',
@@ -625,6 +711,8 @@ export function ConflictResolver({
                                     rowIndex={i}
                                     conflictIndex={conflictIdx}
                                     notebookPath={conflict.filePath}
+                                    languageExtensions={languageExtensions}
+                                    theme={conflict.theme ?? 'light'}
                                     resolutionState={resolutionState}
                                     onSelectChoice={handleSelectChoice}
                                     onUpdateContent={handleUpdateContent}

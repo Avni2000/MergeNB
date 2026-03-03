@@ -27,6 +27,36 @@ export type ConflictChoiceResolver = (
     rowIndex: number,
 ) => Promise<ConflictChoiceInfo>;
 
+/**
+ * Read the text content of a CodeMirror `.resolved-content-input` editor.
+ * 
+ * In development, reads from `data-resolved-content` attribute on the `.resolved-cell` wrapper.
+ * CodeMirror uses DOM virtualization so the full content may not be in the visible DOM.
+ */
+export async function getResolvedEditorValue(editorLocator: Locator): Promise<string> {
+    return await editorLocator.evaluate((el) => {
+        // In development, the component exposes data-resolved-content on the wrapper
+        const wrapper = el.closest('.resolved-cell') as HTMLElement | null;
+        if (wrapper?.dataset.resolvedContent) {
+            return wrapper.dataset.resolvedContent;
+        }
+        return "";
+
+    });
+}
+
+/**
+ * Replace the content of a CodeMirror `.resolved-content-input` editor.
+ * `.fill()` cannot be used because CodeMirror manages a `contenteditable` div, not a `<textarea>`.
+ */
+export async function fillResolvedEditor(editorLocator: Locator, value: string): Promise<void> {
+    const page = editorLocator.page();
+    const content = editorLocator.locator('.cm-content');
+    await content.click();
+    await page.keyboard.press('ControlOrMeta+A');  
+    await page.keyboard.insertText(value);
+}
+
 /** Get a cell reference from a column in a conflict row */
 export async function getColumnCell(row: Locator, column: MergeSide, rowIndex: number) {
     const cellEl = row.locator(`.${column}-column .notebook-cell`);
@@ -89,12 +119,32 @@ export async function verifyAllConflictsMatchSide(
             continue;
         }
 
-        const actualValue = await textarea.inputValue();
+        const actualValue = await getResolvedEditorValue(textarea);
         if (actualValue !== expectedSource) {
+            // Show full comparison for better debugging
+            const expectedLen = expectedSource.length;
+            const actualLen = actualValue.length;
+            let firstDiffIndex = -1;
+            for (let j = 0; j < Math.max(expectedLen, actualLen); j++) {
+                if (expectedSource[j] !== actualValue[j]) {
+                    firstDiffIndex = j;
+                    break;
+                }
+            }
+            
+            const diffContext = firstDiffIndex !== -1 
+                ? `\n    First diff at index ${firstDiffIndex}:\n` +
+                  `    Expected char code: ${expectedSource.charCodeAt(firstDiffIndex)} (${JSON.stringify(expectedSource[firstDiffIndex])})\n` +
+                  `    Actual char code:   ${actualValue.charCodeAt(firstDiffIndex)} (${JSON.stringify(actualValue[firstDiffIndex])})\n` +
+                  `    Context (expected): ${JSON.stringify(expectedSource.substring(Math.max(0, firstDiffIndex - 10), firstDiffIndex + 20))}\n` +
+                  `    Context (actual):   ${JSON.stringify(actualValue.substring(Math.max(0, firstDiffIndex - 10), firstDiffIndex + 20))}`
+                : '';
+            
             mismatches.push(
-                `Row ${i}: textarea mismatch\n` +
-                `  Expected (${side}): "${expectedSource.substring(0, 60).replace(/\n/g, '\\n')}..."\n` +
-                `  Actual:            "${actualValue.substring(0, 60).replace(/\n/g, '\\n')}..."`
+                `Row ${i}: textarea mismatch (len: expected=${expectedLen}, actual=${actualLen})\n` +
+                `  Expected (${side}): "${expectedSource.substring(0, 100).replace(/\n/g, '\\n')}${expectedLen > 100 ? '...' : ''}"\n` +
+                `  Actual:            "${actualValue.substring(0, 100).replace(/\n/g, '\\n')}${actualLen > 100 ? '...' : ''}"` +
+                diffContext
             );
         } else {
             matchCount++;
@@ -265,14 +315,14 @@ export async function collectExpectedCellsFromUI(
                 continue;
             }
 
+            const choiceInfo = await options.resolveConflictChoice(row, conflictIdx, i);
+            const choice = choiceInfo.choice;
+
             const textarea = row.locator('.resolved-content-input');
             if (await textarea.count() === 0) {
                 throw new Error(`Row ${i}: missing resolved content input`);
             }
-            const resolvedContent = await textarea.inputValue();
-
-            const choiceInfo = await options.resolveConflictChoice(row, conflictIdx, i);
-            const choice = choiceInfo.choice;
+            const resolvedContent = await getResolvedEditorValue(textarea);
             let cellType = choiceInfo.chosenCellType;
 
             if (!cellType && (choice === 'base' || choice === 'current' || choice === 'incoming')) {

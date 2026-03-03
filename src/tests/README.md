@@ -21,7 +21,7 @@ From the repo root:
 | `node out/tests/runIntegrationTest.js --test <id>` | Run a specific test |
 | `node out/tests/runIntegrationTest.js --list` | Same as `test:list` |
 
----
+--- 
 
 ## Adding a Test
 
