@@ -30,18 +30,20 @@ export type ConflictChoiceResolver = (
 /**
  * Read the text content of a CodeMirror `.resolved-content-input` editor.
  * 
- * CodeMirror uses DOM virtualization, so only visible lines are in the DOM.
- * Instead, we read from the `data-resolved-content` attribute on the resolved-cell wrapper,
- * which contains the full content synced from the component state.
+ * In development, reads from `data-resolved-content` attribute on the `.resolved-cell` wrapper.
+ * CodeMirror uses DOM virtualization so the full content may not be in the visible DOM.
  */
 export async function getResolvedEditorValue(editorLocator: Locator): Promise<string> {
-    // The editorLocator points to the .resolved-content-input div
-    // We need to get its parent .resolved-cell to access the data attribute
-    const resolvedCell = editorLocator.locator('..');
-    const content = await resolvedCell.getAttribute('data-resolved-content');
-    return content || '';
-}
+    return await editorLocator.evaluate((el) => {
+        // In development, the component exposes data-resolved-content on the wrapper
+        const wrapper = el.closest('.resolved-cell') as HTMLElement | null;
+        if (wrapper?.dataset.resolvedContent) {
+            return wrapper.dataset.resolvedContent;
+        }
+        return "";
 
+    });
+}
 
 /**
  * Replace the content of a CodeMirror `.resolved-content-input` editor.

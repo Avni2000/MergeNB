@@ -10,8 +10,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
-import CodeMirror from '@uiw/react-codemirror';
-import type { Extension } from '@codemirror/state';
+import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
@@ -306,9 +305,9 @@ export function MergeRowInner({
 
             {/* Resolved content editor - appears after selecting a branch */}
             {resolutionState && resolutionState.choice !== 'delete' && (
-                <div 
+                <div
                     className="resolved-cell"
-                    data-resolved-content={resolutionState.resolvedContent}
+                    {...(process.env.NODE_ENV === 'development' ? { 'data-resolved-content': resolutionState.resolvedContent } : {})}
                 >
                     <div className="resolved-header">
                         <span className="resolved-label">✓ Resolved</span>
