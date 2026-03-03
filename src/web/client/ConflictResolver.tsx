@@ -47,11 +47,12 @@ export function ConflictResolver({
             : []
     ), [conflict.type, conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook]);
 
-    // Recreate resolver state when a new conflict payload is delivered.
-    // This prevents stale selections/history from leaking across conflicts.
+    // Recreate resolver state only when the conflict instance key changes.
+    // This avoids resets caused by object identity churn on re-sent payloads.
+    const resolverStoreKey = conflict.conflictKey ?? conflict.filePath;
     const resolverStore = useMemo(
         () => createResolverStore(initialRows),
-        [conflict]
+        [resolverStoreKey]
     );
     const [historyOpen, setHistoryOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);

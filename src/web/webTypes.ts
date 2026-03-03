@@ -86,6 +86,8 @@ export interface UnifiedResolution {
  */
 export interface WebConflictData {
     filePath: string;
+    /** Stable conflict instance key for client-side state reset behavior */
+    conflictKey?: string;
     fileName: string;
     type: 'semantic';
 

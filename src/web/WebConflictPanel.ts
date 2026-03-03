@@ -32,6 +32,7 @@ export class WebConflictPanel {
     private _conflict: UnifiedConflict | undefined;
     private _onResolutionComplete: ((resolution: UnifiedResolution) => Promise<void>) | undefined;
     private _sessionId: string | undefined;
+    private _conflictVersion: number = 1;
     private _isDisposed: boolean = false;
 
     public static async createOrShow(
@@ -66,6 +67,7 @@ export class WebConflictPanel {
     ): void {
         this._conflict = conflict;
         this._onResolutionComplete = onResolutionComplete;
+        this._conflictVersion += 1;
     }
 
     private async _openInBrowser(): Promise<void> {
@@ -111,10 +113,12 @@ export class WebConflictPanel {
         if (!this._sessionId || !this._conflict) return;
 
         const server = getWebServer();
+        const conflictKey = `${this._sessionId}:v${this._conflictVersion}`;
 
         // Build the data payload for the React app
         const data = {
             filePath: this._conflict.filePath,
+            conflictKey,
             type: this._conflict.type,
             semanticConflict: this._conflict.semanticConflict,
             autoResolveResult: this._conflict.autoResolveResult,
