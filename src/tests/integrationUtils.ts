@@ -29,14 +29,19 @@ export type ConflictChoiceResolver = (
 
 /**
  * Read the text content of a CodeMirror `.resolved-content-input` editor.
- * `.inputValue()` cannot be used because the element is a `<div>`, not `<textarea>`.
+ * 
+ * CodeMirror uses DOM virtualization, so only visible lines are in the DOM.
+ * Instead, we read from the `data-resolved-content` attribute on the resolved-cell wrapper,
+ * which contains the full content synced from the component state.
  */
 export async function getResolvedEditorValue(editorLocator: Locator): Promise<string> {
-    return editorLocator.evaluate((el) => {
-        const lines = el.querySelectorAll('.cm-line');
-        return Array.from(lines).map((l) => (l as HTMLElement).textContent ?? '').join('\n');
-    });
+    // The editorLocator points to the .resolved-content-input div
+    // We need to get its parent .resolved-cell to access the data attribute
+    const resolvedCell = editorLocator.locator('..');
+    const content = await resolvedCell.getAttribute('data-resolved-content');
+    return content || '';
 }
+
 
 /**
  * Replace the content of a CodeMirror `.resolved-content-input` editor.
@@ -46,7 +51,7 @@ export async function fillResolvedEditor(editorLocator: Locator, value: string):
     const page = editorLocator.page();
     const content = editorLocator.locator('.cm-content');
     await content.click();
-    await page.keyboard.press('Control+a');
+    await page.keyboard.press('ControlOrMeta+A');  
     await page.keyboard.insertText(value);
 }
 
@@ -114,10 +119,30 @@ export async function verifyAllConflictsMatchSide(
 
         const actualValue = await getResolvedEditorValue(textarea);
         if (actualValue !== expectedSource) {
+            // Show full comparison for better debugging
+            const expectedLen = expectedSource.length;
+            const actualLen = actualValue.length;
+            let firstDiffIndex = -1;
+            for (let j = 0; j < Math.max(expectedLen, actualLen); j++) {
+                if (expectedSource[j] !== actualValue[j]) {
+                    firstDiffIndex = j;
+                    break;
+                }
+            }
+            
+            const diffContext = firstDiffIndex !== -1 
+                ? `\n    First diff at index ${firstDiffIndex}:\n` +
+                  `    Expected char code: ${expectedSource.charCodeAt(firstDiffIndex)} (${JSON.stringify(expectedSource[firstDiffIndex])})\n` +
+                  `    Actual char code:   ${actualValue.charCodeAt(firstDiffIndex)} (${JSON.stringify(actualValue[firstDiffIndex])})\n` +
+                  `    Context (expected): ${JSON.stringify(expectedSource.substring(Math.max(0, firstDiffIndex - 10), firstDiffIndex + 20))}\n` +
+                  `    Context (actual):   ${JSON.stringify(actualValue.substring(Math.max(0, firstDiffIndex - 10), firstDiffIndex + 20))}`
+                : '';
+            
             mismatches.push(
-                `Row ${i}: textarea mismatch\n` +
-                `  Expected (${side}): "${expectedSource.substring(0, 60).replace(/\n/g, '\\n')}..."\n` +
-                `  Actual:            "${actualValue.substring(0, 60).replace(/\n/g, '\\n')}..."`
+                `Row ${i}: textarea mismatch (len: expected=${expectedLen}, actual=${actualLen})\n` +
+                `  Expected (${side}): "${expectedSource.substring(0, 100).replace(/\n/g, '\\n')}${expectedLen > 100 ? '...' : ''}"\n` +
+                `  Actual:            "${actualValue.substring(0, 100).replace(/\n/g, '\\n')}${actualLen > 100 ? '...' : ''}"` +
+                diffContext
             );
         } else {
             matchCount++;
