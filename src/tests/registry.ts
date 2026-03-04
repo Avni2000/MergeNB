@@ -231,6 +231,19 @@ export const TEST_GROUPS: TestGroup[] = [
         ],
     },
     {
+        id: 'reorder',
+        name: 'Reorder Unmatch/Rematch',
+        description: 'Reordered cell detection and unmatch/rematch workflow',
+        tests: [
+            {
+                id: 'reorder_unmatch',
+                description: 'Unmatch/rematch reordered cells with undo/redo',
+                notebooks: ['09_reorder_base.ipynb', '09_reorder_current.ipynb', '09_reorder_incoming.ipynb'],
+                testModule: './reorderUnmatch.test.js',
+            },
+        ],
+    },
+    {
         id: 'manual',
         name: 'Manual Sandbox',
         description: 'Open throwaway merge sandbox repos for exploratory notebook resolution',
@@ -253,6 +266,13 @@ export const TEST_GROUPS: TestGroup[] = [
                 id: 'manual_04',
                 description: 'Manual sandbox with 04 fixtures',
                 notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
+                kind: 'manual',
+                includeInAll: false,
+            },
+            {
+                id: 'manual_09',
+                description: 'Manual sandbox with 09 reorder fixtures',
+                notebooks: ['09_reorder_base.ipynb', '09_reorder_current.ipynb', '09_reorder_incoming.ipynb'],
                 kind: 'manual',
                 includeInAll: false,
             },
