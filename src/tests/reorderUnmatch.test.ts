@@ -15,6 +15,19 @@ import {
     setupConflictResolver,
 } from './testHarness';
 
+function assertResolvedCount(
+    count: { resolved: number; total: number },
+    expectedResolved: number,
+    stage: string
+): void {
+    if (count.total <= 0) {
+        throw new Error(`Expected conflict counter to be initialized ${stage}, got ${count.resolved}/${count.total}`);
+    }
+    if (count.resolved !== expectedResolved) {
+        throw new Error(`Expected resolved count ${expectedResolved} ${stage}, got ${count.resolved}/${count.total}`);
+    }
+}
+
 export async function run(): Promise<void> {
     console.log('Starting MergeNB Reorder Unmatch/Rematch Integration Test...');
 
@@ -38,7 +51,9 @@ export async function run(): Promise<void> {
 
         // === Step 1: Verify reorder indicators appear ===
         console.log('\n=== Step 1: Verify reorder indicators ===');
+        await page.locator('.merge-row').first().waitFor({ timeout: 5000 });
         const reorderIndicators = page.locator('[data-testid="reorder-indicator"]');
+        await reorderIndicators.first().waitFor({ timeout: 5000 });
         const indicatorCount = await reorderIndicators.count();
         console.log(`  Found ${indicatorCount} reorder indicator(s)`);
         if (indicatorCount === 0) {
@@ -47,6 +62,7 @@ export async function run(): Promise<void> {
 
         // Verify reordered-row class is present
         const reorderedRows = page.locator('.merge-row.reordered-row');
+        await reorderedRows.first().waitFor({ timeout: 5000 });
         const reorderedCount = await reorderedRows.count();
         console.log(`  Found ${reorderedCount} reordered row(s)`);
         if (reorderedCount === 0) {
@@ -55,6 +71,7 @@ export async function run(): Promise<void> {
 
         // Verify unmatch buttons are present
         const unmatchButtons = page.locator('[data-testid="unmatch-btn"]');
+        await unmatchButtons.first().waitFor({ timeout: 5000 });
         const unmatchBtnCount = await unmatchButtons.count();
         console.log(`  Found ${unmatchBtnCount} unmatch button(s)`);
         if (unmatchBtnCount === 0) {
@@ -65,6 +82,7 @@ export async function run(): Promise<void> {
         // === Step 2: Get conflict count before unmatch ===
         console.log('\n=== Step 2: Count conflicts before unmatch ===');
         const conflictCounterBefore = await waitForResolvedCount(page, 0, 5000);
+        assertResolvedCount(conflictCounterBefore, 0, 'before unmatch');
         const totalBefore = conflictCounterBefore.total;
         console.log(`  Conflicts before unmatch: ${totalBefore}`);
 
@@ -94,6 +112,7 @@ export async function run(): Promise<void> {
 
         // Verify conflict count increased
         const conflictCounterAfterUnmatch = await waitForResolvedCount(page, 0, 5000);
+        assertResolvedCount(conflictCounterAfterUnmatch, 0, 'after unmatch');
         const totalAfterUnmatch = conflictCounterAfterUnmatch.total;
         console.log(`  Conflicts after unmatch: ${totalAfterUnmatch} (was ${totalBefore})`);
         if (totalAfterUnmatch <= totalBefore) {
@@ -135,6 +154,7 @@ export async function run(): Promise<void> {
 
         // Verify conflict count went back
         const conflictCounterAfterUndo = await waitForResolvedCount(page, 0, 5000);
+        assertResolvedCount(conflictCounterAfterUndo, 0, 'after undo');
         console.log(`  Conflicts after undo: ${conflictCounterAfterUndo.total} (original: ${totalBefore})`);
         if (conflictCounterAfterUndo.total !== totalBefore) {
             throw new Error(`Expected conflict count to revert to ${totalBefore} after undo, got ${conflictCounterAfterUndo.total}`);
@@ -174,6 +194,7 @@ export async function run(): Promise<void> {
 
         // Verify conflict count went back
         const conflictCounterAfterRematch = await waitForResolvedCount(page, 0, 5000);
+        assertResolvedCount(conflictCounterAfterRematch, 0, 'after rematch');
         console.log(`  Conflicts after rematch: ${conflictCounterAfterRematch.total} (original: ${totalBefore})`);
         if (conflictCounterAfterRematch.total !== totalBefore) {
             throw new Error(`Expected conflict count to revert to ${totalBefore} after rematch, got ${conflictCounterAfterRematch.total}`);

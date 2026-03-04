@@ -152,6 +152,11 @@ export function MergeRowInner({
         ? row.currentCellIndex - base : undefined;
     const incomingDelta = (reordered && base !== undefined && row.incomingCellIndex !== undefined)
         ? row.incomingCellIndex - base : undefined;
+    const populatedSideCount = [row.baseCell, row.currentCell, row.incomingCell].filter(Boolean).length;
+    const canUnmatch = isConflict
+        && !row.isUserUnmatched
+        && row.conflictIndex !== undefined
+        && populatedSideCount >= 2;
 
     // For identical rows, show a unified single cell
     if (!isConflict) {
@@ -184,14 +189,16 @@ export function MergeRowInner({
                                 {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
                             </span>
                         )}
-                        <button
-                            className="btn-unmatch"
-                            onClick={() => onUnmatchRow?.(rowIndex)}
-                            title="Unmatch this row into separate cells"
-                            data-testid="unmatch-btn"
-                        >
-                            Unmatch
-                        </button>
+                        {canUnmatch && (
+                            <button
+                                className="btn-unmatch"
+                                onClick={() => onUnmatchRow?.(rowIndex)}
+                                title="Unmatch this row into separate cells"
+                                data-testid="unmatch-btn"
+                            >
+                                Unmatch
+                            </button>
+                        )}
                     </div>
                 )}
                 <div className="cell-columns">
@@ -249,14 +256,16 @@ export function MergeRowInner({
                             {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
                         </span>
                     )}
-                    <button
-                        className="btn-unmatch"
-                        onClick={() => onUnmatchRow?.(rowIndex)}
-                        title="Unmatch this row into separate cells"
-                        data-testid="unmatch-btn"
-                    >
-                        Unmatch
-                    </button>
+                    {canUnmatch && (
+                        <button
+                            className="btn-unmatch"
+                            onClick={() => onUnmatchRow?.(rowIndex)}
+                            title="Unmatch this row into separate cells"
+                            data-testid="unmatch-btn"
+                        >
+                            Unmatch
+                        </button>
+                    )}
                 </div>
             )}
 

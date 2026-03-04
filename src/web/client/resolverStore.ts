@@ -214,7 +214,12 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
             }),
             unmatchRow: (rowIndex: number) => set(state => {
                 const row = state.rows[rowIndex];
-                if (!row) return;
+                if (!row || row.type !== 'conflict') return;
+                if (row.conflictIndex === undefined) return;
+                if (row.isUserUnmatched || row.unmatchGroupId !== undefined || row.originalMatchedRow !== undefined) return;
+
+                const populatedCellCount = [row.baseCell, row.currentCell, row.incomingCell].filter(Boolean).length;
+                if (populatedCellCount < 2) return;
 
                 const groupId = generateUnmatchGroupId();
 
@@ -232,6 +237,7 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 if (row.baseCell) sides.push('base');
                 if (row.currentCell) sides.push('current');
                 if (row.incomingCell) sides.push('incoming');
+                if (sides.length < 2) return;
 
                 const splitRows: MergeRowType[] = sides.map(side => ({
                     type: 'conflict' as const,
@@ -285,16 +291,24 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                     if (ci !== undefined) state.choices.delete(ci);
                 }
 
-                // Replace split rows with restored original
-                const firstIdx = groupRowIndices[0];
-                const count = groupRowIndices.length;
                 const restoredRow: MergeRowType = {
                     ...originalRow,
                     isUserUnmatched: undefined,
                     unmatchGroupId: undefined,
                     originalMatchedRow: undefined,
                 };
-                state.rows.splice(firstIdx, count, restoredRow);
+                if (restoredRow.conflictIndex !== undefined) {
+                    state.choices.delete(restoredRow.conflictIndex);
+                }
+
+                // Remove every split row by exact index so non-contiguous groups
+                // cannot accidentally delete unrelated rows.
+                const sortedGroupIndices = [...groupRowIndices].sort((a, b) => a - b);
+                const insertIndex = sortedGroupIndices[0];
+                for (const idx of [...sortedGroupIndices].sort((a, b) => b - a)) {
+                    state.rows.splice(idx, 1);
+                }
+                state.rows.splice(insertIndex, 0, restoredRow);
 
                 state.takeAllChoice = undefined;
                 recordHistory(state, `Rematch row group`);
