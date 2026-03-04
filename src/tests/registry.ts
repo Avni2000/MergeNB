@@ -237,9 +237,22 @@ export const TEST_GROUPS: TestGroup[] = [
         tests: [
             {
                 id: 'reorder_unmatch',
-                description: 'Unmatch/rematch reordered cells with undo/redo',
+                description: 'Unmatch/rematch reordered cells with undo/redo + disk verification',
                 notebooks: ['09_reorder_base.ipynb', '09_reorder_current.ipynb', '09_reorder_incoming.ipynb'],
                 testModule: './reorderUnmatch.test.js',
+            },
+            {
+                id: 'reorder_unmatch_apply_disk',
+                description: 'Unmatch reordered cells, resolve, and verify notebook written to disk',
+                notebooks: ['09_reorder_base.ipynb', '09_reorder_current.ipynb', '09_reorder_incoming.ipynb'],
+                testModule: './reorderUnmatchApplyDisk.test.js',
+            },
+            {
+                id: 'reorder_unmatch_non_reorder_guard',
+                description: 'Guard: non-reorder fixtures must not show Unmatch buttons',
+                notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
+                testModule: './unmatchGuardNoReorder.test.js',
+                includeInAll: false,
             },
         ],
     },
