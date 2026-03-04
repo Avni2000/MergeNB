@@ -218,6 +218,12 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 if (row.conflictIndex === undefined) return;
                 if (row.isUserUnmatched || row.unmatchGroupId !== undefined || row.originalMatchedRow !== undefined) return;
 
+                // Only allow unmatching reordered rows
+                if (row.baseCellIndex === undefined) return;
+                const currentMoved = row.currentCellIndex !== undefined && row.currentCellIndex !== row.baseCellIndex;
+                const incomingMoved = row.incomingCellIndex !== undefined && row.incomingCellIndex !== row.baseCellIndex;
+                if (!currentMoved && !incomingMoved) return;
+
                 const populatedCellCount = [row.baseCell, row.currentCell, row.incomingCell].filter(Boolean).length;
                 if (populatedCellCount < 2) return;
 

@@ -189,16 +189,6 @@ export function MergeRowInner({
                                 {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
                             </span>
                         )}
-                        {canUnmatch && (
-                            <button
-                                className="btn-unmatch"
-                                onClick={() => onUnmatchRow?.(rowIndex)}
-                                title="Unmatch this row into separate cells"
-                                data-testid="unmatch-btn"
-                            >
-                                Unmatch
-                            </button>
-                        )}
                     </div>
                 )}
                 <div className="cell-columns">
