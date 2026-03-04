@@ -3,12 +3,8 @@
  * @description Settings matrix tests for MergeNB.
  *
  * SECTION A: Backend logic tests -- directly test applyAutoResolutions and
- * analyzeSemanticConflictsFromMappings with synthetic data. Several tests
- * are designed to FAIL against current code, exposing known bugs:
- *   A1: Dead settings parameter in analyzeSemanticConflictsFromMappings
- *   A2: Kernel-only diff silently swallowed when autoResolveKernelVersion=false
- *   A3: stripOutputs masking autoResolveExecutionCount
- *
+ * analyzeSemanticConflictsFromMappings with synthetic data. 
+ * 
  * SECTION B: UI integration tests -- Playwright-based scenarios that verify
  * settings flow correctly from VS Code config through to the React UI.
  */
