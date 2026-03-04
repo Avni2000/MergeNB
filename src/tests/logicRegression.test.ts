@@ -195,17 +195,7 @@ export async function run(): Promise<void> {
         },
     ];
 
-    const multiConflicts = analyzeSemanticConflictsFromMappings(multiMappings, {
-        autoResolveExecutionCount: false,
-        autoResolveKernelVersion: false,
-        stripOutputs: false,
-        autoResolveWhitespace: false,
-        hideNonConflictOutputs: false,
-        showCellHeaders: false,
-        enableUndoRedoHotkeys: true,
-        showBaseColumn: true,
-        theme: 'dark',
-    });
+    const multiConflicts = analyzeSemanticConflictsFromMappings(multiMappings);
 
     assert.ok(
         multiConflicts.some(c => c.type === 'cell-modified'),
