@@ -517,10 +517,10 @@ export function applyAutoResolutions(
 
     if (currentKernelStr !== incomingKernelStr &&
         (currentKernelStr !== baseKernelStr || incomingKernelStr !== baseKernelStr)) {
-        // Kernel version differs. Always count it (uses current version by default).
-        kernelAutoResolved = true;
-        autoResolvedCount++;
+        // Kernel version differs. Handle based on autoResolveKernelVersion setting.
         if (effectiveSettings.autoResolveKernelVersion) {
+            kernelAutoResolved = true;
+            autoResolvedCount++;
             autoResolvedDescriptions.push('Kernel version: using current version');
         } else {
             autoResolvedDescriptions.push('Kernel version: conflict present (auto-resolve disabled — current version used)');
@@ -538,16 +538,16 @@ export function applyAutoResolutions(
     const incomingLangStr = stableStringify(incomingLangInfo ?? null);
     const baseLangStr = stableStringify(baseLangInfo ?? null);        if (currentLangStr !== incomingLangStr &&
         (currentLangStr !== baseLangStr || incomingLangStr !== baseLangStr)) {
-        // Language version differs. Always count it (uses current version by default).
-        if (!kernelAutoResolved) {
-            autoResolvedCount++;
-            if (effectiveSettings.autoResolveKernelVersion) {
-                autoResolvedDescriptions.push('Python version: using current version');
-            } else {
-                autoResolvedDescriptions.push('Python version: conflict present (auto-resolve disabled — current version used)');
+        // Language version differs. Handle based on autoResolveKernelVersion setting.
+        if (effectiveSettings.autoResolveKernelVersion) {
+            if (!kernelAutoResolved) {
+                autoResolvedCount++;
+                kernelAutoResolved = true;
             }
+            autoResolvedDescriptions.push('Python version: using current version');
+        } else {
+            autoResolvedDescriptions.push('Python version: conflict present (auto-resolve disabled — current version used)');
         }
-        kernelAutoResolved = true;
     }
     
 
