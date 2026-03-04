@@ -346,7 +346,8 @@ export class NotebookConflictResolver {
 
         if (
             semanticConflict.semanticConflicts.length === 0 &&
-            autoResolveResult.autoResolvedCount === 0
+            autoResolveResult.autoResolvedCount === 0 &&
+            autoResolveResult.autoResolvedDescriptions.length === 0
         ) {
             vscode.window.showInformationMessage('Notebook is in unmerged state but no conflicts detected.');
             return;
