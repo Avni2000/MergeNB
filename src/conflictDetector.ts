@@ -121,7 +121,7 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         const cellMappings = matchCells(baseNotebook, currentNotebook, incomingNotebook);
 
         // Analyze mappings to find semantic conflicts
-        const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings, getSettings());
+        const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
 
         // Get branch information
         const [currentBranch, incomingBranch] = await Promise.all([
@@ -148,15 +148,13 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
 /**
  * Analyze cell mappings to identify semantic conflicts.
  * Exported for testing purposes.
+ * Note: Settings are not used here. All conflict filtering based on settings
+ * happens in applyAutoResolutions(). This function is purely a detector.
  */
 export function analyzeSemanticConflictsFromMappings(
-    mappings: CellMapping[],
-    settings?: MergeNBSettings
+    mappings: CellMapping[]
 ): SemanticConflict[] {
     const conflicts: SemanticConflict[] = [];
-    if (!settings) {
-        getSettings();
-    }
 
     // Check for cell reordering
     if (detectReordering(mappings)) {
@@ -454,7 +452,10 @@ export function applyAutoResolutions(
                 const resolvedCellIndex = getResolvedCellIndex(conflict);
                 if (resolvedCellIndex !== undefined && resolvedNotebook.cells[resolvedCellIndex]) {
                     resolvedNotebook.cells[resolvedCellIndex].outputs = [];
-                    resolvedNotebook.cells[resolvedCellIndex].execution_count = null;
+                    // Only null execution_count if autoResolveExecutionCount is also enabled
+                    if (effectiveSettings.autoResolveExecutionCount) {
+                        resolvedNotebook.cells[resolvedCellIndex].execution_count = null;
+                    }
                     autoResolvedCellIndices.add(resolvedCellIndex);
                 }
                 autoResolved = true;
@@ -502,46 +503,53 @@ export function applyAutoResolutions(
         }
     }
 
-    // Auto-resolve kernel version differences (notebook-level metadata)
-    if (effectiveSettings.autoResolveKernelVersion) {
-        const currentKernel = semanticConflict.current?.metadata?.kernelspec;
-        const incomingKernel = semanticConflict.incoming?.metadata?.kernelspec;
-        const baseKernel = semanticConflict.base?.metadata?.kernelspec;
+    // Detect kernel/language_info version differences (notebook-level metadata)
+    // Always detect and count these to prevent silent failure when setting is off
+    const currentKernel = semanticConflict.current?.metadata?.kernelspec;
+    const incomingKernel = semanticConflict.incoming?.metadata?.kernelspec;
+    const baseKernel = semanticConflict.base?.metadata?.kernelspec;
 
-        // Check if kernel versions differ between current and incoming
-        if (currentKernel && incomingKernel) {
-            const currentKernelStr = stableStringify(currentKernel);
-            const incomingKernelStr = stableStringify(incomingKernel);
-            const baseKernelStr = baseKernel ? stableStringify(baseKernel) : '';
+    // Check if kernel versions differ between current and incoming
+    if (currentKernel && incomingKernel) {
+        const currentKernelStr = stableStringify(currentKernel);
+        const incomingKernelStr = stableStringify(incomingKernel);
+        const baseKernelStr = baseKernel ? stableStringify(baseKernel) : '';
 
-            if (currentKernelStr !== incomingKernelStr && 
-                (currentKernelStr !== baseKernelStr || incomingKernelStr !== baseKernelStr)) {
-                // Use current kernel (already in resolvedNotebook)
-                kernelAutoResolved = true;
-                autoResolvedCount++;
+        if (currentKernelStr !== incomingKernelStr &&
+            (currentKernelStr !== baseKernelStr || incomingKernelStr !== baseKernelStr)) {
+            // Kernel version differs. Always count it (uses current version by default).
+            kernelAutoResolved = true;
+            autoResolvedCount++;
+            if (effectiveSettings.autoResolveKernelVersion) {
                 autoResolvedDescriptions.push('Kernel version: using current version');
+            } else {
+                autoResolvedDescriptions.push('Kernel version: conflict present (auto-resolve disabled — current version used)');
             }
         }
+    }
 
-        // Also check language_info version
-        const currentLangInfo = semanticConflict.current?.metadata?.language_info;
-        const incomingLangInfo = semanticConflict.incoming?.metadata?.language_info;
-        const baseLangInfo = semanticConflict.base?.metadata?.language_info;
+    // Also check language_info version
+    const currentLangInfo = semanticConflict.current?.metadata?.language_info;
+    const incomingLangInfo = semanticConflict.incoming?.metadata?.language_info;
+    const baseLangInfo = semanticConflict.base?.metadata?.language_info;
 
-        if (currentLangInfo && incomingLangInfo) {
-            const currentLangStr = stableStringify(currentLangInfo);
-            const incomingLangStr = stableStringify(incomingLangInfo);
-            const baseLangStr = baseLangInfo ? stableStringify(baseLangInfo) : '';
+    if (currentLangInfo && incomingLangInfo) {
+        const currentLangStr = stableStringify(currentLangInfo);
+        const incomingLangStr = stableStringify(incomingLangInfo);
+        const baseLangStr = baseLangInfo ? stableStringify(baseLangInfo) : '';
 
-            if (currentLangStr !== incomingLangStr && 
-                (currentLangStr !== baseLangStr || incomingLangStr !== baseLangStr)) {
-                // Use current language_info (already in resolvedNotebook)
-                if (!kernelAutoResolved) {
-                    autoResolvedCount++;
+        if (currentLangStr !== incomingLangStr &&
+            (currentLangStr !== baseLangStr || incomingLangStr !== baseLangStr)) {
+            // Language version differs. Always count it (uses current version by default).
+            if (!kernelAutoResolved) {
+                autoResolvedCount++;
+                if (effectiveSettings.autoResolveKernelVersion) {
                     autoResolvedDescriptions.push('Python version: using current version');
+                } else {
+                    autoResolvedDescriptions.push('Python version: conflict present (auto-resolve disabled — current version used)');
                 }
-                kernelAutoResolved = true;
             }
+            kernelAutoResolved = true;
         }
     }
 

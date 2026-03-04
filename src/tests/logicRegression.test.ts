@@ -60,17 +60,7 @@ export async function run(): Promise<void> {
         },
     ];
 
-    const conflicts = analyzeSemanticConflictsFromMappings(mappings, {
-        autoResolveExecutionCount: true,
-        autoResolveKernelVersion: true,
-        stripOutputs: true,
-        autoResolveWhitespace: true,
-        hideNonConflictOutputs: false,
-        showCellHeaders: false,
-        enableUndoRedoHotkeys: true,
-        showBaseColumn: true,
-        theme: 'dark',
-    });
+    const conflicts = analyzeSemanticConflictsFromMappings(mappings);
     assert.ok(
         conflicts.some(c => c.type === 'metadata-changed'),
         'Expected metadata-changed conflict for added-in-both metadata difference'
@@ -114,17 +104,7 @@ export async function run(): Promise<void> {
         },
     ];
 
-    const inputConflicts = analyzeSemanticConflictsFromMappings(inputMappings, {
-        autoResolveExecutionCount: true,
-        autoResolveKernelVersion: true,
-        stripOutputs: true,
-        autoResolveWhitespace: true,
-        hideNonConflictOutputs: false,
-        showCellHeaders: false,
-        enableUndoRedoHotkeys: true,
-        showBaseColumn: true,
-        theme: 'dark',
-    });
+    const inputConflicts = analyzeSemanticConflictsFromMappings(inputMappings);
     assert.ok(
         inputConflicts.some(c => c.type === 'cell-modified'),
         'Expected cell-modified conflict for differing input payload sources'

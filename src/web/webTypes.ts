@@ -99,6 +99,8 @@ export interface WebConflictData {
     // Display options
     hideNonConflictOutputs?: boolean;
     showCellHeaders?: boolean;
+    enableUndoRedoHotkeys?: boolean;
+    showBaseColumn?: boolean;
 
     // Branch information
     currentBranch?: string;
