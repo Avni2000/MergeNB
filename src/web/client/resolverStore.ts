@@ -3,6 +3,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { immer } from 'zustand/middleware/immer';
 import { normalizeCellSource } from '../../notebookUtils';
 import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from './types';
+import { isRowReorderedAtIndex } from './reorderUtils';
 
 enableMapSet();
 
@@ -219,10 +220,7 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 if (row.isUserUnmatched || row.unmatchGroupId !== undefined || row.originalMatchedRow !== undefined) return;
 
                 // Only allow unmatching reordered rows
-                if (row.baseCellIndex === undefined) return;
-                const currentMoved = row.currentCellIndex !== undefined && row.currentCellIndex !== row.baseCellIndex;
-                const incomingMoved = row.incomingCellIndex !== undefined && row.incomingCellIndex !== row.baseCellIndex;
-                if (!currentMoved && !incomingMoved) return;
+                if (!isRowReorderedAtIndex(state.rows, rowIndex)) return;
 
                 const populatedCellCount = [row.baseCell, row.currentCell, row.incomingCell].filter(Boolean).length;
                 if (populatedCellCount < 2) return;

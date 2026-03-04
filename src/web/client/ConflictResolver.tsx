@@ -24,6 +24,7 @@ import {
     type ResolutionState,
     type TakeAllChoice,
 } from './resolverStore';
+import { computeReorderedRowIndexSet } from './reorderUtils';
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
@@ -135,6 +136,7 @@ export function ConflictResolver({
     }, [kernelLanguage]);
 
     const conflictRows = useMemo(() => rows.filter(r => r.type === 'conflict'), [rows]);
+    const reorderedRowIndices = useMemo(() => computeReorderedRowIndexSet(rows), [rows]);
     const totalConflicts = conflictRows.length;
     const resolvedCount = choices.size;
     const allResolved = resolvedCount === totalConflicts;
@@ -508,6 +510,7 @@ export function ConflictResolver({
                                 <MergeRow
                                     row={row}
                                     rowIndex={i}
+                                    isReordered={reorderedRowIndices.has(i)}
                                     conflictIndex={conflictIdx}
                                     notebookPath={conflict.filePath}
                                     languageExtensions={languageExtensions}

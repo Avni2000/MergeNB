@@ -28,6 +28,7 @@ interface ResolutionState {
 interface MergeRowProps {
     row: MergeRowType;
     rowIndex: number;
+    isReordered?: boolean;
     conflictIndex: number;
     notebookPath?: string;
     languageExtensions?: Extension[];
@@ -43,20 +44,12 @@ interface MergeRowProps {
     'data-testid'?: string;
 }
 
-/** Check if a row has cells at different positions than base (i.e. reordered). */
-function isRowReordered(row: MergeRowType): boolean {
-    if (row.baseCellIndex === undefined) return false;
-    const currentMoved = row.currentCellIndex !== undefined
-        && row.currentCellIndex !== row.baseCellIndex;
-    const incomingMoved = row.incomingCellIndex !== undefined
-        && row.incomingCellIndex !== row.baseCellIndex;
-    return currentMoved || incomingMoved;
-}
 const EMPTY_EXTENSIONS: Extension[] = [];
 
 export function MergeRowInner({
     row,
     rowIndex,
+    isReordered = false,
     conflictIndex,
     notebookPath,
     languageExtensions = EMPTY_EXTENSIONS,
@@ -146,7 +139,7 @@ export function MergeRowInner({
     };
 
     // Per-row reorder detection
-    const reordered = isRowReordered(row);
+    const reordered = isReordered;
     const base = row.baseCellIndex;
     const currentDelta = (reordered && base !== undefined && row.currentCellIndex !== undefined)
         ? row.currentCellIndex - base : undefined;
