@@ -197,15 +197,13 @@ export async function run(): Promise<void> {
     // -----------------------------------------------------------------------
     console.log('\n====== SECTION A: Backend Logic Tests ======');
 
-    // --- A1: analyzeSemanticConflictsFromMappings ignores settings param ---
+    // --- A1: analyzeSemanticConflictsFromMappings is settings-agnostic ---
     //
-    // BUG (conflictDetector.ts:152-159): The function accepts a settings
-    // parameter and has a getSettings() fallback, but never references the
-    // settings object in any detection logic.  If the parameter is meaningful,
-    // passing different settings should yield different results.  Since it
-    // doesn't, this assertion fails, proving the parameter is dead code.
+    // Detection should find all conflicts without filtering based on settings.
+    // All settings-based filtering happens in applyAutoResolutions.
+    // This test verifies that detection is exhaustive and settings-independent.
     {
-        console.log('\n--- A1: settings parameter dead in analyzeSemanticConflictsFromMappings ---');
+        console.log('\n--- A1: detection is settings-agnostic ---');
 
         const base = makeCodeCell('x = 1', {
             execution_count: 1,
@@ -230,27 +228,56 @@ export async function run(): Promise<void> {
             incomingCell: incoming,
         }];
 
-        const conflictsAutoOn = analyzeSemanticConflictsFromMappings(mappings, settingsWith({
-            autoResolveExecutionCount: true,
-            stripOutputs: true,
-            autoResolveWhitespace: true,
-        }));
+        // Detect conflicts (no settings parameter)
+        const allConflicts = analyzeSemanticConflictsFromMappings(mappings);
 
-        const conflictsAutoOff = analyzeSemanticConflictsFromMappings(mappings, settingsWith({
-            autoResolveExecutionCount: false,
-            stripOutputs: false,
-            autoResolveWhitespace: false,
-        }));
+        // Verify detection found multiple conflict types
+        const conflictTypes = allConflicts.map(c => c.type);
+        assert.ok(
+            conflictTypes.includes('execution-count-changed'),
+            'Should detect execution-count-changed'
+        );
+        assert.ok(
+            conflictTypes.includes('outputs-changed'),
+            'Should detect outputs-changed'
+        );
 
-        // If the settings parameter were wired, auto-on would suppress some
-        // conflict types during detection.  Since both calls return the same
-        // conflicts, the parameter is dead.
-        assert.notDeepStrictEqual(
-            conflictsAutoOn.map(c => c.type).sort(),
-            conflictsAutoOff.map(c => c.type).sort(),
-            'BUG: analyzeSemanticConflictsFromMappings ignores its settings parameter -- ' +
-            'both invocations return identical conflict types: ' +
-            JSON.stringify(conflictsAutoOn.map(c => c.type))
+        // Now verify that different settings DO affect auto-resolution
+        const resolveWithAutoOn = applyAutoResolutions(
+            {
+                filePath: '/test/a1.ipynb',
+                semanticConflicts: allConflicts,
+                cellMappings: mappings,
+                current: makeNotebook([current]),
+                incoming: makeNotebook([incoming]),
+                base: makeNotebook([base]),
+            },
+            settingsWith({
+                autoResolveExecutionCount: true,
+                stripOutputs: true,
+            })
+        );
+
+        const resolveWithAutoOff = applyAutoResolutions(
+            {
+                filePath: '/test/a1.ipynb',
+                semanticConflicts: allConflicts,
+                cellMappings: mappings,
+                current: makeNotebook([current]),
+                incoming: makeNotebook([incoming]),
+                base: makeNotebook([base]),
+            },
+            settingsWith({
+                autoResolveExecutionCount: false,
+                stripOutputs: false,
+            })
+        );
+
+        // Different settings should yield different resolution results
+        assert.notStrictEqual(
+            resolveWithAutoOn.autoResolvedCount,
+            resolveWithAutoOff.autoResolvedCount,
+            'Settings should affect auto-resolution counts'
         );
         console.log('  pass: A1');
     }
