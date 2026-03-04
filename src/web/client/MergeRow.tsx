@@ -138,15 +138,14 @@ export function MergeRowInner({
         onCommitContent(conflictIndex, draftResolvedContent);
     };
 
-    // Per-row reorder detection
-    const reordered = isReordered;
     const base = row.baseCellIndex;
-    const currentDelta = (reordered && base !== undefined && row.currentCellIndex !== undefined)
+    const currentDelta = (isReordered && base !== undefined && row.currentCellIndex !== undefined)
         ? row.currentCellIndex - base : undefined;
-    const incomingDelta = (reordered && base !== undefined && row.incomingCellIndex !== undefined)
+    const incomingDelta = (isReordered && base !== undefined && row.incomingCellIndex !== undefined)
         ? row.incomingCellIndex - base : undefined;
     const populatedSideCount = [row.baseCell, row.currentCell, row.incomingCell].filter(Boolean).length;
     const canUnmatch = isConflict
+        && isReordered
         && !row.isUserUnmatched
         && row.conflictIndex !== undefined
         && populatedSideCount >= 2;
@@ -160,7 +159,7 @@ export function MergeRowInner({
         const identicalClasses = [
             'merge-row',
             'identical-row',
-            reordered && 'reordered-row',
+            isReordered && 'reordered-row',
         ].filter(Boolean).join(' ');
         return (
             <div
@@ -170,7 +169,7 @@ export function MergeRowInner({
                 data-cell-type={cellType}
                 data-cell={encodeURIComponent(cell ? JSON.stringify(cell) : '')}
             >
-                {reordered && (
+                {isReordered && (
                     <div className="reorder-indicator-bar" data-testid="reorder-indicator">
                         {currentDelta !== undefined && currentDelta !== 0 && (
                             <span className="reorder-delta current-delta">
@@ -215,7 +214,7 @@ export function MergeRowInner({
         'conflict-row',
         row.isUnmatched && 'unmatched-row',
         row.isUserUnmatched && 'user-unmatched-row',
-        reordered && !row.isUserUnmatched && 'reordered-row',
+        isReordered && !row.isUserUnmatched && 'reordered-row',
         resolutionState && 'resolved-row'
     ].filter(Boolean).join(' ');
 
@@ -227,7 +226,7 @@ export function MergeRowInner({
     return (
         <div className={rowClasses} data-testid={testId}>
             {/* Reorder indicator bar — only for reordered rows that haven't been unmatched */}
-            {reordered && !row.isUserUnmatched && (
+            {isReordered && !row.isUserUnmatched && (
                 <div className="reorder-indicator-bar" data-testid="reorder-indicator">
                     {currentDelta !== undefined && currentDelta !== 0 && (
                         <span className="reorder-delta current-delta">

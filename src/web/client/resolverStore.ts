@@ -241,7 +241,6 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 if (row.baseCell) sides.push('base');
                 if (row.currentCell) sides.push('current');
                 if (row.incomingCell) sides.push('incoming');
-                if (sides.length < 2) return;
 
                 const splitRows: MergeRowType[] = sides.map(side => ({
                     type: 'conflict' as const,
