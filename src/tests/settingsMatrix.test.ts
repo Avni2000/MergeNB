@@ -11,6 +11,7 @@
 
 import * as assert from 'assert';
 import * as vscode from 'vscode';
+import { expect } from '@playwright/test';
 import type { Locator, Page } from 'playwright';
 import {
     applyAutoResolutions,
@@ -144,8 +145,8 @@ async function runUIScenario(
         await callback(page);
         console.log(`  pass: ${scenarioName}`);
     } finally {
-        try { await page.close(); } catch { /* ignore */ }
-        try { await browser.close(); } catch { /* ignore */ }
+        try { await page.close(); } catch (e) { console.error('failed to close page', e); }
+        try { await browser.close(); } catch (e) { console.error('failed to close browser', e); }
     }
 }
 
@@ -330,9 +331,10 @@ export async function run(): Promise<void> {
         // so a descriptive message is sufficient to prevent silent swallowing.
         assert.ok(
             result.autoResolvedDescriptions.length > 0,
-            'BUG: kernel-only metadata diff is silently swallowed when ' +
-            'autoResolveKernelVersion=false -- autoResolvedDescriptions is empty, ' +
-            'resolver will exit with "no conflicts detected".'
+            'Regression test: ensure kernel-only metadata diffs are surfaced when ' +
+            'autoResolveKernelVersion=false. ' +
+            'remainingConflicts.length=' + result.remainingConflicts.length + ' ' +
+            'autoResolvedCount=' + result.autoResolvedCount
         );
         assert.strictEqual(
             result.autoResolvedCount, 0,
@@ -403,9 +405,9 @@ export async function run(): Promise<void> {
         assert.notStrictEqual(
             resolvedCell.execution_count,
             null,
-            'BUG: stripOutputs=true nulls execution_count even when ' +
-            'autoResolveExecutionCount=false -- execution_count=' +
-            resolvedCell.execution_count
+            'Expected resolvedCell.execution_count to be non-null when ' +
+            'autoResolveExecutionCount=false; got ' +
+            JSON.stringify(resolvedCell.execution_count)
         );
         console.log('  pass: A3');
     }
@@ -973,7 +975,7 @@ export async function run(): Promise<void> {
 
                 await page.click('.header-title');
                 await page.keyboard.press(`${mod}+Z`);
-                await page.waitForTimeout(400);
+                await expect(row.locator('.resolved-content-input')).toBeVisible({ timeout: 500 });
 
                 const stillResolved = await row.locator('.resolved-content-input').count();
                 assert.ok(stillResolved > 0,
@@ -1027,7 +1029,7 @@ export async function run(): Promise<void> {
                 await page.click('.header-title');
                 const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
                 await page.keyboard.press(`${mod}+Z`);
-                await page.waitForTimeout(400);
+                await expect(conflictRow.locator('.resolved-content-input')).toBeVisible({ timeout: 500 });
                 const stillResolved = await conflictRow
                     .locator('.resolved-content-input').count();
                 assert.ok(stillResolved > 0,
