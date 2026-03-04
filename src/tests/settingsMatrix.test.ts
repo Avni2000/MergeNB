@@ -325,20 +325,22 @@ export async function run(): Promise<void> {
             settingsWith({ autoResolveKernelVersion: false })
         );
 
-        // With the setting OFF, the kernel diff must not vanish.  Either it
-        // lands in remainingConflicts or increments autoResolvedCount so the
-        // resolver knows something happened.
-        const surfaced =
-            result.remainingConflicts.length > 0 ||
-            result.autoResolvedCount > 0;
-
+        // With the setting OFF, the kernel diff must not vanish.  The
+        // resolver's early-exit guard checks autoResolvedDescriptions.length,
+        // so a descriptive message is sufficient to prevent silent swallowing.
         assert.ok(
-            surfaced,
+            result.autoResolvedDescriptions.length > 0,
             'BUG: kernel-only metadata diff is silently swallowed when ' +
-            'autoResolveKernelVersion=false -- remainingConflicts=' +
-            result.remainingConflicts.length +
-            ', autoResolvedCount=' + result.autoResolvedCount +
-            '.  Resolver will exit with "no conflicts detected".'
+            'autoResolveKernelVersion=false -- autoResolvedDescriptions is empty, ' +
+            'resolver will exit with "no conflicts detected".'
+        );
+        assert.strictEqual(
+            result.autoResolvedCount, 0,
+            'autoResolvedCount must be 0 when autoResolveKernelVersion=false'
+        );
+        assert.strictEqual(
+            result.kernelAutoResolved, false,
+            'kernelAutoResolved must be false when autoResolveKernelVersion=false'
         );
         console.log('  pass: A2');
     }
@@ -613,6 +615,197 @@ export async function run(): Promise<void> {
             result.autoResolvedDescriptions.join(', ')
         );
         console.log('  pass: A7');
+    }
+
+    // --- A8: kernel auto-resolve OFF — kernelAutoResolved NOT set, count stays 0 ---
+    //
+    // With autoResolveKernelVersion=false, the kernelspec diff must NOT be
+    // counted as auto-resolved (kernelAutoResolved=false, autoResolvedCount=0).
+    // A descriptive message about the conflict being present should still be
+    // pushed so callers know the diff exists but was left for manual handling.
+    {
+        console.log('\n--- A8: kernel auto-resolve OFF does not set kernelAutoResolved ---');
+
+        const cell = makeCodeCell('x = 1');
+        const currentNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.10', language: 'python', name: 'python3' },
+        });
+        const incomingNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.11', language: 'python', name: 'python3' },
+        });
+        const baseNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.9', language: 'python', name: 'python3' },
+        });
+
+        const semanticConflict: NotebookSemanticConflict = {
+            filePath: '/test/kernel-off-kernelspec.ipynb',
+            semanticConflicts: [],
+            cellMappings: [{
+                baseIndex: 0, currentIndex: 0, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: baseNb.cells[0],
+                currentCell: currentNb.cells[0],
+                incomingCell: incomingNb.cells[0],
+            }],
+            base: baseNb,
+            current: currentNb,
+            incoming: incomingNb,
+        };
+
+        const result = applyAutoResolutions(
+            semanticConflict,
+            settingsWith({ autoResolveKernelVersion: false })
+        );
+
+        assert.strictEqual(
+            result.kernelAutoResolved, false,
+            'kernelAutoResolved must be false when autoResolveKernelVersion=false'
+        );
+        assert.strictEqual(
+            result.autoResolvedCount, 0,
+            'autoResolvedCount must be 0 when autoResolveKernelVersion=false'
+        );
+        assert.ok(
+            result.autoResolvedDescriptions.length > 0,
+            'A descriptive message should still be pushed so callers know the conflict exists'
+        );
+        assert.ok(
+            result.autoResolvedDescriptions.some(d => /disabled/i.test(d)),
+            'Description should mention auto-resolve is disabled, got: ' +
+            result.autoResolvedDescriptions.join(', ')
+        );
+        console.log('  pass: A8');
+    }
+
+    // --- A9: language_info auto-resolve OFF — count stays 0, flag not set ---
+    //
+    // Same as A8 but using language_info (not kernelspec) as the sole
+    // metadata diff, to verify the language_info branch is also correctly
+    // gated behind autoResolveKernelVersion.
+    {
+        console.log('\n--- A9: language_info auto-resolve OFF does not set kernelAutoResolved ---');
+
+        const cell = makeCodeCell('x = 1');
+        const currentNb = makeNotebook([{ ...cell }], {
+            language_info: { name: 'python', version: '3.10.0' },
+        });
+        const incomingNb = makeNotebook([{ ...cell }], {
+            language_info: { name: 'python', version: '3.11.0' },
+        });
+        const baseNb = makeNotebook([{ ...cell }], {
+            language_info: { name: 'python', version: '3.9.0' },
+        });
+
+        const semanticConflict: NotebookSemanticConflict = {
+            filePath: '/test/kernel-off-langinfo.ipynb',
+            semanticConflicts: [],
+            cellMappings: [{
+                baseIndex: 0, currentIndex: 0, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: baseNb.cells[0],
+                currentCell: currentNb.cells[0],
+                incomingCell: incomingNb.cells[0],
+            }],
+            base: baseNb,
+            current: currentNb,
+            incoming: incomingNb,
+        };
+
+        const result = applyAutoResolutions(
+            semanticConflict,
+            settingsWith({ autoResolveKernelVersion: false })
+        );
+
+        assert.strictEqual(
+            result.kernelAutoResolved, false,
+            'kernelAutoResolved must be false when autoResolveKernelVersion=false (language_info path)'
+        );
+        assert.strictEqual(
+            result.autoResolvedCount, 0,
+            'autoResolvedCount must be 0 when autoResolveKernelVersion=false (language_info path)'
+        );
+        assert.ok(
+            result.autoResolvedDescriptions.some(d => /disabled/i.test(d)),
+            'Description should mention auto-resolve is disabled, got: ' +
+            result.autoResolvedDescriptions.join(', ')
+        );
+        console.log('  pass: A9');
+    }
+
+    // --- A10: kernel + language_info both differ — ON vs OFF comparison ---
+    //
+    // When both kernelspec and language_info differ:
+    //   - ON:  kernelAutoResolved=true, autoResolvedCount=1 (deduplicated),
+    //          descriptions include both "Kernel version" and "Python version"
+    //   - OFF: kernelAutoResolved=false, autoResolvedCount=0,
+    //          descriptions mention both diffs with "disabled"
+    {
+        console.log('\n--- A10: kernel + language_info ON vs OFF ---');
+
+        const cell = makeCodeCell('x = 1');
+        const currentNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.10', language: 'python', name: 'python3' },
+            language_info: { name: 'python', version: '3.10.0' },
+        });
+        const incomingNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.11', language: 'python', name: 'python3' },
+            language_info: { name: 'python', version: '3.11.0' },
+        });
+        const baseNb = makeNotebook([{ ...cell }], {
+            kernelspec: { display_name: 'Python 3.9', language: 'python', name: 'python3' },
+            language_info: { name: 'python', version: '3.9.0' },
+        });
+
+        const makeConflict = (filePath: string): NotebookSemanticConflict => ({
+            filePath,
+            semanticConflicts: [],
+            cellMappings: [{
+                baseIndex: 0, currentIndex: 0, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: baseNb.cells[0],
+                currentCell: currentNb.cells[0],
+                incomingCell: incomingNb.cells[0],
+            }],
+            base: baseNb,
+            current: currentNb,
+            incoming: incomingNb,
+        });
+
+        const on = applyAutoResolutions(
+            makeConflict('/test/kernel-both-on.ipynb'),
+            settingsWith({ autoResolveKernelVersion: true })
+        );
+
+        assert.ok(on.kernelAutoResolved,
+            'ON: kernelAutoResolved should be true');
+        assert.strictEqual(on.autoResolvedCount, 1,
+            'ON: autoResolvedCount must be exactly 1 (kernelspec + language_info share one count)');
+        assert.ok(
+            on.autoResolvedDescriptions.some(d => /kernel version/i.test(d)),
+            'ON: expected "Kernel version" description, got: ' + on.autoResolvedDescriptions.join(', ')
+        );
+        assert.ok(
+            on.autoResolvedDescriptions.some(d => /python version/i.test(d)),
+            'ON: expected "Python version" description, got: ' + on.autoResolvedDescriptions.join(', ')
+        );
+
+        const off = applyAutoResolutions(
+            makeConflict('/test/kernel-both-off.ipynb'),
+            settingsWith({ autoResolveKernelVersion: false })
+        );
+
+        assert.strictEqual(off.kernelAutoResolved, false,
+            'OFF: kernelAutoResolved must be false');
+        assert.strictEqual(off.autoResolvedCount, 0,
+            'OFF: autoResolvedCount must be 0');
+        assert.ok(off.autoResolvedDescriptions.length >= 2,
+            'OFF: both kernel and language_info should produce descriptive messages');
+        assert.ok(
+            off.autoResolvedDescriptions.every(d => /disabled/i.test(d)),
+            'OFF: every description should mention auto-resolve is disabled, got: ' +
+            off.autoResolvedDescriptions.join(', ')
+        );
+        console.log('  pass: A10');
     }
 
     // -----------------------------------------------------------------------
