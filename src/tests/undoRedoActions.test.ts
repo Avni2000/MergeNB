@@ -9,13 +9,14 @@ import {
     clickHistoryUndo,
     clickHistoryRedo,
     waitForResolvedCount,
+    getResolvedEditorValue,
+    fillResolvedEditor,
+    type MergeSide,
 } from './integrationUtils';
 import {
     readTestConfig,
     setupConflictResolver,
 } from './testHarness';
-
-type MergeSide = 'base' | 'current' | 'incoming';
 
 async function pickBranchButton(row: Locator): Promise<{ selector: string; side: MergeSide }> {
     const options: Array<{ selector: string; side: MergeSide }> = [
@@ -33,52 +34,27 @@ async function pickBranchButton(row: Locator): Promise<{ selector: string; side:
     throw new Error('No branch selection buttons found for conflict row');
 }
 
-async function findCellMovePair(page: Page): Promise<{
-    side: MergeSide;
-    sourceRowId: string;
-    targetRowId: string;
-}> {
-    const rows = page.locator('.merge-row.unmatched-row');
-    const count = await rows.count();
-    if (count === 0) {
-        throw new Error('No unmatched rows available for cell move test');
+async function waitForResolvedEditorText(
+    textarea: Locator,
+    expected: string,
+    timeoutMs = 5000,
+    pollMs = 100,
+): Promise<string> {
+    const start = Date.now();
+    let last = await getResolvedEditorValue(textarea);
+
+    while (Date.now() - start < timeoutMs) {
+        last = await getResolvedEditorValue(textarea);
+        if (last === expected) {
+            return last;
+        }
+        await new Promise(resolve => setTimeout(resolve, pollMs));
     }
 
-    const sides: MergeSide[] = ['base', 'current', 'incoming'];
-    for (const side of sides) {
-        const sources: Array<{ rowId: string; cellCount: number }> = [];
-        const targets: Array<{ rowId: string }> = [];
-
-        for (let i = 0; i < count; i++) {
-            const row = rows.nth(i);
-            const rowId = await row.getAttribute('data-testid');
-            if (!rowId) continue;
-
-            const hasBase = await row.locator('.base-column .notebook-cell').count() > 0;
-            const hasCurrent = await row.locator('.current-column .notebook-cell').count() > 0;
-            const hasIncoming = await row.locator('.incoming-column .notebook-cell').count() > 0;
-            const cellCount = (hasBase ? 1 : 0) + (hasCurrent ? 1 : 0) + (hasIncoming ? 1 : 0);
-
-            const hasSideCell = await row.locator(`.${side}-column .notebook-cell`).count() > 0;
-            const hasSidePlaceholder = await row.locator(`.${side}-column .cell-placeholder`).count() > 0;
-
-            if (hasSideCell && cellCount >= 1) {
-                sources.push({ rowId, cellCount });
-            }
-            if (hasSidePlaceholder) {
-                targets.push({ rowId });
-            }
-        }
-
-        if (sources.length > 0 && targets.length > 0) {
-            const source = sources[0];
-            const target = targets.find(t => t.rowId !== source.rowId) || targets[0];
-            return { side, sourceRowId: source.rowId, targetRowId: target.rowId };
-        }
-    }
-
-    throw new Error('Could not find suitable unmatched rows for cell move test');
+    return last;
 }
+
+
 
 export async function run(): Promise<void> {
     console.log('Starting MergeNB Undo/Redo Actions Integration Test...');
@@ -150,21 +126,35 @@ export async function run(): Promise<void> {
         }
         const textarea = firstRow.locator('.resolved-content-input');
         await textarea.waitFor({ timeout: 5000 });
-        const original = await textarea.inputValue();
+        const original = await getResolvedEditorValue(textarea);
         const edited = `${original}\n(edited)`;
-        await textarea.fill(edited);
-        await textarea.blur();
+        const historyItemsForEdit = page.locator('[data-testid="history-item"]');
+        const historyCountBeforeEdit = await historyItemsForEdit.count();
+        await fillResolvedEditor(textarea, edited);
+        await textarea.locator('.cm-content').blur();
+
+        const historyCommitStart = Date.now();
+        while (Date.now() - historyCommitStart < 5000) {
+            if (await historyItemsForEdit.count() > historyCountBeforeEdit) {
+                break;
+            }
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
 
         await clickHistoryUndo(page);
-        const afterUndo = await textarea.inputValue();
+        const afterUndo = await waitForResolvedEditorText(textarea, original);
         if (afterUndo !== original) {
-            throw new Error('Undo did not restore original content after edit');
+            throw new Error(
+                `Undo did not restore original content after edit (expected len=${original.length}, actual len=${afterUndo.length})`
+            );
         }
 
         await clickHistoryRedo(page);
-        const afterRedo = await textarea.inputValue();
+        const afterRedo = await waitForResolvedEditorText(textarea, edited);
         if (afterRedo !== edited) {
-            throw new Error('Redo did not restore edited content after edit');
+            throw new Error(
+                `Redo did not restore edited content after edit (expected len=${edited.length}, actual len=${afterRedo.length})`
+            );
         }
         console.log('  ✓ Undo/redo restored edited content');
 
@@ -204,142 +194,7 @@ export async function run(): Promise<void> {
         }
         console.log('  ✓ Undo/redo restored checkbox states');
 
-        // // Action 5: move unmatched cell + undo/redo
-        // console.log('\n=== Undo/Redo: Move Unmatched Cell ===');
 
-        // const movePair = await findCellMovePair(page);
-        // const sourceRow = page.locator(`[data-testid="${movePair.sourceRowId}"]`);
-        // const targetRow = page.locator(`[data-testid="${movePair.targetRowId}"]`);
-
-        // await sourceRow.scrollIntoViewIfNeeded();
-        // await targetRow.scrollIntoViewIfNeeded();
-
-        // const sourceCell = sourceRow.locator(`.${movePair.side}-column .notebook-cell`).first();
-        // const targetPlaceholder = targetRow.locator(`.${movePair.side}-column .cell-placeholder`).first();
-        // const sourceCellData = await sourceCell.getAttribute('data-cell');
-        // if (!sourceCellData) {
-        //     throw new Error('Could not read source cell data before move');
-        // }
-
-        // // Use programmatic drag-and-drop via page.evaluate to ensure events fire correctly
-        // const sourceSelector = `[data-testid="${movePair.sourceRowId}"] .${movePair.side}-column .notebook-cell`;
-        // const targetSelector = `[data-testid="${movePair.targetRowId}"] .${movePair.side}-column .cell-placeholder`;
-        // await page.evaluate(({ src, tgt }) => {
-        //     const sourceEl = document.querySelector(src) as HTMLElement;
-        //     const targetEl = document.querySelector(tgt) as HTMLElement;
-        //     if (!sourceEl || !targetEl) {
-        //         throw new Error(`Elements not found: src=${!!sourceEl}, tgt=${!!targetEl}`);
-        //     }
-
-        //     const dataTransfer = new DataTransfer();
-        //     dataTransfer.effectAllowed = 'move';
-
-        //     sourceEl.dispatchEvent(new DragEvent('dragstart', {
-        //         bubbles: true, cancelable: true, dataTransfer,
-        //     }));
-
-        //     targetEl.dispatchEvent(new DragEvent('dragover', {
-        //         bubbles: true, cancelable: true, dataTransfer,
-        //     }));
-
-        //     targetEl.dispatchEvent(new DragEvent('drop', {
-        //         bubbles: true, cancelable: true, dataTransfer,
-        //     }));
-
-        //     sourceEl.dispatchEvent(new DragEvent('dragend', {
-        //         bubbles: true, cancelable: true,
-        //     }));
-        // }, { src: sourceSelector, tgt: targetSelector });
-
-        // // Wait for React to process the state update
-        // await page.waitForTimeout(500);
-
-        // const movedCell = targetRow.locator(`.${movePair.side}-column .notebook-cell`).first();
-        // await movedCell.waitFor({ timeout: 5000 });
-        // const movedCellData = await movedCell.getAttribute('data-cell');
-        // if (movedCellData !== sourceCellData) {
-        //     throw new Error('Moved cell data did not match source cell data');
-        // }
-
-        // await clickHistoryUndo(page);
-        // await sourceRow.locator(`.${movePair.side}-column .notebook-cell`).first().waitFor({ timeout: 5000 });
-        // await targetRow.locator(`.${movePair.side}-column .cell-placeholder`).first().waitFor({ timeout: 5000 });
-
-        // await clickHistoryRedo(page);
-        // await targetRow.locator(`.${movePair.side}-column .notebook-cell`).first().waitFor({ timeout: 5000 });
-        // console.log('  ✓ Undo/redo restored moved cell');
-
-        // Action 6: reorder rows + undo/redo
-        console.log('\n=== Undo/Redo: Reorder Rows ===');
-        if (conflictCount < 2) {
-            console.log('  - Skipped row reorder: fewer than 2 conflict rows');
-        } else {
-            const rowA = conflictRows.nth(0);
-            const rowB = conflictRows.nth(1);
-            const rowAId = await rowA.getAttribute('data-testid');
-            const rowBId = await rowB.getAttribute('data-testid');
-            if (!rowAId || !rowBId) {
-                throw new Error('Missing data-testid for conflict rows');
-            }
-
-            await rowA.scrollIntoViewIfNeeded();
-            await rowB.scrollIntoViewIfNeeded();
-
-            // Use programmatic drag events for row reorder (same approach as cell drag)
-            const handleSelector = `[data-testid="${rowAId}"] [data-testid="row-drag-handle"]`;
-            const rowBSelector = `[data-testid="${rowBId}"]`;
-            await page.evaluate(({ src, tgt }) => {
-                const sourceEl = document.querySelector(src) as HTMLElement;
-                const targetEl = document.querySelector(tgt) as HTMLElement;
-                if (!sourceEl || !targetEl) {
-                    throw new Error(`Elements not found: src=${!!sourceEl}, tgt=${!!targetEl}`);
-                }
-
-                const dataTransfer = new DataTransfer();
-                dataTransfer.effectAllowed = 'move';
-                dataTransfer.setData('text/plain', 'row');
-
-                sourceEl.dispatchEvent(new DragEvent('dragstart', {
-                    bubbles: true, cancelable: true, dataTransfer,
-                }));
-
-                // Drop on the target row's wrapper (parent)
-                const targetWrapper = targetEl.parentElement || targetEl;
-                targetWrapper.dispatchEvent(new DragEvent('dragover', {
-                    bubbles: true, cancelable: true, dataTransfer,
-                }));
-
-                targetWrapper.dispatchEvent(new DragEvent('drop', {
-                    bubbles: true, cancelable: true, dataTransfer,
-                }));
-
-                sourceEl.dispatchEvent(new DragEvent('dragend', {
-                    bubbles: true, cancelable: true,
-                }));
-            }, { src: handleSelector, tgt: rowBSelector });
-
-            await page.waitForTimeout(500);
-
-            const newFirstId = await conflictRows.nth(0).getAttribute('data-testid');
-            if (newFirstId === rowAId) {
-                throw new Error('Row reorder did not change row order');
-            }
-
-            await clickHistoryUndo(page);
-            const undoFirstId = await conflictRows.nth(0).getAttribute('data-testid');
-            if (undoFirstId !== rowAId) {
-                throw new Error('Undo did not restore original row order');
-            }
-
-            await clickHistoryRedo(page);
-            const redoFirstId = await conflictRows.nth(0).getAttribute('data-testid');
-            if (redoFirstId !== rowBId) {
-                throw new Error('Redo did not reapply row reorder');
-            }
-            console.log('  ✓ Undo/redo restored row ordering');
-        }
-
-        // Action 7: timeline jump from history dropdown
         console.log('\n=== History Timeline Jump ===');
         await page.locator('[data-testid="history-toggle"]').click();
         const historyItems = page.locator('[data-testid="history-item"]');

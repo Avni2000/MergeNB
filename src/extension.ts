@@ -3,7 +3,7 @@
  * @description VS Code extension entry point for MergeNB.
  * 
  * Registers the `merge-nb.findConflicts` command which:
- * 1. Checks the active notebook for conflicts (semantic / Git UU status)
+ * 1. Checks the active notebook for conflicts (semantic / Git unmerged status)
  * 2. If none active, scans workspace for all conflicted notebooks
  * 3. Presents a quick-pick menu to select which notebook to resolve
  * 4. Opens the browser-based conflict resolution UI
@@ -18,6 +18,7 @@ import { NotebookConflictResolver, ConflictedNotebook, onDidResolveConflict, onD
 import * as gitIntegration from './gitIntegration';
 import { getWebServer } from './web';
 import type { API as GitAPI, GitExtension, Repository } from './typings/git';
+import * as logger from './logger';
 
 let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
@@ -73,7 +74,7 @@ function getQuickPickItems(files: ConflictedNotebook[], activeUri?: vscode.Uri):
 		.map((f) => ({
 			label: `$(notebook) ${vscode.workspace.asRelativePath(f.uri)}`,
 			description: activePath && f.uri.fsPath === activePath ? 'Active file' : undefined,
-			detail: 'Notebook merge conflict (Git unmerged status)',
+			detail: `Notebook merge conflict (${f.unmergedStatus})`,
 			uri: f.uri
 		}));
 }
@@ -86,7 +87,7 @@ async function ensureSupportedMergeTool(
 		await gitIntegration.ensureSupportedMergeTool(targetPath, options);
 		return true;
 	} catch (error) {
-		console.error('[MergeNB] Unsupported merge tool configuration detected:', error);
+		logger.error('[MergeNB] Unsupported merge tool configuration detected:', error);
 		return false;
 	}
 }
@@ -131,7 +132,7 @@ async function updateStatusBar(): Promise<void> {
 	try {
 		conflictedFiles = await resolver.findNotebooksWithConflicts();
 	} catch (error) {
-		console.error('[MergeNB] Failed to refresh status bar conflicts:', error);
+		logger.error('[MergeNB] Failed to refresh status bar conflicts:', error);
 	}
 
 	if (refreshVersion !== statusBarRefreshVersion) {
@@ -157,23 +158,64 @@ async function updateStatusBar(): Promise<void> {
 	statusBarVisible = true;
 }
 
+const decorationErrorShown = { value: false };  
+
+async function getNotebookConflictDecoration(uri: vscode.Uri): Promise<vscode.FileDecoration | undefined> {
+	if (!backgroundConflictMonitoringEnabled || !uri.fsPath.endsWith('.ipynb')) {
+		return undefined;
+	}
+
+	try {
+		// Fast check: is this file unmerged according to Git?
+		const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
+		if (isUnmerged) {
+			return {
+				badge: '⚠',
+				tooltip: 'Notebook has merge conflicts',
+				color: new vscode.ThemeColor('gitDecoration.conflictingResourceForeground')
+			};
+		}
+	} catch (error) {
+		logger.error('[MergeNB] Failed to provide notebook conflict decoration:', error);
+		if (!decorationErrorShown.value) {  
+			decorationErrorShown.value = true;  
+			const message = error instanceof Error ? error.message : String(error);  
+			void vscode.window.showErrorMessage(`MergeNB failed to check notebook conflict decoration: ${message}`);  
+		}  
+	}
+
+	return undefined;
+}
+
 function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 	const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
 	if (!extension) {
-		console.warn('[MergeNB] vscode.git extension was not found; Git state watchers are disabled.');
+		logger.warn('[MergeNB] vscode.git extension was not found; Git state watchers are disabled.');
 		return;
 	}
 
 	const watchedRepositories = new WeakSet<Repository>();
+	const refreshRepositoryUnmergedSnapshot = (repository: Repository): void => {
+		void (async () => {
+			try {
+				await gitIntegration.refreshUnmergedFilesSnapshot(repository.rootUri.fsPath);
+				decorationChangeEmitter.fire(undefined);
+				void updateStatusBar();
+			} catch (error) {
+				logger.error('[MergeNB] Failed to refresh unmerged snapshot:', error);
+			}
+		})();
+	};
+
 	const attachRepositoryWatcher = (repository: Repository): void => {
 		if (!repository?.state || watchedRepositories.has(repository)) {
 			return;
 		}
 		watchedRepositories.add(repository);
+		refreshRepositoryUnmergedSnapshot(repository);
 		context.subscriptions.push(
 			repository.state.onDidChange(() => {
-				decorationChangeEmitter.fire(undefined);
-				void updateStatusBar();
+				refreshRepositoryUnmergedSnapshot(repository);
 			})
 		);
 	};
@@ -186,15 +228,13 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 		context.subscriptions.push(
 			api.onDidOpenRepository((repository) => {
 				attachRepositoryWatcher(repository);
-				decorationChangeEmitter.fire(undefined);
-				void updateStatusBar();
 			})
 		);
 	};
 
 	const api = extension.exports?.getAPI(1);
 	if (!api) {
-		console.warn('[MergeNB] Git extension API unavailable; Git state watchers are disabled.');
+		logger.warn('[MergeNB] Git extension API unavailable; Git state watchers are disabled.');
 		return;
 	}
 
@@ -202,7 +242,7 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-	console.log('MergeNB extension is now active');
+	logger.debug('MergeNB extension is now active');
 	const isTestMode = process.env.MERGENB_TEST_MODE === 'true';
 	const isNbdimeGuardTest = process.env.MERGENB_NBDIME_GUARD_CI === 'true';
 	backgroundConflictMonitoringEnabled = !isNbdimeGuardTest;
@@ -223,9 +263,9 @@ export function activate(context: vscode.ExtensionContext) {
 			vscode.window.onDidChangeActiveNotebookEditor(() => updateStatusBar())
 		);
 
+		registerGitStateWatchers(context);
 		// Initial status bar update
 		void updateStatusBar();
-		registerGitStateWatchers(context);
 	}
 	
 	// Listen for resolution success events
@@ -253,33 +293,33 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	// Command: Find all notebooks with conflicts (semantic / Git UU status)
+	// Command: Find all notebooks with conflicts (semantic / Git unmerged status)
 	context.subscriptions.push(
 		vscode.commands.registerCommand('merge-nb.findConflicts', async () => {
-			console.log('[Extension] merge-nb.findConflicts command triggered');
+			logger.debug('[Extension] merge-nb.findConflicts command triggered');
 			// First check if current notebook has conflicts
 			const activeUri = getActiveNotebookFileUri();
-			console.log(`[Extension] Active URI: ${activeUri?.fsPath}`);
+			logger.debug(`[Extension] Active URI: ${activeUri?.fsPath}`);
 			if (activeUri) {
-				console.log(`[Extension] Checking if ${activeUri.fsPath} is unmerged...`);
+				logger.debug(`[Extension] Checking if ${activeUri.fsPath} is unmerged...`);
 				const isUnmerged = await gitIntegration.isUnmergedFile(activeUri.fsPath);
-				console.log(`[Extension] isUnmerged result: ${isUnmerged}`);
+				logger.debug(`[Extension] isUnmerged result: ${isUnmerged}`);
 				if (isUnmerged) {
 					if (!(await ensureSupportedMergeTool(activeUri.fsPath))) {
 						return;
 					}
-					console.log(`[Extension] Resolving conflicts in active file`);
+					logger.debug(`[Extension] Resolving conflicts in active file`);
 					await resolver.resolveConflicts(activeUri);
 					return;
 				}
 			}
 
 			// Find all notebooks with conflicts (fast - only queries git status)
-			console.log('[Extension] Scanning workspace for conflicts...');
+			logger.debug('[Extension] Scanning workspace for conflicts...');
 			const files = await resolver.findNotebooksWithConflicts();
-			console.log(`[Extension] Found ${files.length} conflicted notebook(s)`);
+			logger.debug(`[Extension] Found ${files.length} conflicted notebook(s)`);
 			if (files.length === 0) {
-				console.log('[Extension] No conflicts found');
+				logger.debug('[Extension] No conflicts found');
 				vscode.window.showInformationMessage('No notebooks with merge conflicts found in workspace.');
 				return;
 			}
@@ -363,6 +403,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	if (isTestMode) {
+		getWebServer().setTestMode(true);
 		context.subscriptions.push(
 			vscode.commands.registerCommand('merge-nb.getWebServerPort', () => {
 				const webServer = getWebServer();
@@ -370,11 +411,45 @@ export function activate(context: vscode.ExtensionContext) {
 			})
 		);
 		context.subscriptions.push(
-			vscode.commands.registerCommand('merge-nb.getStatusBarState', () => {
+			vscode.commands.registerCommand('merge-nb.getLatestWebSessionUrl', () => {
+				const webServer = getWebServer();
+				return webServer.getLatestSessionUrl();
+			})
+		);
+		context.subscriptions.push(
+			vscode.commands.registerCommand('merge-nb.getStatusBarState', async () => {
+				if (backgroundConflictMonitoringEnabled) {
+					await updateStatusBar();
+				}
 				return {
 					visible: statusBarVisible,
 					text: statusBarItem.text,
 					command: statusBarItem.command
+				};
+			})
+		);
+		context.subscriptions.push(
+			vscode.commands.registerCommand('merge-nb.getFileDecorationState', async (target?: string | vscode.Uri) => {
+				const uri =
+					target instanceof vscode.Uri
+						? target
+						: typeof target === 'string'
+							? vscode.Uri.file(target)
+							: getActiveNotebookFileUri();
+
+				if (!uri) {
+					return { hasDecoration: false };
+				}
+
+				const decoration = await getNotebookConflictDecoration(uri);
+				if (!decoration) {
+					return { hasDecoration: false };
+				}
+
+				return {
+					hasDecoration: true,
+					badge: decoration.badge,
+					tooltip: typeof decoration.tooltip === 'string' ? decoration.tooltip : undefined
 				};
 			})
 		);
@@ -384,25 +459,7 @@ export function activate(context: vscode.ExtensionContext) {
 		// Register file decoration for notebooks with conflicts
 		const decorationProvider = vscode.window.registerFileDecorationProvider({
 			onDidChangeFileDecorations: decorationChangeEmitter.event,
-			provideFileDecoration: async (uri) => {
-				if (!uri.fsPath.endsWith('.ipynb')) {
-					return undefined;
-				}
-				try {
-					// Fast check: is this file unmerged according to Git?
-					const isUnmerged = await gitIntegration.isUnmergedFile(uri.fsPath);
-					if (isUnmerged) {
-						return {
-							badge: '⚠',
-							tooltip: 'Notebook has merge conflicts',
-							color: new vscode.ThemeColor('gitDecoration.conflictingResourceForeground')
-						};
-					}
-				} catch {
-					// Ignore errors
-				}
-				return undefined;
-			}
+			provideFileDecoration: getNotebookConflictDecoration
 		});
 		
 		context.subscriptions.push(decorationProvider);

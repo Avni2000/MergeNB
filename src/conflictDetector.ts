@@ -2,7 +2,7 @@
  * @file conflictDetector.ts
  * @description Conflict detection and analysis engine for MergeNB.
  * 
- * Handles semantic conflicts (Git UU status):
+ * Handles semantic conflicts (Git unmerged status):
  *    - Cell added/deleted/modified in both branches
  *    - Cell reordering conflicts
  *    - Output and execution count differences
@@ -18,25 +18,10 @@ import * as gitIntegration from './gitIntegration';
 import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
 import { getSettings, MergeNBSettings } from './settings';
+import { stableStringify } from './notebookUtils';
+import * as logger from './logger';
 
-function stableStringify(value: unknown): string {
-    if (value === undefined) return 'undefined';
-    if (value === null) return 'null';
-    const t = typeof value;
-    if (t === 'string' || t === 'number' || t === 'boolean') return JSON.stringify(value);
 
-    if (Array.isArray(value)) {
-        return '[' + value.map(stableStringify).join(',') + ']';
-    }
-
-    if (t === 'object') {
-        const obj = value as Record<string, unknown>;
-        const keys = Object.keys(obj).sort();
-        return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
-    }
-
-    return JSON.stringify(String(value));
-}
 
 function stripAllWhitespace(text: string): string {
     return text.replace(/\r\n/g, '\n');
@@ -66,7 +51,7 @@ export interface AutoResolveResult {
 }
 
 /**
- * Detect semantic conflicts (Git UU status)
+ * Detect semantic conflicts (Git unmerged status)
  * Compares base/current/incoming versions from Git staging areas
  */
 export async function detectSemanticConflicts(filePath: string): Promise<NotebookSemanticConflict | null> {
@@ -80,13 +65,13 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         const { base, current, incoming } = versions;
 
         // Debug: Check if we're getting different versions
-        console.log('[MergeNB] detectSemanticConflicts for:', filePath);
-        console.log('[MergeNB] base length:', base?.length ?? 0);
-        console.log('[MergeNB] current length:', current?.length ?? 0);
-        console.log('[MergeNB] incoming length:', incoming?.length ?? 0);
-        console.log('[MergeNB] base === current:', base === current);
-        console.log('[MergeNB] base === incoming:', base === incoming);
-        console.log('[MergeNB] current === incoming:', current === incoming);
+        logger.debug('[MergeNB] detectSemanticConflicts for:', filePath);
+        logger.debug('[MergeNB] base length:', base?.length ?? 0);
+        logger.debug('[MergeNB] current length:', current?.length ?? 0);
+        logger.debug('[MergeNB] incoming length:', incoming?.length ?? 0);
+        logger.debug('[MergeNB] base === current:', base === current);
+        logger.debug('[MergeNB] base === incoming:', base === incoming);
+        logger.debug('[MergeNB] current === incoming:', current === incoming);
 
         // Parse each version as a notebook
         let baseNotebook: Notebook | undefined;
@@ -96,19 +81,19 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         try {
             if (base) baseNotebook = parseNotebook(base);
         } catch (error) {
-            console.warn('Failed to parse base notebook:', error);
+            logger.warn('Failed to parse base notebook:', error);
         }
 
         try {
             if (current) currentNotebook = parseNotebook(current);
         } catch (error) {
-            console.warn('Failed to parse current notebook:', error);
+            logger.warn('Failed to parse current notebook:', error);
         }
 
         try {
             if (incoming) incomingNotebook = parseNotebook(incoming);
         } catch (error) {
-            console.warn('Failed to parse incoming notebook:', error);
+            logger.warn('Failed to parse incoming notebook:', error);
         }
 
 
@@ -140,7 +125,7 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
             incomingBranch: incomingBranch || undefined
         };
     } catch (error) {
-        console.error('Error detecting semantic conflicts:', error);
+        logger.error('Error detecting semantic conflicts:', error);
         return null;
     }
 }
@@ -407,7 +392,7 @@ export function applyAutoResolutions(
     let kernelAutoResolved = false;
 
     // Start with a deep copy of the current notebook as our resolved version
-    const resolvedNotebook: Notebook = semanticConflict.current 
+    const resolvedNotebook: Notebook = semanticConflict.current
         ? JSON.parse(JSON.stringify(semanticConflict.current))
         : JSON.parse(JSON.stringify(semanticConflict.incoming!));
 
@@ -443,10 +428,10 @@ export function applyAutoResolutions(
         if (conflict.type === 'outputs-changed' && effectiveSettings.stripOutputs) {
             const currentSource = conflict.currentContent?.source;
             const incomingSource = conflict.incomingContent?.source;
-            
+
             const currentSourceStr = Array.isArray(currentSource) ? currentSource.join('') : (currentSource || '');
             const incomingSourceStr = Array.isArray(incomingSource) ? incomingSource.join('') : (incomingSource || '');
-            
+
             // If source is identical, this is purely an output difference - auto-resolve
             if (currentSourceStr === incomingSourceStr) {
                 const resolvedCellIndex = getResolvedCellIndex(conflict);

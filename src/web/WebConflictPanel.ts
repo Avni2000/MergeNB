@@ -9,12 +9,11 @@
  * 
  * The actual UI is rendered by the React app in src/web/client/.
  */
-
+import path from 'path';
 import * as vscode from 'vscode';
 import * as logger from '../logger';
-import { ResolutionChoice } from '../types';
 import { getWebServer } from './webServer';
-import { UnifiedConflict, UnifiedResolution, ResolvedRow } from './webTypes';
+import { UnifiedConflict, UnifiedResolution, ResolvedRow, type WebConflictData } from './webTypes';
 
 /**
  * Web-based panel for resolving notebook conflicts in the browser.
@@ -33,6 +32,7 @@ export class WebConflictPanel {
     private _conflict: UnifiedConflict | undefined;
     private _onResolutionComplete: ((resolution: UnifiedResolution) => Promise<void>) | undefined;
     private _sessionId: string | undefined;
+    private _conflictVersion: number = 1;
     private _isDisposed: boolean = false;
 
     public static async createOrShow(
@@ -67,20 +67,24 @@ export class WebConflictPanel {
     ): void {
         this._conflict = conflict;
         this._onResolutionComplete = onResolutionComplete;
+        this._conflictVersion += 1;
+        if (this._sessionId) {
+            this._sendConflictData();
+        }
     }
 
     private async _openInBrowser(): Promise<void> {
-        console.log('[WebConflictPanel] Opening conflict resolver in browser...');
+        logger.debug('[WebConflictPanel] Opening conflict resolver in browser...');
         const server = getWebServer();
         server.setExtensionUri(this._extensionUri);
 
         // Start server if not running
         if (!server.isRunning()) {
-            console.log('[WebConflictPanel] Server not running, starting...');
+            logger.debug('[WebConflictPanel] Server not running, starting...');
             await server.start();
-            console.log('[WebConflictPanel] Server started');
+            logger.debug('[WebConflictPanel] Server started');
         } else {
-            console.log('[WebConflictPanel] Server already running');
+            logger.debug('[WebConflictPanel] Server already running');
         }
 
         // Generate session ID
@@ -112,10 +116,14 @@ export class WebConflictPanel {
         if (!this._sessionId || !this._conflict) return;
 
         const server = getWebServer();
+        const conflictKey = `${this._sessionId}:v${this._conflictVersion}`;
+        const fileName = path.basename(this._conflict.filePath) || 'notebook.ipynb';
 
         // Build the data payload for the React app
-        const data = {
+        const data: WebConflictData = {
             filePath: this._conflict.filePath,
+            conflictKey,
+            fileName,
             type: this._conflict.type,
             semanticConflict: this._conflict.semanticConflict,
             autoResolveResult: this._conflict.autoResolveResult,
@@ -138,10 +146,10 @@ export class WebConflictPanel {
         const msg = message as {
             command?: string;
             type?: string;
-            resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>;
             resolvedRows?: ResolvedRow[];
             semanticChoice?: string;
-            markAsResolved?: boolean
+            markAsResolved?: boolean;
+            renumberExecutionCounts?: boolean;
         };
 
         logger.debug('[WebConflictPanel] Received message:', msg.command || msg.type);
@@ -163,26 +171,17 @@ export class WebConflictPanel {
 
     private async _handleResolution(message: {
         type?: string;
-        resolutions?: Array<{ index: number; choice: string; resolvedContent: string }>;
         resolvedRows?: ResolvedRow[];
         semanticChoice?: string;
         markAsResolved?: boolean;
         renumberExecutionCounts?: boolean;
     }): Promise<void> {
         if (this._conflict?.type === 'semantic') {
-            const semanticResolutionMap = new Map<number, { choice: 'base' | 'current' | 'incoming'; resolvedContent: string }>();
-            for (const r of (message.resolutions || [])) {
-                semanticResolutionMap.set(r.index, {
-                    choice: r.choice as 'base' | 'current' | 'incoming',
-                    resolvedContent: r.resolvedContent
-                });
-            }
             if (this._onResolutionComplete) {
                 try {
                     await this._onResolutionComplete({
                         type: 'semantic',
                         semanticChoice: message.semanticChoice as 'base' | 'current' | 'incoming' | undefined,
-                        semanticResolutions: semanticResolutionMap,
                         resolvedRows: message.resolvedRows,
                         markAsResolved: message.markAsResolved ?? false,
                         renumberExecutionCounts: message.renumberExecutionCounts ?? false

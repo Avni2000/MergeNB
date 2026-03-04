@@ -44,9 +44,9 @@ Single unified command:
 Integration tests use `@vscode/test-electron` to launch VS Code with merge-conflict repos. Tests are organized into groups in `src/tests/registry.ts`.
 
 ```bash
-npm run test:integration              # Interactive TUI picker to select tests
-npm run test:integration:all          # Run all tests at once
-npm run test:integration:list         # List all available test groups and tests
+npm run test              # Interactive TUI picker to select tests
+npm run test:all          # Run all tests at once
+npm run test:list         # List all available test groups and tests
 node out/tests/runIntegrationTest.js --all              # Direct: run all (skip build)
 node out/tests/runIntegrationTest.js --group takeAll    # Direct: run one group
 node out/tests/runIntegrationTest.js --test takeAll_base    # Direct: run single test

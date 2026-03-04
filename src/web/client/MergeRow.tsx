@@ -2,17 +2,19 @@
  * @file MergeRow.tsx
  * @description React component for a single row in the 3-way merge view.
  * 
- * New UI flow:
+ * UI flow:
  * 1. User selects a branch (base/current/incoming) 
  * 2. A resolved text area appears with green highlighting, pre-filled with that branch's content
  * 3. User can edit the content freely
  * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useState, useCallback } from 'react';
-import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from './types';
+import React, { useEffect, useState, useMemo } from 'react';
+import CodeMirror, { Extension } from '@uiw/react-codemirror';
+import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
+import { createMergeNBTheme, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './editorTheme';
 
 /** Resolution state for a cell */
 interface ResolutionState {
@@ -28,58 +30,31 @@ interface MergeRowProps {
     rowIndex: number;
     conflictIndex: number;
     notebookPath?: string;
+    languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
-    onUpdateContent: (index: number, resolvedContent: string) => void;
-    onCommitContent: (index: number) => void;
-    isDragging?: boolean;
+    onCommitContent: (index: number, resolvedContent: string) => void;
     showOutputs?: boolean;
     showBaseColumn?: boolean;
     showCellHeaders?: boolean;
-    enableCellDrag?: boolean;
-    rowDragEnabled?: boolean;
-    onRowDragStart?: (rowIndex: number) => void;
-    onRowDragEnd?: () => void;
-    // Cell drag state (primitives for stable memo comparison)
-    cellDragActive: boolean;
-    cellDragSide?: 'base' | 'current' | 'incoming';
-    cellDragSourceRow?: number;
-    isRowDropTarget: boolean;
-    rowDropTargetSide?: 'base' | 'current' | 'incoming';
-    // Cell drag callbacks
-    onCellDragStart: (rowIndex: number, side: 'base' | 'current' | 'incoming', cell: NotebookCell) => void;
-    onCellDragEnd: () => void;
-    onCellDragOver: (e: React.DragEvent, rowIndex: number, side: 'base' | 'current' | 'incoming') => void;
-    onCellDrop: (targetRowIndex: number, targetSide: 'base' | 'current' | 'incoming') => void;
+    theme?: 'dark' | 'light';
     'data-testid'?: string;
 }
+const EMPTY_EXTENSIONS: Extension[] = [];
 
 export function MergeRowInner({
     row,
     rowIndex,
     conflictIndex,
     notebookPath,
+    languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
     onSelectChoice,
-    onUpdateContent,
     onCommitContent,
-    isDragging = false,
     showOutputs = true,
     showBaseColumn = true,
     showCellHeaders = false,
-    enableCellDrag = true,
-    rowDragEnabled = true,
-    onRowDragStart,
-    onRowDragEnd,
-    cellDragActive,
-    cellDragSide,
-    cellDragSourceRow,
-    isRowDropTarget,
-    rowDropTargetSide,
-    onCellDragStart,
-    onCellDragEnd,
-    onCellDragOver,
-    onCellDrop,
+    theme = 'light',
     'data-testid': testId,
 }: MergeRowProps): React.ReactElement {
     const isConflict = row.type === 'conflict';
@@ -87,6 +62,20 @@ export function MergeRowInner({
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
     const [showWarning, setShowWarning] = useState(false);
+    const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
+
+    useEffect(() => {
+        setDraftResolvedContent(resolutionState?.resolvedContent ?? '');
+    }, [resolutionState?.choice, resolutionState?.resolvedContent, conflictIndex]);
+
+    // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
+    // (which triggers StateEffect.reconfigure) only fires when these values actually
+    // change — not on every render because of new object/array references.
+    const resolvedEditorTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    const editorExtensions = useMemo(
+        () => [...languageExtensions, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
+        [languageExtensions]
+    );
 
     // Get content for a given choice
     const getContentForChoice = (choice: ResolutionChoice): string => {
@@ -99,7 +88,7 @@ export function MergeRowInner({
 
     // Check if content has been modified from the original
     const isContentModified = resolutionState
-        ? resolutionState.resolvedContent !== resolutionState.originalContent
+        ? draftResolvedContent !== resolutionState.originalContent
         : false;
 
     // Handle branch selection
@@ -131,55 +120,16 @@ export function MergeRowInner({
         setPendingChoice(null);
     };
 
-    // Handle content editing in the resolved text area
-    const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-        onUpdateContent(conflictIndex, e.target.value);
+    // Handle content editing in the resolved editor
+    const handleContentChange = (value: string) => {
+        setDraftResolvedContent(value);
     };
 
     // Commit content to history on blur
     const handleBlur = () => {
-        onCommitContent(conflictIndex);
+        if (!resolutionState) return;
+        onCommitContent(conflictIndex, draftResolvedContent);
     };
-
-    // Stable drag handlers - useCallback keeps references stable for CellContent memo
-    const handleBaseCellDragStart = useCallback((e: React.DragEvent) => {
-        e.dataTransfer.effectAllowed = 'move';
-        const src = row.baseCell?.source;
-        e.dataTransfer.setData('text/plain', src ? (Array.isArray(src) ? src.join('') : src) : '');
-        if (row.baseCell) onCellDragStart(rowIndex, 'base', row.baseCell);
-    }, [onCellDragStart, rowIndex, row.baseCell]);
-
-    const handleCurrentCellDragStart = useCallback((e: React.DragEvent) => {
-        e.dataTransfer.effectAllowed = 'move';
-        const src = row.currentCell?.source;
-        e.dataTransfer.setData('text/plain', src ? (Array.isArray(src) ? src.join('') : src) : '');
-        if (row.currentCell) onCellDragStart(rowIndex, 'current', row.currentCell);
-    }, [onCellDragStart, rowIndex, row.currentCell]);
-
-    const handleIncomingCellDragStart = useCallback((e: React.DragEvent) => {
-        e.dataTransfer.effectAllowed = 'move';
-        const src = row.incomingCell?.source;
-        e.dataTransfer.setData('text/plain', src ? (Array.isArray(src) ? src.join('') : src) : '');
-        if (row.incomingCell) onCellDragStart(rowIndex, 'incoming', row.incomingCell);
-    }, [onCellDragStart, rowIndex, row.incomingCell]);
-
-    const canDragRow = rowDragEnabled && Boolean(onRowDragStart);
-    const rowDragHandle = canDragRow ? (
-        <div
-            className="row-drag-handle"
-            draggable={true}
-            onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', 'row');
-                onRowDragStart?.(rowIndex);
-            }}
-            onDragEnd={() => onRowDragEnd?.()}
-            title="Drag to reorder row"
-            data-testid="row-drag-handle"
-        >
-            :::
-        </div>
-    ) : null;
 
     // For identical rows, show a unified single cell
     if (!isConflict) {
@@ -195,7 +145,6 @@ export function MergeRowInner({
                 data-cell-type={cellType}
                 data-cell={encodeURIComponent(cell ? JSON.stringify(cell) : '')}
             >
-                {rowDragHandle}
                 <div className="cell-columns">
                     <div className="cell-column" style={{ gridColumn: '1 / -1' }}>
                         <CellContent
@@ -203,6 +152,8 @@ export function MergeRowInner({
                             cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
                             side="current"
                             notebookPath={notebookPath}
+                            languageExtensions={languageExtensions}
+                            theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
                         />
@@ -212,18 +163,6 @@ export function MergeRowInner({
         );
     }
 
-    // Check if this cell is a valid drop target
-    const isDropTargetCell = (side: 'base' | 'current' | 'incoming') => {
-        if (!enableCellDrag) return false;
-        if (!cellDragActive) return false;
-        if (cellDragSide !== side) return false; // Same column only
-        if (cellDragSourceRow === rowIndex) return false; // Not same row
-        return isRowDropTarget && rowDropTargetSide === side;
-    };
-
-    // Check if a cell can be dragged (only unmatched cells)
-    const canDragCell = enableCellDrag && row.isUnmatched;
-
     const getPlaceholderText = (side: 'base' | 'current' | 'incoming') => {
         if (row.isUnmatched && row.unmatchedSides && !row.unmatchedSides.includes(side)) {
             return '(unmatched cell)';
@@ -231,12 +170,11 @@ export function MergeRowInner({
         return '(cell deleted)';
     };
 
-    // For conflicts, show all 3 columns with drag-and-drop support for unmatched cells
+    // For conflicts, show all 3 columns
     const rowClasses = [
         'merge-row',
         'conflict-row',
         row.isUnmatched && 'unmatched-row',
-        isDragging && 'dragging',
         resolutionState && 'resolved-row'
     ].filter(Boolean).join(' ');
 
@@ -247,7 +185,6 @@ export function MergeRowInner({
     const diffMode = 'conflict';
     return (
         <div className={rowClasses} data-testid={testId}>
-            {rowDragHandle}
             {/* Warning modal for branch change */}
             {showWarning && (
                 <div className="warning-modal-overlay">
@@ -279,17 +216,13 @@ export function MergeRowInner({
                                 notebookPath={notebookPath}
                                 isConflict={true}
                                 compareCell={row.currentCell || row.incomingCell}
+                                languageExtensions={languageExtensions}
+                                theme={theme}
                                 showOutputs={showOutputs}
                                 showCellHeaders={showCellHeaders}
-                                onDragStart={canDragCell ? handleBaseCellDragStart : undefined}
-                                onDragEnd={canDragCell ? onCellDragEnd : undefined}
                             />
                         ) : (
-                            <div
-                                className={`cell-placeholder cell-deleted ${isDropTargetCell('base') ? 'drop-target' : ''}`}
-                                onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'base'); } : undefined}
-                                onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'base') : undefined}
-                            >
+                            <div className="cell-placeholder cell-deleted">
                                 <span className="placeholder-text">{getPlaceholderText('base')}</span>
                             </div>
                         )}
@@ -306,17 +239,13 @@ export function MergeRowInner({
                             compareCell={row.incomingCell || row.baseCell}
                             baseCell={row.baseCell}
                             diffMode={diffMode}
+                            languageExtensions={languageExtensions}
+                            theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
-                            onDragStart={canDragCell ? handleCurrentCellDragStart : undefined}
-                            onDragEnd={canDragCell ? onCellDragEnd : undefined}
                         />
                     ) : (
-                        <div
-                            className={`cell-placeholder cell-deleted ${isDropTargetCell('current') ? 'drop-target' : ''}`}
-                            onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'current'); } : undefined}
-                            onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'current') : undefined}
-                        >
+                        <div className="cell-placeholder cell-deleted">
                             <span className="placeholder-text">{getPlaceholderText('current')}</span>
                         </div>
                     )}
@@ -332,17 +261,13 @@ export function MergeRowInner({
                             compareCell={row.currentCell || row.baseCell}
                             baseCell={row.baseCell}
                             diffMode={diffMode}
+                            languageExtensions={languageExtensions}
+                            theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
-                            onDragStart={canDragCell ? handleIncomingCellDragStart : undefined}
-                            onDragEnd={canDragCell ? onCellDragEnd : undefined}
                         />
                     ) : (
-                        <div
-                            className={`cell-placeholder cell-deleted ${isDropTargetCell('incoming') ? 'drop-target' : ''}`}
-                            onDragOver={enableCellDrag ? (e) => { e.preventDefault(); onCellDragOver(e, rowIndex, 'incoming'); } : undefined}
-                            onDrop={enableCellDrag ? () => onCellDrop(rowIndex, 'incoming') : undefined}
-                        >
+                        <div className="cell-placeholder cell-deleted">
                             <span className="placeholder-text">{getPlaceholderText('incoming')}</span>
                         </div>
                     )}
@@ -393,13 +318,15 @@ export function MergeRowInner({
                             {isContentModified && <span className="modified-badge">(edited)</span>}
                         </span>
                     </div>
-                    <textarea
-                        className="resolved-content-input"
-                        value={resolutionState.resolvedContent}
+                    <CodeMirror
+                        value={draftResolvedContent}
                         onChange={handleContentChange}
                         onBlur={handleBlur}
+                        extensions={editorExtensions}
                         placeholder="Enter cell content..."
-                        rows={Math.max(5, resolutionState.resolvedContent.split('\n').length + 1)}
+                        className="resolved-content-input"
+                        basicSetup={{ lineNumbers: false, foldGutter: false }}
+                        theme={resolvedEditorTheme}
                     />
                 </div>
             )}

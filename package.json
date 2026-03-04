@@ -134,15 +134,14 @@
     "package": "npm run check-types && npm run lint && node esbuild.js --production",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "pretest": "npm run compile && npm run compile-tests",
+    "pretest:all": "npm run compile && npm run compile-tests",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test",
-    "pretest:integration": "npm run compile && npm run compile-tests",
-    "pretest:integration:all": "npm run compile && npm run compile-tests",
-    "test:integration": "node out/tests/runIntegrationTest.js",
-    "test:integration:all": "node out/tests/runIntegrationTest.js --all",
-    "test:integration:list": "npm run compile-tests && node out/tests/runIntegrationTest.js --list"
+    "test": "node out/tests/runIntegrationTest.js",
+    "test:all": "node out/tests/runIntegrationTest.js --all",
+    "test:manual": "node out/tests/runIntegrationTest.js --group manual",
+    "test:list": "npm run compile-tests && node out/tests/runIntegrationTest.js --list"
   },
   "devDependencies": {
     "@clack/prompts": "^1.0.1",
@@ -167,15 +166,21 @@
     "react-dom": "^19.2.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.56.0"
+    "typescript-eslint": "^8.56.1"
   },
   "dependencies": {
-    "@jupyterlab/rendermime": "^4.5.4",
-    "@tanstack/react-virtual": "^3.13.4",
+    "@codemirror/language": "^6.12.2",
+    "@codemirror/language-data": "^6.5.2",
+    "@jupyterlab/rendermime": "^4.5.5",
+    "@tanstack/react-virtual": "^3.13.19",
+    "@uiw/codemirror-themes": "^4.25.7",
+    "@uiw/react-codemirror": "^4.25.7",
     "@vscode/markdown-it-katex": "^1.1.2",
     "dompurify": "^3.3.1",
-    "katex": "^0.16.22",
+    "immer": "^11.1.4",
+    "katex": "^0.16.33",
     "markdown-it": "^14.1.1",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zustand": "^5.0.11"
   }
 }

@@ -16,7 +16,10 @@
 import * as http from 'http';
 import * as path from 'path';
 import * as fs from 'fs';
+import { randomBytes, randomUUID } from 'crypto';
 import WebSocket, { WebSocketServer } from 'ws';
+import * as logger from '../logger';
+import type { WebConflictData } from './webTypes';
 
 // VSCode is optional - only needed for openExternal
 let vscode: typeof import('vscode') | undefined;
@@ -47,6 +50,7 @@ export interface PendingConnection {
 /** Session data stored for each active conflict resolution */
 export interface SessionData {
     htmlContent: string;
+    sessionToken: string;
     theme: 'dark' | 'light';
     notebookFilePath?: string;
     conflictData?: unknown;
@@ -82,6 +86,8 @@ export class ConflictResolverWebServer {
     
     // Extension URI for resolving static assets
     private extensionUri: UriLike | undefined;
+    private latestSessionUrl: string | undefined;
+    private testMode: boolean = false;
 
     private constructor() {}
 
@@ -100,6 +106,18 @@ export class ConflictResolverWebServer {
      */
     public setExtensionUri(uri: UriLike): void {
         this.extensionUri = uri;
+    }
+
+    /**
+     * Enable test mode. When enabled, the full session URL (including token)
+     * is stored so that test harnesses can retrieve it via getLatestSessionUrl().
+     * This should never be enabled in production.
+     */
+    public setTestMode(enabled: boolean): void {
+        this.testMode = enabled;
+        if (!enabled) {
+            this.latestSessionUrl = undefined;
+        }
     }
 
     /**
@@ -125,7 +143,7 @@ export class ConflictResolverWebServer {
             });
 
             this.wss.on('error', (error: Error) => {
-                console.error('[MergeNB Web] WebSocket server error:', error);
+                logger.error('[MergeNB Web] WebSocket server error:', error);
             });
 
             // Use port 0 to get an available port
@@ -135,7 +153,7 @@ export class ConflictResolverWebServer {
                 const address = this.httpServer!.address();
                 if (address && typeof address === 'object') {
                     this.port = address.port;
-                    console.log(`[MergeNB Web] Server started at http://${this.host}:${this.port}`);
+                    logger.debug(`[MergeNB Web] Server started at http://${this.host}:${this.port}`);
                     resolve(this.port);
                 } else {
                     reject(new Error('Could not get server address'));
@@ -143,7 +161,7 @@ export class ConflictResolverWebServer {
             });
 
             this.httpServer.on('error', (error: Error) => {
-                console.error('[MergeNB Web] HTTP server error:', error);
+                logger.error('[MergeNB Web] HTTP server error:', error);
                 reject(error);
             });
         });
@@ -173,7 +191,7 @@ export class ConflictResolverWebServer {
                     if (this.httpServer) {
                         this.httpServer.close(() => {
                             this.port = 0;
-                            console.log('[MergeNB Web] Server stopped');
+                            logger.debug('[MergeNB Web] Server stopped');
                             resolve();
                         });
                     } else {
@@ -211,7 +229,14 @@ export class ConflictResolverWebServer {
      * Generate a unique session ID.
      */
     public generateSessionId(): string {
-        return `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        return `session-${this.generateSecret()}`;
+    }
+
+    /**
+     * Get the latest session URL (test/debug helper).
+     */
+    public getLatestSessionUrl(): string | undefined {
+        return this.latestSessionUrl;
     }
 
     /**
@@ -230,9 +255,12 @@ export class ConflictResolverWebServer {
         theme: 'dark' | 'light' = 'light',
         notebookFilePath?: string
     ): Promise<WebSocket> {
+        const sessionToken = this.generateSecret();
+
         // Store session data
         this.sessions.set(sessionId, {
             htmlContent,
+            sessionToken,
             theme,
             notebookFilePath,
             onMessage
@@ -255,12 +283,16 @@ export class ConflictResolverWebServer {
         });
 
         // Open the browser to the session URL
-        const sessionUrl = `${this.getServerUrl()}/?session=${encodeURIComponent(sessionId)}`;
-        console.log(`[MergeNB Web] Opening browser to: ${sessionUrl}`);
+        const sessionUrl = `${this.getServerUrl()}/?session=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(sessionToken)}`;
+        if (this.testMode) {
+            this.latestSessionUrl = sessionUrl;
+        }
+        const redactedUrl = `${this.getServerUrl()}/?session=${encodeURIComponent(sessionId)}&token=REDACTED`;
+        logger.debug(`[MergeNB Web] Opening browser to: ${redactedUrl}`);
         if (vscode) {
             await vscode.env.openExternal(vscode.Uri.parse(sessionUrl));
         } else {
-            console.log(`[MergeNB Web] VSCode not available, skipping browser open. URL: ${sessionUrl}`);
+            logger.debug(`[MergeNB Web] VSCode not available, skipping browser open. URL: ${redactedUrl}`);
         }
 
         return connectionPromise;
@@ -275,7 +307,7 @@ export class ConflictResolverWebServer {
             ws.send(JSON.stringify(message));
             return true;
         }
-        console.warn(`[MergeNB Web] Cannot send message - no active connection for session: ${sessionId}`);
+        logger.warn(`[MergeNB Web] Cannot send message - no active connection for session: ${sessionId}`);
         return false;
     }
 
@@ -283,7 +315,7 @@ export class ConflictResolverWebServer {
      * Send conflict data to a session.
      * This is called after the browser connects to send the initial conflict data.
      */
-    public sendConflictData(sessionId: string, conflictData: unknown): boolean {
+    public sendConflictData(sessionId: string, conflictData: WebConflictData): boolean {
         return this.sendMessage(sessionId, {
             type: 'conflict-data',
             data: conflictData
@@ -307,21 +339,40 @@ export class ConflictResolverWebServer {
             this.pendingConnections.delete(sessionId);
         }
         
-        console.log(`[MergeNB Web] Session closed: ${sessionId}`);
+        logger.debug(`[MergeNB Web] Session closed: ${sessionId}`);
+    }
+
+    /**
+     * Set baseline security headers on every response.
+     */
+    private setSecurityHeaders(res: http.ServerResponse): void {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.setHeader('X-Frame-Options', 'DENY');
+        res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'");
+        res.setHeader('Referrer-Policy', 'no-referrer');
+        res.setHeader('Cache-Control', 'no-store');
     }
 
     /**
      * Handle HTTP requests.
      */
     private handleHttpRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
+        this.setSecurityHeaders(res);
+
         const url = new URL(req.url || '/', `http://${req.headers.host}`);
         const pathname = url.pathname;
         const sessionId = url.searchParams.get('session');
+        const sessionToken = url.searchParams.get('token');
+        const origin = req.headers.origin;
+        const expectedOrigin = `http://${this.host}:${this.port}`;
 
-        // Set CORS headers for local development
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        // Only allow same-origin requests (compared against server-bound address, not request headers).
+        if (origin && origin === expectedOrigin) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            res.setHeader('Vary', 'Origin');
+        }
 
         if (req.method === 'OPTIONS') {
             res.writeHead(200);
@@ -333,7 +384,7 @@ export class ConflictResolverWebServer {
             // Serve minimal HTML shell that loads the React app
             const session = sessionId ? this.sessions.get(sessionId) : undefined;
             
-            if (session) {
+            if (session && sessionToken && sessionToken === session.sessionToken) {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
                 res.end(this.getHtmlShell(sessionId || 'default', session.theme));
             } else {
@@ -344,7 +395,6 @@ export class ConflictResolverWebServer {
 <body style="font-family: system-ui; padding: 40px; background: #1e1e1e; color: #d4d4d4;">
     <h1>Session Not Found</h1>
     <p>The requested conflict resolution session could not be found.</p>
-    <p>Session ID: ${sessionId || 'none'}</p>
     <p>This may happen if:</p>
     <ul>
         <li>The session has expired or been closed</li>
@@ -372,8 +422,7 @@ export class ConflictResolverWebServer {
                 status: 'ok', 
                 port: this.port,
                 activeSessions: this.sessions.size,
-                activeConnections: this.connections.size,
-                sessionIds: Array.from(this.sessions.keys())
+                activeConnections: this.connections.size
             }));
         } else {
             // 404 for other paths
@@ -392,7 +441,7 @@ export class ConflictResolverWebServer {
         
         // Reject pathnames containing ".." to prevent directory traversal
         if (fileName.includes('..')) {
-            console.warn(`[MergeNB Web] Rejected path with ".." traversal: ${pathname}`);
+            logger.warn(`[MergeNB Web] Rejected path with ".." traversal: ${pathname}`);
             res.writeHead(403, { 'Content-Type': 'text/plain' });
             res.end('Forbidden');
             return;
@@ -409,7 +458,7 @@ export class ConflictResolverWebServer {
         const resolvedFilePath = path.resolve(filePath);
 
         if (!resolvedFilePath.startsWith(resolvedBasePath + path.sep) && resolvedFilePath !== resolvedBasePath) {
-            console.warn(`[MergeNB Web] Path traversal attempt blocked: ${pathname} -> ${resolvedFilePath}`);
+            logger.warn(`[MergeNB Web] Path traversal attempt blocked: ${pathname} -> ${resolvedFilePath}`);
             res.writeHead(403, { 'Content-Type': 'text/plain' });
             res.end('Forbidden');
             return;
@@ -417,7 +466,7 @@ export class ConflictResolverWebServer {
 
         fs.readFile(filePath, (err, data) => {
             if (err) {
-                console.error(`[MergeNB Web] Failed to read ${filePath}:`, err.message);
+                logger.error(`[MergeNB Web] Failed to read ${filePath}:`, err.message);
                 res.writeHead(404, { 'Content-Type': 'text/plain' });
                 res.end('Not Found');
             } else {
@@ -436,16 +485,17 @@ export class ConflictResolverWebServer {
      */
     private serveNotebookAsset(url: URL, res: http.ServerResponse): void {
         const sessionId = url.searchParams.get('session');
+        const sessionToken = url.searchParams.get('token');
         const requestedPath = url.searchParams.get('path');
 
-        if (!sessionId || !requestedPath) {
+        if (!sessionId || !sessionToken || !requestedPath) {
             res.writeHead(400, { 'Content-Type': 'text/plain' });
-            res.end('Missing session or path');
+            res.end('Missing session, token, or path');
             return;
         }
 
         const session = this.sessions.get(sessionId);
-        if (!session?.notebookFilePath) {
+        if (!session?.notebookFilePath || session.sessionToken !== sessionToken) {
             res.writeHead(404, { 'Content-Type': 'text/plain' });
             res.end('Session not found');
             return;
@@ -480,7 +530,7 @@ export class ConflictResolverWebServer {
             !resolvedAssetPath.startsWith(resolvedNotebookDir + path.sep) &&
             resolvedAssetPath !== resolvedNotebookDir
         ) {
-            console.warn(`[MergeNB Web] Notebook asset traversal blocked: ${requestedPath} -> ${resolvedAssetPath}`);
+            logger.warn(`[MergeNB Web] Notebook asset traversal blocked: ${requestedPath} -> ${resolvedAssetPath}`);
             res.writeHead(403, { 'Content-Type': 'text/plain' });
             res.end('Forbidden');
             return;
@@ -564,15 +614,12 @@ export class ConflictResolverWebServer {
     </style>
 </head>
 <body>
-    <div id="root">
+    <div id="root" data-theme="${theme === 'dark' ? 'dark' : 'light'}">
         <div class="loading-container">
             <div class="spinner"></div>
             <p>Loading MergeNB...</p>
         </div>
     </div>
-    <script>
-        window.__MERGENB_INITIAL_THEME = '${theme === 'dark' ? 'dark' : 'light'}';
-    </script>
     <script type="module" src="/client.js"></script>
 </body>
 </html>`;
@@ -583,9 +630,21 @@ export class ConflictResolverWebServer {
      */
     private handleWebSocketConnection(ws: WebSocket, req: http.IncomingMessage): void {
         const url = new URL(req.url || '/', `http://${req.headers.host}`);
-        const sessionId = url.searchParams.get('session') || 'default';
+        const sessionId = url.searchParams.get('session');
+        const sessionToken = url.searchParams.get('token');
 
-        console.log(`[MergeNB Web] WebSocket connected for session: ${sessionId}`);
+        if (!sessionId || !sessionToken) {
+            ws.close(1008, 'Missing session credentials');
+            return;
+        }
+
+        const session = this.sessions.get(sessionId);
+        if (!session || session.sessionToken !== sessionToken) {
+            ws.close(1008, 'Invalid session credentials');
+            return;
+        }
+
+        logger.debug(`[MergeNB Web] WebSocket connected for session: ${sessionId}`);
 
         // Store the connection
         this.connections.set(sessionId, ws);
@@ -599,29 +658,27 @@ export class ConflictResolverWebServer {
         }
 
         // Get session data
-        const session = this.sessions.get(sessionId);
-
         // Handle incoming messages
         ws.on('message', (data: WebSocket.Data) => {
             try {
                 const message = JSON.parse(data.toString());
-                console.log(`[MergeNB Web] Received message from session ${sessionId}:`, message.command || message.type);
+                logger.debug(`[MergeNB Web] Received message from session ${sessionId}:`, message.command || message.type);
                 
                 if (session?.onMessage) {
                     session.onMessage(message);
                 }
             } catch (error) {
-                console.error('[MergeNB Web] Error parsing WebSocket message:', error);
+                logger.error('[MergeNB Web] Error parsing WebSocket message:', error);
             }
         });
 
         ws.on('close', () => {
-            console.log(`[MergeNB Web] WebSocket closed for session: ${sessionId}`);
+            logger.debug(`[MergeNB Web] WebSocket closed for session: ${sessionId}`);
             this.connections.delete(sessionId);
         });
 
         ws.on('error', (error: Error) => {
-            console.error(`[MergeNB Web] WebSocket error for session ${sessionId}:`, error);
+            logger.error(`[MergeNB Web] WebSocket error for session ${sessionId}:`, error);
         });
 
         // Send ready message to browser
@@ -629,6 +686,13 @@ export class ConflictResolverWebServer {
             type: 'connected',
             sessionId: sessionId
         }));
+    }
+
+    private generateSecret(): string {
+        if (typeof randomUUID === 'function') {
+            return randomUUID();
+        }
+        return randomBytes(16).toString('hex');
     }
 }
 

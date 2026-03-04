@@ -4,6 +4,10 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import CodeMirror from '@uiw/react-codemirror';
+import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
+import { StateField, RangeSetBuilder } from '@codemirror/state';
+import type { Extension } from '@codemirror/state';
 import { IRenderMime, MimeModel, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 import MarkdownIt from 'markdown-it';
@@ -11,9 +15,12 @@ import renderMathInElement from 'katex/contrib/auto-render';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
+import * as logger from '../../logger';
+import { createMergeNBTheme, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './editorTheme';
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
+const MAX_RENDERMIME_REGISTRY_CACHE_SIZE = 32;
 const renderMimeMd = MarkdownIt({
     html: true,
     linkify: true,
@@ -49,10 +56,10 @@ interface CellContentProps {
     diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
     showCellHeaders?: boolean;
-    onDragStart?: (e: React.DragEvent) => void;
-    onDragEnd?: () => void;
+    languageExtensions?: Extension[];
+    theme?: 'dark' | 'light';
 }
-
+const EMPTY_EXTENSIONS: Extension[] = [];
 export function CellContentInner({
     cell,
     cellIndex,
@@ -64,9 +71,27 @@ export function CellContentInner({
     diffMode = 'base',
     showOutputs = true,
     showCellHeaders = false,
-    onDragStart,
-    onDragEnd,
+    languageExtensions = EMPTY_EXTENSIONS,
+    theme = 'light',
 }: CellContentProps): React.ReactElement {
+    const renderMimeRegistry = useMemo(
+        () => getRenderMimeRegistry(notebookPath),
+        [notebookPath]
+    );
+    const encodedCell = useMemo(
+        () => (cell ? encodeURIComponent(JSON.stringify(cell)) : ''),
+        [cell]
+    );
+
+    // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
+    // (deps: [theme, extensions, ...]) only fires StateEffect.reconfigure when
+    // these values truly change — not on every render due to new object/array refs.
+    const cmTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    const cellExtensions = useMemo(
+        () => [...languageExtensions, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
+        [languageExtensions]
+    );
+
     if (!cell) {
         return (
             <div className="cell-placeholder">
@@ -77,11 +102,6 @@ export function CellContentInner({
 
     const source = normalizeCellSource(cell.source);
     const cellType = cell.cell_type;
-    const renderMimeRegistry = useMemo(
-        () => getRenderMimeRegistry(notebookPath),
-        [notebookPath]
-    );
-    const encodedCell = useMemo(() => encodeURIComponent(JSON.stringify(cell)), [cell]);
 
     const cellClasses = [
         'notebook-cell',
@@ -92,9 +112,6 @@ export function CellContentInner({
     return (
         <div
             className={cellClasses}
-            draggable={Boolean(isConflict && onDragStart)}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
             data-cell={encodedCell}
             data-cell-type={cellType}
         >
@@ -116,14 +133,28 @@ export function CellContentInner({
                         renderMimeRegistry={renderMimeRegistry}
                     />
                 ) : isConflict && (compareCell || baseCell) ? (
-                    // Show conflict diffs as raw text (no markdown rendering)
+                    // Show conflict diffs with syntax highlighting + diff decorations
                     <DiffContent
                         source={source}
                         compareSource={normalizeCellSource((compareCell ?? baseCell)!.source)}
                         side={side}
                         diffMode={diffMode}
+                        langExtension={languageExtensions}
+                        theme={theme}
+                    />
+                ) : cellType !== 'markdown' ? (
+                    // Non-markdown cells: syntax-highlighted read-only CodeMirror
+                    <CodeMirror
+                        value={source}
+                        readOnly={true}
+                        editable={false}
+                        extensions={cellExtensions}
+                        theme={cmTheme}
+                        basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
+                        className="cell-source-cm"
                     />
                 ) : (
+                    // Markdown in conflict mode: plain pre (diff view takes over)
                     <pre>{source}</pre>
                 )}
             </div>
@@ -167,7 +198,7 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
             Widget.attach(renderer, host);
 
             void renderer.renderModel(model).catch((err: unknown) => {
-                console.warn('[MergeNB] Failed to render markdown via rendermime:', err);
+                logger.warn('[MergeNB] Failed to render markdown via rendermime:', err);
                 if (!disposed) {
                     disposeRenderer(renderer, host);
                     model?.dispose?.();
@@ -177,7 +208,7 @@ function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): 
                 }
             });
         } catch (err) {
-            console.warn('[MergeNB] Failed to initialize rendermime markdown renderer:', err);
+            logger.warn('[MergeNB] Failed to initialize rendermime markdown renderer:', err);
             disposeRenderer(renderer, host);
             model?.dispose?.();
             model = null;
@@ -207,37 +238,80 @@ interface DiffContentProps {
     compareSource: string;
     side?: 'base' | 'current' | 'incoming';
     diffMode: 'base' | 'conflict';
+    langExtension: Extension[];
+    theme: 'dark' | 'light';
 }
 
-function DiffContent({ source, compareSource, side, diffMode }: DiffContentProps): React.ReactElement {
+/**
+ * Build a CodeMirror StateField extension that decorates changed lines and
+ * inline character ranges using the same CSS classes as the previous <pre>
+ * implementation.  Syntax highlighting from the language extension is layered
+ * underneath — the diff decorations only add backgrounds, not text colours.
+ */
+function createDiffExtension(
+    allDiffLines: DiffLine[],
+    side: 'base' | 'current' | 'incoming',
+    diffMode: 'base' | 'conflict',
+): Extension {
+    return StateField.define<DecorationSet>({
+        create(state) {
+            const builder = new RangeSetBuilder<Decoration>();
+            // allDiffLines maps 1:1 to source lines — must NOT be pre-filtered.
+            // Using a filtered array breaks the index→line-number correspondence and
+            // causes inline mark `to` values to exceed the next line's `from`,
+            // which throws "Ranges must be added sorted by from position and startSide".
+            for (let i = 0; i < allDiffLines.length; i++) {
+                if (i >= state.doc.lines) break;
+                const diffLine = allDiffLines[i];
+                if (diffLine.type === 'unchanged') continue;
+
+                const line = state.doc.line(i + 1);
+                const whitespaceOnly = isWhitespaceOnlyLineChange(diffLine);
+                const lineClass = getDiffLineClass(diffLine, side, diffMode, whitespaceOnly);
+                builder.add(line.from, line.from, Decoration.line({ class: lineClass }));
+
+                if (diffLine.inlineChanges) {
+                    let pos = line.from;
+                    for (const change of diffLine.inlineChanges) {
+                        const end = Math.min(pos + change.text.length, line.to);
+                        if (change.type !== 'unchanged' && end > pos) {
+                            const inlineClass = getInlineChangeClass(change.type, side, diffMode, whitespaceOnly);
+                            builder.add(pos, end, Decoration.mark({ class: inlineClass }));
+                        }
+                        pos = pos + change.text.length;
+                        if (pos >= line.to) break;
+                    }
+                }
+            }
+            return builder.finish();
+        },
+        update(deco) { return deco; },
+        provide: f => EditorView.decorations.from(f),
+    });
+}
+
+function DiffContent({ source, compareSource, side, diffMode, langExtension, theme }: DiffContentProps): React.ReactElement {
     const diff = useMemo(() => computeLineDiff(compareSource, source), [compareSource, source]);
-    // Use the right side for display (shows the "new" content with change markers)
-    const diffLines = diff.right;
-    // Filter out empty alignment lines to avoid unnecessary whitespace
-    const visibleLines = diffLines.filter(line => line.type !== 'unchanged' || line.content !== '');
+    const diffExtension = useMemo(
+        () => createDiffExtension(diff.right, side ?? 'current', diffMode),
+        [diff.right, side, diffMode]
+    );
+    const cmTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    const allExtensions = useMemo(
+        () => [...langExtension, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure, diffExtension],
+        [langExtension, diffExtension]
+    );
 
     return (
-        <pre>
-            {visibleLines.map((line, i) => {
-                const whitespaceOnly = isWhitespaceOnlyLineChange(line);
-                return (
-                    <React.Fragment key={i}>
-                        <span className={getDiffLineClass(line, side ?? 'current', diffMode, whitespaceOnly)}>
-                            {line.inlineChanges ? (
-                                line.inlineChanges.map((change, j) => (
-                                    <span key={j} className={getInlineChangeClass(change.type, side ?? 'current', diffMode, whitespaceOnly)}>
-                                        {change.text}
-                                    </span>
-                                ))
-                            ) : (
-                                line.content
-                            )}
-                        </span>
-                        {i < visibleLines.length - 1 ? '\n' : ''}
-                    </React.Fragment>
-                );
-            })}
-        </pre>
+        <CodeMirror
+            value={source}
+            readOnly={true}
+            editable={false}
+            extensions={allExtensions}
+            theme={cmTheme}
+            basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
+            className="cell-source-cm"
+        />
     );
 }
 
@@ -319,28 +393,13 @@ function CellOutputs({ outputs, renderMimeRegistry }: CellOutputsProps): React.R
     return (
         <div className="cell-outputs">
             {outputs.map((output, i) => (
-                <OutputItem
+                <RenderMimeOutput
                     key={i}
                     output={output}
                     renderMimeRegistry={renderMimeRegistry}
                 />
             ))}
         </div>
-    );
-}
-
-function OutputItem({
-    output,
-    renderMimeRegistry
-}: {
-    output: CellOutput;
-    renderMimeRegistry: RenderMimeRegistry;
-}): React.ReactElement {
-    return (
-        <RenderMimeOutput
-            output={output}
-            renderMimeRegistry={renderMimeRegistry}
-        />
     );
 }
 
@@ -367,20 +426,30 @@ function RenderMimeOutput({
         try {
             const normalizedOutput = normalizeOutputForRenderMime(output) as RenderMimeOutputValue;
 
-            // Use trusted: true so that rich MIME types (text/html, image/svg+xml,
-            // application/json, etc.) are not silently downgraded or filtered.
-            // Outputs come from the user's own local git repository, so the threat
-            // surface is equivalent to opening a notebook in a local Jupyter server.
-            model = new OutputModel({
+            const untrustedModel = new OutputModel({
                 value: normalizedOutput,
-                trusted: true,
+                trusted: false,
             });
 
-            const preferredMimeType = renderMimeRegistry.preferredMimeType(model.data, 'any');
+            const preferredMimeType = renderMimeRegistry.preferredMimeType(untrustedModel.data, 'any');
             if (!preferredMimeType) {
                 setFallback(getOutputTextFallback(output));
-                model.dispose();
+                untrustedModel.dispose();
                 return;
+            }
+
+            const trusted = shouldTrustOutputMimeType(preferredMimeType);
+            if (trusted) {
+                // Jupyter's HTML renderer evaluates inline scripts for trusted output.
+                // Keep HTML and other rich outputs untrusted; only SVG requires trust
+                // to avoid rendermime's "Cannot display an untrusted SVG" fallback.
+                untrustedModel.dispose();
+                model = new OutputModel({
+                    value: normalizedOutput,
+                    trusted: true,
+                });
+            } else {
+                model = untrustedModel;
             }
 
             renderer = renderMimeRegistry.createRenderer(preferredMimeType);
@@ -388,15 +457,17 @@ function RenderMimeOutput({
             Widget.attach(renderer, host);
 
             void renderer.renderModel(model).catch((err: unknown) => {
-                console.warn('[MergeNB] Failed to render output via rendermime:', err);
+                logger.warn('[MergeNB] Failed to render output via rendermime:', err);
                 if (!disposed) {
                     disposeRenderer(renderer, host);
                     renderer = null;
+                    model?.dispose();
+                    model = null;
                     setFallback(getOutputTextFallback(output));
                 }
             });
         } catch (err) {
-            console.warn('[MergeNB] Failed to initialize rendermime output model:', err);
+            logger.warn('[MergeNB] Failed to initialize rendermime output model:', err);
             setFallback(getOutputTextFallback(output));
             disposeRenderer(renderer, host);
             model?.dispose();
@@ -454,9 +525,13 @@ function getOutputTextFallback(output: CellOutput): string {
     }
 
     if (output.output_type === 'error') {
-        return Array.isArray(output.traceback)
-            ? output.traceback.join('\n')
-            : (output.traceback ?? `${output.ename}: ${output.evalue}`);
+        if (Array.isArray(output.traceback)) {
+            return output.traceback.join('\n');
+        }
+
+        const errorParts = [output.ename, output.evalue]
+            .filter((part): part is string => typeof part === 'string' && part.trim() !== '');
+        return errorParts.length > 0 ? errorParts.join(': ') : 'Error';
     }
 
     if ((output.output_type === 'display_data' || output.output_type === 'execute_result') && output.data) {
@@ -469,40 +544,77 @@ function getOutputTextFallback(output: CellOutput): string {
     return '[Unsupported output]';
 }
 
-function getCurrentSessionId(): string {
-    if (typeof window === 'undefined') return 'default';
+function shouldTrustOutputMimeType(mimeType: string): boolean {
+    return mimeType === 'image/svg+xml';
+}
+
+function getCurrentSessionCredentials(): { sessionId: string; token: string } {
+    if (typeof window === 'undefined') return { sessionId: 'default', token: '' };
     const params = new URLSearchParams(window.location.search);
-    return params.get('session') || 'default';
+    return {
+        sessionId: params.get('session') || 'default',
+        token: params.get('token') || '',
+    };
 }
 
 function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
-    const sessionId = getCurrentSessionId();
-    const cacheKey = `${sessionId}::${notebookPath ?? ''}`;
+    const { sessionId, token } = getCurrentSessionCredentials();
+    const cacheKey = `${sessionId}::${token}::${notebookPath ?? ''}`;
     const cached = renderMimeRegistryCache.get(cacheKey);
-    if (cached) return cached;
+    if (cached) {
+        renderMimeRegistryCache.delete(cacheKey);
+        renderMimeRegistryCache.set(cacheKey, cached);
+        return cached;
+    }
 
     const registry = new RenderMimeRegistry({
         initialFactories: standardRendererFactories,
-        resolver: createNotebookAssetResolver(sessionId, notebookPath),
+        resolver: createNotebookAssetResolver(sessionId, token),
         latexTypesetter: renderMimeKatexTypesetter,
         markdownParser: renderMimeMarkdownParser,
     });
+
     renderMimeRegistryCache.set(cacheKey, registry);
+    evictRenderMimeRegistryCacheEntries();
     return registry;
 }
 
-function createNotebookAssetResolver(
-    sessionId: string,
-    notebookPath?: string
-): IRenderMime.IResolver | undefined {
-    if (!notebookPath) return undefined;
+function evictRenderMimeRegistryCacheEntries(): void {
+    while (renderMimeRegistryCache.size > MAX_RENDERMIME_REGISTRY_CACHE_SIZE) {
+        const leastRecentlyUsedKey = renderMimeRegistryCache.keys().next().value as string | undefined;
+        if (!leastRecentlyUsedKey) return;
 
+        const leastRecentlyUsedRegistry = renderMimeRegistryCache.get(leastRecentlyUsedKey);
+        renderMimeRegistryCache.delete(leastRecentlyUsedKey);
+        disposeRenderMimeRegistry(leastRecentlyUsedRegistry);
+    }
+}
+
+function disposeRenderMimeRegistry(registry: RenderMimeRegistry | undefined): void {
+    if (!registry) return;
+
+    const resolver = registry.resolver as (IRenderMime.IResolver & { dispose?: () => void }) | null;
+    try {
+        resolver?.dispose?.();
+    } catch (err) {
+        logger.warn('[MergeNB] Failed to dispose rendermime resolver:', err);
+    }
+
+    const disposableRegistry = registry as RenderMimeRegistry & { dispose?: () => void };
+    try {
+        disposableRegistry.dispose?.();
+    } catch (err) {
+        logger.warn('[MergeNB] Failed to dispose rendermime registry:', err);
+    }
+}
+
+function createNotebookAssetResolver(sessionId: string, token: string): IRenderMime.IResolver {
     return {
         async resolveUrl(url: string): Promise<string> {
             return normalizeLocalPath(url);
         },
         async getDownloadUrl(urlPath: string): Promise<string> {
-            return buildNotebookAssetUrl(sessionId, urlPath);
+            return buildNotebookAssetUrl(sessionId, token, urlPath);
         },
         isLocal(url: string, allowRoot = false): boolean {
             return isNotebookLocalPath(url, allowRoot);
@@ -510,9 +622,10 @@ function createNotebookAssetResolver(
     };
 }
 
-function buildNotebookAssetUrl(sessionId: string, pathValue: string): string {
+function buildNotebookAssetUrl(sessionId: string, token: string, pathValue: string): string {
     const params = new URLSearchParams({
         session: sessionId,
+        token,
         path: pathValue,
     });
     return `/notebook-asset?${params.toString()}`;
@@ -555,7 +668,7 @@ function disposeRenderer(
             host.removeChild(renderer.node);
         }
     } catch (err) {
-        console.warn('[MergeNB] Failed to detach rendermime renderer:', err);
+        logger.warn('[MergeNB] Failed to detach rendermime renderer:', err);
         if (renderer.node.parentElement === host) {
             host.removeChild(renderer.node);
         }
@@ -564,7 +677,7 @@ function disposeRenderer(
     try {
         renderer.dispose();
     } catch (err) {
-        console.warn('[MergeNB] Failed to dispose rendermime renderer:', err);
+        logger.warn('[MergeNB] Failed to dispose rendermime renderer:', err);
     }
 }
 

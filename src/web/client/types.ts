@@ -39,8 +39,6 @@ export interface MergeRow {
     anchorPosition?: number;
     /** Whether this row is in edit mode */
     isEditing?: boolean;
-    /** Whether this row is being dragged */
-    isDragging?: boolean;
 }
 
 /**
@@ -48,6 +46,8 @@ export interface MergeRow {
  */
 export interface UnifiedConflictData {
     filePath: string;
+    /** Stable conflict instance key for client-side state reset behavior */
+    conflictKey: string;
     type: 'semantic';
     semanticConflict?: import('../../types').NotebookSemanticConflict;
     autoResolveResult?: AutoResolveResult;
@@ -61,21 +61,7 @@ export interface UnifiedConflictData {
 }
 
 /**
- * Resolution choice for a single conflict.
- * 
- * New flow: User selects a branch, then can edit the content.
- * The resolvedContent is always the source of truth for rebuilding.
- */
-export interface ConflictChoice {
-    index: number;
-    /** The base branch the user selected (determines outputs, metadata, etc.) */
-    choice: import('../../types').ResolutionChoice;
-    /** The resolved content - always present for resolved cells, serves as source of truth */
-    resolvedContent: string;
-}
-
-/**
- * Resolved row from the UI - represents the final state after drag/drop and user edits.
+ * Resolved row from the UI - represents the final state after user edits.
  * This is the source of truth for reconstructing the notebook.
  */
 export interface ResolvedRow {
@@ -104,7 +90,6 @@ export interface ResolvedRow {
 export interface ResolutionMessage {
     command: 'resolve';
     type: 'semantic';
-    resolutions: ConflictChoice[];
     /** The complete resolved row structure from the UI (source of truth) */
     resolvedRows: ResolvedRow[];
     semanticChoice?: 'base' | 'current' | 'incoming';

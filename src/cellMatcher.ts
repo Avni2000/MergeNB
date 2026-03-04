@@ -10,6 +10,7 @@
 
 import { NotebookCell, Notebook, CellMapping } from './types';
 import { sortByPosition } from './positionUtils';
+import { stableStringify } from './notebookUtils';
 
 const CODE_CONTENT_WEIGHT = 0.5;
 const CODE_CONTEXT_WEIGHT = 0.2;
@@ -154,24 +155,7 @@ function computeCellSimilarity(cell1: NotebookCell, cell2: NotebookCell): number
 // Output + Context Similarity
 // ============================================================================
 
-function stableStringifyForOutputSimilarity(value: unknown): string {
-    if (value === undefined) return 'undefined';
-    if (value === null) return 'null';
-    const t = typeof value;
-    if (t === 'string' || t === 'number' || t === 'boolean') return JSON.stringify(value);
 
-    if (Array.isArray(value)) {
-        return `[${value.map(stableStringifyForOutputSimilarity).join(',')}]`;
-    }
-
-    if (t === 'object') {
-        const obj = value as Record<string, unknown>;
-        const keys = Object.keys(obj).sort();
-        return `{${keys.map(key => `${JSON.stringify(key)}:${stableStringifyForOutputSimilarity(obj[key])}`).join(',')}}`;
-    }
-
-    return JSON.stringify(String(value));
-}
 
 function normalizeMimeDataValue(value: unknown): unknown {
     if (Array.isArray(value) && value.every(item => typeof item === 'string')) {
@@ -207,13 +191,13 @@ function compareOutputApproximate(x: Record<string, unknown>, y: Record<string, 
             const yValue = normalizeMimeDataValue(yData[key]);
 
             if (key.startsWith('text/')) {
-                const xText = typeof xValue === 'string' ? xValue : stableStringifyForOutputSimilarity(xValue);
-                const yText = typeof yValue === 'string' ? yValue : stableStringifyForOutputSimilarity(yValue);
+                const xText = typeof xValue === 'string' ? xValue : stableStringify(xValue);
+                const yText = typeof yValue === 'string' ? yValue : stableStringify(yValue);
                 if (!compareStringsApproximate(xText, yText, 0.7, 10000)) return false;
                 continue;
             }
 
-            if (stableStringifyForOutputSimilarity(xValue) !== stableStringifyForOutputSimilarity(yValue)) {
+            if (stableStringify(xValue) !== stableStringify(yValue)) {
                 return false;
             }
         }

@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { UnifiedConflictData, WSMessage } from './types';
+import * as logger from '../../logger';
 
 interface UseWebSocketResult {
     connected: boolean;
@@ -27,16 +28,17 @@ export function useWebSocket(): UseWebSocketResult {
         // Get session ID from URL
         const params = new URLSearchParams(window.location.search);
         const session = params.get('session') || 'default';
+        const token = params.get('token') || '';
 
         // Connect WebSocket
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/?session=${encodeURIComponent(session)}`;
+        const wsUrl = `${protocol}//${window.location.host}/?session=${encodeURIComponent(session)}&token=${encodeURIComponent(token)}`;
 
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
-            console.log('[MergeNB] WebSocket connected');
+            logger.debug('[MergeNB] WebSocket connected');
             setConnected(true);
             ws.send(JSON.stringify({ command: 'ready' }));
         };
@@ -44,7 +46,7 @@ export function useWebSocket(): UseWebSocketResult {
         ws.onmessage = (event) => {
             try {
                 const msg = JSON.parse(event.data) as WSMessage;
-                console.log('[MergeNB] Received:', msg);
+                logger.debug('[MergeNB] Received:', msg);
 
                 if ('type' in msg) {
                     if (msg.type === 'connected') {
@@ -60,17 +62,17 @@ export function useWebSocket(): UseWebSocketResult {
                     }
                 }
             } catch (err) {
-                console.error('[MergeNB] Failed to parse message:', err);
+                logger.error('[MergeNB] Failed to parse message:', err);
             }
         };
 
         ws.onclose = () => {
-            console.log('[MergeNB] WebSocket closed');
+            logger.debug('[MergeNB] WebSocket closed');
             setConnected(false);
         };
 
         ws.onerror = (err) => {
-            console.error('[MergeNB] WebSocket error:', err);
+            logger.error('[MergeNB] WebSocket error:', err);
         };
 
         return () => {
@@ -86,7 +88,7 @@ export function useWebSocket(): UseWebSocketResult {
                 setResolutionStatus('pending');
             }
         } else {
-            console.warn('[MergeNB] Cannot send - WebSocket not connected');
+            logger.warn('[MergeNB] Cannot send - WebSocket not connected');
         }
     }, []);
 

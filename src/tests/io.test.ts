@@ -17,6 +17,8 @@ import {
     clickHistoryUndo,
     clickHistoryRedo,
     getHistoryEntries,
+    getResolvedEditorValue,
+    fillResolvedEditor,
     type ConflictChoice,
 } from './integrationUtils';
 import {
@@ -195,7 +197,7 @@ export async function run(): Promise<void> {
             if (!isDeleteAction) {
                 // Modify textarea content to append choice indicator
                 const textarea = row.locator('.resolved-content-input');
-                const originalContent = await textarea.inputValue();
+                const originalContent = await getResolvedEditorValue(textarea);
                 let modifiedContent = originalContent;
 
                 if (choice === 'incoming') {
@@ -207,7 +209,7 @@ export async function run(): Promise<void> {
                 }
 
                 if (modifiedContent !== originalContent) {
-                    await textarea.fill(modifiedContent);
+                    await fillResolvedEditor(textarea, modifiedContent);
                 }
             }
 

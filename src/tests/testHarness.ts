@@ -1,3 +1,15 @@
+/**
+ * @file testHarness.ts
+ * @description VS Code extension host lifecycle helpers for integration tests.
+ *
+ * Runs inside the `@vscode/test-electron` extension host. Provides:
+ * - `readTestConfig`  — reads the JSON config written by the runner before launch
+ * - `setupConflictResolver` — opens the conflict file, starts the web server,
+ *   and connects a Playwright browser to the live session UI
+ * - `applyResolutionAndReadNotebook` — clicks Apply and reads the resolved notebook
+ * - `assertNotebookMatches` — compares the resolved notebook against expected cells
+ */
+
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -8,7 +20,7 @@ import {
     type TestConfig,
     getCellSource,
     waitForServer,
-    waitForSession,
+    waitForSessionUrl,
     waitForFileWrite,
 } from './testHelpers';
 import { ensureCheckboxChecked } from './integrationUtils';
@@ -19,6 +31,7 @@ export interface ConflictSession {
     conflictFile: string;
     serverPort: number;
     sessionId: string;
+    sessionUrl: string;
     browser: Browser;
     page: Page;
 }
@@ -49,11 +62,19 @@ function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** Read the test config JSON written to disk by the runner before VS Code launched. */
 export function readTestConfig(): TestConfig {
     const configPath = path.join(os.tmpdir(), 'mergenb-test-config.json');
     return JSON.parse(fs.readFileSync(configPath, 'utf8'));
 }
 
+/**
+ * Open the conflict notebook, run `merge-nb.findConflicts`, wait for the web
+ * server, and connect a Playwright browser to the session UI.
+ *
+ * Returns a `ConflictSession` with the `page` ready for UI interactions.
+ * Closes the browser and rethrows if navigation or header verification fails.
+ */
 export async function setupConflictResolver(
     config: TestConfig,
     options: SetupOptions = {}
@@ -76,14 +97,17 @@ export async function setupConflictResolver(
     );
     console.log(`[TestHarness] Server started on port ${serverPort}`);
 
-    const sessionId = await waitForSession(serverPort, options.sessionTimeoutMs);
+    const sessionUrl = await waitForSessionUrl(
+        () => Promise.resolve(vscode.commands.executeCommand<string>('merge-nb.getLatestWebSessionUrl')),
+        options.sessionTimeoutMs
+    );
+    const sessionId = new URL(sessionUrl).searchParams.get('session') || 'unknown';
     console.log(`Session created: ${sessionId}`);
 
     const browser = await chromium.launch({ headless: options.headless ?? true });
     try {
         const page = await browser.newPage();
 
-        const sessionUrl = `http://127.0.0.1:${serverPort}/?session=${sessionId}`;
         await page.goto(sessionUrl);
         await sleep(options.afterNavigateDelayMs ?? 3000);
 
@@ -101,6 +125,7 @@ export async function setupConflictResolver(
             conflictFile,
             serverPort,
             sessionId,
+            sessionUrl,
             browser,
             page,
         };
@@ -110,6 +135,10 @@ export async function setupConflictResolver(
     }
 }
 
+/**
+ * Check "Mark as resolved", click Apply, wait for the file to be written,
+ * then read and return the resolved notebook from disk.
+ */
 export async function applyResolutionAndReadNotebook(
     page: Page,
     conflictFile: string,
@@ -139,6 +168,10 @@ export async function applyResolutionAndReadNotebook(
     return JSON.parse(notebookContent);
 }
 
+/**
+ * Build an `ExpectedCell[]` directly from a notebook file (used when you want
+ * to compare two resolved notebooks rather than UI state against disk state).
+ */
 export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
     if (!notebook || !Array.isArray(notebook.cells)) {
         return [];
@@ -158,6 +191,16 @@ export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
     });
 }
 
+/**
+ * Assert that a resolved notebook on disk matches the expected cell list.
+ *
+ * Checks (in order): cell count, source, cell_type, metadata (if
+ * `compareMetadata`), outputs, and execution counts (if `compareExecutionCounts`).
+ * When `renumberEnabled` is true, execution counts are expected to increment
+ * from 1 for every code cell that has outputs.
+ *
+ * Throws a descriptive error on the first category of mismatch found.
+ */
 export function assertNotebookMatches(
     expectedCells: ExpectedCell[],
     resolvedNotebook: any,
@@ -194,6 +237,7 @@ export function assertNotebookMatches(
     let typeMismatches = 0;
     let metadataMismatches = 0;
     let executionMismatches = 0;
+    let outputMismatches = 0;
     let nextExecutionCount = 1;
 
     for (let i = 0; i < expectedNonDeleted.length; i++) {
@@ -222,6 +266,24 @@ export function assertNotebookMatches(
             }
         }
 
+        if (expected.outputs !== undefined) {
+            const actualOutputs = (actual as any).outputs || [];
+            // Strip execution_count from execute_result outputs before comparing —
+            // renumberExecutionCounts() updates that field on the disk copy, but the
+            // expected snapshot captured from the UI still carries the original value.
+            // Cell-level execution_count is already verified separately above.
+            const stripExecCount = (outs: any[]) =>
+                outs.map(o => o.output_type === 'execute_result'
+                    ? (({ execution_count: _ec, ...rest }) => rest)(o)
+                    : o);
+            if (JSON.stringify(stripExecCount(expected.outputs)) !== JSON.stringify(stripExecCount(actualOutputs))) {
+                outputMismatches++;
+                console.log(`Outputs mismatch at cell ${i}:`);
+                console.log(`  Expected: ${JSON.stringify(expected.outputs).substring(0, 100)}...`);
+                console.log(`  Actual:   ${JSON.stringify(actualOutputs).substring(0, 100)}...`);
+            }
+        }
+
         if (options.compareExecutionCounts && expected.cellType === 'code') {
             const expectedExecutionCount = options.renumberEnabled
                 ? (expected.hasOutputs ? nextExecutionCount++ : null)
@@ -244,6 +306,10 @@ export function assertNotebookMatches(
 
     if (metadataMismatches > 0) {
         throw new Error(`${metadataMismatches} cells have metadata mismatches`);
+    }
+
+    if (outputMismatches > 0) {
+        throw new Error(`${outputMismatches} cells have output mismatches`);
     }
 
     if (executionMismatches > 0) {

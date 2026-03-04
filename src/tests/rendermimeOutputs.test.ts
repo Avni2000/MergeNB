@@ -209,16 +209,33 @@ export async function run(): Promise<void> {
         await waitForText(outputRoot, 'PLAIN_ARRAY_LINE_2');
 
         // HTML renderer output
-        const htmlNode = outputRoot.locator('.cell-output-host .jp-RenderedHTMLCommon [data-mime-test="html-array"]');
-        await htmlNode.first().waitFor({ timeout: 10000 });
-        const htmlText = (await htmlNode.first().textContent())?.trim() || '';
-        if (htmlText !== 'HTML_RENDER_OK') {
+        const htmlNode = outputRoot
+            .locator('.cell-output-host .jp-RenderedHTMLCommon')
+            .filter({ hasText: 'HTML_RENDER_OK' })
+            .first();
+        await htmlNode.waitFor({ timeout: 10000 });
+        const htmlText = ((await htmlNode.textContent()) ?? '').trim();
+        if (!htmlText.includes('HTML_RENDER_OK')) {
             throw new Error(`Expected HTML renderer marker, got "${htmlText}"`);
+        }
+        const htmlScriptExecuted = await page.evaluate(() => {
+            const win = window as Window & { __MERGENB_HTML_SCRIPT_EXECUTED__?: boolean };
+            return Boolean(win.__MERGENB_HTML_SCRIPT_EXECUTED__);
+        });
+        if (htmlScriptExecuted) {
+            throw new Error('Inline HTML script executed from output payload');
         }
 
         // PNG image renderer output
         const pngImage = outputRoot.locator('.cell-output-host .jp-RenderedImage img[src^="data:image/png;base64,"]');
         await pngImage.first().waitFor({ timeout: 10000 });
+        const pngLoaded = await pngImage.first().evaluate((node) => {
+            const img = node as { complete?: boolean; naturalWidth?: number };
+            return Boolean(img.complete) && Number(img.naturalWidth ?? 0) > 0;
+        });
+        if (!pngLoaded) {
+            throw new Error('PNG output image did not load (naturalWidth=0)');
+        }
 
         // SVG renderer output
         await assertSvgMarkerRendered(outputRoot, 'SVG_RENDER_OK');
@@ -241,17 +258,40 @@ export async function run(): Promise<void> {
         console.log('✓ Rendermime rendered text/html/png/svg/json outputs');
         console.log('✓ Unsupported MIME output used fallback text');
     } finally {
-        await mergeNBConfig.update(
-            'ui.hideNonConflictOutputs',
-            previousHideOutputs,
-            vscode.ConfigurationTarget.Workspace
-        );
-        await mergeNBConfig.update(
-            'autoResolve.stripOutputs',
-            previousStripOutputs,
-            vscode.ConfigurationTarget.Workspace
-        );
-        if (page) await page.close();
-        if (browser) await browser.close();
+        try {
+            await mergeNBConfig.update(
+                'ui.hideNonConflictOutputs',
+                previousHideOutputs,
+                vscode.ConfigurationTarget.Workspace
+            );
+        } catch (err) {
+            console.warn('Failed to restore mergeNB.ui.hideNonConflictOutputs:', err);
+        }
+
+        try {
+            await mergeNBConfig.update(
+                'autoResolve.stripOutputs',
+                previousStripOutputs,
+                vscode.ConfigurationTarget.Workspace
+            );
+        } catch (err) {
+            console.warn('Failed to restore mergeNB.autoResolve.stripOutputs:', err);
+        }
+
+        if (page) {
+            try {
+                await page.close();
+            } catch (err) {
+                console.warn('Failed to close Playwright page:', err);
+            }
+        }
+
+        if (browser) {
+            try {
+                await browser.close();
+            } catch (err) {
+                console.warn('Failed to close Playwright browser:', err);
+            }
+        }
     }
 }

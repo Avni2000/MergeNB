@@ -26,6 +26,7 @@ import {
     collectExpectedCellsFromUI,
     clickHistoryUndo,
     clickHistoryRedo,
+    getResolvedEditorValue,
 } from './integrationUtils';
 import {
     readTestConfig,
@@ -94,7 +95,7 @@ async function verifyTakeAllUnresolved(
             if (await textarea.count() === 0) {
                 throw new Error(`Row ${i}: expected resolved content for manual choice`);
             }
-            const actualValue = await textarea.inputValue();
+            const actualValue = await getResolvedEditorValue(textarea);
             if (actualValue !== manual.expectedSource) {
                 throw new Error(`Row ${i}: manual choice overwritten by take-all`);
             }
@@ -119,7 +120,7 @@ async function verifyTakeAllUnresolved(
         if (await textarea.count() === 0) {
             throw new Error(`Row ${i}: expected resolved content after take-all`);
         }
-        const actualValue = await textarea.inputValue();
+        const actualValue = await getResolvedEditorValue(textarea);
         if (actualValue !== expectedSource) {
             throw new Error(`Row ${i}: take-all content mismatch for ${action}`);
         }
@@ -144,7 +145,7 @@ async function verifyManualSelectionsAfterUndo(
             if (await textarea.count() === 0) {
                 throw new Error(`Row ${i}: expected manual resolution after undo`);
             }
-            const actualValue = await textarea.inputValue();
+            const actualValue = await getResolvedEditorValue(textarea);
             if (actualValue !== manual.expectedSource) {
                 throw new Error(`Row ${i}: manual resolution mismatch after undo`);
             }

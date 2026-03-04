@@ -40,7 +40,7 @@ export interface UnifiedConflict {
 }
 
 /**
- * Resolved row from the UI - represents the final state after drag/drop and user edits.
+ * Resolved row from the UI - represents the final state after user edits.
  * This is the source of truth for reconstructing the notebook.
  */
 export interface ResolvedRow {
@@ -67,15 +67,14 @@ export interface ResolvedRow {
  * Resolution result from the panel.
  * 
  * The resolvedRows field is now the primary source of truth - it contains the complete
- * cell structure after all drag/drop operations and user edits.
+ * cell structure after user edits.
  */
 export interface UnifiedResolution {
     type: 'semantic';
     semanticChoice?: 'base' | 'current' | 'incoming';
-    semanticResolutions?: Map<number, { choice: ResolutionChoice; resolvedContent: string }>;
     /** The complete resolved row structure from the UI (source of truth) */
     resolvedRows?: ResolvedRow[];
-    // Whether to mark file as resolved with git add
+    // Whether to mark file as resolved by staging in Git
     markAsResolved: boolean;
     // Whether to renumber execution counts sequentially
     renumberExecutionCounts: boolean;
@@ -87,6 +86,8 @@ export interface UnifiedResolution {
  */
 export interface WebConflictData {
     filePath: string;
+    /** Stable conflict instance key for client-side state reset behavior */
+    conflictKey: string;
     fileName: string;
     type: 'semantic';
 
@@ -176,32 +177,14 @@ export type BrowserToExtensionMessage =
     | {
         command: 'resolve';
         type: 'semantic';
-        resolutions: Array<{
-            index: number;
-            choice: string;
-            customContent?: string;
-        }>;
         /** The complete resolved row structure from the UI (source of truth) */
         resolvedRows: ResolvedRow[];
         semanticChoice?: 'base' | 'current' | 'incoming';
         markAsResolved?: boolean;
+        renumberExecutionCounts?: boolean;
     }
     | { command: 'cancel' }
     | { command: 'ready' };
-
-/**
- * Resolution data structure returned from the browser.
- */
-export interface WebResolutionData {
-    type: 'semantic';
-    resolutions: Array<{
-        index: number;
-        choice: ResolutionChoice | 'base';
-        customContent?: string;
-    }>;
-    semanticChoice?: 'base' | 'current' | 'incoming';
-    markAsResolved: boolean;
-}
 
 /**
  * Convert NotebookSemanticConflict to WebSemanticConflict.

@@ -146,4 +146,101 @@ export async function run(): Promise<void> {
     const out0 = renumbered.cells[0].outputs?.[0] as any;
     assert.strictEqual(out0.execution_count, 1, 'Expected execute_result.execution_count to match renumbered cell execution_count');
     assert.strictEqual(renumbered.cells[1].execution_count, null, 'Expected unexecuted code cell execution_count to be null');
+
+    // ---------------------------------------------------------------------
+    // Regression: multiple conflict types for the same cell triplet must all
+    // be detected and ordered correctly.
+    //
+    // When both source AND metadata are modified differently in both branches,
+    // analyzeSemanticConflictsFromMappings must return both 'cell-modified'
+    // AND 'metadata-changed' for the same cell indices.
+    //
+    // This is the prerequisite condition for the UI-layer conflictMap bug:
+    // buildMergeRowsFromSemantic was using Map.set() without checking for an
+    // existing key, so only the LAST conflict per cell survived.  The fix
+    // changes Map.set() to a has()-guarded set so the FIRST (and most
+    // important) conflict — 'cell-modified' — is preserved.
+    // ---------------------------------------------------------------------
+    const multiBase: NotebookCell = {
+        cell_type: 'code',
+        source: 'x = 1',
+        metadata: { tags: ['original'] },
+        execution_count: 1,
+        outputs: [],
+    };
+    const multiCurrent: NotebookCell = {
+        cell_type: 'code',
+        source: 'x = 2',                    // source changed in current
+        metadata: { tags: ['from-current'] }, // metadata changed in current
+        execution_count: 1,
+        outputs: [],
+    };
+    const multiIncoming: NotebookCell = {
+        cell_type: 'code',
+        source: 'x = 3',                     // source changed differently in incoming
+        metadata: { tags: ['from-incoming'] }, // metadata changed differently in incoming
+        execution_count: 1,
+        outputs: [],
+    };
+
+    const multiMappings: CellMapping[] = [
+        {
+            baseIndex: 0,
+            currentIndex: 0,
+            incomingIndex: 0,
+            matchConfidence: 1,
+            baseCell: multiBase,
+            currentCell: multiCurrent,
+            incomingCell: multiIncoming,
+        },
+    ];
+
+    const multiConflicts = analyzeSemanticConflictsFromMappings(multiMappings, {
+        autoResolveExecutionCount: false,
+        autoResolveKernelVersion: false,
+        stripOutputs: false,
+        autoResolveWhitespace: false,
+        hideNonConflictOutputs: false,
+        showCellHeaders: false,
+        enableUndoRedoHotkeys: true,
+        showBaseColumn: true,
+        theme: 'dark',
+    });
+
+    assert.ok(
+        multiConflicts.some(c => c.type === 'cell-modified'),
+        'Expected cell-modified conflict when source differs in both branches'
+    );
+    assert.ok(
+        multiConflicts.some(c => c.type === 'metadata-changed'),
+        'Expected metadata-changed conflict when metadata differs in both branches'
+    );
+
+    const cellModified = multiConflicts.find(c => c.type === 'cell-modified')!;
+    const metadataChanged = multiConflicts.find(c => c.type === 'metadata-changed')!;
+
+    // Both conflicts must share the same cell indices — this is what causes
+    // the key collision in the UI's conflictMap (base-current-incoming triplet).
+    assert.strictEqual(
+        cellModified.baseCellIndex,
+        metadataChanged.baseCellIndex,
+        'cell-modified and metadata-changed must reference the same base cell index'
+    );
+    assert.strictEqual(
+        cellModified.currentCellIndex,
+        metadataChanged.currentCellIndex,
+        'cell-modified and metadata-changed must reference the same current cell index'
+    );
+    assert.strictEqual(
+        cellModified.incomingCellIndex,
+        metadataChanged.incomingCellIndex,
+        'cell-modified and metadata-changed must reference the same incoming cell index'
+    );
+
+    // cell-modified must be detected BEFORE metadata-changed so that when the
+    // UI fix preserves the first conflict per key, it picks the more-important one.
+    assert.ok(
+        multiConflicts.indexOf(cellModified) < multiConflicts.indexOf(metadataChanged),
+        'cell-modified should appear before metadata-changed in the conflict list'
+    );
 }

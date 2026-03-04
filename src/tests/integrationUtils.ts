@@ -1,3 +1,14 @@
+/**
+ * @file integrationUtils.ts
+ * @description Playwright helpers for driving the MergeNB conflict resolution UI.
+ *
+ * Provides utilities for:
+ * - Reading cell data from merge row columns
+ * - Verifying textarea content matches a chosen side
+ * - Polling conflict counters
+ * - Interacting with the undo/redo history panel
+ * - Building the expected cell list from the live UI before applying a resolution
+ */
 
 import { type Page, type Locator } from 'playwright';
 import { type ExpectedCell, getCellSource, parseCellFromAttribute } from './testHelpers';
@@ -15,6 +26,63 @@ export type ConflictChoiceResolver = (
     conflictIndex: number,
     rowIndex: number,
 ) => Promise<ConflictChoiceInfo>;
+
+/**
+ * Read the full text content of a CodeMirror `.resolved-content-input` editor.
+ *
+ * Prefer CodeMirror state when available to avoid viewport-only DOM text.
+ * Fall back to `.cm-content.textContent` if the internal view handle is unavailable.
+ */
+export async function getResolvedEditorValue(editorLocator: Locator): Promise<string> {
+    return await editorLocator.evaluate(el => {
+        type CodeMirrorDoc = { toString: () => string };
+        type CodeMirrorViewState = { doc?: CodeMirrorDoc };
+        type CodeMirrorView = { state?: CodeMirrorViewState };
+        type CodeMirrorTile = { root?: { view?: CodeMirrorView } };
+        type CodeMirrorInternal = HTMLElement & {
+            cmTile?: CodeMirrorTile;
+            cmView?: { view?: CodeMirrorView };
+        };
+
+        const editorRoot = (el.classList.contains('cm-editor') ? el : el.querySelector('.cm-editor')) as HTMLElement | null;
+        if (!editorRoot) {
+            return '';
+        }
+
+        const content = editorRoot.querySelector('.cm-content') as CodeMirrorInternal | null;
+        const maybeInternal = editorRoot as CodeMirrorInternal;
+        const doc =
+            content?.cmTile?.root?.view?.state?.doc ??
+            content?.cmView?.view?.state?.doc ??
+            maybeInternal.cmTile?.root?.view?.state?.doc ??
+            maybeInternal.cmView?.view?.state?.doc;
+        if (doc && typeof doc.toString === 'function') {
+            return doc.toString();
+        }
+
+        if (content) {
+            const lines = Array.from(content.querySelectorAll('.cm-line')).map(line => line.textContent ?? '');
+            if (lines.length > 0) {
+                return lines.join('\n');
+            }
+            return content.textContent ?? '';
+        }
+
+        return '';
+    });
+}
+
+/**
+ * Replace the content of a CodeMirror `.resolved-content-input` editor.
+ * `.fill()` cannot be used because CodeMirror manages a `contenteditable` div, not a `<textarea>`.
+ */
+export async function fillResolvedEditor(editorLocator: Locator, value: string): Promise<void> {
+    const page = editorLocator.page();
+    const content = editorLocator.locator('.cm-content');
+    await content.click();
+    await page.keyboard.press('ControlOrMeta+A');  
+    await page.keyboard.insertText(value);
+}
 
 /** Get a cell reference from a column in a conflict row */
 export async function getColumnCell(row: Locator, column: MergeSide, rowIndex: number) {
@@ -78,12 +146,32 @@ export async function verifyAllConflictsMatchSide(
             continue;
         }
 
-        const actualValue = await textarea.inputValue();
+        const actualValue = await getResolvedEditorValue(textarea);
         if (actualValue !== expectedSource) {
+            // Show full comparison for better debugging
+            const expectedLen = expectedSource.length;
+            const actualLen = actualValue.length;
+            let firstDiffIndex = -1;
+            for (let j = 0; j < Math.max(expectedLen, actualLen); j++) {
+                if (expectedSource[j] !== actualValue[j]) {
+                    firstDiffIndex = j;
+                    break;
+                }
+            }
+            
+            const diffContext = firstDiffIndex !== -1 
+                ? `\n    First diff at index ${firstDiffIndex}:\n` +
+                  `    Expected char code: ${expectedSource.charCodeAt(firstDiffIndex)} (${JSON.stringify(expectedSource[firstDiffIndex])})\n` +
+                  `    Actual char code:   ${actualValue.charCodeAt(firstDiffIndex)} (${JSON.stringify(actualValue[firstDiffIndex])})\n` +
+                  `    Context (expected): ${JSON.stringify(expectedSource.substring(Math.max(0, firstDiffIndex - 10), firstDiffIndex + 20))}\n` +
+                  `    Context (actual):   ${JSON.stringify(actualValue.substring(Math.max(0, firstDiffIndex - 10), firstDiffIndex + 20))}`
+                : '';
+            
             mismatches.push(
-                `Row ${i}: textarea mismatch\n` +
-                `  Expected (${side}): "${expectedSource.substring(0, 60).replace(/\n/g, '\\n')}..."\n` +
-                `  Actual:            "${actualValue.substring(0, 60).replace(/\n/g, '\\n')}..."`
+                `Row ${i}: textarea mismatch (len: expected=${expectedLen}, actual=${actualLen})\n` +
+                `  Expected (${side}): "${expectedSource.substring(0, 100).replace(/\n/g, '\\n')}${expectedLen > 100 ? '...' : ''}"\n` +
+                `  Actual:            "${actualValue.substring(0, 100).replace(/\n/g, '\\n')}${actualLen > 100 ? '...' : ''}"` +
+                diffContext
             );
         } else {
             matchCount++;
@@ -131,6 +219,7 @@ export async function waitForAllConflictsResolved(
     return last;
 }
 
+/** Wait until the resolved count reaches `expectedResolved` or timeout. */
 export async function waitForResolvedCount(
     page: Page,
     expectedResolved: number,
@@ -149,18 +238,21 @@ export async function waitForResolvedCount(
     return last;
 }
 
+/** Click the undo button in the history panel. */
 export async function clickHistoryUndo(page: Page): Promise<void> {
     const button = page.locator('[data-testid="history-undo"]');
     await button.waitFor({ timeout: 5000 });
     await button.click();
 }
 
+/** Click the redo button in the history panel. */
 export async function clickHistoryRedo(page: Page): Promise<void> {
     const button = page.locator('[data-testid="history-redo"]');
     await button.waitFor({ timeout: 5000 });
     await button.click();
 }
 
+/** Return the text of every entry in the history panel, in order. */
 export async function getHistoryEntries(page: Page): Promise<string[]> {
     const items = page.locator('[data-testid="history-item"]');
     const count = await items.count();
@@ -171,6 +263,17 @@ export async function getHistoryEntries(page: Page): Promise<string[]> {
     return entries;
 }
 
+/**
+ * Walk all merge rows in the UI and build the list of cells we expect to find
+ * on disk after the resolution is applied.
+ *
+ * For **identical rows** the cell data is read directly from the DOM attribute.
+ * For **conflict rows** the `resolveConflictChoice` callback is invoked so the
+ * caller can drive the UI (click a side, delete, etc.) and return which choice
+ * was made. The resolved textarea value is then captured as the expected source.
+ *
+ * Call this *before* clicking Apply so the UI state is still intact.
+ */
 export async function collectExpectedCellsFromUI(
     page: Page,
     options: {
@@ -201,12 +304,16 @@ export async function collectExpectedCellsFromUI(
                 resolvedCellType === 'code' &&
                 Array.isArray(cell.outputs) &&
                 cell.outputs.length > 0;
+            const normalizedOutputs = includeOutputs && hasOutputs
+                ? JSON.parse(JSON.stringify(cell.outputs))
+                : undefined;
             expected.push({
                 rowIndex: i,
                 source: getCellSource(cell),
                 cellType: resolvedCellType,
                 metadata: includeMetadata ? (cell.metadata || {}) : undefined,
                 hasOutputs: includeOutputs ? hasOutputs : undefined,
+                outputs: normalizedOutputs,
                 isConflict: false,
                 isDeleted: false,
             });
@@ -235,14 +342,14 @@ export async function collectExpectedCellsFromUI(
                 continue;
             }
 
+            const choiceInfo = await options.resolveConflictChoice(row, conflictIdx, i);
+            const choice = choiceInfo.choice;
+
             const textarea = row.locator('.resolved-content-input');
             if (await textarea.count() === 0) {
                 throw new Error(`Row ${i}: missing resolved content input`);
             }
-            const resolvedContent = await textarea.inputValue();
-
-            const choiceInfo = await options.resolveConflictChoice(row, conflictIdx, i);
-            const choice = choiceInfo.choice;
+            const resolvedContent = await getResolvedEditorValue(textarea);
             let cellType = choiceInfo.chosenCellType;
 
             if (!cellType && (choice === 'base' || choice === 'current' || choice === 'incoming')) {
@@ -253,12 +360,24 @@ export async function collectExpectedCellsFromUI(
             }
 
             let metadata: Record<string, unknown> | undefined;
-            if (includeMetadata && (choice === 'base' || choice === 'current' || choice === 'incoming')) {
+            let hasOutputs = false;
+            let normalizedOutputs: Array<Record<string, unknown>> | undefined;
+            if ((includeMetadata || includeOutputs) && (choice === 'base' || choice === 'current' || choice === 'incoming')) {
                 const referenceCell = await getColumnCell(row, choice, i);
                 if (!referenceCell) {
                     throw new Error(`Row ${i}: could not read ${choice} cell data`);
                 }
-                metadata = referenceCell.metadata || {};
+                if (includeMetadata) {
+                    metadata = referenceCell.metadata || {};
+                }
+                if (includeOutputs) {
+                    hasOutputs = cellType === 'code' &&
+                        Array.isArray((referenceCell as any).outputs) &&
+                        (referenceCell as any).outputs.length > 0;
+                    if (hasOutputs) {
+                        normalizedOutputs = JSON.parse(JSON.stringify((referenceCell as any).outputs));
+                    }
+                }
             }
 
             expected.push({
@@ -266,7 +385,8 @@ export async function collectExpectedCellsFromUI(
                 source: resolvedContent,
                 cellType,
                 metadata,
-                hasOutputs: includeOutputs ? false : undefined,
+                hasOutputs: includeOutputs ? hasOutputs : undefined,
+                outputs: normalizedOutputs,
                 isConflict: true,
                 isDeleted: false,
             });
