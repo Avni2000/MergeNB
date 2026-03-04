@@ -510,48 +510,46 @@ export function applyAutoResolutions(
     const baseKernel = semanticConflict.base?.metadata?.kernelspec;
 
     // Check if kernel versions differ between current and incoming
-    if (currentKernel && incomingKernel) {
-        const currentKernelStr = stableStringify(currentKernel);
-        const incomingKernelStr = stableStringify(incomingKernel);
-        const baseKernelStr = baseKernel ? stableStringify(baseKernel) : '';
+      
+    const currentKernelStr = stableStringify(currentKernel ?? null);  
+    const incomingKernelStr = stableStringify(incomingKernel ?? null);  
+    const baseKernelStr = stableStringify(baseKernel ?? null);  
 
-        if (currentKernelStr !== incomingKernelStr &&
-            (currentKernelStr !== baseKernelStr || incomingKernelStr !== baseKernelStr)) {
-            // Kernel version differs. Always count it (uses current version by default).
-            kernelAutoResolved = true;
-            autoResolvedCount++;
-            if (effectiveSettings.autoResolveKernelVersion) {
-                autoResolvedDescriptions.push('Kernel version: using current version');
-            } else {
-                autoResolvedDescriptions.push('Kernel version: conflict present (auto-resolve disabled — current version used)');
-            }
+    if (currentKernelStr !== incomingKernelStr &&
+        (currentKernelStr !== baseKernelStr || incomingKernelStr !== baseKernelStr)) {
+        // Kernel version differs. Always count it (uses current version by default).
+        kernelAutoResolved = true;
+        autoResolvedCount++;
+        if (effectiveSettings.autoResolveKernelVersion) {
+            autoResolvedDescriptions.push('Kernel version: using current version');
+        } else {
+            autoResolvedDescriptions.push('Kernel version: conflict present (auto-resolve disabled — current version used)');
         }
     }
+    
 
     // Also check language_info version
     const currentLangInfo = semanticConflict.current?.metadata?.language_info;
     const incomingLangInfo = semanticConflict.incoming?.metadata?.language_info;
     const baseLangInfo = semanticConflict.base?.metadata?.language_info;
 
-    if (currentLangInfo && incomingLangInfo) {
-        const currentLangStr = stableStringify(currentLangInfo);
-        const incomingLangStr = stableStringify(incomingLangInfo);
-        const baseLangStr = baseLangInfo ? stableStringify(baseLangInfo) : '';
-
-        if (currentLangStr !== incomingLangStr &&
-            (currentLangStr !== baseLangStr || incomingLangStr !== baseLangStr)) {
-            // Language version differs. Always count it (uses current version by default).
-            if (!kernelAutoResolved) {
-                autoResolvedCount++;
-                if (effectiveSettings.autoResolveKernelVersion) {
-                    autoResolvedDescriptions.push('Python version: using current version');
-                } else {
-                    autoResolvedDescriptions.push('Python version: conflict present (auto-resolve disabled — current version used)');
-                }
+    
+    const currentLangStr = stableStringify(currentLangInfo ?? null);
+    const incomingLangStr = stableStringify(incomingLangInfo ?? null);
+    const baseLangStr = stableStringify(baseLangInfo ?? null);        if (currentLangStr !== incomingLangStr &&
+        (currentLangStr !== baseLangStr || incomingLangStr !== baseLangStr)) {
+        // Language version differs. Always count it (uses current version by default).
+        if (!kernelAutoResolved) {
+            autoResolvedCount++;
+            if (effectiveSettings.autoResolveKernelVersion) {
+                autoResolvedDescriptions.push('Python version: using current version');
+            } else {
+                autoResolvedDescriptions.push('Python version: conflict present (auto-resolve disabled — current version used)');
             }
-            kernelAutoResolved = true;
         }
+        kernelAutoResolved = true;
     }
+    
 
     // Strip outputs from any remaining conflicted cells if enabled
     if (effectiveSettings.stripOutputs) {
