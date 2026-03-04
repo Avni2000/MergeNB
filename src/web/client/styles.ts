@@ -1158,6 +1158,101 @@ body {
 .diff-inline-incoming {
     background: rgba(86, 156, 214, 0.35);
 }
+
+/* Reordered row — orange left border */
+.merge-row.reordered-row {
+    border-left: 4px solid #ff9800;
+    background: rgba(255, 152, 0, 0.05);
+    border-radius: 4px;
+}
+
+/* Reorder indicator bar */
+.reorder-indicator-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: rgba(255, 152, 0, 0.1);
+    border-bottom: 1px solid rgba(255, 152, 0, 0.3);
+    font-size: 12px;
+}
+
+.reorder-delta {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-weight: 600;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.reorder-delta.current-delta {
+    background: var(--current-bg);
+    color: var(--text-primary);
+}
+
+.reorder-delta.incoming-delta {
+    background: var(--incoming-bg);
+    color: var(--text-primary);
+}
+
+/* Unmatch button */
+.btn-unmatch {
+    margin-left: auto;
+    padding: 3px 10px;
+    font-size: 11px;
+    background: rgba(255, 152, 0, 0.2);
+    border: 1px solid rgba(255, 152, 0, 0.5);
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-unmatch:hover {
+    background: rgba(255, 152, 0, 0.35);
+}
+
+/* User-unmatched row — darker orange */
+.merge-row.user-unmatched-row {
+    border-left: 4px solid #e65100;
+    background: rgba(230, 81, 0, 0.06);
+    border-radius: 4px;
+}
+
+/* Rematch indicator bar */
+.rematch-indicator-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    background: rgba(230, 81, 0, 0.1);
+    border-bottom: 1px solid rgba(230, 81, 0, 0.3);
+    font-size: 12px;
+}
+
+.rematch-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #e65100;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn-rematch {
+    margin-left: auto;
+    padding: 3px 10px;
+    font-size: 11px;
+    background: rgba(230, 81, 0, 0.2);
+    border: 1px solid rgba(230, 81, 0, 0.5);
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-rematch:hover {
+    background: rgba(230, 81, 0, 0.35);
+}
 `;
 }
 

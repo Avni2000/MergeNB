@@ -71,6 +71,8 @@ export function ConflictResolver({
     const handleToggleRenumberExecutionCounts = useStore(resolverStore, state => state.setRenumberExecutionCounts);
     const handleToggleMarkAsResolved = useStore(resolverStore, state => state.setMarkAsResolved);
     const handleJumpToHistory = useStore(resolverStore, state => state.jumpToHistory);
+    const handleUnmatchRow = useStore(resolverStore, state => state.unmatchRow);
+    const handleRematchRows = useStore(resolverStore, state => state.rematchRows);
     const handleUndo = useStore(resolverStore, state => state.undo);
     const handleRedo = useStore(resolverStore, state => state.redo);
 
@@ -513,6 +515,8 @@ export function ConflictResolver({
                                     resolutionState={resolutionState}
                                     onSelectChoice={handleSelectChoice}
                                     onCommitContent={handleCommitContent}
+                                    onUnmatchRow={handleUnmatchRow}
+                                    onRematchRows={handleRematchRows}
                                     showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
                                     showBaseColumn={showBaseColumn}
                                     showCellHeaders={showCellHeaders}

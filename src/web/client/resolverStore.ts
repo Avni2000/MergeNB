@@ -48,6 +48,8 @@ export interface ResolverStoreState {
     setRenumberExecutionCounts: (checked: boolean) => void;
     setMarkAsResolved: (checked: boolean) => void;
     jumpToHistory: (targetIndex: number) => void;
+    unmatchRow: (rowIndex: number) => void;
+    rematchRows: (unmatchGroupId: string) => void;
     undo: () => void;
     redo: () => void;
 }
@@ -59,7 +61,11 @@ function cloneChoices(source: Map<number, ResolutionState>): Map<number, Resolut
 }
 
 function cloneRows(source: MergeRowType[]): MergeRowType[] {
-    return source.map(row => ({ ...row }));
+    return source.map(row => ({
+        ...row,
+        originalMatchedRow: row.originalMatchedRow
+            ? { ...row.originalMatchedRow } : undefined,
+    }));
 }
 
 function buildInitialHistory(rows: MergeRowType[]): HistoryState {
@@ -117,6 +123,11 @@ function getCellForSide(
     if (side === 'base') return row.baseCell;
     if (side === 'current') return row.currentCell;
     return row.incomingCell;
+}
+
+let unmatchGroupCounter = 0;
+function generateUnmatchGroupId(): string {
+    return `unmatch-${++unmatchGroupCounter}`;
 }
 
 export function createResolverStore(initialRows: MergeRowType[]): ResolverStore {
@@ -200,6 +211,93 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 const targetSnapshot = state.history.entries[targetIndex].snapshot;
                 applySnapshot(state, targetSnapshot);
                 state.history.index = targetIndex;
+            }),
+            unmatchRow: (rowIndex: number) => set(state => {
+                const row = state.rows[rowIndex];
+                if (!row) return;
+
+                const groupId = generateUnmatchGroupId();
+
+                // Find max existing conflictIndex
+                let maxConflictIndex = -1;
+                for (const r of state.rows) {
+                    if (r.conflictIndex !== undefined && r.conflictIndex > maxConflictIndex) {
+                        maxConflictIndex = r.conflictIndex;
+                    }
+                }
+                let nextConflictIndex = maxConflictIndex + 1;
+
+                // Build split rows — one per side that has a cell
+                const sides: Array<'base' | 'current' | 'incoming'> = [];
+                if (row.baseCell) sides.push('base');
+                if (row.currentCell) sides.push('current');
+                if (row.incomingCell) sides.push('incoming');
+
+                const splitRows: MergeRowType[] = sides.map(side => ({
+                    type: 'conflict' as const,
+                    baseCell: side === 'base' ? row.baseCell : undefined,
+                    currentCell: side === 'current' ? row.currentCell : undefined,
+                    incomingCell: side === 'incoming' ? row.incomingCell : undefined,
+                    baseCellIndex: side === 'base' ? row.baseCellIndex : undefined,
+                    currentCellIndex: side === 'current' ? row.currentCellIndex : undefined,
+                    incomingCellIndex: side === 'incoming' ? row.incomingCellIndex : undefined,
+                    conflictIndex: nextConflictIndex++,
+                    conflictType: 'user-unmatched',
+                    isUnmatched: true,
+                    unmatchedSides: [side],
+                    anchorPosition: (side === 'base' ? row.baseCellIndex
+                        : side === 'current' ? row.currentCellIndex
+                        : row.incomingCellIndex) ?? row.anchorPosition,
+                    isUserUnmatched: true,
+                    unmatchGroupId: groupId,
+                    originalMatchedRow: { ...row },
+                }));
+
+                // Remove choice for the original row
+                if (row.conflictIndex !== undefined) {
+                    state.choices.delete(row.conflictIndex);
+                }
+
+                // Replace the original row with split rows
+                state.rows.splice(rowIndex, 1, ...splitRows);
+                state.takeAllChoice = undefined;
+                recordHistory(state, `Unmatch row ${rowIndex + 1}`);
+            }),
+            rematchRows: (unmatchGroupId: string) => set(state => {
+                // Find all split rows with this group ID
+                const groupRowIndices: number[] = [];
+                let originalRow: MergeRowType | undefined;
+
+                for (let i = 0; i < state.rows.length; i++) {
+                    if (state.rows[i].unmatchGroupId === unmatchGroupId) {
+                        groupRowIndices.push(i);
+                        if (!originalRow && state.rows[i].originalMatchedRow) {
+                            originalRow = state.rows[i].originalMatchedRow;
+                        }
+                    }
+                }
+
+                if (groupRowIndices.length === 0 || !originalRow) return;
+
+                // Remove choices for all split rows
+                for (const idx of groupRowIndices) {
+                    const ci = state.rows[idx].conflictIndex;
+                    if (ci !== undefined) state.choices.delete(ci);
+                }
+
+                // Replace split rows with restored original
+                const firstIdx = groupRowIndices[0];
+                const count = groupRowIndices.length;
+                const restoredRow: MergeRowType = {
+                    ...originalRow,
+                    isUserUnmatched: undefined,
+                    unmatchGroupId: undefined,
+                    originalMatchedRow: undefined,
+                };
+                state.rows.splice(firstIdx, count, restoredRow);
+
+                state.takeAllChoice = undefined;
+                recordHistory(state, `Rematch row group`);
             }),
             undo: () => set(state => {
                 if (state.history.index === 0) return;
