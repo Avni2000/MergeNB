@@ -187,6 +187,10 @@ export interface DeleteVsModifyPromptContext {
     keepContentSide: 'current' | 'incoming';
 }
 
+export interface RenumberPromptContext {
+    filePath: string;
+}
+
 export interface ResolverConfirmationContext {
     status: gitIntegration.GitUnmergedStatus;
     filePath: string;
@@ -202,6 +206,9 @@ export interface ResolverPromptTestHooks {
     pickDeleteVsModifyAction?: (
         context: DeleteVsModifyPromptContext
     ) => Promise<DeleteVsModifyResolutionAction | undefined> | DeleteVsModifyResolutionAction | undefined;
+    pickRenumberExecutionCounts?: (
+        context: RenumberPromptContext
+    ) => Promise<boolean | undefined> | boolean | undefined;
     confirmAction?: (
         context: ResolverConfirmationContext
     ) => Promise<boolean> | boolean;
@@ -344,34 +351,22 @@ export class NotebookConflictResolver {
         const settings = getSettings();
         const autoResolveResult = applyAutoResolutions(semanticConflict, settings);
 
-        if (
-            semanticConflict.semanticConflicts.length === 0 &&
-            autoResolveResult.autoResolvedCount === 0 &&
-            autoResolveResult.autoResolvedDescriptions.length === 0
-        ) {
-            vscode.window.showInformationMessage('Notebook is in unmerged state but no conflicts detected.');
-            return;
-        }
-
         // Show what was auto-resolved
         if (autoResolveResult.autoResolvedCount > 0) {
             const autoResolved = autoResolveResult.autoResolvedDescriptions.join(', ');
             vscode.window.showInformationMessage(`Auto-resolved: ${autoResolved}`);
         }
 
-        // If all conflicts were auto-resolved, save and return
+        // If no manual conflicts remain, save and return. This also handles
+        // unmerged notebooks whose branches already agree semantically
+        // (for example, both sides made the same reorder).
         if (autoResolveResult.remainingConflicts.length === 0) {
-            // Ask user if they want to renumber execution counts
-            const renumber = await vscode.window.showQuickPick(
-                ['Yes', 'No'],
-                {
-                    placeHolder: 'Renumber execution counts sequentially?',
-                    title: 'Execution Counts'
-                }
-            );
+            const shouldRenumber = await this.pickRenumberExecutionCounts({
+                filePath: uri.fsPath
+            });
 
             let finalNotebook = autoResolveResult.resolvedNotebook;
-            if (renumber === 'Yes') {
+            if (shouldRenumber) {
                 finalNotebook = renumberExecutionCounts(finalNotebook);
             }
 
@@ -381,7 +376,7 @@ export class NotebookConflictResolver {
                 resolvedNotebook: finalNotebook,
                 resolvedRows: [],
                 markAsResolved: false,
-                renumberExecutionCounts: renumber === 'Yes'
+                renumberExecutionCounts: shouldRenumber
             });
             const resolvedCount = semanticConflict.semanticConflicts.length;
             if (resolvedCount > 0) {
@@ -480,6 +475,22 @@ export class NotebookConflictResolver {
             return 'cancel';
         }
         return undefined;
+    }
+
+    private async pickRenumberExecutionCounts(context: RenumberPromptContext): Promise<boolean> {
+        if (resolverPromptTestHooks?.pickRenumberExecutionCounts) {
+            return (await resolverPromptTestHooks.pickRenumberExecutionCounts(context)) === true;
+        }
+
+        const picked = await vscode.window.showQuickPick(
+            ['Yes', 'No'],
+            {
+                placeHolder: 'Renumber execution counts sequentially?',
+                title: 'Execution Counts'
+            }
+        );
+
+        return picked === 'Yes';
     }
 
     private async confirmResolutionAction(context: ResolverConfirmationContext): Promise<boolean> {
@@ -681,15 +692,11 @@ export class NotebookConflictResolver {
             if (autoResolveResult) {
                 let resolvedNotebook = autoResolveResult.resolvedNotebook;
 
-                const renumber = await vscode.window.showQuickPick(
-                    ['Yes', 'No'],
-                    {
-                        placeHolder: 'Renumber execution counts sequentially?',
-                        title: 'Execution Counts'
-                    }
-                );
+                const shouldRenumber = await this.pickRenumberExecutionCounts({
+                    filePath: uri.fsPath
+                });
 
-                if (renumber === 'Yes') {
+                if (shouldRenumber) {
                     resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
                 }
 
@@ -699,7 +706,7 @@ export class NotebookConflictResolver {
                     resolvedNotebook,
                     resolvedRows: [],
                     markAsResolved: false,
-                    renumberExecutionCounts: renumber === 'Yes'
+                    renumberExecutionCounts: shouldRenumber
                 });
                 vscode.window.showInformationMessage(`Resolved conflicts in ${uri.fsPath}`);
             }

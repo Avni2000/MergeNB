@@ -191,6 +191,12 @@ export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
     });
 }
 
+/** Read a notebook fixture from this repository's `test/` directory. */
+export function readNotebookFixtureFromRepo(fileName: string): any {
+    const fixturePath = path.resolve(__dirname, '../../test', fileName);
+    return JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
+}
+
 /**
  * Assert that a resolved notebook on disk matches the expected cell list.
  *

@@ -5,11 +5,21 @@
  * These run inside the VS Code extension test host but do not require UI/browser.
  */
 
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as assert from 'assert';
-import { selectNonConflictMergedCell } from '../notebookUtils';
+import * as vscode from 'vscode';
+import * as conflictDetector from '../conflictDetector';
+import { normalizeCellSource, selectNonConflictMergedCell } from '../notebookUtils';
 import { renumberExecutionCounts } from '../notebookParser';
 import { analyzeSemanticConflictsFromMappings } from '../conflictDetector';
-import type { NotebookCell, Notebook } from '../types';
+import { NotebookConflictResolver, onDidResolveConflictWithDetails, setResolverPromptTestHooks } from '../resolver';
+import { createResolverStore } from '../web/client/resolverStore';
+import { buildMergeRowsFromSemantic } from '../web/client/mergeRowBuilder';
+import { computeReorderedRowIndexSet } from '../web/client/reorderUtils';
+import { WebConflictPanel } from '../web/WebConflictPanel';
+import type { NotebookCell, Notebook, NotebookSemanticConflict } from '../types';
 import type { CellMapping } from '../types';
 
 export async function run(): Promise<void> {
@@ -233,4 +243,453 @@ export async function run(): Promise<void> {
         multiConflicts.indexOf(cellModified) < multiConflicts.indexOf(metadataChanged),
         'cell-modified should appear before metadata-changed in the conflict list'
     );
+
+    // ---------------------------------------------------------------------
+    // Regression: pure reorder conflicts must surface as resolvable rows.
+    //
+    // A global `cell-reordered` conflict has no per-row indices, so the UI
+    // builder must synthesize row conflicts for the reordered triplets.
+    // Otherwise the resolver opens with 0/0 conflicts and silently preserves
+    // base-order rows.
+    // ---------------------------------------------------------------------
+    const makeMarkdownCell = (source: string): NotebookCell => ({
+        cell_type: 'markdown',
+        source,
+        metadata: {},
+    });
+    const reorderBase: Notebook = {
+        nbformat: 4,
+        nbformat_minor: 5,
+        metadata: {},
+        cells: [
+            makeMarkdownCell('intro'),
+            makeMarkdownCell('alpha'),
+            makeMarkdownCell('beta'),
+            makeMarkdownCell('gamma'),
+        ],
+    };
+    const reorderCurrent: Notebook = {
+        ...reorderBase,
+        cells: [
+            makeMarkdownCell('intro'),
+            makeMarkdownCell('beta'),
+            makeMarkdownCell('alpha'),
+            makeMarkdownCell('gamma'),
+        ],
+    };
+    const reorderIncoming: Notebook = {
+        ...reorderBase,
+        cells: [
+            makeMarkdownCell('intro'),
+            makeMarkdownCell('alpha'),
+            makeMarkdownCell('gamma'),
+            makeMarkdownCell('beta'),
+        ],
+    };
+    const reorderOnlyConflict: NotebookSemanticConflict = {
+        filePath: 'reorder-only.ipynb',
+        semanticConflicts: [
+            {
+                type: 'cell-reordered',
+                description: 'Cells have been reordered between versions',
+            },
+        ],
+        cellMappings: [
+            {
+                baseIndex: 0,
+                currentIndex: 0,
+                incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: reorderBase.cells[0],
+                currentCell: reorderCurrent.cells[0],
+                incomingCell: reorderIncoming.cells[0],
+            },
+            {
+                baseIndex: 1,
+                currentIndex: 2,
+                incomingIndex: 1,
+                matchConfidence: 1,
+                baseCell: reorderBase.cells[1],
+                currentCell: reorderCurrent.cells[2],
+                incomingCell: reorderIncoming.cells[1],
+            },
+            {
+                baseIndex: 2,
+                currentIndex: 1,
+                incomingIndex: 3,
+                matchConfidence: 1,
+                baseCell: reorderBase.cells[2],
+                currentCell: reorderCurrent.cells[1],
+                incomingCell: reorderIncoming.cells[3],
+            },
+            {
+                baseIndex: 3,
+                currentIndex: 3,
+                incomingIndex: 2,
+                matchConfidence: 1,
+                baseCell: reorderBase.cells[3],
+                currentCell: reorderCurrent.cells[3],
+                incomingCell: reorderIncoming.cells[2],
+            },
+        ],
+        base: reorderBase,
+        current: reorderCurrent,
+        incoming: reorderIncoming,
+    };
+
+    const reorderRows = buildMergeRowsFromSemantic(reorderOnlyConflict);
+    const synthesizedReorderConflicts = reorderRows.filter(row => row.conflictType === 'cell-reordered');
+    assert.ok(
+        synthesizedReorderConflicts.length >= 2,
+        'Expected reordered rows to be promoted into synthetic row conflicts'
+    );
+    assert.ok(
+        synthesizedReorderConflicts.every(row => row.type === 'conflict' && row.conflictIndex !== undefined),
+        'Expected synthetic reorder conflicts to have conflict indices'
+    );
+    assert.ok(
+        reorderRows.filter(row => row.isReordered).length >= 2,
+        'Expected reordered rows to retain persistent reorder state'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: matching reorder on both branches is not a conflict.
+    //
+    // If current and incoming agree on the new relative order, we should
+    // preserve that order automatically instead of surfacing a manual
+    // reorder conflict just because both differ from base.
+    // ---------------------------------------------------------------------
+    const sameReorderBaseA = makeMarkdownCell('same-reorder-a');
+    const sameReorderBaseB = makeMarkdownCell('same-reorder-b');
+    const sameReorderMappings: CellMapping[] = [
+        {
+            baseIndex: 0,
+            currentIndex: 1,
+            incomingIndex: 1,
+            matchConfidence: 1,
+            baseCell: sameReorderBaseA,
+            currentCell: sameReorderBaseA,
+            incomingCell: sameReorderBaseA,
+        },
+        {
+            baseIndex: 1,
+            currentIndex: 0,
+            incomingIndex: 0,
+            matchConfidence: 1,
+            baseCell: sameReorderBaseB,
+            currentCell: sameReorderBaseB,
+            incomingCell: sameReorderBaseB,
+        },
+    ];
+    const sameReorderConflicts = analyzeSemanticConflictsFromMappings(sameReorderMappings);
+    assert.ok(
+        !sameReorderConflicts.some(c => c.type === 'cell-reordered'),
+        'Expected no reorder conflict when current and incoming agree on the reordered order'
+    );
+    assert.strictEqual(
+        computeReorderedRowIndexSet([
+            {
+                type: 'identical' as const,
+                baseCellIndex: 0,
+                currentCellIndex: 1,
+                incomingCellIndex: 1,
+            },
+            {
+                type: 'identical' as const,
+                baseCellIndex: 1,
+                currentCellIndex: 0,
+                incomingCellIndex: 0,
+            },
+        ]).size,
+        0,
+        'Expected no reorder rows when current and incoming preserve the same relative order'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: pure index drift from insert/delete offsets must NOT be
+    // treated as reorder when relative order is preserved.
+    // ---------------------------------------------------------------------
+    const offsetOnlyRows = [
+        {
+            type: 'identical' as const,
+            baseCellIndex: 0,
+            currentCellIndex: 1,
+            incomingCellIndex: 0,
+        },
+        {
+            type: 'identical' as const,
+            baseCellIndex: 1,
+            currentCellIndex: 2,
+            incomingCellIndex: 1,
+        },
+        {
+            type: 'identical' as const,
+            baseCellIndex: 2,
+            currentCellIndex: 3,
+            incomingCellIndex: 2,
+        },
+    ];
+    assert.strictEqual(
+        computeReorderedRowIndexSet(offsetOnlyRows).size,
+        0,
+        'Expected index drift with preserved relative order to not be flagged as reorder'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: unmatch/rematch must preserve global row ordering.
+    //
+    // When a reordered row is split, one branch-side can move ahead of the
+    // original row position. The reducer must re-sort the entire row list,
+    // not just insert split rows in-place, or the saved notebook order is wrong.
+    // ---------------------------------------------------------------------
+    const storeRows = [
+        {
+            type: 'identical' as const,
+            baseCell: makeMarkdownCell('row-0'),
+            currentCell: makeMarkdownCell('row-0'),
+            incomingCell: makeMarkdownCell('row-0'),
+            baseCellIndex: 0,
+            currentCellIndex: 1,
+            incomingCellIndex: 0,
+            anchorPosition: 0,
+        },
+        {
+            type: 'identical' as const,
+            baseCell: makeMarkdownCell('row-1'),
+            currentCell: makeMarkdownCell('row-1'),
+            incomingCell: makeMarkdownCell('row-1'),
+            baseCellIndex: 1,
+            currentCellIndex: 2,
+            incomingCellIndex: 1,
+            anchorPosition: 1,
+        },
+        {
+            type: 'conflict' as const,
+            baseCell: makeMarkdownCell('target-base'),
+            currentCell: makeMarkdownCell('target-current'),
+            incomingCell: makeMarkdownCell('target-incoming'),
+            baseCellIndex: 2,
+            currentCellIndex: 0,
+            incomingCellIndex: 2,
+            conflictIndex: 0,
+            conflictType: 'cell-reordered',
+            anchorPosition: 2,
+            isReordered: true,
+        },
+        {
+            type: 'identical' as const,
+            baseCell: makeMarkdownCell('row-3'),
+            currentCell: makeMarkdownCell('row-3'),
+            incomingCell: makeMarkdownCell('row-3'),
+            baseCellIndex: 3,
+            currentCellIndex: 3,
+            incomingCellIndex: 3,
+            anchorPosition: 3,
+        },
+    ];
+    const reorderStore = createResolverStore(storeRows);
+    reorderStore.getState().unmatchRow(2);
+
+    const afterUnmatch = reorderStore.getState().rows;
+    assert.strictEqual(
+        afterUnmatch[0].currentCell?.source,
+        'target-current',
+        'Expected the current-side split row to move to the top after global re-sort'
+    );
+    assert.ok(
+        afterUnmatch[0].isUserUnmatched,
+        'Expected reordered split row to remain marked as user-unmatched after re-sort'
+    );
+
+    const targetGroupId = afterUnmatch[0].unmatchGroupId;
+    assert.ok(targetGroupId, 'Expected split rows to share an unmatch group id');
+
+    reorderStore.getState().rematchRows(targetGroupId!);
+
+    const afterRematch = reorderStore.getState().rows;
+    assert.strictEqual(afterRematch.length, storeRows.length, 'Expected rematch to restore the original row count');
+    assert.strictEqual(
+        afterRematch[2].currentCell?.source,
+        'target-current',
+        'Expected rematch to restore the original conflict row at its sorted position'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: splitting one reordered row must not make the remaining
+    // reordered rows lose their unmatch eligibility.
+    // ---------------------------------------------------------------------
+    const multiUnmatchRows = [
+        {
+            type: 'conflict' as const,
+            baseCell: makeMarkdownCell('swap-a'),
+            currentCell: makeMarkdownCell('swap-a'),
+            incomingCell: makeMarkdownCell('swap-a'),
+            baseCellIndex: 0,
+            currentCellIndex: 1,
+            incomingCellIndex: 0,
+            conflictIndex: 0,
+            conflictType: 'cell-reordered',
+            anchorPosition: 0,
+            isReordered: true,
+        },
+        {
+            type: 'conflict' as const,
+            baseCell: makeMarkdownCell('swap-b'),
+            currentCell: makeMarkdownCell('swap-b'),
+            incomingCell: makeMarkdownCell('swap-b'),
+            baseCellIndex: 1,
+            currentCellIndex: 0,
+            incomingCellIndex: 1,
+            conflictIndex: 1,
+            conflictType: 'cell-reordered',
+            anchorPosition: 1,
+            isReordered: true,
+        },
+    ];
+    const multiUnmatchStore = createResolverStore(multiUnmatchRows);
+    multiUnmatchStore.getState().unmatchRow(0);
+
+    const rowsAfterFirstSplit = multiUnmatchStore.getState().rows;
+    const remainingConflictIndex = rowsAfterFirstSplit.findIndex(row => row.currentCell?.source === 'swap-b');
+    assert.notStrictEqual(
+        remainingConflictIndex,
+        -1,
+        'Expected the second reordered row to still exist after splitting the first'
+    );
+
+    multiUnmatchStore.getState().unmatchRow(remainingConflictIndex);
+    const rowsAfterSecondSplit = multiUnmatchStore.getState().rows;
+    assert.strictEqual(
+        rowsAfterSecondSplit.length,
+        4,
+        'Expected a second reordered row to remain unmatchable after the first split'
+    );
+    assert.strictEqual(
+        new Set(rowsAfterSecondSplit.map(row => row.unmatchGroupId).filter((value): value is string => !!value)).size,
+        2,
+        'Expected each reordered row split to keep its own rematch group'
+    );
+    assert.strictEqual(
+        rowsAfterSecondSplit.filter(row => row.currentCell?.source === 'swap-b' || row.incomingCell?.source === 'swap-b').length,
+        2,
+        'Expected the second reordered row to split into current/incoming rows'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: when current and incoming already agree semantically (for
+    // example, they made the same reorder), resolveSemanticConflicts must
+    // still auto-apply the merged notebook instead of bailing out early.
+    // ---------------------------------------------------------------------
+    const sharedReorderBase: Notebook = {
+        nbformat: 4,
+        nbformat_minor: 5,
+        metadata: {},
+        cells: [
+            makeMarkdownCell('shared-order-a'),
+            makeMarkdownCell('shared-order-b'),
+        ],
+    };
+    const sharedReorderCurrent: Notebook = {
+        ...sharedReorderBase,
+        cells: [
+            makeMarkdownCell('shared-order-b'),
+            makeMarkdownCell('shared-order-a'),
+        ],
+    };
+    const sharedReorderIncoming: Notebook = {
+        ...sharedReorderBase,
+        cells: [
+            makeMarkdownCell('shared-order-b'),
+            makeMarkdownCell('shared-order-a'),
+        ],
+    };
+    const sharedReorderConflict: NotebookSemanticConflict = {
+        filePath: 'shared-reorder.ipynb',
+        semanticConflicts: [],
+        cellMappings: [
+            {
+                baseIndex: 0,
+                currentIndex: 1,
+                incomingIndex: 1,
+                matchConfidence: 1,
+                baseCell: sharedReorderBase.cells[0],
+                currentCell: sharedReorderCurrent.cells[1],
+                incomingCell: sharedReorderIncoming.cells[1],
+            },
+            {
+                baseIndex: 1,
+                currentIndex: 0,
+                incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: sharedReorderBase.cells[1],
+                currentCell: sharedReorderCurrent.cells[0],
+                incomingCell: sharedReorderIncoming.cells[0],
+            },
+        ],
+        base: sharedReorderBase,
+        current: sharedReorderCurrent,
+        incoming: sharedReorderIncoming,
+    };
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergenb-shared-reorder-'));
+    const conflictPath = path.join(tempDir, 'conflict.ipynb');
+    // Normalize through vscode.Uri so the drive letter casing matches on Windows
+    // (os.tmpdir() may return "C:\..." but vscode.Uri.file().fsPath returns "c:\...")
+    const normalizedConflictPath = vscode.Uri.file(conflictPath).fsPath;
+    fs.writeFileSync(conflictPath, JSON.stringify(sharedReorderBase, null, 2));
+
+    const originalDetectSemanticConflicts = conflictDetector.detectSemanticConflicts;
+    const originalCreateOrShow = WebConflictPanel.createOrShow;
+    let openedWebPanel = false;
+
+    try {
+        (conflictDetector as any).detectSemanticConflicts = async () => sharedReorderConflict;
+        (WebConflictPanel as any).createOrShow = async () => {
+            openedWebPanel = true;
+        };
+        setResolverPromptTestHooks({
+            pickRenumberExecutionCounts: () => false,
+        });
+
+        const resolver = new NotebookConflictResolver(vscode.Uri.file(tempDir));
+        const resolutionPromise = new Promise<import('../resolver').ResolvedConflictDetails>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                subscription.dispose();
+                reject(new Error('Timed out waiting for shared-reorder auto-apply resolution event'));
+            }, 5000);
+            const subscription = onDidResolveConflictWithDetails.event((details) => {
+                if (details.uri.fsPath !== normalizedConflictPath) return;
+                clearTimeout(timeout);
+                subscription.dispose();
+                resolve(details);
+            });
+        });
+
+        await resolver.resolveSemanticConflicts(vscode.Uri.file(conflictPath));
+        const resolvedDetails = await resolutionPromise;
+
+        assert.strictEqual(openedWebPanel, false, 'Expected shared reorder to auto-apply without opening the web resolver');
+        assert.ok(resolvedDetails.resolvedNotebook, 'Expected shared reorder path to emit a resolved notebook');
+
+        const expectedSources = sharedReorderCurrent.cells.map(cell => normalizeCellSource(cell.source));
+        const emittedSources = resolvedDetails.resolvedNotebook!.cells.map(cell => normalizeCellSource(cell.source));
+        assert.deepStrictEqual(
+            emittedSources,
+            expectedSources,
+            'Expected shared reorder auto-apply to preserve the agreed current/incoming order'
+        );
+
+        const writtenNotebook = JSON.parse(fs.readFileSync(conflictPath, 'utf8')) as Notebook;
+        const writtenSources = writtenNotebook.cells.map(cell => normalizeCellSource(cell.source));
+        assert.deepStrictEqual(
+            writtenSources,
+            expectedSources,
+            'Expected shared reorder auto-apply to write the agreed current/incoming order to disk'
+        );
+    } finally {
+        (conflictDetector as any).detectSemanticConflicts = originalDetectSemanticConflicts;
+        (WebConflictPanel as any).createOrShow = originalCreateOrShow;
+        setResolverPromptTestHooks(undefined);
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
 }

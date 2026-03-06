@@ -28,29 +28,36 @@ interface ResolutionState {
 interface MergeRowProps {
     row: MergeRowType;
     rowIndex: number;
+    isReordered?: boolean;
     conflictIndex: number;
     notebookPath?: string;
     languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onCommitContent: (index: number, resolvedContent: string) => void;
+    onUnmatchRow?: (rowIndex: number) => void;
+    onRematchRows?: (unmatchGroupId: string) => void;
     showOutputs?: boolean;
     showBaseColumn?: boolean;
     showCellHeaders?: boolean;
     theme?: 'dark' | 'light';
     'data-testid'?: string;
 }
+
 const EMPTY_EXTENSIONS: Extension[] = [];
 
 export function MergeRowInner({
     row,
     rowIndex,
+    isReordered = false,
     conflictIndex,
     notebookPath,
     languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
     onSelectChoice,
     onCommitContent,
+    onUnmatchRow,
+    onRematchRows,
     showOutputs = true,
     showBaseColumn = true,
     showCellHeaders = false,
@@ -131,20 +138,51 @@ export function MergeRowInner({
         onCommitContent(conflictIndex, draftResolvedContent);
     };
 
+    const base = row.baseCellIndex;
+    const currentDelta = (isReordered && base !== undefined && row.currentCellIndex !== undefined)
+        ? row.currentCellIndex - base : undefined;
+    const incomingDelta = (isReordered && base !== undefined && row.incomingCellIndex !== undefined)
+        ? row.incomingCellIndex - base : undefined;
+    const populatedSideCount = [row.baseCell, row.currentCell, row.incomingCell].filter(Boolean).length;
+    const canUnmatch = isConflict
+        && isReordered
+        && !row.isUserUnmatched
+        && row.conflictIndex !== undefined
+        && populatedSideCount >= 2;
+
     // For identical rows, show a unified single cell
     if (!isConflict) {
         const cell = selectNonConflictMergedCell(row.baseCell, row.currentCell, row.incomingCell);
         // Compute raw source for testing - this is what will become the cell source in the resolved notebook
         const rawSource = cell ? normalizeCellSource(cell.source) : '';
         const cellType = cell?.cell_type || 'code';
+        const identicalClasses = [
+            'merge-row',
+            'identical-row',
+            isReordered && 'reordered-row',
+        ].filter(Boolean).join(' ');
         return (
             <div
-                className="merge-row identical-row"
+                className={identicalClasses}
                 data-testid={testId}
                 data-raw-source={rawSource}
                 data-cell-type={cellType}
                 data-cell={encodeURIComponent(cell ? JSON.stringify(cell) : '')}
             >
+                {isReordered && (
+                    <div className="reorder-indicator-bar" data-testid="reorder-indicator">
+                        {currentDelta !== undefined && currentDelta !== 0 && (
+                            <span className="reorder-delta current-delta">
+                                {currentDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(currentDelta)}
+                            </span>
+                        )}
+                        {incomingDelta !== undefined && incomingDelta !== 0 && (
+                            <span className="reorder-delta incoming-delta">
+                                {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
+                            </span>
+                        )}
+                    </div>
+                )}
                 <div className="cell-columns">
                     <div className="cell-column" style={{ gridColumn: '1 / -1' }}>
                         <CellContent
@@ -175,16 +213,60 @@ export function MergeRowInner({
         'merge-row',
         'conflict-row',
         row.isUnmatched && 'unmatched-row',
+        row.isUserUnmatched && 'user-unmatched-row',
+        isReordered && !row.isUserUnmatched && 'reordered-row',
         resolutionState && 'resolved-row'
     ].filter(Boolean).join(' ');
 
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
+    const showBaseColumnForRow = showBaseColumn;
     // Always use conflict diffing mode for consistent red highlighting of divergence
     const diffMode = 'conflict';
     return (
         <div className={rowClasses} data-testid={testId}>
+            {/* Reorder indicator bar — only for reordered rows that haven't been unmatched */}
+            {isReordered && !row.isUserUnmatched && (
+                <div className="reorder-indicator-bar" data-testid="reorder-indicator">
+                    {currentDelta !== undefined && currentDelta !== 0 && (
+                        <span className="reorder-delta current-delta">
+                            {currentDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(currentDelta)}
+                        </span>
+                    )}
+                    {incomingDelta !== undefined && incomingDelta !== 0 && (
+                        <span className="reorder-delta incoming-delta">
+                            {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
+                        </span>
+                    )}
+                    {canUnmatch && (
+                        <button
+                            className="btn-unmatch"
+                            onClick={() => onUnmatchRow?.(rowIndex)}
+                            title="Unmatch this row into separate cells"
+                            data-testid="unmatch-btn"
+                        >
+                            Unmatch
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* Rematch indicator bar — for user-unmatched rows */}
+            {row.isUserUnmatched && row.unmatchGroupId && (
+                <div className="rematch-indicator-bar" data-testid="rematch-indicator">
+                    <span className="rematch-label">Unmatched</span>
+                    <button
+                        className="btn-rematch"
+                        onClick={() => onRematchRows?.(row.unmatchGroupId!)}
+                        title="Rematch these cells back into one row"
+                        data-testid="rematch-btn"
+                    >
+                        Rematch
+                    </button>
+                </div>
+            )}
+
             {/* Warning modal for branch change */}
             {showWarning && (
                 <div className="warning-modal-overlay">
@@ -205,8 +287,8 @@ export function MergeRowInner({
             )}
 
             {/* Three-way diff view */}
-            <div className={`cell-columns${showBaseColumn ? '' : ' two-column'}`}>
-                {showBaseColumn && (
+            <div className={`cell-columns${showBaseColumnForRow ? '' : ' two-column'}`}>
+                {showBaseColumnForRow && (
                     <div className="cell-column base-column">
                         {row.baseCell ? (
                             <CellContent
@@ -276,7 +358,7 @@ export function MergeRowInner({
 
             {/* Resolution bar - select which branch to use as base */}
             <div className="resolution-bar">
-                {showBaseColumn && hasBase && (
+                {showBaseColumnForRow && hasBase && (
                     <button
                         className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
                         onClick={() => handleChoiceClick('base')}
