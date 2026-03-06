@@ -5,13 +5,20 @@
  * These run inside the VS Code extension test host but do not require UI/browser.
  */
 
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as assert from 'assert';
-import { selectNonConflictMergedCell } from '../notebookUtils';
+import * as vscode from 'vscode';
+import * as conflictDetector from '../conflictDetector';
+import { normalizeCellSource, selectNonConflictMergedCell } from '../notebookUtils';
 import { renumberExecutionCounts } from '../notebookParser';
 import { analyzeSemanticConflictsFromMappings } from '../conflictDetector';
+import { NotebookConflictResolver, onDidResolveConflictWithDetails } from '../resolver';
 import { createResolverStore } from '../web/client/resolverStore';
 import { buildMergeRowsFromSemantic } from '../web/client/mergeRowBuilder';
 import { computeReorderedRowIndexSet } from '../web/client/reorderUtils';
+import { WebConflictPanel } from '../web/WebConflictPanel';
 import type { NotebookCell, Notebook, NotebookSemanticConflict } from '../types';
 import type { CellMapping } from '../types';
 
@@ -557,4 +564,118 @@ export async function run(): Promise<void> {
         6,
         'Expected a second reordered row to remain unmatchable after the first split'
     );
+
+    // ---------------------------------------------------------------------
+    // Regression: when current and incoming already agree semantically (for
+    // example, they made the same reorder), resolveSemanticConflicts must
+    // still auto-apply the merged notebook instead of bailing out early.
+    // ---------------------------------------------------------------------
+    const sharedReorderBase: Notebook = {
+        nbformat: 4,
+        nbformat_minor: 5,
+        metadata: {},
+        cells: [
+            makeMarkdownCell('shared-order-a'),
+            makeMarkdownCell('shared-order-b'),
+        ],
+    };
+    const sharedReorderCurrent: Notebook = {
+        ...sharedReorderBase,
+        cells: [
+            makeMarkdownCell('shared-order-b'),
+            makeMarkdownCell('shared-order-a'),
+        ],
+    };
+    const sharedReorderIncoming: Notebook = {
+        ...sharedReorderBase,
+        cells: [
+            makeMarkdownCell('shared-order-b'),
+            makeMarkdownCell('shared-order-a'),
+        ],
+    };
+    const sharedReorderConflict: NotebookSemanticConflict = {
+        filePath: 'shared-reorder.ipynb',
+        semanticConflicts: [],
+        cellMappings: [
+            {
+                baseIndex: 0,
+                currentIndex: 1,
+                incomingIndex: 1,
+                matchConfidence: 1,
+                baseCell: sharedReorderBase.cells[0],
+                currentCell: sharedReorderCurrent.cells[1],
+                incomingCell: sharedReorderIncoming.cells[1],
+            },
+            {
+                baseIndex: 1,
+                currentIndex: 0,
+                incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: sharedReorderBase.cells[1],
+                currentCell: sharedReorderCurrent.cells[0],
+                incomingCell: sharedReorderIncoming.cells[0],
+            },
+        ],
+        base: sharedReorderBase,
+        current: sharedReorderCurrent,
+        incoming: sharedReorderIncoming,
+    };
+
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergenb-shared-reorder-'));
+    const conflictPath = path.join(tempDir, 'conflict.ipynb');
+    fs.writeFileSync(conflictPath, JSON.stringify(sharedReorderBase, null, 2));
+
+    const originalDetectSemanticConflicts = conflictDetector.detectSemanticConflicts;
+    const originalCreateOrShow = WebConflictPanel.createOrShow;
+    const originalShowQuickPick = vscode.window.showQuickPick;
+    let openedWebPanel = false;
+
+    try {
+        (conflictDetector as any).detectSemanticConflicts = async () => sharedReorderConflict;
+        (WebConflictPanel as any).createOrShow = async () => {
+            openedWebPanel = true;
+        };
+        (vscode.window as any).showQuickPick = async () => 'No';
+
+        const resolver = new NotebookConflictResolver(vscode.Uri.file(tempDir));
+        const resolutionPromise = new Promise<import('../resolver').ResolvedConflictDetails>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                subscription.dispose();
+                reject(new Error('Timed out waiting for shared-reorder auto-apply resolution event'));
+            }, 5000);
+            const subscription = onDidResolveConflictWithDetails.event((details) => {
+                if (details.uri.fsPath !== conflictPath) return;
+                clearTimeout(timeout);
+                subscription.dispose();
+                resolve(details);
+            });
+        });
+
+        await resolver.resolveSemanticConflicts(vscode.Uri.file(conflictPath));
+        const resolvedDetails = await resolutionPromise;
+
+        assert.strictEqual(openedWebPanel, false, 'Expected shared reorder to auto-apply without opening the web resolver');
+        assert.ok(resolvedDetails.resolvedNotebook, 'Expected shared reorder path to emit a resolved notebook');
+
+        const expectedSources = sharedReorderCurrent.cells.map(cell => normalizeCellSource(cell.source));
+        const emittedSources = resolvedDetails.resolvedNotebook!.cells.map(cell => normalizeCellSource(cell.source));
+        assert.deepStrictEqual(
+            emittedSources,
+            expectedSources,
+            'Expected shared reorder auto-apply to preserve the agreed current/incoming order'
+        );
+
+        const writtenNotebook = JSON.parse(fs.readFileSync(conflictPath, 'utf8')) as Notebook;
+        const writtenSources = writtenNotebook.cells.map(cell => normalizeCellSource(cell.source));
+        assert.deepStrictEqual(
+            writtenSources,
+            expectedSources,
+            'Expected shared reorder auto-apply to write the agreed current/incoming order to disk'
+        );
+    } finally {
+        (conflictDetector as any).detectSemanticConflicts = originalDetectSemanticConflicts;
+        (WebConflictPanel as any).createOrShow = originalCreateOrShow;
+        (vscode.window as any).showQuickPick = originalShowQuickPick;
+        fs.rmSync(tempDir, { recursive: true, force: true });
+    }
 }

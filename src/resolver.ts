@@ -344,22 +344,15 @@ export class NotebookConflictResolver {
         const settings = getSettings();
         const autoResolveResult = applyAutoResolutions(semanticConflict, settings);
 
-        if (
-            semanticConflict.semanticConflicts.length === 0 &&
-            autoResolveResult.autoResolvedCount === 0 &&
-            autoResolveResult.autoResolvedDescriptions.length === 0
-        ) {
-            vscode.window.showInformationMessage('Notebook is in unmerged state but no conflicts detected.');
-            return;
-        }
-
         // Show what was auto-resolved
         if (autoResolveResult.autoResolvedCount > 0) {
             const autoResolved = autoResolveResult.autoResolvedDescriptions.join(', ');
             vscode.window.showInformationMessage(`Auto-resolved: ${autoResolved}`);
         }
 
-        // If all conflicts were auto-resolved, save and return
+        // If no manual conflicts remain, save and return. This also handles
+        // unmerged notebooks whose branches already agree semantically
+        // (for example, both sides made the same reorder).
         if (autoResolveResult.remainingConflicts.length === 0) {
             // Ask user if they want to renumber execution counts
             const renumber = await vscode.window.showQuickPick(
