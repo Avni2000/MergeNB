@@ -11,6 +11,7 @@ import { renumberExecutionCounts } from '../notebookParser';
 import { analyzeSemanticConflictsFromMappings } from '../conflictDetector';
 import { createResolverStore } from '../web/client/resolverStore';
 import { buildMergeRowsFromSemantic } from '../web/client/mergeRowBuilder';
+import { computeReorderedRowIndexSet } from '../web/client/reorderUtils';
 import type { NotebookCell, Notebook, NotebookSemanticConflict } from '../types';
 import type { CellMapping } from '../types';
 
@@ -339,6 +340,40 @@ export async function run(): Promise<void> {
         synthesizedReorderConflicts.every(row => row.type === 'conflict' && row.conflictIndex !== undefined),
         'Expected synthetic reorder conflicts to have conflict indices'
     );
+    assert.ok(
+        reorderRows.filter(row => row.isReordered).length >= 2,
+        'Expected reordered rows to retain persistent reorder state'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: pure index drift from insert/delete offsets must NOT be
+    // treated as reorder when relative order is preserved.
+    // ---------------------------------------------------------------------
+    const offsetOnlyRows = [
+        {
+            type: 'identical' as const,
+            baseCellIndex: 0,
+            currentCellIndex: 1,
+            incomingCellIndex: 0,
+        },
+        {
+            type: 'identical' as const,
+            baseCellIndex: 1,
+            currentCellIndex: 2,
+            incomingCellIndex: 1,
+        },
+        {
+            type: 'identical' as const,
+            baseCellIndex: 2,
+            currentCellIndex: 3,
+            incomingCellIndex: 2,
+        },
+    ];
+    assert.strictEqual(
+        computeReorderedRowIndexSet(offsetOnlyRows).size,
+        0,
+        'Expected index drift with preserved relative order to not be flagged as reorder'
+    );
 
     // ---------------------------------------------------------------------
     // Regression: unmatch/rematch must preserve global row ordering.
@@ -379,6 +414,7 @@ export async function run(): Promise<void> {
             conflictIndex: 0,
             conflictType: 'cell-reordered',
             anchorPosition: 2,
+            isReordered: true,
         },
         {
             type: 'identical' as const,
@@ -416,5 +452,56 @@ export async function run(): Promise<void> {
         afterRematch[2].currentCell?.source,
         'target-current',
         'Expected rematch to restore the original conflict row at its sorted position'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: splitting one reordered row must not make the remaining
+    // reordered rows lose their unmatch eligibility.
+    // ---------------------------------------------------------------------
+    const multiUnmatchRows = [
+        {
+            type: 'conflict' as const,
+            baseCell: makeMarkdownCell('swap-a'),
+            currentCell: makeMarkdownCell('swap-a'),
+            incomingCell: makeMarkdownCell('swap-a'),
+            baseCellIndex: 0,
+            currentCellIndex: 1,
+            incomingCellIndex: 0,
+            conflictIndex: 0,
+            conflictType: 'cell-reordered',
+            anchorPosition: 0,
+            isReordered: true,
+        },
+        {
+            type: 'conflict' as const,
+            baseCell: makeMarkdownCell('swap-b'),
+            currentCell: makeMarkdownCell('swap-b'),
+            incomingCell: makeMarkdownCell('swap-b'),
+            baseCellIndex: 1,
+            currentCellIndex: 0,
+            incomingCellIndex: 1,
+            conflictIndex: 1,
+            conflictType: 'cell-reordered',
+            anchorPosition: 1,
+            isReordered: true,
+        },
+    ];
+    const multiUnmatchStore = createResolverStore(multiUnmatchRows);
+    multiUnmatchStore.getState().unmatchRow(0);
+
+    const rowsAfterFirstSplit = multiUnmatchStore.getState().rows;
+    const remainingConflictIndex = rowsAfterFirstSplit.findIndex(row => row.currentCell?.source === 'swap-b');
+    assert.notStrictEqual(
+        remainingConflictIndex,
+        -1,
+        'Expected the second reordered row to still exist after splitting the first'
+    );
+
+    multiUnmatchStore.getState().unmatchRow(remainingConflictIndex);
+    const rowsAfterSecondSplit = multiUnmatchStore.getState().rows;
+    assert.strictEqual(
+        rowsAfterSecondSplit.length,
+        6,
+        'Expected a second reordered row to remain unmatchable after the first split'
     );
 }

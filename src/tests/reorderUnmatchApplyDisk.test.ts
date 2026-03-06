@@ -6,17 +6,22 @@
 import * as vscode from 'vscode';
 import type { Page } from 'playwright';
 import {
-    collectExpectedCellsFromUI,
     waitForAllConflictsResolved,
     waitForResolvedCount,
 } from './integrationUtils';
 import {
     applyResolutionAndReadNotebook,
     assertNotebookMatches,
+    buildExpectedCellsFromNotebook,
     readTestConfig,
+    readNotebookFixtureFromRepo,
     setupConflictResolver,
 } from './testHarness';
 import { validateNotebookStructure } from './testHelpers';
+
+function withRowIndex<T extends { rowIndex: number }>(cell: T, rowIndex: number): T {
+    return { ...cell, rowIndex };
+}
 
 export async function run(): Promise<void> {
     console.log('Starting MergeNB Reorder Unmatch -> Apply Integration Test...');
@@ -54,7 +59,7 @@ export async function run(): Promise<void> {
         console.log(`  Found ${unmatchBtnCount} unmatch button(s)`);
 
         console.log('\n=== Step 2: Unmatch one reordered row ===');
-        await unmatchButtons.first().click();
+        await unmatchButtons.nth(1).click();
         await page.locator('.merge-row.user-unmatched-row').first().waitFor({ timeout: 5000 });
         const afterUnmatchCounter = await waitForResolvedCount(page, 0, 5000);
         if (afterUnmatchCounter.total <= initialCounter.total) {
@@ -64,29 +69,38 @@ export async function run(): Promise<void> {
         }
         console.log(`  Conflicts after unmatch: ${afterUnmatchCounter.total} (before: ${initialCounter.total})`);
 
-        console.log('\n=== Step 3: Resolve all and capture expected UI output ===');
+        const remainingUnmatchButtons = await page.locator('[data-testid="unmatch-btn"]').count();
+        if (remainingUnmatchButtons !== unmatchBtnCount - 1) {
+            throw new Error(
+                `Expected remaining reordered rows to stay unmatchable after first split (expected ${unmatchBtnCount - 1}, got ${remainingUnmatchButtons})`
+            );
+        }
+
+        console.log('\n=== Step 3: Resolve explicit mixed choices and capture independent expectation ===');
+        const baseFixture = readNotebookFixtureFromRepo('09_reorder_base.ipynb');
+        const currentFixture = readNotebookFixtureFromRepo('09_reorder_current.ipynb');
+        const incomingFixture = readNotebookFixtureFromRepo('09_reorder_incoming.ipynb');
+        const baseExpected = buildExpectedCellsFromNotebook(baseFixture);
+        const currentExpected = buildExpectedCellsFromNotebook(currentFixture);
+        const incomingExpected = buildExpectedCellsFromNotebook(incomingFixture);
         const conflictRows = page.locator('.merge-row.conflict-row');
         const conflictRowCount = await conflictRows.count();
-        const selectedChoices = new Map<number, 'current' | 'incoming' | 'delete'>();
+        if (conflictRowCount !== 5) {
+            throw new Error(`Expected 5 conflict rows after unmatching Beta, got ${conflictRowCount}`);
+        }
 
-        for (let i = 0; i < conflictRowCount; i++) {
+        const selectors: Array<'.btn-resolve.btn-current' | '.btn-resolve.btn-incoming' | '.btn-resolve.btn-delete'> = [
+            '.btn-resolve.btn-current',  // current-only Beta
+            '.btn-resolve.btn-current',  // Alpha row
+            '.btn-resolve.btn-delete',   // base-only Beta
+            '.btn-resolve.btn-incoming', // Gamma row
+            '.btn-resolve.btn-delete',   // incoming-only Beta
+        ];
+
+        for (let i = 0; i < selectors.length; i++) {
             const row = conflictRows.nth(i);
-            const hasCurrent = await row.locator('.btn-resolve.btn-current').count() > 0;
-            const hasIncoming = await row.locator('.btn-resolve.btn-incoming').count() > 0;
-            const preferIncoming = i % 2 === 0;
-
-            const choice: 'current' | 'incoming' | 'delete' = preferIncoming
-                ? (hasIncoming ? 'incoming' : hasCurrent ? 'current' : 'delete')
-                : (hasCurrent ? 'current' : hasIncoming ? 'incoming' : 'delete');
-
-            const selector = choice === 'current'
-                ? '.btn-resolve.btn-current'
-                : choice === 'incoming'
-                    ? '.btn-resolve.btn-incoming'
-                    : '.btn-resolve.btn-delete';
-            await row.locator(selector).click();
+            await row.locator(selectors[i]).click();
             await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
-            selectedChoices.set(i, choice);
         }
 
         const allResolved = await waitForAllConflictsResolved(page, 7000);
@@ -97,24 +111,18 @@ export async function run(): Promise<void> {
         const renumberEnabled = await page
             .locator('label:has-text("Renumber execution counts") input[type="checkbox"]')
             .isChecked();
-
-        const expectedCells = await collectExpectedCellsFromUI(page, {
-            resolveConflictChoice: async (_row, conflictIndex, rowIndex) => {
-                const choice = selectedChoices.get(conflictIndex);
-                if (!choice) {
-                    throw new Error(`Row ${rowIndex}: missing stored choice for conflict index ${conflictIndex}`);
-                }
-                return { choice };
-            },
-            includeMetadata: true,
-            includeOutputs: true,
-        });
-        const expectedNonDeleted = expectedCells.filter(c => !c.isDeleted);
+        const expectedCells = [
+            withRowIndex(baseExpected[0], 0),
+            withRowIndex(currentExpected[1], 1),
+            withRowIndex(currentExpected[2], 2),
+            withRowIndex(incomingExpected[2], 3),
+            withRowIndex(baseExpected[4], 4),
+        ];
 
         console.log('\n=== Step 4: Apply resolution and verify notebook on disk ===');
         const resolvedNotebook = await applyResolutionAndReadNotebook(page, session.conflictFile);
-        assertNotebookMatches(expectedNonDeleted, resolvedNotebook, {
-            expectedLabel: 'Expected from UI after unmatch',
+        assertNotebookMatches(expectedCells, resolvedNotebook, {
+            expectedLabel: 'Expected explicit sequence after unmatching Beta',
             compareMetadata: true,
             compareExecutionCounts: true,
             renumberEnabled,
