@@ -633,6 +633,9 @@ export async function run(): Promise<void> {
 
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergenb-shared-reorder-'));
     const conflictPath = path.join(tempDir, 'conflict.ipynb');
+    // Normalize through vscode.Uri so the drive letter casing matches on Windows
+    // (os.tmpdir() may return "C:\..." but vscode.Uri.file().fsPath returns "c:\...")
+    const normalizedConflictPath = vscode.Uri.file(conflictPath).fsPath;
     fs.writeFileSync(conflictPath, JSON.stringify(sharedReorderBase, null, 2));
 
     const originalDetectSemanticConflicts = conflictDetector.detectSemanticConflicts;
@@ -655,7 +658,7 @@ export async function run(): Promise<void> {
                 reject(new Error('Timed out waiting for shared-reorder auto-apply resolution event'));
             }, 5000);
             const subscription = onDidResolveConflictWithDetails.event((details) => {
-                if (details.uri.fsPath !== conflictPath) return;
+                if (details.uri.fsPath !== normalizedConflictPath) return;
                 clearTimeout(timeout);
                 subscription.dispose();
                 resolve(details);
