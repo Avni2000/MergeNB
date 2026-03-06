@@ -720,11 +720,13 @@ export function detectReordering(mappings: CellMapping[]): boolean {
         const prev = withAllThree[i - 1];
         const curr = withAllThree[i];
 
-        const baseOrdered = curr.baseIndex! > prev.baseIndex!;
         const currentOrdered = curr.currentIndex! > prev.currentIndex!;
         const incomingOrdered = curr.incomingIndex! > prev.incomingIndex!;
 
-        if (baseOrdered !== currentOrdered || baseOrdered !== incomingOrdered) {
+        // Reorder is only a semantic conflict when the branches disagree on
+        // the relative order. If both branches made the same reorder, the
+        // merge can preserve that shared order without user input.
+        if (currentOrdered !== incomingOrdered) {
             return true;
         }
     }

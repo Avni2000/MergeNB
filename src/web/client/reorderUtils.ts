@@ -12,8 +12,8 @@ function hasAllThreeIndices(row: MergeRowType): boolean {
 }
 
 /**
- * Compute row indices that are truly reordered (relative-order inversion),
- * not just shifted by insert/delete offset.
+ * Compute row indices whose relative order differs between current and
+ * incoming, not rows that merely drifted because of insert/delete offsets.
  */
 export function computeReorderedRowIndexSet(rows: MergeRowType[]): Set<number> {
     const withAllIndices: IndexedRow[] = rows
@@ -27,11 +27,10 @@ export function computeReorderedRowIndexSet(rows: MergeRowType[]): Set<number> {
         const prev = withAllIndices[i - 1];
         const curr = withAllIndices[i];
 
-        const baseOrdered = curr.row.baseCellIndex! > prev.row.baseCellIndex!;
         const currentOrdered = curr.row.currentCellIndex! > prev.row.currentCellIndex!;
         const incomingOrdered = curr.row.incomingCellIndex! > prev.row.incomingCellIndex!;
 
-        if (baseOrdered !== currentOrdered || baseOrdered !== incomingOrdered) {
+        if (currentOrdered !== incomingOrdered) {
             reordered.add(prev.index);
             reordered.add(curr.index);
         }

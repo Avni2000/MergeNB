@@ -346,6 +346,59 @@ export async function run(): Promise<void> {
     );
 
     // ---------------------------------------------------------------------
+    // Regression: matching reorder on both branches is not a conflict.
+    //
+    // If current and incoming agree on the new relative order, we should
+    // preserve that order automatically instead of surfacing a manual
+    // reorder conflict just because both differ from base.
+    // ---------------------------------------------------------------------
+    const sameReorderBaseA = makeMarkdownCell('same-reorder-a');
+    const sameReorderBaseB = makeMarkdownCell('same-reorder-b');
+    const sameReorderMappings: CellMapping[] = [
+        {
+            baseIndex: 0,
+            currentIndex: 1,
+            incomingIndex: 1,
+            matchConfidence: 1,
+            baseCell: sameReorderBaseA,
+            currentCell: sameReorderBaseA,
+            incomingCell: sameReorderBaseA,
+        },
+        {
+            baseIndex: 1,
+            currentIndex: 0,
+            incomingIndex: 0,
+            matchConfidence: 1,
+            baseCell: sameReorderBaseB,
+            currentCell: sameReorderBaseB,
+            incomingCell: sameReorderBaseB,
+        },
+    ];
+    const sameReorderConflicts = analyzeSemanticConflictsFromMappings(sameReorderMappings);
+    assert.ok(
+        !sameReorderConflicts.some(c => c.type === 'cell-reordered'),
+        'Expected no reorder conflict when current and incoming agree on the reordered order'
+    );
+    assert.strictEqual(
+        computeReorderedRowIndexSet([
+            {
+                type: 'identical' as const,
+                baseCellIndex: 0,
+                currentCellIndex: 1,
+                incomingCellIndex: 1,
+            },
+            {
+                type: 'identical' as const,
+                baseCellIndex: 1,
+                currentCellIndex: 0,
+                incomingCellIndex: 0,
+            },
+        ]).size,
+        0,
+        'Expected no reorder rows when current and incoming preserve the same relative order'
+    );
+
+    // ---------------------------------------------------------------------
     // Regression: pure index drift from insert/delete offsets must NOT be
     // treated as reorder when relative order is preserved.
     // ---------------------------------------------------------------------
