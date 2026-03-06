@@ -104,12 +104,20 @@ export function buildMergeRowsFromSemantic(
     }, -1) + 1;
 
     return sortedRows.map((row, index) => {
-        if (!reorderedRowIndices.has(index) || row.type === 'conflict') {
+        if (!reorderedRowIndices.has(index)) {
             return row;
+        }
+
+        if (row.type === 'conflict') {
+            return {
+                ...row,
+                isReordered: true,
+            };
         }
 
         return {
             ...row,
+            isReordered: true,
             type: 'conflict',
             conflictIndex: nextSyntheticConflictIndex++,
             conflictType: 'cell-reordered',

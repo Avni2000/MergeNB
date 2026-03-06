@@ -4,7 +4,6 @@ import { immer } from 'zustand/middleware/immer';
 import { normalizeCellSource } from '../../notebookUtils';
 import { sortByPosition } from '../../positionUtils';
 import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from './types';
-import { isRowReorderedAtIndex } from './reorderUtils';
 
 enableMapSet();
 
@@ -227,8 +226,9 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 if (row.conflictIndex === undefined) return;
                 if (row.isUserUnmatched || row.unmatchGroupId !== undefined || row.originalMatchedRow !== undefined) return;
 
-                // Only allow unmatching reordered rows
-                if (!isRowReorderedAtIndex(state.rows, rowIndex)) return;
+                // Reorder eligibility is part of the original row state, not the current
+                // live row list, so other unmatches do not invalidate this row.
+                if (!row.isReordered) return;
 
                 const populatedCellCount = [row.baseCell, row.currentCell, row.incomingCell].filter(Boolean).length;
                 if (populatedCellCount < 2) return;

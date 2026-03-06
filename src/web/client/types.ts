@@ -37,6 +37,8 @@ export interface MergeRow {
     isUnmatched?: boolean;
     unmatchedSides?: ('base' | 'current' | 'incoming')[];
     anchorPosition?: number;
+    /** Whether this row participated in a reorder conflict in the original merge state. */
+    isReordered?: boolean;
     /** Whether this row is in edit mode */
     isEditing?: boolean;
     /** Whether this row was manually unmatched by the user (split from a reordered row). */

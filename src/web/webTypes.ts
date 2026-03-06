@@ -159,6 +159,7 @@ export interface WebMergeRow {
     isUnmatched?: boolean;
     unmatchedSides?: ('base' | 'current' | 'incoming')[];
     anchorPosition?: number;
+    isReordered?: boolean;
     isUserUnmatched?: boolean;
     unmatchGroupId?: string;
 }
