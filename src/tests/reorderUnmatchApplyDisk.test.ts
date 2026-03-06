@@ -85,14 +85,13 @@ export async function run(): Promise<void> {
         const incomingExpected = buildExpectedCellsFromNotebook(incomingFixture);
         const conflictRows = page.locator('.merge-row.conflict-row');
         const conflictRowCount = await conflictRows.count();
-        if (conflictRowCount !== 5) {
-            throw new Error(`Expected 5 conflict rows after unmatching Beta, got ${conflictRowCount}`);
+        if (conflictRowCount !== 4) {
+            throw new Error(`Expected 4 conflict rows after unmatching Beta, got ${conflictRowCount}`);
         }
 
         const selectors: Array<'.btn-resolve.btn-current' | '.btn-resolve.btn-incoming' | '.btn-resolve.btn-delete'> = [
             '.btn-resolve.btn-current',  // current-only Beta
             '.btn-resolve.btn-current',  // Alpha row
-            '.btn-resolve.btn-delete',   // base-only Beta
             '.btn-resolve.btn-incoming', // Gamma row
             '.btn-resolve.btn-delete',   // incoming-only Beta
         ];

@@ -14,7 +14,7 @@ import * as conflictDetector from '../conflictDetector';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../notebookUtils';
 import { renumberExecutionCounts } from '../notebookParser';
 import { analyzeSemanticConflictsFromMappings } from '../conflictDetector';
-import { NotebookConflictResolver, onDidResolveConflictWithDetails } from '../resolver';
+import { NotebookConflictResolver, onDidResolveConflictWithDetails, setResolverPromptTestHooks } from '../resolver';
 import { createResolverStore } from '../web/client/resolverStore';
 import { buildMergeRowsFromSemantic } from '../web/client/mergeRowBuilder';
 import { computeReorderedRowIndexSet } from '../web/client/reorderUtils';
@@ -561,8 +561,18 @@ export async function run(): Promise<void> {
     const rowsAfterSecondSplit = multiUnmatchStore.getState().rows;
     assert.strictEqual(
         rowsAfterSecondSplit.length,
-        6,
+        4,
         'Expected a second reordered row to remain unmatchable after the first split'
+    );
+    assert.strictEqual(
+        new Set(rowsAfterSecondSplit.map(row => row.unmatchGroupId).filter((value): value is string => !!value)).size,
+        2,
+        'Expected each reordered row split to keep its own rematch group'
+    );
+    assert.strictEqual(
+        rowsAfterSecondSplit.filter(row => row.currentCell?.source === 'swap-b' || row.incomingCell?.source === 'swap-b').length,
+        2,
+        'Expected the second reordered row to split into current/incoming rows'
     );
 
     // ---------------------------------------------------------------------
@@ -627,7 +637,6 @@ export async function run(): Promise<void> {
 
     const originalDetectSemanticConflicts = conflictDetector.detectSemanticConflicts;
     const originalCreateOrShow = WebConflictPanel.createOrShow;
-    const originalShowQuickPick = vscode.window.showQuickPick;
     let openedWebPanel = false;
 
     try {
@@ -635,7 +644,9 @@ export async function run(): Promise<void> {
         (WebConflictPanel as any).createOrShow = async () => {
             openedWebPanel = true;
         };
-        (vscode.window as any).showQuickPick = async () => 'No';
+        setResolverPromptTestHooks({
+            pickRenumberExecutionCounts: () => false,
+        });
 
         const resolver = new NotebookConflictResolver(vscode.Uri.file(tempDir));
         const resolutionPromise = new Promise<import('../resolver').ResolvedConflictDetails>((resolve, reject) => {
@@ -675,7 +686,7 @@ export async function run(): Promise<void> {
     } finally {
         (conflictDetector as any).detectSemanticConflicts = originalDetectSemanticConflicts;
         (WebConflictPanel as any).createOrShow = originalCreateOrShow;
-        (vscode.window as any).showQuickPick = originalShowQuickPick;
+        setResolverPromptTestHooks(undefined);
         fs.rmSync(tempDir, { recursive: true, force: true });
     }
 }
