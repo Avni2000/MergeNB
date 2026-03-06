@@ -221,12 +221,7 @@ export function MergeRowInner({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
-    const showBaseColumnForRow = showBaseColumn || (
-        row.isUserUnmatched
-        && hasBase
-        && !hasCurrent
-        && !hasIncoming
-    );
+    const showBaseColumnForRow = showBaseColumn;
     // Always use conflict diffing mode for consistent red highlighting of divergence
     const diffMode = 'conflict';
     return (

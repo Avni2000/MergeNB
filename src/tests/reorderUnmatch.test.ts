@@ -47,12 +47,14 @@ export async function run(): Promise<void> {
     const previousAutoResolveExecutionCount = mergeNBConfig.get<boolean>('autoResolve.executionCount');
     const previousStripOutputs = mergeNBConfig.get<boolean>('autoResolve.stripOutputs');
     const previousAutoResolveWhitespace = mergeNBConfig.get<boolean>('autoResolve.whitespace');
+    const previousShowBaseColumn = mergeNBConfig.get<boolean>('ui.showBaseColumn');
 
     try {
         // Disable auto-resolve for deterministic results
         await mergeNBConfig.update('autoResolve.executionCount', false, vscode.ConfigurationTarget.Workspace);
         await mergeNBConfig.update('autoResolve.stripOutputs', false, vscode.ConfigurationTarget.Workspace);
         await mergeNBConfig.update('autoResolve.whitespace', false, vscode.ConfigurationTarget.Workspace);
+        await mergeNBConfig.update('ui.showBaseColumn', false, vscode.ConfigurationTarget.Workspace);
 
         const config = readTestConfig();
         const session = await setupConflictResolver(config);
@@ -127,15 +129,15 @@ export async function run(): Promise<void> {
             throw new Error('Expected rematch buttons on unmatched rows');
         }
 
-        // With the default two-column layout, base-only split rows must still
-        // render their base content and expose a Use Base action.
-        const unmatchedBaseButtons = page.locator('.merge-row.user-unmatched-row .btn-resolve.btn-base');
-        const unmatchedBaseCells = page.locator('.merge-row.user-unmatched-row .base-column .notebook-cell');
+        // Unmatch should only produce current-only and incoming-only rows —
+        // no base-only rows should appear (base is reference context, not a
+        // side the user resolves independently).
+        const unmatchedBaseButtons = userUnmatchedRows.locator('.btn-resolve.btn-base');
         const baseButtonCount = await unmatchedBaseButtons.count();
-        const baseCellCount = await unmatchedBaseCells.count();
-        if (baseButtonCount === 0 || baseCellCount === 0) {
+        const baseColumnCount = await userUnmatchedRows.locator('.base-column').count();
+        if (baseButtonCount !== 0 || baseColumnCount !== 0) {
             throw new Error(
-                `Expected unmatched base-only rows to stay actionable/visible (base buttons=${baseButtonCount}, base cells=${baseCellCount})`
+                `Expected no base involvement in unmatched rows (baseButtons=${baseButtonCount}, baseColumns=${baseColumnCount})`
             );
         }
 
@@ -298,6 +300,11 @@ export async function run(): Promise<void> {
         await mergeNBConfig.update(
             'autoResolve.whitespace',
             previousAutoResolveWhitespace,
+            vscode.ConfigurationTarget.Workspace
+        );
+        await mergeNBConfig.update(
+            'ui.showBaseColumn',
+            previousShowBaseColumn,
             vscode.ConfigurationTarget.Workspace
         );
         if (page) await page.close();

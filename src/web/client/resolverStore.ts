@@ -230,8 +230,13 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 // live row list, so other unmatches do not invalidate this row.
                 if (!row.isReordered) return;
 
-                const populatedCellCount = [row.baseCell, row.currentCell, row.incomingCell].filter(Boolean).length;
-                if (populatedCellCount < 2) return;
+                // Unmatch separates current from incoming.  Base is reference
+                // context (preserved in originalMatchedRow for rematch), not an
+                // independent side the user resolves.
+                const sides: Array<'current' | 'incoming'> = [];
+                if (row.currentCell) sides.push('current');
+                if (row.incomingCell) sides.push('incoming');
+                if (sides.length < 2) return;
 
                 const groupId = generateUnmatchGroupId();
 
@@ -244,26 +249,19 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 }
                 let nextConflictIndex = maxConflictIndex + 1;
 
-                // Build split rows — one per side that has a cell
-                const sides: Array<'base' | 'current' | 'incoming'> = [];
-                if (row.baseCell) sides.push('base');
-                if (row.currentCell) sides.push('current');
-                if (row.incomingCell) sides.push('incoming');
-
                 const splitRows: MergeRowType[] = sides.map(side => ({
                     type: 'conflict' as const,
-                    baseCell: side === 'base' ? row.baseCell : undefined,
+                    baseCell: undefined,
                     currentCell: side === 'current' ? row.currentCell : undefined,
                     incomingCell: side === 'incoming' ? row.incomingCell : undefined,
-                    baseCellIndex: side === 'base' ? row.baseCellIndex : undefined,
+                    baseCellIndex: undefined,
                     currentCellIndex: side === 'current' ? row.currentCellIndex : undefined,
                     incomingCellIndex: side === 'incoming' ? row.incomingCellIndex : undefined,
                     conflictIndex: nextConflictIndex++,
                     conflictType: 'user-unmatched',
                     isUnmatched: true,
                     unmatchedSides: [side],
-                    anchorPosition: (side === 'base' ? row.baseCellIndex
-                        : side === 'current' ? row.currentCellIndex
+                    anchorPosition: (side === 'current' ? row.currentCellIndex
                         : row.incomingCellIndex) ?? row.anchorPosition,
                     isUserUnmatched: true,
                     unmatchGroupId: groupId,
