@@ -8,14 +8,10 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
-import { sortByPosition } from '../../positionUtils';
 import { normalizeCellSource } from '../../notebookUtils';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
-    NotebookSemanticConflict,
-    CellMapping,
-    SemanticConflict,
     NotebookCell,
 } from './types';
 import { MergeRow } from './MergeRow';
@@ -25,6 +21,7 @@ import {
     type TakeAllChoice,
 } from './resolverStore';
 import { computeReorderedRowIndexSet } from './reorderUtils';
+import { buildMergeRowsFromSemantic } from './mergeRowBuilder';
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
@@ -602,73 +599,3 @@ function getCellForSide(
 /**
  * Build merge rows from semantic conflict data.
  */
-function buildMergeRowsFromSemantic(
-    conflict: NotebookSemanticConflict,
-    currentNotebookOverride?: import('../../types').Notebook
-): MergeRowType[] {
-    const rows: MergeRowType[] = [];
-    const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();
-    const conflictPriority: Record<SemanticConflict['type'], number> = {
-        'cell-modified': 0,
-        'cell-added': 1,
-        'cell-deleted': 2,
-        'cell-reordered': 3,
-        'metadata-changed': 4,
-        'outputs-changed': 5,
-        'execution-count-changed': 6
-    };
-
-    conflict.semanticConflicts.forEach((c, i) => {
-        const key = `${c.baseCellIndex ?? 'x'}-${c.currentCellIndex ?? 'x'}-${c.incomingCellIndex ?? 'x'}`;
-        const existing = conflictMap.get(key);
-        const nextRank = conflictPriority[c.type] ?? Number.MAX_SAFE_INTEGER;
-        const existingRank = existing ? conflictPriority[existing.conflict.type] ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
-
-        if (!existing || nextRank < existingRank) {
-            conflictMap.set(key, { conflict: c, index: i });
-        }
-    });
-
-    for (const mapping of conflict.cellMappings) {
-        const baseCell = mapping.baseIndex !== undefined && conflict.base
-            ? conflict.base.cells[mapping.baseIndex] : undefined;
-        const currentSource = currentNotebookOverride || conflict.current;
-        const currentCell = mapping.currentIndex !== undefined && currentSource
-            ? currentSource.cells[mapping.currentIndex] : undefined;
-        const incomingCell = mapping.incomingIndex !== undefined && conflict.incoming
-            ? conflict.incoming.cells[mapping.incomingIndex] : undefined;
-
-        const key = `${mapping.baseIndex ?? 'x'}-${mapping.currentIndex ?? 'x'}-${mapping.incomingIndex ?? 'x'}`;
-        const conflictInfo = conflictMap.get(key);
-
-        const presentSides: ('base' | 'current' | 'incoming')[] = [];
-        if (baseCell) presentSides.push('base');
-        if (currentCell) presentSides.push('current');
-        if (incomingCell) presentSides.push('incoming');
-
-        const isUnmatched = presentSides.length < 3 && presentSides.length > 0;
-        const anchorPosition = mapping.baseIndex ?? mapping.currentIndex ?? mapping.incomingIndex ?? 0;
-
-        rows.push({
-            type: conflictInfo ? 'conflict' : 'identical',
-            baseCell,
-            currentCell,
-            incomingCell,
-            baseCellIndex: mapping.baseIndex,
-            currentCellIndex: mapping.currentIndex,
-            incomingCellIndex: mapping.incomingIndex,
-            conflictIndex: conflictInfo?.index,
-            conflictType: conflictInfo?.conflict.type,
-            isUnmatched,
-            unmatchedSides: isUnmatched ? presentSides : undefined,
-            anchorPosition,
-        });
-    }
-
-    return sortByPosition(rows, (r) => ({
-        anchor: r.anchorPosition ?? 0,
-        incoming: r.incomingCellIndex,
-        current: r.currentCellIndex,
-        base: r.baseCellIndex
-    }));
-}

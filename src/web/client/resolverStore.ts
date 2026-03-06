@@ -2,6 +2,7 @@ import { enableMapSet } from 'immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { immer } from 'zustand/middleware/immer';
 import { normalizeCellSource } from '../../notebookUtils';
+import { sortByPosition } from '../../positionUtils';
 import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from './types';
 import { isRowReorderedAtIndex } from './reorderUtils';
 
@@ -126,12 +127,19 @@ function getCellForSide(
     return row.incomingCell;
 }
 
-let unmatchGroupCounter = 0;
-function generateUnmatchGroupId(): string {
-    return `unmatch-${++unmatchGroupCounter}`;
+function sortRowsByPosition(rows: MergeRowType[]): MergeRowType[] {
+    return sortByPosition(rows, (row) => ({
+        anchor: row.anchorPosition ?? 0,
+        incoming: row.incomingCellIndex,
+        current: row.currentCellIndex,
+        base: row.baseCellIndex,
+    }));
 }
 
 export function createResolverStore(initialRows: MergeRowType[]): ResolverStore {
+    let unmatchGroupCounter = 0;
+    const generateUnmatchGroupId = () => `unmatch-${++unmatchGroupCounter}`;
+
     return createStore<ResolverStoreState>()(
         immer((set) => ({
             choices: new Map(),
@@ -259,7 +267,7 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                         : row.incomingCellIndex) ?? row.anchorPosition,
                     isUserUnmatched: true,
                     unmatchGroupId: groupId,
-                    originalMatchedRow: { ...row },
+                    originalMatchedRow: cloneRows([row])[0],
                 }));
 
                 // Remove choice for the original row
@@ -267,8 +275,11 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                     state.choices.delete(row.conflictIndex);
                 }
 
-                // Replace the original row with split rows
-                state.rows.splice(rowIndex, 1, ...splitRows);
+                // Replace the original row and re-sort globally so split rows
+                // land where their per-side positions say they belong.
+                const nextRows = state.rows.slice();
+                nextRows.splice(rowIndex, 1, ...splitRows);
+                state.rows = sortRowsByPosition(nextRows);
                 state.takeAllChoice = undefined;
                 recordHistory(state, `Unmatch row ${rowIndex + 1}`);
             }),
@@ -304,14 +315,11 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                     state.choices.delete(restoredRow.conflictIndex);
                 }
 
-                // Remove every split row by exact index so non-contiguous groups
-                // cannot accidentally delete unrelated rows.
-                const sortedGroupIndices = [...groupRowIndices].sort((a, b) => a - b);
-                const insertIndex = sortedGroupIndices[0];
-                for (const idx of [...sortedGroupIndices].sort((a, b) => b - a)) {
-                    state.rows.splice(idx, 1);
-                }
-                state.rows.splice(insertIndex, 0, restoredRow);
+                const groupRowIndexSet = new Set(groupRowIndices);
+                state.rows = sortRowsByPosition([
+                    ...state.rows.filter((_, index) => !groupRowIndexSet.has(index)),
+                    restoredRow,
+                ]);
 
                 state.takeAllChoice = undefined;
                 recordHistory(state, `Rematch row group`);

@@ -9,7 +9,9 @@ import * as assert from 'assert';
 import { selectNonConflictMergedCell } from '../notebookUtils';
 import { renumberExecutionCounts } from '../notebookParser';
 import { analyzeSemanticConflictsFromMappings } from '../conflictDetector';
-import type { NotebookCell, Notebook } from '../types';
+import { createResolverStore } from '../web/client/resolverStore';
+import { buildMergeRowsFromSemantic } from '../web/client/mergeRowBuilder';
+import type { NotebookCell, Notebook, NotebookSemanticConflict } from '../types';
 import type { CellMapping } from '../types';
 
 export async function run(): Promise<void> {
@@ -232,5 +234,187 @@ export async function run(): Promise<void> {
     assert.ok(
         multiConflicts.indexOf(cellModified) < multiConflicts.indexOf(metadataChanged),
         'cell-modified should appear before metadata-changed in the conflict list'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: pure reorder conflicts must surface as resolvable rows.
+    //
+    // A global `cell-reordered` conflict has no per-row indices, so the UI
+    // builder must synthesize row conflicts for the reordered triplets.
+    // Otherwise the resolver opens with 0/0 conflicts and silently preserves
+    // base-order rows.
+    // ---------------------------------------------------------------------
+    const makeMarkdownCell = (source: string): NotebookCell => ({
+        cell_type: 'markdown',
+        source,
+        metadata: {},
+    });
+    const reorderBase: Notebook = {
+        nbformat: 4,
+        nbformat_minor: 5,
+        metadata: {},
+        cells: [
+            makeMarkdownCell('intro'),
+            makeMarkdownCell('alpha'),
+            makeMarkdownCell('beta'),
+            makeMarkdownCell('gamma'),
+        ],
+    };
+    const reorderCurrent: Notebook = {
+        ...reorderBase,
+        cells: [
+            makeMarkdownCell('intro'),
+            makeMarkdownCell('beta'),
+            makeMarkdownCell('alpha'),
+            makeMarkdownCell('gamma'),
+        ],
+    };
+    const reorderIncoming: Notebook = {
+        ...reorderBase,
+        cells: [
+            makeMarkdownCell('intro'),
+            makeMarkdownCell('alpha'),
+            makeMarkdownCell('gamma'),
+            makeMarkdownCell('beta'),
+        ],
+    };
+    const reorderOnlyConflict: NotebookSemanticConflict = {
+        filePath: 'reorder-only.ipynb',
+        semanticConflicts: [
+            {
+                type: 'cell-reordered',
+                description: 'Cells have been reordered between versions',
+            },
+        ],
+        cellMappings: [
+            {
+                baseIndex: 0,
+                currentIndex: 0,
+                incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: reorderBase.cells[0],
+                currentCell: reorderCurrent.cells[0],
+                incomingCell: reorderIncoming.cells[0],
+            },
+            {
+                baseIndex: 1,
+                currentIndex: 2,
+                incomingIndex: 1,
+                matchConfidence: 1,
+                baseCell: reorderBase.cells[1],
+                currentCell: reorderCurrent.cells[2],
+                incomingCell: reorderIncoming.cells[1],
+            },
+            {
+                baseIndex: 2,
+                currentIndex: 1,
+                incomingIndex: 3,
+                matchConfidence: 1,
+                baseCell: reorderBase.cells[2],
+                currentCell: reorderCurrent.cells[1],
+                incomingCell: reorderIncoming.cells[3],
+            },
+            {
+                baseIndex: 3,
+                currentIndex: 3,
+                incomingIndex: 2,
+                matchConfidence: 1,
+                baseCell: reorderBase.cells[3],
+                currentCell: reorderCurrent.cells[3],
+                incomingCell: reorderIncoming.cells[2],
+            },
+        ],
+        base: reorderBase,
+        current: reorderCurrent,
+        incoming: reorderIncoming,
+    };
+
+    const reorderRows = buildMergeRowsFromSemantic(reorderOnlyConflict);
+    const synthesizedReorderConflicts = reorderRows.filter(row => row.conflictType === 'cell-reordered');
+    assert.ok(
+        synthesizedReorderConflicts.length >= 2,
+        'Expected reordered rows to be promoted into synthetic row conflicts'
+    );
+    assert.ok(
+        synthesizedReorderConflicts.every(row => row.type === 'conflict' && row.conflictIndex !== undefined),
+        'Expected synthetic reorder conflicts to have conflict indices'
+    );
+
+    // ---------------------------------------------------------------------
+    // Regression: unmatch/rematch must preserve global row ordering.
+    //
+    // When a reordered row is split, one branch-side can move ahead of the
+    // original row position. The reducer must re-sort the entire row list,
+    // not just insert split rows in-place, or the saved notebook order is wrong.
+    // ---------------------------------------------------------------------
+    const storeRows = [
+        {
+            type: 'identical' as const,
+            baseCell: makeMarkdownCell('row-0'),
+            currentCell: makeMarkdownCell('row-0'),
+            incomingCell: makeMarkdownCell('row-0'),
+            baseCellIndex: 0,
+            currentCellIndex: 1,
+            incomingCellIndex: 0,
+            anchorPosition: 0,
+        },
+        {
+            type: 'identical' as const,
+            baseCell: makeMarkdownCell('row-1'),
+            currentCell: makeMarkdownCell('row-1'),
+            incomingCell: makeMarkdownCell('row-1'),
+            baseCellIndex: 1,
+            currentCellIndex: 2,
+            incomingCellIndex: 1,
+            anchorPosition: 1,
+        },
+        {
+            type: 'conflict' as const,
+            baseCell: makeMarkdownCell('target-base'),
+            currentCell: makeMarkdownCell('target-current'),
+            incomingCell: makeMarkdownCell('target-incoming'),
+            baseCellIndex: 2,
+            currentCellIndex: 0,
+            incomingCellIndex: 2,
+            conflictIndex: 0,
+            conflictType: 'cell-reordered',
+            anchorPosition: 2,
+        },
+        {
+            type: 'identical' as const,
+            baseCell: makeMarkdownCell('row-3'),
+            currentCell: makeMarkdownCell('row-3'),
+            incomingCell: makeMarkdownCell('row-3'),
+            baseCellIndex: 3,
+            currentCellIndex: 3,
+            incomingCellIndex: 3,
+            anchorPosition: 3,
+        },
+    ];
+    const reorderStore = createResolverStore(storeRows);
+    reorderStore.getState().unmatchRow(2);
+
+    const afterUnmatch = reorderStore.getState().rows;
+    assert.strictEqual(
+        afterUnmatch[0].currentCell?.source,
+        'target-current',
+        'Expected the current-side split row to move to the top after global re-sort'
+    );
+    assert.ok(
+        afterUnmatch[0].isUserUnmatched,
+        'Expected reordered split row to remain marked as user-unmatched after re-sort'
+    );
+
+    const targetGroupId = afterUnmatch[0].unmatchGroupId;
+    assert.ok(targetGroupId, 'Expected split rows to share an unmatch group id');
+
+    reorderStore.getState().rematchRows(targetGroupId!);
+
+    const afterRematch = reorderStore.getState().rows;
+    assert.strictEqual(afterRematch.length, storeRows.length, 'Expected rematch to restore the original row count');
+    assert.strictEqual(
+        afterRematch[2].currentCell?.source,
+        'target-current',
+        'Expected rematch to restore the original conflict row at its sorted position'
     );
 }
