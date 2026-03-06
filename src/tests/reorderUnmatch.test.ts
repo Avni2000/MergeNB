@@ -115,6 +115,18 @@ export async function run(): Promise<void> {
             throw new Error('Expected rematch buttons on unmatched rows');
         }
 
+        // With the default two-column layout, base-only split rows must still
+        // render their base content and expose a Use Base action.
+        const unmatchedBaseButtons = page.locator('.merge-row.user-unmatched-row .btn-resolve.btn-base');
+        const unmatchedBaseCells = page.locator('.merge-row.user-unmatched-row .base-column .notebook-cell');
+        const baseButtonCount = await unmatchedBaseButtons.count();
+        const baseCellCount = await unmatchedBaseCells.count();
+        if (baseButtonCount === 0 || baseCellCount === 0) {
+            throw new Error(
+                `Expected unmatched base-only rows to stay actionable/visible (base buttons=${baseButtonCount}, base cells=${baseCellCount})`
+            );
+        }
+
         // Verify conflict count increased
         const conflictCounterAfterUnmatch = await waitForResolvedCount(page, 0, 5000);
         assertResolvedCount(conflictCounterAfterUnmatch, 0, 'after unmatch');

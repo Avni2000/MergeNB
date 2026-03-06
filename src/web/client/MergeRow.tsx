@@ -221,6 +221,12 @@ export function MergeRowInner({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
+    const showBaseColumnForRow = showBaseColumn || (
+        row.isUserUnmatched
+        && hasBase
+        && !hasCurrent
+        && !hasIncoming
+    );
     // Always use conflict diffing mode for consistent red highlighting of divergence
     const diffMode = 'conflict';
     return (
@@ -286,8 +292,8 @@ export function MergeRowInner({
             )}
 
             {/* Three-way diff view */}
-            <div className={`cell-columns${showBaseColumn ? '' : ' two-column'}`}>
-                {showBaseColumn && (
+            <div className={`cell-columns${showBaseColumnForRow ? '' : ' two-column'}`}>
+                {showBaseColumnForRow && (
                     <div className="cell-column base-column">
                         {row.baseCell ? (
                             <CellContent
@@ -357,7 +363,7 @@ export function MergeRowInner({
 
             {/* Resolution bar - select which branch to use as base */}
             <div className="resolution-bar">
-                {showBaseColumn && hasBase && (
+                {showBaseColumnForRow && hasBase && (
                     <button
                         className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
                         onClick={() => handleChoiceClick('base')}
