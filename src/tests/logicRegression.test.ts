@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as conflictDetector from '../conflictDetector';
+import * as gitIntegration from '../gitIntegration';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../notebookUtils';
 import { renumberExecutionCounts } from '../notebookParser';
 import { analyzeSemanticConflictsFromMappings } from '../conflictDetector';
@@ -340,17 +341,29 @@ export async function run(): Promise<void> {
 
     const reorderRows = buildMergeRowsFromSemantic(reorderOnlyConflict);
     const synthesizedReorderConflicts = reorderRows.filter(row => row.conflictType === 'cell-reordered');
-    assert.ok(
-        synthesizedReorderConflicts.length >= 2,
-        'Expected reordered rows to be promoted into synthetic row conflicts'
+    assert.deepStrictEqual(
+        reorderRows.map(row => normalizeCellSource((row.baseCell ?? row.currentCell ?? row.incomingCell)!.source)),
+        ['intro', 'alpha', 'beta', 'gamma'],
+        'Expected reorder rows to remain anchored to the base row order'
+    );
+    assert.strictEqual(
+        synthesizedReorderConflicts.length,
+        3,
+        'Expected exactly Alpha, Beta, and Gamma rows to be promoted into synthetic reorder conflicts'
     );
     assert.ok(
         synthesizedReorderConflicts.every(row => row.type === 'conflict' && row.conflictIndex !== undefined),
         'Expected synthetic reorder conflicts to have conflict indices'
     );
-    assert.ok(
-        reorderRows.filter(row => row.isReordered).length >= 2,
-        'Expected reordered rows to retain persistent reorder state'
+    assert.deepStrictEqual(
+        reorderRows.map(row => !!row.isReordered),
+        [false, true, true, true],
+        'Expected intro to remain non-reordered while Alpha, Beta, and Gamma retain reorder state'
+    );
+    assert.deepStrictEqual(
+        [...computeReorderedRowIndexSet(reorderRows)],
+        [1, 2, 3],
+        'Expected only Alpha, Beta, and Gamma row indices to be detected as reordered'
     );
 
     // ---------------------------------------------------------------------
@@ -604,34 +617,6 @@ export async function run(): Promise<void> {
             makeMarkdownCell('shared-order-a'),
         ],
     };
-    const sharedReorderConflict: NotebookSemanticConflict = {
-        filePath: 'shared-reorder.ipynb',
-        semanticConflicts: [],
-        cellMappings: [
-            {
-                baseIndex: 0,
-                currentIndex: 1,
-                incomingIndex: 1,
-                matchConfidence: 1,
-                baseCell: sharedReorderBase.cells[0],
-                currentCell: sharedReorderCurrent.cells[1],
-                incomingCell: sharedReorderIncoming.cells[1],
-            },
-            {
-                baseIndex: 1,
-                currentIndex: 0,
-                incomingIndex: 0,
-                matchConfidence: 1,
-                baseCell: sharedReorderBase.cells[1],
-                currentCell: sharedReorderCurrent.cells[0],
-                incomingCell: sharedReorderIncoming.cells[0],
-            },
-        ],
-        base: sharedReorderBase,
-        current: sharedReorderCurrent,
-        incoming: sharedReorderIncoming,
-    };
-
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergenb-shared-reorder-'));
     const conflictPath = path.join(tempDir, 'conflict.ipynb');
     // Normalize through vscode.Uri so the drive letter casing matches on Windows
@@ -639,18 +624,52 @@ export async function run(): Promise<void> {
     const normalizedConflictPath = vscode.Uri.file(conflictPath).fsPath;
     fs.writeFileSync(conflictPath, JSON.stringify(sharedReorderBase, null, 2));
 
-    const originalDetectSemanticConflicts = conflictDetector.detectSemanticConflicts;
+    const originalGetThreeWayVersions = gitIntegration.getThreeWayVersions;
+    const originalGetCurrentBranch = gitIntegration.getCurrentBranch;
+    const originalGetMergeBranch = gitIntegration.getMergeBranch;
     const originalCreateOrShow = WebConflictPanel.createOrShow;
     let openedWebPanel = false;
 
     try {
-        (conflictDetector as any).detectSemanticConflicts = async () => sharedReorderConflict;
+        (gitIntegration as any).getThreeWayVersions = async (filePath: string) => {
+            if (filePath !== normalizedConflictPath) {
+                return null;
+            }
+
+            return {
+                base: JSON.stringify(sharedReorderBase),
+                current: JSON.stringify(sharedReorderCurrent),
+                incoming: JSON.stringify(sharedReorderIncoming),
+            };
+        };
+        (gitIntegration as any).getCurrentBranch = async () => 'current';
+        (gitIntegration as any).getMergeBranch = async () => 'incoming';
         (WebConflictPanel as any).createOrShow = async () => {
             openedWebPanel = true;
         };
         setResolverPromptTestHooks({
             pickRenumberExecutionCounts: () => false,
         });
+
+        const detectedSharedReorder = await conflictDetector.detectSemanticConflicts(normalizedConflictPath);
+        assert.ok(detectedSharedReorder, 'Expected real detector to return a semantic conflict payload');
+        assert.strictEqual(
+            detectedSharedReorder!.semanticConflicts.length,
+            0,
+            'Expected real detector to suppress manual conflicts when current and incoming already agree on the reorder'
+        );
+        assert.deepStrictEqual(
+            detectedSharedReorder!.cellMappings.map(mapping => [
+                mapping.baseIndex,
+                mapping.currentIndex,
+                mapping.incomingIndex,
+            ]),
+            [
+                [0, 1, 1],
+                [1, 0, 0],
+            ],
+            'Expected real detector to preserve the shared reordered mapping through detectSemanticConflicts'
+        );
 
         const resolver = new NotebookConflictResolver(vscode.Uri.file(tempDir));
         const resolutionPromise = new Promise<import('../resolver').ResolvedConflictDetails>((resolve, reject) => {
@@ -688,7 +707,9 @@ export async function run(): Promise<void> {
             'Expected shared reorder auto-apply to write the agreed current/incoming order to disk'
         );
     } finally {
-        (conflictDetector as any).detectSemanticConflicts = originalDetectSemanticConflicts;
+        (gitIntegration as any).getThreeWayVersions = originalGetThreeWayVersions;
+        (gitIntegration as any).getCurrentBranch = originalGetCurrentBranch;
+        (gitIntegration as any).getMergeBranch = originalGetMergeBranch;
         (WebConflictPanel as any).createOrShow = originalCreateOrShow;
         setResolverPromptTestHooks(undefined);
         fs.rmSync(tempDir, { recursive: true, force: true });

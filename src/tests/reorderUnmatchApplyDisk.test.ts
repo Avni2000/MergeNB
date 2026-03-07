@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import type { Page } from 'playwright';
 import {
+    verifyAllConflictsMatchSide,
     waitForAllConflictsResolved,
     waitForResolvedCount,
 } from './integrationUtils';
@@ -32,11 +33,13 @@ export async function run(): Promise<void> {
     const previousAutoResolveExecutionCount = mergeNBConfig.get<boolean>('autoResolve.executionCount');
     const previousStripOutputs = mergeNBConfig.get<boolean>('autoResolve.stripOutputs');
     const previousAutoResolveWhitespace = mergeNBConfig.get<boolean>('autoResolve.whitespace');
+    const previousShowBaseColumn = mergeNBConfig.get<boolean>('ui.showBaseColumn');
 
     try {
         await mergeNBConfig.update('autoResolve.executionCount', false, vscode.ConfigurationTarget.Workspace);
         await mergeNBConfig.update('autoResolve.stripOutputs', false, vscode.ConfigurationTarget.Workspace);
         await mergeNBConfig.update('autoResolve.whitespace', false, vscode.ConfigurationTarget.Workspace);
+        await mergeNBConfig.update('ui.showBaseColumn', true, vscode.ConfigurationTarget.Workspace);
 
         const config = readTestConfig();
         const session = await setupConflictResolver(config);
@@ -59,7 +62,10 @@ export async function run(): Promise<void> {
         console.log(`  Found ${unmatchBtnCount} unmatch button(s)`);
 
         console.log('\n=== Step 2: Unmatch one reordered row ===');
-        await unmatchButtons.nth(1).click();
+        const betaConflictRow = page.locator('.merge-row.conflict-row').filter({ hasText: "print('beta')" });
+        const betaUnmatchButton = betaConflictRow.locator('[data-testid="unmatch-btn"]');
+        await betaUnmatchButton.waitFor({ timeout: 5000 });
+        await betaUnmatchButton.click();
         await page.locator('.merge-row.user-unmatched-row').first().waitFor({ timeout: 5000 });
         const afterUnmatchCounter = await waitForResolvedCount(page, 0, 5000);
         if (afterUnmatchCounter.total <= initialCounter.total) {
@@ -76,30 +82,63 @@ export async function run(): Promise<void> {
             );
         }
 
-        console.log('\n=== Step 3: Resolve explicit mixed choices and capture independent expectation ===');
+        const allBaseButtonCount = await page.locator('button:has-text("All Base")').count();
+        if (allBaseButtonCount !== 1) {
+            throw new Error(`Expected global "All Base" button when showBaseColumn=true, got ${allBaseButtonCount}`);
+        }
+
+        const userUnmatchedRows = page.locator('.merge-row.user-unmatched-row');
+        const unmatchedRowCount = await userUnmatchedRows.count();
+        if (unmatchedRowCount !== 2) {
+            throw new Error(`Expected 2 user-unmatched rows after splitting Beta, got ${unmatchedRowCount}`);
+        }
+
+        const splitRowBaseColumns = await userUnmatchedRows.locator('.base-column').count();
+        if (splitRowBaseColumns !== unmatchedRowCount) {
+            throw new Error(
+                `Expected each split row to keep a visible base column placeholder (expected ${unmatchedRowCount}, got ${splitRowBaseColumns})`
+            );
+        }
+
+        const splitRowBaseButtons = await userUnmatchedRows.locator('.btn-resolve.btn-base').count();
+        if (splitRowBaseButtons !== 0) {
+            throw new Error(`Expected split rows to hide "Use Base" despite showBaseColumn=true, got ${splitRowBaseButtons} buttons`);
+        }
+
+        const splitRowBasePlaceholders = await userUnmatchedRows.locator('.base-column .placeholder-text').allTextContents();
+        if (splitRowBasePlaceholders.length !== unmatchedRowCount) {
+            throw new Error(
+                `Expected ${unmatchedRowCount} base-column placeholders on split rows, got ${splitRowBasePlaceholders.length}`
+            );
+        }
+        if (splitRowBasePlaceholders.some(text => text.trim() !== '(unmatched cell)')) {
+            throw new Error(
+                `Expected split-row base placeholders to read "(unmatched cell)", got ${JSON.stringify(splitRowBasePlaceholders)}`
+            );
+        }
+
+        console.log('\n=== Step 3: Accept all current and capture independent expectation ===');
         const baseFixture = readNotebookFixtureFromRepo('09_reorder_base.ipynb');
         const currentFixture = readNotebookFixtureFromRepo('09_reorder_current.ipynb');
-        const incomingFixture = readNotebookFixtureFromRepo('09_reorder_incoming.ipynb');
         const baseExpected = buildExpectedCellsFromNotebook(baseFixture);
         const currentExpected = buildExpectedCellsFromNotebook(currentFixture);
-        const incomingExpected = buildExpectedCellsFromNotebook(incomingFixture);
         const conflictRows = page.locator('.merge-row.conflict-row');
         const conflictRowCount = await conflictRows.count();
         if (conflictRowCount !== 4) {
             throw new Error(`Expected 4 conflict rows after unmatching Beta, got ${conflictRowCount}`);
         }
 
-        const selectors: Array<'.btn-resolve.btn-current' | '.btn-resolve.btn-incoming' | '.btn-resolve.btn-delete'> = [
-            '.btn-resolve.btn-current',  // current-only Beta
-            '.btn-resolve.btn-current',  // Alpha row
-            '.btn-resolve.btn-incoming', // Gamma row
-            '.btn-resolve.btn-delete',   // incoming-only Beta
-        ];
-
-        for (let i = 0; i < selectors.length; i++) {
-            const row = conflictRows.nth(i);
-            await row.locator(selectors[i]).click();
-            await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
+        await page.locator('button:has-text("All Current")').click();
+        const currentAcceptance = await verifyAllConflictsMatchSide(page, 'current');
+        if (currentAcceptance.mismatches.length > 0) {
+            throw new Error(
+                `Expected "All Current" to resolve split rows to current/delete correctly:\n${currentAcceptance.mismatches.join('\n')}`
+            );
+        }
+        if (currentAcceptance.matchCount !== 3 || currentAcceptance.deleteCount !== 1) {
+            throw new Error(
+                `Expected "All Current" after splitting Beta to resolve 3 rows to current and 1 to delete, got current=${currentAcceptance.matchCount}, delete=${currentAcceptance.deleteCount}`
+            );
         }
 
         const allResolved = await waitForAllConflictsResolved(page, 7000);
@@ -110,18 +149,22 @@ export async function run(): Promise<void> {
         const renumberEnabled = await page
             .locator('label:has-text("Renumber execution counts") input[type="checkbox"]')
             .isChecked();
+
+        // Fixture layout:
+        //   base:    [intro, alpha, beta, gamma, outro]
+        //   current: [intro, beta, alpha(modified), gamma, outro]
         const expectedCells = [
-            withRowIndex(baseExpected[0], 0),
-            withRowIndex(currentExpected[1], 1),
-            withRowIndex(currentExpected[2], 2),
-            withRowIndex(incomingExpected[2], 3),
-            withRowIndex(baseExpected[4], 4),
+            withRowIndex(baseExpected[0], 0),     // intro
+            withRowIndex(currentExpected[1], 1),  // beta from current
+            withRowIndex(currentExpected[2], 2),  // alpha from current (modified)
+            withRowIndex(currentExpected[3], 3),  // gamma from current
+            withRowIndex(baseExpected[4], 4),     // outro
         ];
 
         console.log('\n=== Step 4: Apply resolution and verify notebook on disk ===');
         const resolvedNotebook = await applyResolutionAndReadNotebook(page, session.conflictFile);
         assertNotebookMatches(expectedCells, resolvedNotebook, {
-            expectedLabel: 'Expected explicit sequence after unmatching Beta',
+            expectedLabel: 'Expected All Current sequence after unmatching Beta',
             compareMetadata: true,
             compareExecutionCounts: true,
             renumberEnabled,
@@ -144,6 +187,11 @@ export async function run(): Promise<void> {
         await mergeNBConfig.update(
             'autoResolve.whitespace',
             previousAutoResolveWhitespace,
+            vscode.ConfigurationTarget.Workspace
+        );
+        await mergeNBConfig.update(
+            'ui.showBaseColumn',
+            previousShowBaseColumn,
             vscode.ConfigurationTarget.Workspace
         );
         if (page) await page.close();

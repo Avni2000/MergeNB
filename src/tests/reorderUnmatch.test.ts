@@ -38,6 +38,22 @@ function withRowIndex<T extends { rowIndex: number }>(cell: T, rowIndex: number)
     return { ...cell, rowIndex };
 }
 
+async function waitForUserUnmatchedRowsToDisappear(page: Page, timeoutMs = 5000): Promise<void> {
+    const startWait = Date.now();
+    while (Date.now() - startWait < timeoutMs) {
+        const remaining = await page.locator('.merge-row.user-unmatched-row').count();
+        if (remaining === 0) {
+            return;
+        }
+        await new Promise(r => setTimeout(r, 100));
+    }
+
+    const remaining = await page.locator('.merge-row.user-unmatched-row').count();
+    if (remaining !== 0) {
+        throw new Error(`Expected 0 user-unmatched rows after waiting, got ${remaining}`);
+    }
+}
+
 export async function run(): Promise<void> {
     console.log('Starting MergeNB Reorder Unmatch/Rematch Integration Test...');
 
@@ -100,9 +116,11 @@ export async function run(): Promise<void> {
 
         // === Step 3: Click Unmatch on first reordered row ===
         console.log('\n=== Step 3: Click Unmatch ===');
-        const firstUnmatchBtn = unmatchButtons.first();
-        await firstUnmatchBtn.scrollIntoViewIfNeeded();
-        await firstUnmatchBtn.click();
+        const alphaConflictRow = page.locator('.merge-row.conflict-row').filter({ hasText: 'alpha modified' });
+        await alphaConflictRow.waitFor({ timeout: 5000 });
+        const alphaUnmatchBtn = alphaConflictRow.locator('[data-testid="unmatch-btn"]');
+        await alphaUnmatchBtn.scrollIntoViewIfNeeded();
+        await alphaUnmatchBtn.click();
 
         // Wait for user-unmatched rows to appear
         await page.locator('.merge-row.user-unmatched-row').first().waitFor({ timeout: 5000 });
@@ -171,17 +189,7 @@ export async function run(): Promise<void> {
         await clickHistoryUndo(page);
 
         // Wait for unmatched rows to disappear
-        const startWait = Date.now();
-        while (Date.now() - startWait < 5000) {
-            const remaining = await page.locator('.merge-row.user-unmatched-row').count();
-            if (remaining === 0) break;
-            await new Promise(r => setTimeout(r, 100));
-        }
-
-        const unmatchedAfterUndo = await page.locator('.merge-row.user-unmatched-row').count();
-        if (unmatchedAfterUndo !== 0) {
-            throw new Error(`Expected 0 user-unmatched rows after undo, got ${unmatchedAfterUndo}`);
-        }
+        await waitForUserUnmatchedRowsToDisappear(page);
 
         // Verify conflict count went back
         const conflictCounterAfterUndo = await waitForResolvedCount(page, 0, 5000);
@@ -211,17 +219,7 @@ export async function run(): Promise<void> {
         await rematchBtn.click();
 
         // Wait for user-unmatched rows to disappear
-        const rematchWait = Date.now();
-        while (Date.now() - rematchWait < 5000) {
-            const remaining = await page.locator('.merge-row.user-unmatched-row').count();
-            if (remaining === 0) break;
-            await new Promise(r => setTimeout(r, 100));
-        }
-
-        const unmatchedAfterRematch = await page.locator('.merge-row.user-unmatched-row').count();
-        if (unmatchedAfterRematch !== 0) {
-            throw new Error(`Expected 0 user-unmatched rows after rematch, got ${unmatchedAfterRematch}`);
-        }
+        await waitForUserUnmatchedRowsToDisappear(page);
 
         // Verify conflict count went back
         const conflictCounterAfterRematch = await waitForResolvedCount(page, 0, 5000);
@@ -231,6 +229,36 @@ export async function run(): Promise<void> {
             throw new Error(`Expected conflict count to revert to ${totalBefore} after rematch, got ${conflictCounterAfterRematch.total}`);
         }
         console.log('  \u2713 Rematch restored original row');
+
+        // === Step 7b: Unmatch the restored Alpha row again ===
+        console.log('\n=== Step 7b: Unmatch restored row again ===');
+        const restoredAlphaRow = page.locator('.merge-row.conflict-row').filter({ hasText: 'alpha modified' });
+        const restoredAlphaUnmatchBtn = restoredAlphaRow.locator('[data-testid="unmatch-btn"]');
+        await restoredAlphaUnmatchBtn.waitFor({ timeout: 5000 });
+        await restoredAlphaUnmatchBtn.scrollIntoViewIfNeeded();
+        await restoredAlphaUnmatchBtn.click();
+        await page.locator('.merge-row.user-unmatched-row').first().waitFor({ timeout: 5000 });
+
+        const unmatchedAfterSecondUnmatch = await page.locator('.merge-row.user-unmatched-row').count();
+        if (unmatchedAfterSecondUnmatch !== unmatchedRowCount) {
+            throw new Error(
+                `Expected second unmatch to recreate ${unmatchedRowCount} split rows, got ${unmatchedAfterSecondUnmatch}`
+            );
+        }
+
+        const rematchAfterSecondUnmatch = page.locator('[data-testid="rematch-btn"]').first();
+        await rematchAfterSecondUnmatch.scrollIntoViewIfNeeded();
+        await rematchAfterSecondUnmatch.click();
+        await waitForUserUnmatchedRowsToDisappear(page);
+
+        const conflictCounterAfterSecondRematch = await waitForResolvedCount(page, 0, 5000);
+        assertResolvedCount(conflictCounterAfterSecondRematch, 0, 'after second rematch');
+        if (conflictCounterAfterSecondRematch.total !== totalBefore) {
+            throw new Error(
+                `Expected conflict count to revert to ${totalBefore} after second rematch, got ${conflictCounterAfterSecondRematch.total}`
+            );
+        }
+        console.log('  \u2713 Restored row stayed unmatchable after rematch');
 
         // === Step 8: Resolve with explicit mixed choices + verify notebook written to disk ===
         console.log('\n=== Step 8: Resolve with explicit mixed choices + verify disk output ===');
@@ -267,12 +295,17 @@ export async function run(): Promise<void> {
         const renumberEnabled = await page
             .locator('label:has-text("Renumber execution counts") input[type="checkbox"]')
             .isChecked();
+
+        // Fixture layout:
+        //   base:     [intro, alpha, beta, gamma, outro]
+        //   current:  [intro, beta, alpha(modified), gamma, outro]
+        //   incoming: [intro, alpha, gamma, beta, outro]
         const expectedCells = [
-            withRowIndex(baseExpected[0], 0),
-            withRowIndex(currentExpected[2], 1),
-            withRowIndex(incomingExpected[3], 2),
-            withRowIndex(currentExpected[3], 3),
-            withRowIndex(baseExpected[4], 4),
+            withRowIndex(baseExpected[0], 0),      // intro
+            withRowIndex(currentExpected[2], 1),   // alpha from current (modified)
+            withRowIndex(incomingExpected[3], 2),  // beta from incoming
+            withRowIndex(currentExpected[3], 3),   // gamma from current
+            withRowIndex(baseExpected[4], 4),      // outro
         ];
 
         const resolvedNotebook = await applyResolutionAndReadNotebook(page, session.conflictFile);
