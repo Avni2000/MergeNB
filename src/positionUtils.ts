@@ -32,7 +32,12 @@ export function compareByPosition(a: PositionFields, b: PositionFields): number 
         return posA - posB;
     }
 
-    // Tie-breaker: compare indices from all versions to preserve insertion order
+    // Tie-breaker: compare indices from all versions to preserve insertion order.
+    // Incoming is checked before current deliberately: after unmatch, split rows
+    // carry different anchor positions, so ties here are rare.  When they do
+    // occur (e.g. two additions at the same base slot), placing incoming-side
+    // rows first matches the conventional 3-way merge layout where the incoming
+    // column is displayed to the right; it does NOT imply priority of content.
     if (a.incoming !== undefined && b.incoming !== undefined) {
         if (a.incoming !== b.incoming) return a.incoming - b.incoming;
     }

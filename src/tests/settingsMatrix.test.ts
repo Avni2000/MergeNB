@@ -347,14 +347,12 @@ export async function run(): Promise<void> {
         console.log('  pass: A2');
     }
 
-    // --- A3: stripOutputs masks autoResolveExecutionCount ---
+    // --- A3: stripOutputs must respect autoResolveExecutionCount ---
     //
-    // BUG (conflictDetector.ts:456-457): When stripOutputs auto-resolves an
-    // outputs-changed conflict (source identical), it ALSO sets
-    //   resolvedNotebook.cells[i].execution_count = null
-    // regardless of the autoResolveExecutionCount flag.  This means
-    // autoResolveExecutionCount=false is effectively dead when stripOutputs
-    // is true and the cell has an output diff.
+    // Regression guard: when stripOutputs auto-resolves an outputs-changed
+    // conflict (source identical), execution_count must only be nulled if
+    // autoResolveExecutionCount is also enabled.  A previous bug nulled it
+    // unconditionally; this test ensures that is never re-introduced.
     {
         console.log('\n--- A3: stripOutputs masks executionCount ---');
 
@@ -808,6 +806,79 @@ export async function run(): Promise<void> {
             off.autoResolvedDescriptions.join(', ')
         );
         console.log('  pass: A10');
+    }
+
+    // --- A11: stripOutputs strips remaining-conflict execution_count when autoResolveExecutionCount=true ---
+    //
+    // When a conflict cannot be auto-resolved (source differs) but stripOutputs=true,
+    // the UI preview (resolvedNotebook) must also null execution_count if
+    // autoResolveExecutionCount=true, matching the auto-resolved-outputs path.
+    {
+        console.log('\n--- A11: stripOutputs + autoResolveExecutionCount nulls execution_count on remaining conflicts ---');
+
+        const base = makeCodeCell('x = 1', {
+            execution_count: 1,
+            outputs: [{ output_type: 'stream', text: 'old\n', name: 'stdout' }],
+        });
+        const current = makeCodeCell('x = 2', {
+            execution_count: 5,
+            outputs: [{ output_type: 'stream', text: 'curr\n', name: 'stdout' }],
+        });
+        const incoming = makeCodeCell('x = 3', {
+            execution_count: 10,
+            outputs: [{ output_type: 'stream', text: 'inc\n', name: 'stdout' }],
+        });
+
+        const conflict: NotebookSemanticConflict = {
+            filePath: '/test/strip-exec-remaining.ipynb',
+            semanticConflicts: [{
+                type: 'cell-modified',
+                baseCellIndex: 0,
+                currentCellIndex: 0,
+                incomingCellIndex: 0,
+                baseContent: base,
+                currentContent: current,
+                incomingContent: incoming,
+                description: 'source differs',
+            }],
+            cellMappings: [{
+                baseIndex: 0, currentIndex: 0, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: base, currentCell: current, incomingCell: incoming,
+            }],
+            current: makeNotebook([current]),
+            incoming: makeNotebook([incoming]),
+            base: makeNotebook([base]),
+        };
+
+        // Both flags on: outputs stripped and execution_count nulled
+        const resultOn = applyAutoResolutions(conflict, settingsWith({
+            stripOutputs: true,
+            autoResolveExecutionCount: true,
+        }));
+        assert.deepStrictEqual(
+            resultOn.resolvedNotebook.cells[0].outputs, [],
+            'A11(on): remaining-conflict outputs should be stripped'
+        );
+        assert.strictEqual(
+            resultOn.resolvedNotebook.cells[0].execution_count, null,
+            'A11(on): remaining-conflict execution_count should be nulled when autoResolveExecutionCount=true'
+        );
+
+        // stripOutputs on, autoResolveExecutionCount off: only outputs stripped
+        const resultOff = applyAutoResolutions(conflict, settingsWith({
+            stripOutputs: true,
+            autoResolveExecutionCount: false,
+        }));
+        assert.deepStrictEqual(
+            resultOff.resolvedNotebook.cells[0].outputs, [],
+            'A11(off): remaining-conflict outputs should still be stripped'
+        );
+        assert.notStrictEqual(
+            resultOff.resolvedNotebook.cells[0].execution_count, null,
+            'A11(off): remaining-conflict execution_count must be preserved when autoResolveExecutionCount=false'
+        );
+        console.log('  pass: A11');
     }
 
     // -----------------------------------------------------------------------

@@ -556,6 +556,9 @@ export function applyAutoResolutions(
                 const cell = resolvedNotebook.cells[resolvedCellIndex];
                 if (cell && cell.cell_type === 'code' && cell.outputs && cell.outputs.length > 0) {
                     cell.outputs = [];
+                    if (effectiveSettings.autoResolveExecutionCount) {
+                        cell.execution_count = null;
+                    }
                     autoResolvedDescriptions.push(`Outputs stripped (cell ${resolvedCellIndex + 1})`);
                 }
             }

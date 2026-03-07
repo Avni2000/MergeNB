@@ -14,6 +14,7 @@ import * as conflictDetector from '../conflictDetector';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../notebookUtils';
 import { renumberExecutionCounts } from '../notebookParser';
 import { analyzeSemanticConflictsFromMappings } from '../conflictDetector';
+import { detectReordering } from '../cellMatcher';
 import { NotebookConflictResolver, onDidResolveConflictWithDetails, setResolverPromptTestHooks } from '../resolver';
 import { createResolverStore } from '../web/client/resolverStore';
 import { buildMergeRowsFromSemantic } from '../web/client/mergeRowBuilder';
@@ -804,4 +805,75 @@ export async function run(): Promise<void> {
         reorderNoSemanticRows.some(row => row.isReordered),
         'Expected isReordered flags even when semanticConflicts is empty but cellMappings show a reorder'
     );
+
+    // ---------------------------------------------------------------------
+    // Agreement: detectReordering(cellMappings) and computeReorderedRowIndexSet
+    // must agree on whether a reorder is present.
+    //
+    // detectReordering runs on CellMapping[] before rows are built.
+    // computeReorderedRowIndexSet runs on MergeRow[] after sorting.
+    // Both use the same consecutive-pair inversion algorithm on the same
+    // anchor ordering, so they must always agree.
+    // ---------------------------------------------------------------------
+    const agreementCases: Array<{
+        label: string;
+        mappings: CellMapping[];
+        expectsReorder: boolean;
+    }> = [
+        {
+            label: 'straightforward reorder (current swaps A↔B, incoming keeps base order)',
+            mappings: [
+                { baseIndex: 0, currentIndex: 1, incomingIndex: 0, matchConfidence: 1,
+                  baseCell: makeMarkdownCell('agr-a'), currentCell: makeMarkdownCell('agr-a'), incomingCell: makeMarkdownCell('agr-a') },
+                { baseIndex: 1, currentIndex: 0, incomingIndex: 1, matchConfidence: 1,
+                  baseCell: makeMarkdownCell('agr-b'), currentCell: makeMarkdownCell('agr-b'), incomingCell: makeMarkdownCell('agr-b') },
+            ],
+            expectsReorder: true,
+        },
+        {
+            label: 'shared reorder (both branches swap A↔B identically)',
+            mappings: [
+                { baseIndex: 0, currentIndex: 1, incomingIndex: 1, matchConfidence: 1,
+                  baseCell: makeMarkdownCell('agr-a'), currentCell: makeMarkdownCell('agr-a'), incomingCell: makeMarkdownCell('agr-a') },
+                { baseIndex: 1, currentIndex: 0, incomingIndex: 0, matchConfidence: 1,
+                  baseCell: makeMarkdownCell('agr-b'), currentCell: makeMarkdownCell('agr-b'), incomingCell: makeMarkdownCell('agr-b') },
+            ],
+            expectsReorder: false,
+        },
+        {
+            label: 'pure index drift (no relative order change)',
+            mappings: [
+                { baseIndex: 0, currentIndex: 1, incomingIndex: 0, matchConfidence: 1,
+                  baseCell: makeMarkdownCell('agr-a'), currentCell: makeMarkdownCell('agr-a'), incomingCell: makeMarkdownCell('agr-a') },
+                { baseIndex: 1, currentIndex: 2, incomingIndex: 1, matchConfidence: 1,
+                  baseCell: makeMarkdownCell('agr-b'), currentCell: makeMarkdownCell('agr-b'), incomingCell: makeMarkdownCell('agr-b') },
+            ],
+            expectsReorder: false,
+        },
+    ];
+
+    for (const { label, mappings, expectsReorder } of agreementCases) {
+        const detectorSays = detectReordering(mappings);
+
+        const fakeBase: Notebook = { nbformat: 4, nbformat_minor: 5, metadata: {}, cells: mappings.map(m => m.baseCell!) };
+        const fakeCurrent: Notebook = { nbformat: 4, nbformat_minor: 5, metadata: {}, cells: mappings.map(m => m.currentCell!) };
+        const fakeIncoming: Notebook = { nbformat: 4, nbformat_minor: 5, metadata: {}, cells: mappings.map(m => m.incomingCell!) };
+        const fakeConflict: NotebookSemanticConflict = {
+            filePath: 'agreement-test.ipynb',
+            semanticConflicts: [],
+            cellMappings: mappings,
+            base: fakeBase,
+            current: fakeCurrent,
+            incoming: fakeIncoming,
+        };
+        const builtRows = buildMergeRowsFromSemantic(fakeConflict);
+        const rowSays = computeReorderedRowIndexSet(builtRows).size > 0;
+
+        assert.strictEqual(detectorSays, expectsReorder, `detectReordering mismatch for: ${label}`);
+        assert.strictEqual(rowSays, expectsReorder, `computeReorderedRowIndexSet mismatch for: ${label}`);
+        assert.strictEqual(
+            detectorSays, rowSays,
+            `detectReordering and computeReorderedRowIndexSet disagree for: ${label}`
+        );
+    }
 }
