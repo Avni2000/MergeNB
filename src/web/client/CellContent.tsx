@@ -88,9 +88,11 @@ export function CellContentInner({
     // (deps: [theme, extensions, ...]) only fires StateEffect.reconfigure when
     // these values truly change — not on every render due to new object/array refs.
     const cmTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    
+    const cellType = cell?.cell_type || 'code';
     const cellExtensions = useMemo(
-        () => [...languageExtensions, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
-        [languageExtensions]
+        () => [...(cellType === 'markdown' ? [] : languageExtensions), mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
+        [languageExtensions, cellType]
     );
 
     if (!cell) {
@@ -102,7 +104,6 @@ export function CellContentInner({
     }
 
     const source = normalizeCellSource(cell.source);
-    const cellType = cell.cell_type;
 
     const cellClasses = [
         'notebook-cell',
@@ -140,7 +141,7 @@ export function CellContentInner({
                         compareSource={normalizeCellSource((compareCell ?? baseCell)!.source)}
                         side={side}
                         diffMode={diffMode}
-                        langExtension={languageExtensions}
+                        langExtension={cellType === 'markdown' ? [] : languageExtensions}
                         theme={theme}
                     />
                 ) : cellType !== 'markdown' ? (

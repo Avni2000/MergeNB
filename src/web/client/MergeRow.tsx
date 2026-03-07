@@ -79,9 +79,11 @@ export function MergeRowInner({
     // (which triggers StateEffect.reconfigure) only fires when these values actually
     // change — not on every render because of new object/array references.
     const resolvedEditorTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    
+    const cellType = row.currentCell?.cell_type || row.incomingCell?.cell_type || row.baseCell?.cell_type || 'code';
     const editorExtensions = useMemo(
-        () => [...languageExtensions, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
-        [languageExtensions]
+        () => [...(cellType === 'markdown' ? [] : languageExtensions), mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
+        [languageExtensions, cellType]
     );
 
     // Get content for a given choice
