@@ -38,10 +38,6 @@ function stableStringify(value: unknown): string {
     return JSON.stringify(String(value));
 }
 
-function stripAllWhitespace(text: string): string {
-    return text.replace(/\r\n/g, '\n');
-}
-
 function isWhitespaceOnlyDifference(left: string, right: string): boolean {
     if (left === right) return false;
     const normalizeLines = (s: string) =>
@@ -560,6 +556,9 @@ export function applyAutoResolutions(
                 const cell = resolvedNotebook.cells[resolvedCellIndex];
                 if (cell && cell.cell_type === 'code' && cell.outputs && cell.outputs.length > 0) {
                     cell.outputs = [];
+                    if (effectiveSettings.autoResolveExecutionCount) {
+                        cell.execution_count = null;
+                    }
                     autoResolvedDescriptions.push(`Outputs stripped (cell ${resolvedCellIndex + 1})`);
                 }
             }

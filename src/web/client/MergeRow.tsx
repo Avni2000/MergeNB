@@ -143,12 +143,11 @@ export function MergeRowInner({
         ? row.currentCellIndex - base : undefined;
     const incomingDelta = (isReordered && base !== undefined && row.incomingCellIndex !== undefined)
         ? row.incomingCellIndex - base : undefined;
-    const populatedSideCount = [row.baseCell, row.currentCell, row.incomingCell].filter(Boolean).length;
     const canUnmatch = isConflict
         && isReordered
         && !row.isUserUnmatched
         && row.conflictIndex !== undefined
-        && populatedSideCount >= 2;
+        && !!row.currentCell && !!row.incomingCell;
 
     // For identical rows, show a unified single cell
     if (!isConflict) {

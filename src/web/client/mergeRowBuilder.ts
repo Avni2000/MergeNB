@@ -1,4 +1,5 @@
 import { sortByPosition } from '../../positionUtils';
+import { detectReordering } from '../../cellMatcher';
 import type {
     MergeRow as MergeRowType,
     NotebookSemanticConflict,
@@ -85,9 +86,7 @@ export function buildMergeRowsFromSemantic(
     }
 
     const sortedRows = sortMergeRowsByPosition(rows);
-    const hasGlobalReorderConflict = conflict.semanticConflicts.some(
-        semanticConflict => semanticConflict.type === 'cell-reordered'
-    );
+    const hasGlobalReorderConflict = detectReordering(conflict.cellMappings);
     if (!hasGlobalReorderConflict) {
         return sortedRows;
     }
