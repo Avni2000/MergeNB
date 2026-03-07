@@ -692,4 +692,116 @@ export async function run(): Promise<void> {
         setResolverPromptTestHooks(undefined);
         fs.rmSync(tempDir, { recursive: true, force: true });
     }
+
+    // ---------------------------------------------------------------------
+    // Bug fix: unmatchRow must require both currentCell and incomingCell.
+    //
+    // A row with only base + current (no incoming) should not be unmatchable,
+    // even if isReordered is true. The store guard must reject it silently.
+    // ---------------------------------------------------------------------
+    const twoSideOnlyRows = [
+        {
+            type: 'conflict' as const,
+            baseCell: makeMarkdownCell('base-only-pair'),
+            currentCell: makeMarkdownCell('current-only-pair'),
+            incomingCell: undefined,
+            baseCellIndex: 0,
+            currentCellIndex: 0,
+            incomingCellIndex: undefined,
+            conflictIndex: 0,
+            conflictType: 'cell-reordered' as const,
+            anchorPosition: 0,
+            isReordered: true,
+        },
+    ];
+    const twoSideStore = createResolverStore(twoSideOnlyRows);
+    twoSideStore.getState().unmatchRow(0);
+    assert.strictEqual(
+        twoSideStore.getState().rows.length,
+        1,
+        'Expected unmatchRow to be a no-op when incomingCell is missing (base+current only)'
+    );
+    assert.strictEqual(
+        twoSideStore.getState().rows[0].isUserUnmatched,
+        undefined,
+        'Expected row to remain unchanged after rejected unmatch'
+    );
+
+    // Same check with base + incoming (no current)
+    const baseIncomingOnlyRows = [
+        {
+            type: 'conflict' as const,
+            baseCell: makeMarkdownCell('base-only-pair-2'),
+            currentCell: undefined,
+            incomingCell: makeMarkdownCell('incoming-only-pair'),
+            baseCellIndex: 0,
+            currentCellIndex: undefined,
+            incomingCellIndex: 0,
+            conflictIndex: 0,
+            conflictType: 'cell-reordered' as const,
+            anchorPosition: 0,
+            isReordered: true,
+        },
+    ];
+    const baseIncomingStore = createResolverStore(baseIncomingOnlyRows);
+    baseIncomingStore.getState().unmatchRow(0);
+    assert.strictEqual(
+        baseIncomingStore.getState().rows.length,
+        1,
+        'Expected unmatchRow to be a no-op when currentCell is missing (base+incoming only)'
+    );
+
+    // ---------------------------------------------------------------------
+    // Bug fix: buildMergeRowsFromSemantic must derive reorder from
+    // cellMappings (via detectReordering), not from semanticConflicts.
+    //
+    // If semanticConflicts is empty but cellMappings show a reorder,
+    // isReordered flags must still be set on the affected rows.
+    // ---------------------------------------------------------------------
+    const reorderNoSemanticBase: Notebook = {
+        nbformat: 4, nbformat_minor: 5, metadata: {}, cells: [
+            makeMarkdownCell('rns-a'),
+            makeMarkdownCell('rns-b'),
+        ],
+    };
+    const reorderNoSemanticCurrent: Notebook = {
+        nbformat: 4, nbformat_minor: 5, metadata: {}, cells: [
+            makeMarkdownCell('rns-b'),
+            makeMarkdownCell('rns-a'),
+        ],
+    };
+    const reorderNoSemanticIncoming: Notebook = {
+        nbformat: 4, nbformat_minor: 5, metadata: {}, cells: [
+            makeMarkdownCell('rns-a'),
+            makeMarkdownCell('rns-b'),
+        ],
+    };
+    const reorderNoSemanticConflict: NotebookSemanticConflict = {
+        filePath: 'rns.ipynb',
+        semanticConflicts: [],  // empty — e.g. auto-resolved
+        cellMappings: [
+            {
+                baseIndex: 0, currentIndex: 1, incomingIndex: 0,
+                matchConfidence: 1,
+                baseCell: reorderNoSemanticBase.cells[0],
+                currentCell: reorderNoSemanticCurrent.cells[1],
+                incomingCell: reorderNoSemanticIncoming.cells[0],
+            },
+            {
+                baseIndex: 1, currentIndex: 0, incomingIndex: 1,
+                matchConfidence: 1,
+                baseCell: reorderNoSemanticBase.cells[1],
+                currentCell: reorderNoSemanticCurrent.cells[0],
+                incomingCell: reorderNoSemanticIncoming.cells[1],
+            },
+        ],
+        base: reorderNoSemanticBase,
+        current: reorderNoSemanticCurrent,
+        incoming: reorderNoSemanticIncoming,
+    };
+    const reorderNoSemanticRows = buildMergeRowsFromSemantic(reorderNoSemanticConflict);
+    assert.ok(
+        reorderNoSemanticRows.some(row => row.isReordered),
+        'Expected isReordered flags even when semanticConflicts is empty but cellMappings show a reorder'
+    );
 }

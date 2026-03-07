@@ -38,10 +38,6 @@ function stableStringify(value: unknown): string {
     return JSON.stringify(String(value));
 }
 
-function stripAllWhitespace(text: string): string {
-    return text.replace(/\r\n/g, '\n');
-}
-
 function isWhitespaceOnlyDifference(left: string, right: string): boolean {
     if (left === right) return false;
     const normalizeLines = (s: string) =>
