@@ -144,7 +144,7 @@
     "test:list": "npm run compile-tests && node out/tests/runIntegrationTest.js --list"
   },
   "devDependencies": {
-    "@clack/prompts": "^1.0.1",
+    "@clack/prompts": "^1.1.0",
     "@playwright/test": "^1.58.2",
     "@types/dompurify": "^3.2.0",
     "@types/markdown-it": "^14.1.2",
@@ -172,13 +172,13 @@
     "@codemirror/language": "^6.12.2",
     "@codemirror/language-data": "^6.5.2",
     "@jupyterlab/rendermime": "^4.5.5",
-    "@tanstack/react-virtual": "^3.13.19",
-    "@uiw/codemirror-themes": "^4.25.7",
-    "@uiw/react-codemirror": "^4.25.7",
+    "@tanstack/react-virtual": "^3.13.21",
+    "@uiw/codemirror-themes": "^4.25.8",
+    "@uiw/react-codemirror": "^4.25.8",
     "@vscode/markdown-it-katex": "^1.1.2",
-    "dompurify": "^3.3.1",
+    "dompurify": "^3.3.2",
     "immer": "^11.1.4",
-    "katex": "^0.16.33",
+    "katex": "^0.16.38",
     "markdown-it": "^14.1.1",
     "ws": "^8.19.0",
     "zustand": "^5.0.11"
