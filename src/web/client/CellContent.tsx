@@ -13,7 +13,7 @@ import { Widget } from '@lumino/widgets';
 import DOMPurify from 'dompurify';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
-import { computeLineDiff, type DiffLine } from '../../diffUtils';
+import { diff as computeDiff, type Change } from '@codemirror/merge';
 import * as logger from '../../logger';
 import { createMergeNBTheme, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './editorTheme';
 import { renderMarkdown } from './markdown';
@@ -193,45 +193,75 @@ interface DiffContentProps {
 
 /**
  * Build a CodeMirror StateField extension that decorates changed lines and
- * inline character ranges using the same CSS classes as the previous <pre>
- * implementation.  Syntax highlighting from the language extension is layered
- * underneath — the diff decorations only add backgrounds, not text colours.
+ * inline character ranges using the same CSS classes as the previous implementation.
+ * Uses @codemirror/merge's character-level diff — no line-pairing heuristics needed.
  */
 function createDiffExtension(
-    allDiffLines: DiffLine[],
+    compareSource: string,
+    source: string,
+    changes: readonly Change[],
     side: 'base' | 'current' | 'incoming',
     diffMode: 'base' | 'conflict',
 ): Extension {
     return StateField.define<DecorationSet>({
         create(state) {
-            const builder = new RangeSetBuilder<Decoration>();
-            // allDiffLines maps 1:1 to source lines — must NOT be pre-filtered.
-            // Using a filtered array breaks the index→line-number correspondence and
-            // causes inline mark `to` values to exceed the next line's `from`,
-            // which throws "Ranges must be added sorted by from position and startSide".
-            for (let i = 0; i < allDiffLines.length; i++) {
-                if (i >= state.doc.lines) break;
-                const diffLine = allDiffLines[i];
-                if (diffLine.type === 'unchanged') continue;
+            // Collect all decorations first, then sort + deduplicate before adding to the
+            // builder. This avoids ordering violations when multiple Changes share a line
+            // (which would cause duplicate line decorations at the same `from` position).
+            type Entry = { from: number; to: number; decoration: Decoration; isLine: boolean };
+            const entries: Entry[] = [];
 
-                const line = state.doc.line(i + 1);
-                const whitespaceOnly = isWhitespaceOnlyLineChange(diffLine);
-                const lineClass = getDiffLineClass(diffLine, side, diffMode, whitespaceOnly);
-                builder.add(line.from, line.from, Decoration.line({ class: lineClass }));
+            for (const change of changes) {
+                if (change.fromB === change.toB) continue; // nothing on the B (source) side
 
-                if (diffLine.inlineChanges) {
-                    let pos = line.from;
-                    for (const change of diffLine.inlineChanges) {
-                        const end = Math.min(pos + change.text.length, line.to);
-                        if (change.type !== 'unchanged' && end > pos) {
-                            const inlineClass = getInlineChangeClass(change.type, side, diffMode, whitespaceOnly);
-                            builder.add(pos, end, Decoration.mark({ class: inlineClass }));
-                        }
-                        pos = pos + change.text.length;
-                        if (pos >= line.to) break;
+                const changedText = state.doc.sliceString(change.fromB, change.toB);
+                const isWhitespaceOnly = changedText.length > 0 && changedText.trim() === '';
+                const useConflictClass = diffMode === 'conflict' || isWhitespaceOnly;
+
+                const lineClass = useConflictClass
+                    ? 'diff-line diff-line-conflict'
+                    : side === 'current' ? 'diff-line diff-line-current' : 'diff-line diff-line-incoming';
+                const inlineClass = useConflictClass
+                    ? 'diff-inline-conflict'
+                    : side === 'current' ? 'diff-inline-current' : 'diff-inline-incoming';
+
+                const firstLine = state.doc.lineAt(change.fromB);
+                const lastLine = state.doc.lineAt(Math.max(change.fromB, change.toB - 1));
+
+                for (let lineNum = firstLine.number; lineNum <= lastLine.number; lineNum++) {
+                    const line = state.doc.line(lineNum);
+                    entries.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: lineClass }), isLine: true });
+                }
+
+                // Re-diff the hunk's text slices for character-level inline marks.
+                // Sub-change positions are relative to the slice, so offset by change.fromB.
+                const aSlice = compareSource.slice(change.fromA, change.toA);
+                const bSlice = source.slice(change.fromB, change.toB);
+                for (const sub of computeDiff(aSlice, bSlice)) {
+                    if (sub.fromB < sub.toB) {
+                        entries.push({
+                            from: change.fromB + sub.fromB,
+                            to: change.fromB + sub.toB,
+                            decoration: Decoration.mark({ class: inlineClass }),
+                            isLine: false,
+                        });
                     }
                 }
             }
+
+            // Sort: ascending from; line decs (startSide -1) before marks (startSide 0) at same position.
+            entries.sort((a, b) => a.from !== b.from ? a.from - b.from : (a.isLine ? -1 : 1) - (b.isLine ? -1 : 1));
+
+            const builder = new RangeSetBuilder<Decoration>();
+            const seenLineDecs = new Set<number>();
+            for (const { from, to, decoration, isLine } of entries) {
+                if (isLine) {
+                    if (seenLineDecs.has(from)) continue; // skip duplicate line decs on same line
+                    seenLineDecs.add(from);
+                }
+                builder.add(from, to, decoration);
+            }
+
             return builder.finish();
         },
         update(deco) { return deco; },
@@ -240,10 +270,10 @@ function createDiffExtension(
 }
 
 function DiffContent({ source, compareSource, side, diffMode, langExtension, theme }: DiffContentProps): React.ReactElement {
-    const diff = useMemo(() => computeLineDiff(compareSource, source), [compareSource, source]);
+    const changes = useMemo(() => computeDiff(compareSource, source), [compareSource, source]);
     const diffExtension = useMemo(
-        () => createDiffExtension(diff.right, side ?? 'current', diffMode),
-        [diff.right, side, diffMode]
+        () => createDiffExtension(compareSource, source, changes, side ?? 'current', diffMode),
+        [compareSource, source, changes, side, diffMode]
     );
     const cmTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
     const allExtensions = useMemo(
@@ -262,75 +292,6 @@ function DiffContent({ source, compareSource, side, diffMode, langExtension, the
             className="cell-source-cm"
         />
     );
-}
-
-/**
- * Get CSS class for diff line based on type and side.
- * Branch-based coloring: green for current, blue for incoming.
- */
-function getDiffLineClass(
-    line: DiffLine,
-    side: 'base' | 'current' | 'incoming',
-    diffMode: 'base' | 'conflict',
-    isWhitespaceOnly: boolean
-): string {
-    switch (line.type) {
-        case 'unchanged':
-            return 'diff-line';
-        case 'added':
-        case 'removed':
-        case 'modified':
-            if (diffMode === 'conflict' || isWhitespaceOnly) {
-                return 'diff-line diff-line-conflict';
-            }
-            // Use branch-based coloring: the color tells you which branch the content comes from
-            return side === 'current' ? 'diff-line diff-line-current' : 'diff-line diff-line-incoming';
-        default:
-            return 'diff-line';
-    }
-}
-
-function getInlineChangeClass(
-    type: 'unchanged' | 'added' | 'removed',
-    side: 'base' | 'current' | 'incoming',
-    diffMode: 'base' | 'conflict',
-    isWhitespaceOnly: boolean
-): string {
-    switch (type) {
-        case 'unchanged':
-            return 'diff-inline-unchanged';
-        case 'added':
-        case 'removed':
-            if (diffMode === 'conflict' || isWhitespaceOnly) {
-                return 'diff-inline-conflict';
-            }
-            // Use branch-based coloring for inline changes too
-            return side === 'current' ? 'diff-inline-current' : 'diff-inline-incoming';
-        default:
-            return '';
-    }
-}
-
-function isWhitespaceOnlyLineChange(line: DiffLine): boolean {
-    if (line.type === 'unchanged') return false;
-
-    if (line.inlineChanges && line.inlineChanges.length > 0) {
-        let hasChange = false;
-        for (const change of line.inlineChanges) {
-            if (change.type === 'unchanged') continue;
-            if (change.text.trim() !== '') {
-                return false;
-            }
-            hasChange = true;
-        }
-        return hasChange;
-    }
-
-    if (line.type === 'added' || line.type === 'removed') {
-        return line.content.trim() === '' && line.content.length > 0;
-    }
-
-    return false;
 }
 
 interface CellOutputsProps {
