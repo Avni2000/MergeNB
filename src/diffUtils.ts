@@ -2,12 +2,12 @@
  * @file diffUtils.ts
  * @description Text diffing utilities for visual conflict comparison.
  *
- * Implements LCS (Longest Common Subsequence) based diff algorithm:
- * - Line-by-line comparison between two text versions
- * - Inline word/character-level change detection within modified lines
- * - Produces aligned left/right diff results for side-by-side display
- * - Used by the browser-based conflict resolver to render diff highlighting
+ * Uses the `diff` library (jsdiff) for line-level and word-level diffing.
+ * Produces aligned left/right diff results for side-by-side display.
+ * Used by the browser-based conflict resolver to render diff highlighting.
  */
+
+import * as Diff from 'diff';
 
 export interface DiffLine {
     type: 'unchanged' | 'added' | 'removed' | 'modified';
@@ -31,67 +31,75 @@ export interface DiffResult {
  * Returns separate arrays for left and right sides with change annotations.
  */
 export function computeLineDiff(oldText: string, newText: string): DiffResult {
-    const oldLines = oldText.split('\n');
-    const newLines = newText.split('\n');
-
-    // Compute LCS (Longest Common Subsequence) for line matching
-    const lcs = computeLCS(oldLines, newLines);
+    const changes = Diff.diffLines(oldText, newText, { newlineIsToken: false });
 
     const left: DiffLine[] = [];
     const right: DiffLine[] = [];
 
-    let oldIdx = 0;
-    let newIdx = 0;
-    let lcsIdx = 0;
+    // Pair up removed/added blocks so we can mark them as 'modified' with inline diffs
+    // when there's a 1-to-1 correspondence.
+    let i = 0;
+    while (i < changes.length) {
+        const change = changes[i];
 
-    while (oldIdx < oldLines.length || newIdx < newLines.length) {
-        if (lcsIdx < lcs.length && oldIdx < oldLines.length && oldLines[oldIdx] === lcs[lcsIdx]) {
-            // Check if this line also matches in new
-            if (newIdx < newLines.length && newLines[newIdx] === lcs[lcsIdx]) {
-                // Unchanged line
-                left.push({ type: 'unchanged', content: oldLines[oldIdx] });
-                right.push({ type: 'unchanged', content: newLines[newIdx] });
-                oldIdx++;
-                newIdx++;
-                lcsIdx++;
-            } else {
-                // Line was added in new before this common line
-                left.push({ type: 'unchanged', content: '' }); // Placeholder for alignment
-                right.push({ type: 'added', content: newLines[newIdx] });
-                newIdx++;
+        if (!change.added && !change.removed) {
+            // Unchanged block
+            const lines = splitLines(change.value);
+            for (const line of lines) {
+                left.push({ type: 'unchanged', content: line });
+                right.push({ type: 'unchanged', content: line });
             }
-        } else if (lcsIdx < lcs.length && newIdx < newLines.length && newLines[newIdx] === lcs[lcsIdx]) {
-            // Line was removed from old
-            left.push({ type: 'removed', content: oldLines[oldIdx] });
-            right.push({ type: 'unchanged', content: '' }); // Placeholder
-            oldIdx++;
-        } else if (oldIdx < oldLines.length && newIdx < newLines.length) {
-            // Both lines are different - this is a modification
-            const inlineLeft = computeInlineDiff(oldLines[oldIdx], newLines[newIdx]);
-            const inlineRight = computeInlineDiff(newLines[newIdx], oldLines[oldIdx], true);
+            i++;
+        } else if (change.removed) {
+            // Look ahead: if the next block is an addition, treat as modification
+            const next = changes[i + 1];
+            if (next?.added) {
+                const removedLines = splitLines(change.value);
+                const addedLines = splitLines(next.value);
+                const pairCount = Math.min(removedLines.length, addedLines.length);
 
-            left.push({
-                type: 'modified',
-                content: oldLines[oldIdx],
-                inlineChanges: inlineLeft
-            });
-            right.push({
-                type: 'modified',
-                content: newLines[newIdx],
-                inlineChanges: inlineRight
-            });
-            oldIdx++;
-            newIdx++;
-        } else if (oldIdx < oldLines.length) {
-            // Remaining lines in old are removed
-            left.push({ type: 'removed', content: oldLines[oldIdx] });
-            right.push({ type: 'unchanged', content: '' });
-            oldIdx++;
-        } else if (newIdx < newLines.length) {
-            // Remaining lines in new are added
-            left.push({ type: 'unchanged', content: '' });
-            right.push({ type: 'added', content: newLines[newIdx] });
-            newIdx++;
+                // Paired lines → 'modified' with inline diff
+                for (let k = 0; k < pairCount; k++) {
+                    left.push({
+                        type: 'modified',
+                        content: removedLines[k],
+                        inlineChanges: computeInlineDiff(removedLines[k], addedLines[k], false),
+                    });
+                    right.push({
+                        type: 'modified',
+                        content: addedLines[k],
+                        inlineChanges: computeInlineDiff(addedLines[k], removedLines[k], true),
+                    });
+                }
+
+                // Remaining removed lines (more removed than added)
+                for (let k = pairCount; k < removedLines.length; k++) {
+                    left.push({ type: 'removed', content: removedLines[k] });
+                    right.push({ type: 'unchanged', content: '' });
+                }
+
+                // Remaining added lines (more added than removed)
+                for (let k = pairCount; k < addedLines.length; k++) {
+                    left.push({ type: 'unchanged', content: '' });
+                    right.push({ type: 'added', content: addedLines[k] });
+                }
+
+                i += 2; // consumed both blocks
+            } else {
+                // Pure removal
+                for (const line of splitLines(change.value)) {
+                    left.push({ type: 'removed', content: line });
+                    right.push({ type: 'unchanged', content: '' });
+                }
+                i++;
+            }
+        } else {
+            // Pure addition (not preceded by a removal)
+            for (const line of splitLines(change.value)) {
+                left.push({ type: 'unchanged', content: '' });
+                right.push({ type: 'added', content: line });
+            }
+            i++;
         }
     }
 
@@ -99,115 +107,33 @@ export function computeLineDiff(oldText: string, newText: string): DiffResult {
 }
 
 /**
- * Compute inline (word/character-level) diff for a modified line.
- * Uses word-level granularity for better readability.
+ * Compute inline (word-level) diff for a modified line.
  */
-function computeInlineDiff(text: string, otherText: string, isNew: boolean = false): InlineChange[] {
-    // Tokenize into words and whitespace
-    const tokens1 = tokenizeWords(text);
-    const tokens2 = tokenizeWords(otherText);
-    const lcs = computeLCS(tokens1, tokens2);
+function computeInlineDiff(text: string, otherText: string, isNew: boolean): InlineChange[] {
+    const changes = Diff.diffWords(text, otherText);
+    const result: InlineChange[] = [];
 
-    const changes: InlineChange[] = [];
-    let idx1 = 0;
-    let lcsIdx = 0;
-
-    while (idx1 < tokens1.length) {
-        if (lcsIdx < lcs.length && tokens1[idx1] === lcs[lcsIdx]) {
-            changes.push({ type: 'unchanged', text: tokens1[idx1] });
-            idx1++;
-            lcsIdx++;
-        } else {
-            // This token was removed/added
-            changes.push({
-                type: isNew ? 'added' : 'removed',
-                text: tokens1[idx1]
-            });
-            idx1++;
+    for (const change of changes) {
+        if (!change.added && !change.removed) {
+            result.push({ type: 'unchanged', text: change.value });
+        } else if (isNew ? change.added : change.removed) {
+            result.push({ type: isNew ? 'added' : 'removed', text: change.value });
         }
+        // Skip the counterpart (removed on new side / added on old side)
     }
 
-    return changes;
+    return result;
 }
 
 /**
- * Tokenize text into words and whitespace for word-level diff.
- * Preserves all characters including punctuation as separate tokens for fine-grained comparison.
+ * Split a diff chunk value into individual lines, dropping the trailing empty
+ * string that results from a trailing newline.
  */
-function tokenizeWords(text: string): string[] {
-    const tokens: string[] = [];
-    let current = '';
-
-    for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        const isWhitespace = /\s/.test(char);
-        const isAlphaNum = /[a-zA-Z0-9_]/.test(char);
-
-        if (isWhitespace) {
-            // Flush current token
-            if (current) {
-                tokens.push(current);
-                current = '';
-            }
-            // Add whitespace as a token
-            tokens.push(char);
-        } else if (isAlphaNum) {
-            // Continue building alphanumeric word
-            current += char;
-        } else {
-            // Punctuation or special character - flush and add separately
-            if (current) {
-                tokens.push(current);
-                current = '';
-            }
-            tokens.push(char);
-        }
+function splitLines(value: string): string[] {
+    const lines = value.split('\n');
+    // diffLines values end with '\n', producing a trailing empty element
+    if (lines.length > 0 && lines[lines.length - 1] === '') {
+        lines.pop();
     }
-
-    if (current) {
-        tokens.push(current);
-    }
-
-    return tokens;
-}
-
-/**
- * Compute Longest Common Subsequence of two arrays.
- * @param arr1
- * @param arr2
- * @returns The LCS as an array
- */
-function computeLCS<T>(arr1: T[], arr2: T[]): T[] {
-    const m = arr1.length;
-    const n = arr2.length;
-
-    // DP table
-    const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
-
-    for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-            if (arr1[i - 1] === arr2[j - 1]) {
-                dp[i][j] = dp[i - 1][j - 1] + 1;
-            } else {
-                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-            }
-        }
-    }
-
-    // Backtrack to find the LCS
-    const lcs: T[] = [];
-    let i = m, j = n;
-    while (i > 0 && j > 0) {
-        if (arr1[i - 1] === arr2[j - 1]) {
-            lcs.unshift(arr1[i - 1]);
-            i--;
-            j--;
-        } else if (dp[i - 1][j] > dp[i][j - 1]) {
-            i--;
-        } else {
-            j--;
-        }
-    }
-
-    return lcs;
+    return lines;
 }
