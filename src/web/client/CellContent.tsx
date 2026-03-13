@@ -8,43 +8,19 @@ import CodeMirror from '@uiw/react-codemirror';
 import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
 import { StateField, RangeSetBuilder } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
-import { IRenderMime, MimeModel, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
+import { IRenderMime, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
-import MarkdownIt from 'markdown-it';
-import renderMathInElement from 'katex/contrib/auto-render';
+import DOMPurify from 'dompurify';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
 import * as logger from '../../logger';
 import { createMergeNBTheme, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './editorTheme';
-import DOMPurify from 'dompurify';
+import { renderMarkdown } from './markdown';
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
 const MAX_RENDERMIME_REGISTRY_CACHE_SIZE = 32;
-const renderMimeMd = MarkdownIt({
-    html: true,
-    linkify: true,
-    typographer: true,
-});
-const renderMimeMarkdownParser = {
-    async render(source: string): Promise<string> {
-        return renderMimeMd.render(source);
-    }
-};
-const renderMimeKatexTypesetter: IRenderMime.ILatexTypesetter = {
-    typeset(element: HTMLElement): void {
-        renderMathInElement(element, {
-            throwOnError: false,
-            delimiters: [
-                { left: '$$', right: '$$', display: true },
-                { left: '\\[', right: '\\]', display: true },
-                { left: '$', right: '$', display: false },
-                { left: '\\(', right: '\\)', display: false },
-            ],
-        });
-    }
-};
 
 interface CellContentProps {
     cell: NotebookCell | undefined;
@@ -132,7 +108,6 @@ export function CellContentInner({
                 {cellType === 'markdown' && !isConflict ? (
                     <MarkdownContent
                         source={source}
-                        renderMimeRegistry={renderMimeRegistry}
                     />
                 ) : isConflict && (compareCell || baseCell) ? (
                     // Show conflict diffs with syntax highlighting + diff decorations
@@ -172,67 +147,39 @@ export function CellContentInner({
 
 interface MarkdownContentProps {
     source: string;
-    renderMimeRegistry: RenderMimeRegistry;
 }
 
-function MarkdownContent({ source, renderMimeRegistry }: MarkdownContentProps): React.ReactElement {
+function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
     const hostRef = useRef<HTMLDivElement>(null);
-    const [fallback, setFallback] = useState<string | null>(null);
 
     useEffect(() => {
         const host = hostRef.current;
         if (!host || !host.isConnected) return;
 
         host.replaceChildren();
-        setFallback(null);
 
-        let disposed = false;
-        let renderer: ReturnType<RenderMimeRegistry['createRenderer']> | null = null;
-        let model: (MimeModel & { dispose?: () => void }) | null = null;
+        const html = renderMarkdown(source);
+        host.innerHTML = html;
 
-        try {
-            model = new MimeModel({
-                data: { 'text/markdown': source },
-                trusted: false,
-            });
+        // Resolve local image/link URLs to notebook-asset endpoints
+        const { sessionId, token } = getCurrentSessionCredentials();
+        host.querySelectorAll('img').forEach((img) => {
+            const src = img.getAttribute('src');
+            if (src && isNotebookLocalPath(src)) {
+                img.setAttribute('src', buildNotebookAssetUrl(sessionId, token, normalizeLocalPath(src)));
+            }
+        });
+        host.querySelectorAll('a[href]').forEach((anchor) => {
+            const href = anchor.getAttribute('href');
+            if (href && isNotebookLocalPath(href)) {
+                anchor.setAttribute('href', buildNotebookAssetUrl(sessionId, token, normalizeLocalPath(href)));
+            }
+        });
 
-            renderer = renderMimeRegistry.createRenderer('text/markdown');
-            Widget.attach(renderer, host);
+        return () => { host.replaceChildren(); };
+    }, [source]);
 
-            void renderer.renderModel(model).catch((err: unknown) => {
-                logger.warn('[MergeNB] Failed to render markdown via rendermime:', err);
-                if (!disposed) {
-                    disposeRenderer(renderer, host);
-                    model?.dispose?.();
-                    model = null;
-                    renderer = null;
-                    setFallback(source);
-                }
-            });
-        } catch (err) {
-            logger.warn('[MergeNB] Failed to initialize rendermime markdown renderer:', err);
-            disposeRenderer(renderer, host);
-            model?.dispose?.();
-            model = null;
-            setFallback(source);
-            return;
-        }
-
-        return () => {
-            disposed = true;
-            disposeRenderer(renderer, host);
-            model?.dispose?.();
-            model = null;
-            host.replaceChildren();
-        };
-    }, [source, renderMimeRegistry]);
-
-    return (
-        <div className="markdown-content">
-            <div ref={hostRef} />
-            {fallback && <pre className="cell-output-fallback">{fallback}</pre>}
-        </div>
-    );
+    return <div className="markdown-content" ref={hostRef} />;
 }
 
 interface DiffContentProps {
@@ -576,8 +523,6 @@ function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
     const registry = new RenderMimeRegistry({
         initialFactories: standardRendererFactories,
         resolver: createNotebookAssetResolver(sessionId, token),
-        latexTypesetter: renderMimeKatexTypesetter,
-        markdownParser: renderMimeMarkdownParser,
     });
 
     renderMimeRegistryCache.set(cacheKey, registry);
