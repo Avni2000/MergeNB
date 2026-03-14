@@ -268,12 +268,12 @@ export function MergeRowInner({
                                     Unmatch
                                 </button>
                             )}
-                            {row.isUserUnmatched && row.unmatchGroupId && (
+                            {row.isUserUnmatched && (
                                 <>
                                     <span className="rematch-label">Unmatched</span>
                                     <button
                                         className="btn-rematch"
-                                        onClick={() => onRematchRows?.(row.unmatchGroupId!)}
+                                        onClick={() => onRematchRows?.(row.unmatchGroupId)}
                                         title="Rematch these cells back into one row"
                                         data-testid="rematch-btn"
                                     >

@@ -23,31 +23,58 @@ export type { AutoResolveResult } from '../webTypes';
 
 /**
  * Represents a row in the 3-way merge view
+ * Uses a discriminated union to enforce that when isUserUnmatched is true,
+ * unmatchGroupId and originalMatchedRow must be present.
  */
-export interface MergeRow {
-    type: 'identical' | 'conflict';
-    baseCell?: import('../../types').NotebookCell;
-    currentCell?: import('../../types').NotebookCell;
-    incomingCell?: import('../../types').NotebookCell;
-    baseCellIndex?: number;
-    currentCellIndex?: number;
-    incomingCellIndex?: number;
-    conflictIndex?: number;
-    conflictType?: string;
-    isUnmatched?: boolean;
-    unmatchedSides?: ('base' | 'current' | 'incoming')[];
-    anchorPosition?: number;
-    /** Whether this row participated in a reorder conflict in the original merge state. */
-    isReordered?: boolean;
-    /** Whether this row is in edit mode */
-    isEditing?: boolean;
-    /** Whether this row was manually unmatched by the user (split from a reordered row). */
-    isUserUnmatched?: boolean;
-    /** Unique group ID linking split rows for rematch. */
-    unmatchGroupId?: string;
-    /** The original matched row before unmatch, used for rematch reconstruction. */
-    originalMatchedRow?: MergeRow;
-}
+export type MergeRow = 
+    | {
+        type: 'identical' | 'conflict';
+        baseCell?: import('../../types').NotebookCell;
+        currentCell?: import('../../types').NotebookCell;
+        incomingCell?: import('../../types').NotebookCell;
+        baseCellIndex?: number;
+        currentCellIndex?: number;
+        incomingCellIndex?: number;
+        conflictIndex?: number;
+        conflictType?: string;
+        isUnmatched?: boolean;
+        unmatchedSides?: ('base' | 'current' | 'incoming')[];
+        anchorPosition?: number;
+        /** Whether this row participated in a reorder conflict in the original merge state. */
+        isReordered?: boolean;
+        /** Whether this row is in edit mode */
+        isEditing?: boolean;
+        /** User has not unmatched this row. */
+        isUserUnmatched?: false | undefined;
+        /** No group ID when not user-unmatched. */
+        unmatchGroupId?: undefined;
+        /** No original matched row when not user-unmatched. */
+        originalMatchedRow?: undefined;
+    }
+    | {
+        type: 'identical' | 'conflict';
+        baseCell?: import('../../types').NotebookCell;
+        currentCell?: import('../../types').NotebookCell;
+        incomingCell?: import('../../types').NotebookCell;
+        baseCellIndex?: number;
+        currentCellIndex?: number;
+        incomingCellIndex?: number;
+        conflictIndex?: number;
+        conflictType?: string;
+        isUnmatched?: boolean;
+        unmatchedSides?: ('base' | 'current' | 'incoming')[];
+        anchorPosition?: number;
+        /** Whether this row participated in a reorder conflict in the original merge state. */
+        isReordered?: boolean;
+        /** Whether this row is in edit mode */
+        isEditing?: boolean;
+        /** This row was manually unmatched by the user. */
+        isUserUnmatched: true;
+        /** Unique group ID linking split rows for rematch. */
+        unmatchGroupId: string;
+        /** The original matched row before unmatch, used for rematch reconstruction. */
+        originalMatchedRow: MergeRow;
+    };
 
 /**
  * Unified conflict data sent from extension to browser

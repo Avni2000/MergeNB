@@ -1275,7 +1275,7 @@ body {
     border-radius: 4px;
     font-size: 12px;
     font-weight: 500;
-    border: 1px solid var(--border-color);;
+    border: 1px solid var(--border-color);
     cursor: pointer;
     background: var(--bg-primary);
     color: var(--text-secondary);
@@ -1319,7 +1319,7 @@ body {
     border-radius: 4px;
     font-size: 12px;
     font-weight: 500;
-    border: 1px solid var(--border-color);;
+    border: 1px solid var(--border-color);
     cursor: pointer;
     background: var(--bg-primary);
     color: var(--text-secondary);
