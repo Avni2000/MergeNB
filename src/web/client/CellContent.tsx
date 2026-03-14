@@ -20,12 +20,11 @@ import { classHighlighter } from '@lezer/highlight';
 import { syntaxHighlighting } from '@codemirror/language';
 import { renderMarkdown } from './markdown';
 
-const EDITOR_FONT_FAMILY = "'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace";
 
 export const mergeNBEditorStructure: Extension = EditorView.theme({
     '&': { outline: 'none !important', backgroundColor: 'var(--cell-surface) !important' },
     '&.cm-focused': { outline: 'none !important' },
-    '.cm-content': { fontFamily: EDITOR_FONT_FAMILY, fontSize: '13px', lineHeight: '1.5', padding: '0' },
+    '.cm-content': { fontFamily: 'var(--font-code)', fontSize: '13px', lineHeight: '1.5', padding: '0' },
     '.cm-line': { padding: '0' },
     '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit' },
     '.cm-gutters': { display: 'none' },

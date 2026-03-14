@@ -82,10 +82,15 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
 
     return `
-    /* Load DM Sans (all weights) and Playfair Display (italic 500) from Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..1000;1,9..40,300..1000&family=Playfair+Display:ital,wght@1,500&display=swap');
+        /* Load Inter, Playfair Display, and JetBrains Mono from Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@1,500&display=swap');
 
 :root {
+    --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    
+    /* Code Font: Inherit VS Code's Editor font, fall back to standard monospace */
+    --font-code: "JetBrains Mono", "SF Mono", Monaco, Menlo, Consolas, "Ubuntu Mono", "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;
+
     --bg-primary: ${colors.bgPrimary};
     --bg-secondary: ${colors.bgSecondary};
     --bg-tertiary: ${colors.bgTertiary};
@@ -122,7 +127,7 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
 }
 
 body {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-ui);
     font-weight: 400;
     background: ${colors.bodyBackground};
     ${hasBackgroundImage ? `background-image: ${colors.bodyBackgroundImage};` : ''}
@@ -199,7 +204,7 @@ body {
 }
 
 .header-title-merge {
-    font-family: 'Playfair Display', serif;
+    font-family: "Playfair Display", var(--font-ui);
     font-style: italic;
     font-weight: 500;
     font-size: 24px;
@@ -207,7 +212,7 @@ body {
 }
 
 .header-title-nb {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-ui);
     font-weight: 700;
     font-size: 24px;
 }
@@ -215,7 +220,7 @@ body {
 .file-path {
     font-size: 12px;
     color: var(--text-secondary);
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-ui);
     font-weight: 400;
 }
 
@@ -450,7 +455,7 @@ body {
     gap: 8px;
     padding: 4px 8px;
     font-size: 11px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-ui);
     font-weight: 400;
     color: var(--text-secondary);
     border-bottom: 1px solid var(--border-color);
@@ -468,7 +473,7 @@ body {
 }
 
 .cell-content {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-ui);
     font-weight: 400;
     font-size: 13px;
     line-height: 1.5;
@@ -678,7 +683,7 @@ body {
     border-radius: 4px;
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-code);
     font-weight: 400;
 }
 
@@ -819,7 +824,7 @@ body {
     background: var(--bg-primary);
     padding: 2px 6px;
     border-radius: 3px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-code);
     font-weight: 400;
     font-size: 0.9em;
 }
@@ -881,7 +886,7 @@ body {
     color: var(--text-primary);
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-code);
     font-weight: 400;
     font-size: 13px;
     resize: vertical;
@@ -937,6 +942,19 @@ body {
     border: 1px solid rgba(78, 201, 176, 0.4);
     border-radius: 4px;
     outline: none !important;
+}
+
+.resolved-cell.markdown-cell .resolved-content-input.cm-editor {
+    border-left: 3px solid var(--accent-green);
+}
+
+.resolved-cell.markdown-cell .resolved-content-input .cm-content,
+.markdown-cell .cell-source-cm .cm-content {
+    font-family: var(--font-ui) !important;
+}
+
+.resolved-cell.code-cell .resolved-content-input.cm-editor {
+    border-left: 3px solid var(--accent-blue);
 }
 
 .resolved-content-input.cm-editor.cm-focused {
@@ -1127,7 +1145,7 @@ body {
 /* Delete button */
 .btn-delete {
     background: rgba(244, 135, 113, 0.2);
-    color: #f48771;
+    color: var(--text-primary);
     border: 1px solid rgba(244, 135, 113, 0.5);
 }
 
@@ -1174,7 +1192,7 @@ body {
 }
 
 .reorder-delta {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-ui);
     font-weight: 600;
     font-size: 11px;
     padding: 2px 6px;

@@ -393,7 +393,7 @@ export function MergeRowInner({
 
             {/* Resolved content editor - appears after selecting a branch */}
             {resolutionState && resolutionState.choice !== 'delete' && (
-                <div className="resolved-cell">
+                <div className={`resolved-cell ${cellType}-cell`}>
                     <div className="resolved-header">
                         <span className="resolved-label">✓ Resolved</span>
                         <span className="resolved-base">
