@@ -80,10 +80,20 @@ export function MergeRowInner({
     // change — not on every render because of new object/array references.
     const resolvedEditorTheme = useMemo(() => theme === 'dark' ? githubDark : githubLight, [theme]);
     
-    const cellType = row.currentCell?.cell_type || row.incomingCell?.cell_type || row.baseCell?.cell_type || 'code';
+    // Derive resolvedCellType from the user's selected branch choice, not a fixed fallback order.
+    // This ensures the editor extensions and styling update when the user switches branches.
+    const resolvedCellType = resolutionState
+        ? (
+            resolutionState.choice === 'base' ? row.baseCell?.cell_type
+            : resolutionState.choice === 'current' ? row.currentCell?.cell_type
+            : resolutionState.choice === 'incoming' ? row.incomingCell?.cell_type
+            : 'code'
+        )
+        : (row.currentCell?.cell_type || row.incomingCell?.cell_type || row.baseCell?.cell_type || 'code');
+    
     const editorExtensions = useMemo(
-        () => [...(cellType === 'markdown' ? [] : languageExtensions), mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
-        [languageExtensions, cellType]
+        () => [...(resolvedCellType === 'markdown' ? [] : languageExtensions), mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
+        [languageExtensions, resolvedCellType, resolutionState?.choice]
     );
 
     // Get content for a given choice
@@ -413,7 +423,7 @@ export function MergeRowInner({
 
             {/* Resolved content editor - appears after selecting a branch */}
             {resolutionState && resolutionState.choice !== 'delete' && (
-                <div className={`resolved-cell ${cellType}-cell`}>
+                <div className={`resolved-cell ${resolvedCellType}-cell`}>
                     <div className="resolved-header">
                         <span className="resolved-label">✓ Resolved</span>
                         <span className="resolved-base">
