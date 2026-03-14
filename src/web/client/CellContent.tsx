@@ -15,8 +15,23 @@ import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { computeLineDiff, type DiffLine } from '../../diffUtils';
 import * as logger from '../../logger';
-import { createMergeNBTheme, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './editorTheme';
+import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
+import { classHighlighter } from '@lezer/highlight';
+import { syntaxHighlighting } from '@codemirror/language';
 import { renderMarkdown } from './markdown';
+
+const EDITOR_FONT_FAMILY = "'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace";
+
+export const mergeNBEditorStructure: Extension = EditorView.theme({
+    '&': { outline: 'none !important', backgroundColor: 'var(--cell-surface) !important' },
+    '&.cm-focused': { outline: 'none !important' },
+    '.cm-content': { fontFamily: EDITOR_FONT_FAMILY, fontSize: '13px', lineHeight: '1.5', padding: '0' },
+    '.cm-line': { padding: '0' },
+    '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit' },
+    '.cm-gutters': { display: 'none' },
+});
+
+export const mergeNBSyntaxClassHighlighter: Extension = syntaxHighlighting(classHighlighter);
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
@@ -63,8 +78,8 @@ export function CellContentInner({
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (deps: [theme, extensions, ...]) only fires StateEffect.reconfigure when
     // these values truly change — not on every render due to new object/array refs.
-    const cmTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
-    
+    const cmTheme = useMemo(() => theme === 'dark' ? githubDark : githubLight, [theme]);
+
     const cellType = cell?.cell_type || 'code';
     const cellExtensions = useMemo(
         () => [...(cellType === 'markdown' ? [] : languageExtensions), mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
@@ -245,7 +260,7 @@ function DiffContent({ source, compareSource, side, diffMode, langExtension, the
         () => createDiffExtension(diff.right, side ?? 'current', diffMode),
         [diff.right, side, diffMode]
     );
-    const cmTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    const cmTheme = useMemo(() => theme === 'dark' ? githubDark : githubLight, [theme]);
     const allExtensions = useMemo(
         () => [...langExtension, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure, diffExtension],
         [langExtension, diffExtension]

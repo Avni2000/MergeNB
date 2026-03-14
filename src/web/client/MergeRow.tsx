@@ -12,9 +12,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
-import { CellContent } from './CellContent';
+import { CellContent, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
-import { createMergeNBTheme, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './editorTheme';
+import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 
 /** Resolution state for a cell */
 interface ResolutionState {
@@ -78,7 +78,7 @@ export function MergeRowInner({
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (which triggers StateEffect.reconfigure) only fires when these values actually
     // change — not on every render because of new object/array references.
-    const resolvedEditorTheme = useMemo(() => createMergeNBTheme(theme), [theme]);
+    const resolvedEditorTheme = useMemo(() => theme === 'dark' ? githubDark : githubLight, [theme]);
     
     const cellType = row.currentCell?.cell_type || row.incomingCell?.cell_type || row.baseCell?.cell_type || 'code';
     const editorExtensions = useMemo(

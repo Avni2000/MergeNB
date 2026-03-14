@@ -514,6 +514,7 @@ body {
     border-radius: 4px;
     outline: none !important;
     cursor: default;
+    background: var(--cell-surface);
 }
 
 .cell-source-cm .cm-scroller {
