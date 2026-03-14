@@ -589,6 +589,8 @@ export class ConflictResolverWebServer {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MergeNB - Conflict Resolver</title>
+    <!-- Preload critical fonts to prevent FOUC -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@1,500&display=swap" as="style">
     <link rel="stylesheet" href="/katex/katex.min.css">
     <style>
         body { margin: 0; background: ${loadingBg}; }
