@@ -348,7 +348,7 @@ export class ConflictResolverWebServer {
     private setSecurityHeaders(res: http.ServerResponse): void {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('X-Frame-Options', 'DENY');
-        res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' ws: wss:; frame-ancestors 'none'");
+        res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; frame-ancestors 'none'");
         res.setHeader('Referrer-Policy', 'no-referrer');
         res.setHeader('Cache-Control', 'no-store');
     }
@@ -589,6 +589,8 @@ export class ConflictResolverWebServer {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MergeNB - Conflict Resolver</title>
+    <!-- Preload critical fonts to prevent FOUC -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@1,500&display=swap" as="style">
     <link rel="stylesheet" href="/katex/katex.min.css">
     <style>
         body { margin: 0; background: ${loadingBg}; }

@@ -67,20 +67,7 @@ function copyKatex() {
 	}
 }
 
-/**
- * Copy local web fonts to dist/web/fonts directory
- */
-function copyWebFonts() {
-	const srcDir = path.join(__dirname, 'src', 'web', 'client', 'fonts');
-	const destDir = path.join(__dirname, 'dist', 'web', 'fonts');
 
-	if (fs.existsSync(srcDir)) {
-		copyDir(srcDir, destDir);
-		console.log('[fonts] Copied bundled web fonts');
-	} else {
-		console.warn(`[fonts] Warning: ${srcDir} not found`);
-	}
-}
 
 async function main() {
 	// Extension bundle (Node.js / VSCode)
@@ -138,7 +125,6 @@ async function main() {
 
 	// Copy KaTeX after build
 	copyKatex();
-	copyWebFonts();
 }
 
 main().catch(e => {

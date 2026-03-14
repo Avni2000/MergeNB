@@ -16,34 +16,35 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
 
     // Color palette based on theme
     const colors = isDark ? {
-        bgPrimary: '#25201b',
-        bgSecondary: '#2c2620',
-        bgTertiary: '#373027',
-        bgQuarternary: '#373027',
-        borderColor: 'rgba(255, 255, 255, 0.12)',
-        textPrimary: '#EFE7DB',
-        textSecondary: '#B5A998',
-        accentBlue: '#7FB9C7',
-        accentGreen: '#9FA8DD',
-        currentBg: 'rgba(127, 185, 199, 0.24)',
-        currentBorder: '#7FB9C7',
-        currentRgb: '127, 185, 199',
-        incomingBg: 'rgba(159, 168, 221, 0.24)',
-        incomingBorder: '#9FA8DD',
-        incomingRgb: '159, 168, 221',
-        baseBg: 'rgba(181, 169, 152, 0.18)',
-        baseBorder: '#B5A998',
-        diffAdd: 'rgba(159, 168, 221, 0.28)',
-        diffRemove: 'rgba(220, 130, 115, 0.3)',
-        diffChange: 'rgba(224, 180, 82, 0.28)',
-        cellSurface: 'rgba(55, 48, 39, 0.82)',
-        cellSurfaceSoft: 'rgba(55, 48, 39, 0.64)',
-        cellPlaceholderBg: 'rgba(55, 48, 39, 0.54)',
-        outputBg: 'rgba(55, 48, 39, 0.72)',
-        bodyBackground: '#1D1915',
+        // VSCode-style dark theme
+        bgPrimary: '#252526',
+        bgSecondary: '#1e1e1e',
+        bgTertiary: '#2d2d30',
+        bgQuarternary: '#2d2d30',
+        borderColor: 'rgba(255, 255, 255, 0.10)',
+        textPrimary: '#d4d4d4',
+        textSecondary: '#858585',
+        accentBlue: '#569cd6',
+        accentGreen: '#4ec9b0',
+        currentBg: 'rgba(86, 156, 214, 0.18)',
+        currentBorder: '#569cd6',
+        currentRgb: '86, 156, 214',
+        incomingBg: 'rgba(78, 201, 176, 0.18)',
+        incomingBorder: '#4ec9b0',
+        incomingRgb: '78, 201, 176',
+        baseBg: 'rgba(133, 133, 133, 0.15)',
+        baseBorder: '#555555',
+        diffAdd: 'rgba(78, 201, 176, 0.20)',
+        diffRemove: 'rgba(244, 135, 113, 0.18)',
+        diffChange: 'rgba(86, 156, 214, 0.15)',
+        cellSurface: 'rgba(45, 45, 48, 0.90)',
+        cellSurfaceSoft: 'rgba(45, 45, 48, 0.70)',
+        cellPlaceholderBg: 'rgba(45, 45, 48, 0.55)',
+        outputBg: 'rgba(30, 30, 30, 0.80)',
+        bodyBackground: '#1e1e1e',
         bodyBackgroundImage: DARK_GRID_GRADIENT,
-        logoLeft: '#7FB9C7',
-        logoRight: '#9FA8DD',
+        logoLeft: '#A4D4DE',
+        logoRight: '#C3C9F2',
         logoBlendMode: 'normal',
     } : {
         // LIGHT theme - inspired by MergeNB logo
@@ -81,23 +82,15 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
 
     return `
-@font-face {
-    font-family: 'DM Sans';
-    font-style: normal;
-    font-weight: 700;
-    font-display: swap;
-    src: url('/fonts/dm-sans-700-latin.woff2') format('woff2');
-}
-
-@font-face {
-    font-family: 'Playfair Display';
-    font-style: italic;
-    font-weight: 500;
-    font-display: swap;
-    src: url('/fonts/playfair-display-italic-500-latin.woff2') format('woff2');
-}
+        /* Load Inter, Playfair Display, and JetBrains Mono from Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@1,500&display=swap');
 
 :root {
+    --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    
+    /* Code Font: Inherit VS Code's Editor font, fall back to standard monospace */
+    --font-code: "JetBrains Mono", "SF Mono", Monaco, Menlo, Consolas, "Ubuntu Mono", "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;
+
     --bg-primary: ${colors.bgPrimary};
     --bg-secondary: ${colors.bgSecondary};
     --bg-tertiary: ${colors.bgTertiary};
@@ -134,7 +127,8 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
 }
 
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: var(--font-ui);
+    font-weight: 400;
     background: ${colors.bodyBackground};
     ${hasBackgroundImage ? `background-image: ${colors.bodyBackgroundImage};` : ''}
     ${hasBackgroundImage ? 'background-size: 20px 20px;' : ''}
@@ -210,7 +204,7 @@ body {
 }
 
 .header-title-merge {
-    font-family: 'Playfair Display', serif;
+    font-family: "Playfair Display", var(--font-ui);
     font-style: italic;
     font-weight: 500;
     font-size: 24px;
@@ -218,7 +212,7 @@ body {
 }
 
 .header-title-nb {
-    font-family: 'DM Sans', sans-serif;
+    font-family: var(--font-ui);
     font-weight: 700;
     font-size: 24px;
 }
@@ -226,7 +220,8 @@ body {
 .file-path {
     font-size: 12px;
     color: var(--text-secondary);
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-family: var(--font-ui);
+    font-weight: 400;
 }
 
 .header-right {
@@ -460,7 +455,8 @@ body {
     gap: 8px;
     padding: 4px 8px;
     font-size: 11px;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-family: var(--font-ui);
+    font-weight: 400;
     color: var(--text-secondary);
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
@@ -477,7 +473,8 @@ body {
 }
 
 .cell-content {
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-family: var(--font-ui);
+    font-weight: 400;
     font-size: 13px;
     line-height: 1.5;
 }
@@ -514,6 +511,7 @@ body {
     border-radius: 4px;
     outline: none !important;
     cursor: default;
+    background: var(--cell-surface);
 }
 
 .cell-source-cm .cm-scroller {
@@ -574,16 +572,17 @@ body {
 
 /* Resolution bar */
 .resolution-bar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 12px;
     background: var(--bg-quarternary);
     border-top: 1px solid var(--border-color);
 }
 
-.resolution-bar .btn-resolve {
+.resolution-bar .cell-column {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.btn-resolve {
     padding: 6px 16px;
     border-radius: 4px;
     font-size: 12px;
@@ -685,7 +684,8 @@ body {
     border-radius: 4px;
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: "SF Mono", Monaco, "Cascadia Code", "Courier New", monospace;
+    font-family: var(--font-code);
+    font-weight: 400;
 }
 
 .cell-outputs img {
@@ -825,7 +825,8 @@ body {
     background: var(--bg-primary);
     padding: 2px 6px;
     border-radius: 3px;
-    font-family: 'SF Mono', Monaco, monospace;
+    font-family: var(--font-code);
+    font-weight: 400;
     font-size: 0.9em;
 }
 
@@ -886,7 +887,8 @@ body {
     color: var(--text-primary);
     border: 1px solid var(--border-color);
     border-radius: 4px;
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-family: var(--font-code);
+    font-weight: 400;
     font-size: 13px;
     resize: vertical;
 }
@@ -928,10 +930,10 @@ body {
 .modified-badge {
     margin-left: 8px;
     padding: 2px 6px;
-    background: rgba(255, 213, 79, 0.2);
-    border: 1px solid rgba(255, 213, 79, 0.5);
+    background: rgba(86, 156, 214, 0.15);
+    border: 1px solid rgba(86, 156, 214, 0.35);
     border-radius: 4px;
-    color: #ffd54f;
+    color: var(--accent-blue);
     font-size: 11px;
 }
 
@@ -941,6 +943,19 @@ body {
     border: 1px solid rgba(78, 201, 176, 0.4);
     border-radius: 4px;
     outline: none !important;
+}
+
+.resolved-cell.markdown-cell .resolved-content-input.cm-editor {
+    border-left: 3px solid var(--accent-green);
+}
+
+.resolved-cell.markdown-cell .resolved-content-input .cm-content,
+.markdown-cell .cell-source-cm .cm-content {
+    font-family: var(--font-ui) !important;
+}
+
+.resolved-cell.code-cell .resolved-content-input.cm-editor {
+    border-left: 3px solid var(--accent-blue);
 }
 
 .resolved-content-input.cm-editor.cm-focused {
@@ -1089,10 +1104,10 @@ body {
 /* Conflict row - red border for actual conflicts
    (consolidated rule moved earlier to avoid duplicate definitions) */
 
-/* Unmatched row - yellow border for cells that couldn't be matched */
+/* Unmatched row - subtle indicator for cells that couldn't be matched */
 .merge-row.unmatched-row {
-    background: rgba(255, 193, 7, 0.08);
-    border-left: 4px solid #ffc107;
+    background: transparent;
+    border-left: 4px solid rgba(255, 255, 255, 0.15);
     border-radius: 4px;
 }
 
@@ -1104,10 +1119,10 @@ body {
     margin-left: 4px;
 }
 
-/* When a row is both conflict and unmatched, use orange */
+/* When a row is both conflict and unmatched, keep conflict styling */
 .merge-row.conflict-row.unmatched-row {
-    border-left-color: #ff9800;
-    background: rgba(255, 152, 0, 0.08);
+    border-left-color: #f48771;
+    background: rgba(244, 135, 113, 0.05);
 }
 
 .virtual-row {
@@ -1131,7 +1146,7 @@ body {
 /* Delete button */
 .btn-delete {
     background: rgba(244, 135, 113, 0.2);
-    color: #f48771;
+    color: var(--text-primary);
     border: 1px solid rgba(244, 135, 113, 0.5);
 }
 
@@ -1159,11 +1174,36 @@ body {
     background: rgba(86, 156, 214, 0.35);
 }
 
-/* Reordered row — orange left border */
+/* Reordered row — subtle left border only */
 .merge-row.reordered-row {
-    border-left: 4px solid #ff9800;
-    background: rgba(255, 152, 0, 0.05);
+    border-left: 4px solid rgba(86, 156, 214, 0.30);
+    background: transparent;
     border-radius: 4px;
+}
+
+/* Conflict Action Bar */
+.conflict-action-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 12px;
+}
+
+.conflict-action-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.conflict-action-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    /* Ensure consistent layout during opacity transitions */
+    contain: style;
 }
 
 /* Reorder indicator bar */
@@ -1172,13 +1212,13 @@ body {
     align-items: center;
     gap: 8px;
     padding: 4px 12px;
-    background: rgba(255, 152, 0, 0.1);
-    border-bottom: 1px solid rgba(255, 152, 0, 0.3);
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
     font-size: 12px;
 }
 
 .reorder-delta {
-    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-family: var(--font-ui);
     font-weight: 600;
     font-size: 11px;
     padding: 2px 6px;
@@ -1195,27 +1235,62 @@ body {
     color: var(--text-primary);
 }
 
+/* Unmatch/Rematch container for smooth transitions */
+.unmatch-rematch-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    will-change: opacity;
+}
+
+.unmatch-rematch-group.unmatch-visible .btn-unmatch {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.2s ease;
+}
+
+.unmatch-rematch-group.rematch-visible .btn-unmatch {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.unmatch-rematch-group.rematch-visible .rematch-label,
+.unmatch-rematch-group.rematch-visible .btn-rematch {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.2s ease;
+}
+
+.unmatch-rematch-group.unmatch-visible .rematch-label,
+.unmatch-rematch-group.unmatch-visible .btn-rematch {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
 /* Unmatch button */
 .btn-unmatch {
-    margin-left: auto;
-    padding: 3px 10px;
-    font-size: 11px;
-    background: rgba(255, 152, 0, 0.2);
-    border: 1px solid rgba(255, 152, 0, 0.5);
+    padding: 6px 16px;
     border-radius: 4px;
-    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
     cursor: pointer;
-    transition: background 0.15s;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    will-change: opacity;
 }
 
 .btn-unmatch:hover {
-    background: rgba(255, 152, 0, 0.35);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
 }
 
-/* User-unmatched row — darker orange */
+/* User-unmatched row — subtle indicator */
 .merge-row.user-unmatched-row {
-    border-left: 4px solid #e65100;
-    background: rgba(230, 81, 0, 0.06);
+    border-left: 4px solid rgba(255, 255, 255, 0.12);
+    background: transparent;
     border-radius: 4px;
 }
 
@@ -1225,33 +1300,35 @@ body {
     align-items: center;
     gap: 8px;
     padding: 4px 12px;
-    background: rgba(230, 81, 0, 0.1);
-    border-bottom: 1px solid rgba(230, 81, 0, 0.3);
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
     font-size: 12px;
 }
 
 .rematch-label {
     font-size: 11px;
     font-weight: 600;
-    color: #e65100;
+    color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    will-change: opacity;
 }
 
 .btn-rematch {
-    margin-left: auto;
-    padding: 3px 10px;
-    font-size: 11px;
-    background: rgba(230, 81, 0, 0.2);
-    border: 1px solid rgba(230, 81, 0, 0.5);
+    padding: 6px 16px;
     border-radius: 4px;
-    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
     cursor: pointer;
-    transition: background 0.15s;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    will-change: opacity;
 }
 
 .btn-rematch:hover {
-    background: rgba(230, 81, 0, 0.35);
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
 }
 `;
 }
