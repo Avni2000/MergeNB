@@ -386,8 +386,8 @@ export function MergeRowInner({
             </div>
 
             {/* Resolution bar - select which branch to use as base */}
-            <div className={`resolution-bar cell-columns${showBaseColumnForRow ? '' : ' two-column'}`}>
-                {showBaseColumnForRow && (
+            <div className={`resolution-bar cell-columns${showBaseColumnForRow && !row.isUserUnmatched ? '' : ' two-column'}`}>
+                {showBaseColumnForRow && !row.isUserUnmatched && (
                     <div className="cell-column base-column">
                         {hasBase && (
                             <button
