@@ -62,11 +62,18 @@ function cloneChoices(source: Map<number, ResolutionState>): Map<number, Resolut
 }
 
 function cloneRows(source: MergeRowType[]): MergeRowType[] {
-    return source.map(row => ({
-        ...row,
-        originalMatchedRow: row.originalMatchedRow
-            ? { ...row.originalMatchedRow } : undefined,
-    }));
+    return source.map(row => {
+        if (row.isUserUnmatched) {
+            return {
+                ...row,
+                originalMatchedRow: { ...row.originalMatchedRow } as MergeRowType,
+            };
+        }
+        return {
+            ...row,
+            originalMatchedRow: undefined,
+        };
+    });
 }
 
 function buildInitialHistory(rows: MergeRowType[]): HistoryState {
