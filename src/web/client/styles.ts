@@ -572,16 +572,17 @@ body {
 
 /* Resolution bar */
 .resolution-bar {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 12px;
     background: var(--bg-quarternary);
     border-top: 1px solid var(--border-color);
 }
 
-.resolution-bar .btn-resolve {
+.resolution-bar .cell-column {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.btn-resolve {
     padding: 6px 16px;
     border-radius: 4px;
     font-size: 12px;
@@ -1180,6 +1181,31 @@ body {
     border-radius: 4px;
 }
 
+/* Conflict Action Bar */
+.conflict-action-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    background: var(--bg-tertiary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 12px;
+}
+
+.conflict-action-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.conflict-action-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    /* Ensure consistent layout during opacity transitions */
+    contain: style;
+}
+
 /* Reorder indicator bar */
 .reorder-indicator-bar {
     display: flex;
@@ -1209,17 +1235,51 @@ body {
     color: var(--text-primary);
 }
 
+/* Unmatch/Rematch container for smooth transitions */
+.unmatch-rematch-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    will-change: opacity;
+}
+
+.unmatch-rematch-group.unmatch-visible .btn-unmatch {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.2s ease;
+}
+
+.unmatch-rematch-group.rematch-visible .btn-unmatch {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.unmatch-rematch-group.rematch-visible .rematch-label,
+.unmatch-rematch-group.rematch-visible .btn-rematch {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.2s ease;
+}
+
+.unmatch-rematch-group.unmatch-visible .rematch-label,
+.unmatch-rematch-group.unmatch-visible .btn-rematch {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
 /* Unmatch button */
 .btn-unmatch {
-    margin-left: auto;
-    padding: 3px 10px;
-    font-size: 11px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
+    padding: 6px 16px;
     border-radius: 4px;
-    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border-color);;
     cursor: pointer;
-    transition: background 0.15s;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    will-change: opacity;
 }
 
 .btn-unmatch:hover {
@@ -1251,18 +1311,19 @@ body {
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    will-change: opacity;
 }
 
 .btn-rematch {
-    margin-left: auto;
-    padding: 3px 10px;
-    font-size: 11px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border-color);
+    padding: 6px 16px;
     border-radius: 4px;
-    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border-color);;
     cursor: pointer;
-    transition: background 0.15s;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    will-change: opacity;
 }
 
 .btn-rematch:hover {

@@ -227,46 +227,64 @@ export function MergeRowInner({
     const diffMode = 'conflict';
     return (
         <div className={rowClasses} data-testid={testId}>
-            {/* Reorder indicator bar — only for reordered rows that haven't been unmatched */}
-            {isReordered && !row.isUserUnmatched && (
-                <div className="reorder-indicator-bar" data-testid="reorder-indicator">
-                    {currentDelta !== undefined && currentDelta !== 0 && (
-                        <span className="reorder-delta current-delta">
-                            {currentDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(currentDelta)}
-                        </span>
-                    )}
-                    {incomingDelta !== undefined && incomingDelta !== 0 && (
-                        <span className="reorder-delta incoming-delta">
-                            {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
-                        </span>
-                    )}
-                    {canUnmatch && (
-                        <button
-                            className="btn-unmatch"
-                            onClick={() => onUnmatchRow?.(rowIndex)}
-                            title="Unmatch this row into separate cells"
-                            data-testid="unmatch-btn"
-                        >
-                            Unmatch
-                        </button>
+            {/* Top action bar - always present for conflicts */}
+            <div className="conflict-action-bar" data-testid="conflict-action-bar">
+                <div className="conflict-action-left">
+                    {isReordered && !row.isUserUnmatched && (
+                        <>
+                            {currentDelta !== undefined && currentDelta !== 0 && (
+                                <span className="reorder-delta current-delta">
+                                    {currentDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(currentDelta)}
+                                </span>
+                            )}
+                            {incomingDelta !== undefined && incomingDelta !== 0 && (
+                                <span className="reorder-delta incoming-delta">
+                                    {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
+                                </span>
+                            )}
+                        </>
                     )}
                 </div>
-            )}
-
-            {/* Rematch indicator bar — for user-unmatched rows */}
-            {row.isUserUnmatched && row.unmatchGroupId && (
-                <div className="rematch-indicator-bar" data-testid="rematch-indicator">
-                    <span className="rematch-label">Unmatched</span>
+                <div className="conflict-action-right">
                     <button
-                        className="btn-rematch"
-                        onClick={() => onRematchRows?.(row.unmatchGroupId!)}
-                        title="Rematch these cells back into one row"
-                        data-testid="rematch-btn"
+                        className={`btn-resolve btn-delete ${resolutionState?.choice === 'delete' ? 'selected' : ''}`}
+                        onClick={() => handleChoiceClick('delete')}
                     >
-                        Rematch
+                        Delete Cell
                     </button>
+                    {/* Always render unmatch/rematch group; use CSS to toggle visibility.
+                        Show when: isReordered + canUnmatch OR user-unmatched + unmatchGroupId */}
+                    {(isReordered || row.isUserUnmatched) && (
+                        <div
+                            className={`unmatch-rematch-group ${row.isUserUnmatched ? 'rematch-visible' : 'unmatch-visible'}`}
+                        >
+                            {isReordered && !row.isUserUnmatched && canUnmatch && (
+                                <button
+                                    className="btn-unmatch"
+                                    onClick={() => onUnmatchRow?.(rowIndex)}
+                                    title="Unmatch this row into separate cells"
+                                    data-testid="unmatch-btn"
+                                >
+                                    Unmatch
+                                </button>
+                            )}
+                            {row.isUserUnmatched && row.unmatchGroupId && (
+                                <>
+                                    <span className="rematch-label">Unmatched</span>
+                                    <button
+                                        className="btn-rematch"
+                                        onClick={() => onRematchRows?.(row.unmatchGroupId!)}
+                                        title="Rematch these cells back into one row"
+                                        data-testid="rematch-btn"
+                                    >
+                                        Rematch
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
-            )}
+            </div>
 
             {/* Warning modal for branch change */}
             {showWarning && (
@@ -358,37 +376,39 @@ export function MergeRowInner({
             </div>
 
             {/* Resolution bar - select which branch to use as base */}
-            <div className="resolution-bar">
-                {showBaseColumnForRow && hasBase && (
-                    <button
-                        className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
-                        onClick={() => handleChoiceClick('base')}
-                    >
-                        Use Base
-                    </button>
+            <div className={`resolution-bar cell-columns${showBaseColumnForRow ? '' : ' two-column'}`}>
+                {showBaseColumnForRow && (
+                    <div className="cell-column base-column">
+                        {hasBase && (
+                            <button
+                                className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
+                                onClick={() => handleChoiceClick('base')}
+                            >
+                                Use Base
+                            </button>
+                        )}
+                    </div>
                 )}
-                {hasCurrent && (
-                    <button
-                        className={`btn-resolve btn-current ${resolutionState?.choice === 'current' ? 'selected' : ''}`}
-                        onClick={() => handleChoiceClick('current')}
-                    >
-                        Use Current
-                    </button>
-                )}
-                {hasIncoming && (
-                    <button
-                        className={`btn-resolve btn-incoming ${resolutionState?.choice === 'incoming' ? 'selected' : ''}`}
-                        onClick={() => handleChoiceClick('incoming')}
-                    >
-                        Use Incoming
-                    </button>
-                )}
-                <button
-                    className={`btn-resolve btn-delete ${resolutionState?.choice === 'delete' ? 'selected' : ''}`}
-                    onClick={() => handleChoiceClick('delete')}
-                >
-                    Delete Cell
-                </button>
+                <div className="cell-column current-column">
+                    {hasCurrent && (
+                        <button
+                            className={`btn-resolve btn-current ${resolutionState?.choice === 'current' ? 'selected' : ''}`}
+                            onClick={() => handleChoiceClick('current')}
+                        >
+                            Use Current
+                        </button>
+                    )}
+                </div>
+                <div className="cell-column incoming-column">
+                    {hasIncoming && (
+                        <button
+                            className={`btn-resolve btn-incoming ${resolutionState?.choice === 'incoming' ? 'selected' : ''}`}
+                            onClick={() => handleChoiceClick('incoming')}
+                        >
+                            Use Incoming
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Resolved content editor - appears after selecting a branch */}
