@@ -13,7 +13,7 @@ import { Widget } from '@lumino/widgets';
 import DOMPurify from 'dompurify';
 import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
-import { diff as computeDiff, type Change } from '@codemirror/merge';
+import { diff as computeDiff } from '@codemirror/merge';
 import * as logger from '../../logger';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import { classHighlighter } from '@lezer/highlight';
@@ -212,13 +212,14 @@ interface DiffContentProps {
  */
 function createDiffExtension(
     compareSource: string,
-    source: string,
-    changes: readonly Change[],
     side: 'base' | 'current' | 'incoming',
     diffMode: 'base' | 'conflict',
 ): Extension {
     return StateField.define<DecorationSet>({
         create(state) {
+            const source = state.doc.toString();
+            const changes = computeDiff(compareSource, source);
+
             // Collect all decorations first, then sort + deduplicate before adding to the
             // builder. This avoids ordering violations when multiple Changes share a line
             // (which would cause duplicate line decorations at the same `from` position).
@@ -284,10 +285,9 @@ function createDiffExtension(
 }
 
 function DiffContent({ source, compareSource, side, diffMode, langExtension, theme }: DiffContentProps): React.ReactElement {
-    const changes = useMemo(() => computeDiff(compareSource, source), [compareSource, source]);
     const diffExtension = useMemo(
-        () => createDiffExtension(compareSource, source, changes, side ?? 'current', diffMode),
-        [compareSource, source, changes, side, diffMode]
+        () => createDiffExtension(compareSource, side ?? 'current', diffMode),
+        [compareSource, side, diffMode]
     );
     const cmTheme = useMemo(() => theme === 'dark' ? githubDark : githubLight, [theme]);
     const allExtensions = useMemo(
