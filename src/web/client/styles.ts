@@ -82,16 +82,8 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
 
     return `
-    /* Load DM Sans (all weights) from Google Fonts as primary UI font */
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
-
-@font-face {
-    font-family: 'Playfair Display';
-    font-style: italic;
-    font-weight: 500;
-    font-display: swap;
-    src: url('/fonts/playfair-display-italic-500-latin.woff2') format('woff2');
-}
+    /* Load DM Sans (all weights) and Playfair Display (italic 500) from Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300..1000;1,9..40,300..1000&family=Playfair+Display:ital,wght@1,500&display=swap');
 
 :root {
     --bg-primary: ${colors.bgPrimary};
