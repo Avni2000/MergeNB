@@ -231,7 +231,7 @@ export function MergeRowInner({
             <div className="conflict-action-bar" data-testid="conflict-action-bar">
                 <div className="conflict-action-left">
                     {isReordered && !row.isUserUnmatched && (
-                        <>
+                        <div className="reorder-indicator-bar" data-testid="reorder-indicator">
                             {currentDelta !== undefined && currentDelta !== 0 && (
                                 <span className="reorder-delta current-delta">
                                     {currentDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(currentDelta)}
@@ -242,7 +242,7 @@ export function MergeRowInner({
                                     {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
                                 </span>
                             )}
-                        </>
+                        </div>
                     )}
                 </div>
                 <div className="conflict-action-right">
