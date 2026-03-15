@@ -265,7 +265,14 @@ function createDiffExtension(
             }
 
             // Sort: ascending from; line decs (startSide -1) before marks (startSide 0) at same position.
-            entries.sort((a, b) => a.from !== b.from ? a.from - b.from : (a.isLine ? -1 : 1) - (b.isLine ? -1 : 1));
+            entries.sort((a, b) => {
+                // Sort by position first
+                if (a.from !== b.from) {
+                    return a.from - b.from;
+                }
+                // At same position, line decorations come before marks
+                return a.isLine ? -1 : 1 - (b.isLine ? -1 : 1);
+            });
 
             const builder = new RangeSetBuilder<Decoration>();
             const seenLineDecs = new Set<number>();
