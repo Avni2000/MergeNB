@@ -211,13 +211,13 @@ interface DiffContentProps {
  * Uses @codemirror/merge's character-level diff — no line-pairing heuristics needed.
  */
 function createDiffExtension(
+    source: string,
     compareSource: string,
     side: 'base' | 'current' | 'incoming',
     diffMode: 'base' | 'conflict',
 ): Extension {
     return StateField.define<DecorationSet>({
         create(state) {
-            const source = state.doc.toString();
             const changes = computeDiff(compareSource, source);
 
             // Collect all decorations first, then sort + deduplicate before adding to the
@@ -229,7 +229,7 @@ function createDiffExtension(
             for (const change of changes) {
                 if (change.fromB === change.toB) continue; // nothing on the B (source) side
 
-                const changedText = state.doc.sliceString(change.fromB, change.toB);
+                const changedText = source.slice(change.fromB, change.toB);
                 const isWhitespaceOnly = changedText.length > 0 && changedText.trim() === '';
                 const useConflictClass = diffMode === 'conflict' || isWhitespaceOnly;
 
@@ -264,14 +264,14 @@ function createDiffExtension(
                 }
             }
 
-            // Sort: ascending from; line decs (startSide -1) before marks (startSide 0) at same position.
+            // Sort: ascending from; line decs (startSide -1) before marks (startSide 0) at same
+            // position. For marks at the same from, secondary sort by to (ascending) is required
+            // by RangeSetBuilder.
             entries.sort((a, b) => {
-                // Sort by position first
-                if (a.from !== b.from) {
-                    return a.from - b.from;
-                }
-                // At same position, line decorations come before marks
-                return a.isLine ? -1 : 1 - (b.isLine ? -1 : 1);
+                if (a.from !== b.from) return a.from - b.from;
+                if (a.isLine !== b.isLine) return a.isLine ? -1 : 1;
+                if (!a.isLine) return a.to - b.to;
+                return 0;
             });
 
             const builder = new RangeSetBuilder<Decoration>();
@@ -293,8 +293,8 @@ function createDiffExtension(
 
 function DiffContent({ source, compareSource, side, diffMode, langExtension, theme }: DiffContentProps): React.ReactElement {
     const diffExtension = useMemo(
-        () => createDiffExtension(compareSource, side ?? 'current', diffMode),
-        [compareSource, side, diffMode]
+        () => createDiffExtension(source, compareSource, side ?? 'current', diffMode),
+        [source, compareSource, side, diffMode]
     );
     const cmTheme = useMemo(() => theme === 'dark' ? githubDark : githubLight, [theme]);
     const allExtensions = useMemo(
