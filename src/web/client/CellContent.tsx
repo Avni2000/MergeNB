@@ -209,15 +209,24 @@ interface DiffContentProps {
  * Build a CodeMirror StateField extension that decorates changed lines and
  * inline character ranges using the same CSS classes as the previous implementation.
  * Uses @codemirror/merge's character-level diff — no line-pairing heuristics needed.
+ *
+ * NOTE: `source` is intentionally NOT taken as a parameter. It is read from
+ * `state.doc` inside `create(state)` so that positions always match the active
+ * document. @uiw/react-codemirror has two separate useEffects — one for
+ * `extensions` (StateEffect.reconfigure → StateField.create) and one for
+ * `value` (document update). The extensions effect fires first, so if we
+ * captured `source` from the render closure the document would still hold the
+ * old content while diff positions are computed against the new string,
+ * causing `state.doc.lineAt(pos)` to throw "Invalid position".
  */
 function createDiffExtension(
-    source: string,
     compareSource: string,
     side: 'base' | 'current' | 'incoming',
     diffMode: 'base' | 'conflict',
 ): Extension {
     return StateField.define<DecorationSet>({
         create(state) {
+            const source = state.doc.toString();
             const changes = computeDiff(compareSource, source);
 
             // Collect all decorations first, then sort + deduplicate before adding to the
@@ -293,8 +302,8 @@ function createDiffExtension(
 
 function DiffContent({ source, compareSource, side, diffMode, langExtension, theme }: DiffContentProps): React.ReactElement {
     const diffExtension = useMemo(
-        () => createDiffExtension(source, compareSource, side ?? 'current', diffMode),
-        [source, compareSource, side, diffMode]
+        () => createDiffExtension(compareSource, side ?? 'current', diffMode),
+        [compareSource, side, diffMode]
     );
     const cmTheme = useMemo(() => theme === 'dark' ? githubDark : githubLight, [theme]);
     const allExtensions = useMemo(
