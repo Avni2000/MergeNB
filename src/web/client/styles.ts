@@ -678,7 +678,7 @@ body {
 }
 
 .cell-output-host .jp-RenderedText[data-mime-type='application/vnd.jupyter.stderr'] {
-    background: rgba(244, 135, 113, 0.18);
+    background: var(--diff-remove);
     border-radius: 4px;
     padding: 8px;
 }
