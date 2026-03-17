@@ -26,13 +26,13 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         textSecondary: '#858585',
         accentBlue: '#569cd6',
         accentGreen: '#4ec9b0',
-        currentBg: 'rgba(86, 156, 214, 0.18)',
+        currentBg: 'rgba(86, 156, 214, 0.45)',
         currentBorder: '#569cd6',
         currentRgb: '86, 156, 214',
-        incomingBg: 'rgba(78, 201, 176, 0.18)',
+        incomingBg: 'rgba(78, 201, 176, 0.45)',
         incomingBorder: '#4ec9b0',
         incomingRgb: '78, 201, 176',
-        baseBg: 'rgba(133, 133, 133, 0.15)',
+        baseBg: 'rgba(133, 133, 133, 0.35)',
         baseBorder: '#555555',
         diffAdd: 'rgba(78, 201, 176, 0.20)',
         diffRemove: 'rgba(217, 54, 21, 0.33)',
@@ -57,13 +57,13 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         textSecondary: '#6B7280',
         accentBlue: '#569cd6',
         accentGreen: '#4ec9b0',
-        currentBg: 'rgba(164, 212, 222, 0.25)',
+        currentBg: 'rgba(164, 212, 222, 0.45)',
         currentBorder: '#A4D4DE',
         currentRgb: '164, 212, 222',
-        incomingBg: 'rgba(159, 168, 221, 0.30)',
+        incomingBg: 'rgba(159, 168, 221, 0.50)',
         incomingBorder: '#9FA8DD',
         incomingRgb: '159, 168, 221',
-        baseBg: 'rgba(128, 128, 128, 0.18)',
+        baseBg: 'rgba(128, 128, 128, 0.38)',
         baseBorder: '#8b7f70',
         diffAdd: 'rgba(195, 201, 242, 0.4)',
         diffRemove: 'rgba(217, 54, 21, 0.33)',
@@ -522,6 +522,7 @@ body {
     padding: 12px;
     white-space: pre-wrap;
     word-break: break-word;
+    border-left: 3px solid var(--accent-blue);
 }
 
 .cell-source-cm .cm-line {
@@ -530,7 +531,7 @@ body {
 
 /* Replicate the left-border accent that <pre> had for code cells */
 .code-cell .cell-content .cell-source-cm.cm-editor {
-    border-left: 3px solid var(--accent-blue);
+    /* Border now on .cm-content for better visibility */
 }
 
 .markdown-cell .cell-content {
@@ -1149,18 +1150,18 @@ body {
 
 /* Delete button */
 .btn-delete {
-    background: rgba(244, 135, 113, 0.2);
-    color: var(--text-primary);
-    border: 1px solid rgba(244, 135, 113, 0.5);
+    background: rgba(255, 75, 75, 0.4);
+    color: rgb(255, 255, 255);
+    border: 1px solid rgba(211, 47, 47, 0.5);
 }
 
 .btn-delete:hover {
-    background: rgba(244, 135, 113, 0.3);
+    background: rgba(211, 49, 49, 0.5);
 }
 
 .btn-delete.selected {
-    background: rgba(244, 135, 113, 0.4);
-    border-color: #f48771;
+    background: rgba(183, 28, 28, 0.5);
+    border-color: rgba(183, 28, 28, 0.5);
     font-weight: 600;
 }
 
