@@ -433,6 +433,12 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.cell-columns.highlight-identical {
+    border-radius: 6px;
+    background: rgba(30, 200, 30, 0.03);
+    border: 1px dashed rgba(30, 200, 30, 0.4);
+}
+
 .cell-column {
     background: transparent;
     padding: 12px;

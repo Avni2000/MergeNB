@@ -194,13 +194,14 @@ export function MergeRowInner({
                         )}
                     </div>
                 )}
-                <div className="cell-columns">
+                <div className="cell-columns highlight-identical">
                     <div className="cell-column" style={{ gridColumn: '1 / -1' }}>
                         <CellContent
                             cell={cell}
                             cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
                             side="current"
                             notebookPath={notebookPath}
+                            isConflict={false}
                             languageExtensions={languageExtensions}
                             theme={theme}
                             showOutputs={showOutputs}
