@@ -65,6 +65,7 @@ export async function run(): Promise<void> {
         const betaConflictRow = page.locator('.merge-row.conflict-row').filter({ hasText: "print('beta')" });
         const betaUnmatchButton = betaConflictRow.locator('[data-testid="unmatch-btn"]');
         await betaUnmatchButton.waitFor({ timeout: 5000 });
+        await betaUnmatchButton.scrollIntoViewIfNeeded();
         await betaUnmatchButton.click();
         await page.locator('.merge-row.user-unmatched-row').first().waitFor({ timeout: 5000 });
         const afterUnmatchCounter = await waitForResolvedCount(page, 0, 5000);
