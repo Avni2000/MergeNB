@@ -120,10 +120,13 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --logo-blend-mode: ${colors.logoBlendMode};
 }
 
-* {
-    box-sizing: border-box;
+body {
     margin: 0;
     padding: 0;
+}
+
+* {
+    box-sizing: border-box;
 }
 
 body {
@@ -431,12 +434,6 @@ body {
 
 .cell-columns.two-column {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.cell-columns.highlight-identical {
-    border-radius: 6px;
-    background: rgba(30, 200, 30, 0.03);
-    border: 1px dashed rgba(30, 200, 30, 0.4);
 }
 
 .cell-column {
@@ -818,22 +815,24 @@ body {
     }
 }
 
-/* Markdown rendering */
+/* Markdown rendering - inherited from JupyterLab jp-RenderedMarkdown
+   with minimal local overrides for container spacing and code blocks */
 .markdown-content {
     color: var(--text-primary);
+    word-break: break-word; /* Ensure text wraps */
 }
 
-.markdown-content h1, .markdown-content h2, .markdown-content h3,
-.markdown-content h4, .markdown-content h5, .markdown-content h6 {
-    margin-top: 16px;
-    margin-bottom: 8px;
-    font-weight: 600;
+/* Ensure consistent text colors in all Jupyter widgets */
+.jp-RenderedText,
+.jp-RenderedHTMLCommon,
+.jp-RenderedImage,
+.jp-RenderedSVG,
+.jp-RenderedMarkdown,
+.jp-RenderedLatex {
+    color: var(--text-primary) !important;
 }
 
-.markdown-content p {
-    margin-bottom: 8px;
-}
-
+/* Local overrides for JupyterLab's rendering to maintain consistent feel */
 .markdown-content code {
     background: var(--bg-primary);
     padding: 2px 6px;
@@ -849,31 +848,46 @@ body {
     overflow-x: auto;
 }
 
-.markdown-content ul, .markdown-content ol {
-    margin-left: 24px;
+.markdown-content p {
     margin-bottom: 8px;
 }
 
-.markdown-content blockquote {
-    border-left: 4px solid var(--border-color);
-    padding-left: 16px;
-    margin: 8px 0;
-    color: var(--text-secondary);
+.markdown-content ul,
+.markdown-content ol {
+    margin-bottom: 8px;
+    padding-left: 24px;
 }
 
-/* Hide automatic heading permalink anchors (pilcrow/¶) inserted
-   by the markdown renderer (e.g. markdown-it-anchor / rendermime). */
-.markdown-content a.anchor-link,
-.markdown-content .anchor-link,
-.markdown-content a.header-link,
-.markdown-content .header-anchor,
-.markdown-content h1 > a,
-.markdown-content h2 > a,
-.markdown-content h3 > a,
-.markdown-content h4 > a,
-.markdown-content h5 > a,
-.markdown-content h6 > a {
-    display: none !important;
+.markdown-content li {
+    margin-bottom: 4px;
+}
+
+/* Markdown tables - JupyterLab-like styling */
+.markdown-content table {
+    border-collapse: collapse;
+    margin: 16px 0;
+    width: 100%;
+    border-spacing: 0;
+}
+
+.markdown-content th,
+.markdown-content td {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    text-align: left;
+}
+
+.markdown-content th {
+    background-color: var(--bg-secondary);
+    font-weight: 600;
+}
+
+.markdown-content tr:nth-child(even) {
+    background-color: var(--bg-secondary);
+}
+
+.markdown-content tr:hover {
+    background-color: var(--bg-hover);
 }
 
 /* KaTeX styles */

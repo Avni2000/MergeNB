@@ -274,7 +274,7 @@ export function ConflictResolver({
     stableTotalSizeRef.current = Math.max(stableTotalSizeRef.current, totalSize);
 
     return (
-        <div className="app-container">
+        <div className="app-container jp-Notebook">
             <header className="header">
                 <div className="header-left">
                     <div className="logo-icon">
