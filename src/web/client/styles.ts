@@ -35,7 +35,7 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         baseBg: 'rgba(133, 133, 133, 0.15)',
         baseBorder: '#555555',
         diffAdd: 'rgba(78, 201, 176, 0.20)',
-        diffRemove: 'rgba(244, 135, 113, 0.18)',
+        diffRemove: 'rgba(217, 54, 21, 0.33)',
         diffChange: 'rgba(86, 156, 214, 0.15)',
         cellSurface: 'rgba(45, 45, 48, 0.90)',
         cellSurfaceSoft: 'rgba(45, 45, 48, 0.70)',
@@ -66,7 +66,7 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         baseBg: 'rgba(128, 128, 128, 0.18)',
         baseBorder: '#8b7f70',
         diffAdd: 'rgba(195, 201, 242, 0.4)',
-        diffRemove: 'rgba(244, 135, 113, 0.35)',
+        diffRemove: 'rgba(217, 54, 21, 0.33)',
         diffChange: 'rgba(255, 193, 7, 0.35)',
         cellSurface: 'rgba(226, 216, 202, 0.78)',
         cellSurfaceSoft: 'rgba(226, 216, 202, 0.62)',
@@ -414,7 +414,7 @@ body {
     border-top: 3px solid rgba(244, 135, 113, 0.6);
     border-right: 3px solid rgba(244, 135, 113, 0.6);
     border-bottom: 3px solid rgba(244, 135, 113, 0.6);
-    border-left: 4px solid #f48771;
+    border-left: 4px solid rgba(244, 135, 113, 0.6);
     border-radius: 6px;
 }
 
@@ -538,6 +538,12 @@ body {
     background: var(--cell-surface);
     border-radius: 4px;
     border-left: 3px solid var(--accent-green);
+}
+
+.markdown-cell .cell-content pre {
+    font-family: var(--font-ui);
+    white-space: pre-wrap;
+    margin: 0;
 }
 
 /* Placeholder for empty cells */
@@ -1107,7 +1113,6 @@ body {
 /* Unmatched row - subtle indicator for cells that couldn't be matched */
 .merge-row.unmatched-row {
     background: transparent;
-    border-left: 4px solid rgba(255, 255, 255, 0.15);
     border-radius: 4px;
 }
 
@@ -1121,8 +1126,7 @@ body {
 
 /* When a row is both conflict and unmatched, keep conflict styling */
 .merge-row.conflict-row.unmatched-row {
-    border-left-color: #f48771;
-    background: rgba(244, 135, 113, 0.05);
+    background: transparent;
 }
 
 .virtual-row {
@@ -1176,7 +1180,6 @@ body {
 
 /* Reordered row — subtle left border only */
 .merge-row.reordered-row {
-    border-left: 4px solid rgba(86, 156, 214, 0.30);
     background: transparent;
     border-radius: 4px;
 }
@@ -1289,7 +1292,6 @@ body {
 
 /* User-unmatched row — subtle indicator */
 .merge-row.user-unmatched-row {
-    border-left: 4px solid rgba(255, 255, 255, 0.12);
     background: transparent;
     border-radius: 4px;
 }
