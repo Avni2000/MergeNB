@@ -21,6 +21,7 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         bgSecondary: '#1e1e1e',
         bgTertiary: '#2d2d30',
         bgQuarternary: '#2d2d30',
+        bgHover: '#333337',
         borderColor: 'rgba(255, 255, 255, 0.10)',
         textPrimary: '#d4d4d4',
         textSecondary: '#858585',
@@ -52,6 +53,7 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         bgSecondary: '#ebe3d8',
         bgTertiary: '#e2d8ca',
         bgQuarternary: '#ebe3d8b7',
+        bgHover: '#d9cfbf',
         borderColor: 'rgba(0, 0, 0, 0.1)',
         textPrimary: '#1A202C',
         textSecondary: '#6B7280',
@@ -95,6 +97,7 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --bg-secondary: ${colors.bgSecondary};
     --bg-tertiary: ${colors.bgTertiary};
     --bg-quarternary: ${colors.bgQuarternary};
+    --bg-hover: ${colors.bgHover};
     --border-color: ${colors.borderColor};
     --text-primary: ${colors.textPrimary};
     --text-secondary: ${colors.textSecondary};
@@ -488,7 +491,11 @@ body {
 
 /* Ensure markdown and inline/code blocks use the same primary text color */
 .markdown-content,
-.markdown-content *,
+.markdown-content p,
+.markdown-content li,
+.markdown-content td,
+.markdown-content th,
+.markdown-content blockquote,
 .cell-content pre,
 .markdown-content pre,
 .markdown-content code {
@@ -506,6 +513,7 @@ body {
 }
 
 .code-cell .cell-content pre {
+    background: var(--bg-primary);
     border-left: 3px solid var(--accent-blue);
 }
 
@@ -526,6 +534,7 @@ body {
     white-space: pre-wrap;
     word-break: break-word;
     border-left: 3px solid var(--accent-blue);
+    background: var(--bg-primary);
 }
 
 .cell-source-cm .cm-line {
@@ -534,6 +543,7 @@ body {
 
 /* Replicate the left-border accent that <pre> had for code cells */
 .code-cell .cell-content .cell-source-cm.cm-editor {
+    background: var(--bg-primary);
     /* Border now on .cm-content for better visibility */
 }
 
@@ -852,6 +862,56 @@ body {
     margin-bottom: 8px;
 }
 
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    color: var(--text-primary);
+    line-height: 1.25;
+    margin: 16px 0 8px;
+    font-weight: 650;
+}
+
+.markdown-content h1 { font-size: 1.5rem; }
+.markdown-content h2 { font-size: 1.3rem; }
+.markdown-content h3 { font-size: 1.15rem; }
+.markdown-content h4 { font-size: 1.05rem; }
+.markdown-content h5 { font-size: 0.95rem; }
+.markdown-content h6 { font-size: 0.9rem; color: var(--text-secondary); }
+
+.markdown-content a {
+    color: var(--accent-blue);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.markdown-content a:hover {
+    text-decoration-thickness: 2px;
+}
+
+.markdown-content blockquote {
+    margin: 10px 0;
+    padding: 2px 0 2px 12px;
+    border-left: 3px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.markdown-content hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 16px 0;
+}
+
+.markdown-content strong {
+    font-weight: 650;
+}
+
+.markdown-content em {
+    font-style: italic;
+}
+
 .markdown-content ul,
 .markdown-content ol {
     margin-bottom: 8px;
@@ -890,6 +950,11 @@ body {
     background-color: var(--bg-hover);
 }
 
+.markdown-content img {
+    max-width: 100%;
+    height: auto;
+}
+
 /* KaTeX styles */
 .katex-display {
     margin: 16px 0;
@@ -922,7 +987,9 @@ body {
 
 /* Resolved cell styling - green highlighting to mark as resolved */
 .resolved-cell {
-    margin-top: 12px;
+    margin: 12px 24px;
+    width: calc(100% - 48px);
+    box-sizing: border-box;
     padding: 12px;
     background: var(--cell-surface);
     border: 2px solid var(--accent-green);
@@ -982,6 +1049,7 @@ body {
 }
 
 .resolved-cell.code-cell .resolved-content-input.cm-editor {
+    background: var(--bg-primary);
     border-left: 3px solid var(--accent-blue);
 }
 
@@ -1016,7 +1084,7 @@ body {
 
 /* Resolved row styling */
 .merge-row.resolved-row {
-    border-left-color: var(--accent-green);
+    border-color: var(--accent-green);
     background: rgba(78, 201, 176, 0.03);
 }
 
