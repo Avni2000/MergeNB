@@ -52,6 +52,7 @@ export function ConflictResolver({
         [resolverStoreKey]
     );
     const [historyOpen, setHistoryOpen] = useState(false);
+    const [autoResolveBannerOpen, setAutoResolveBannerOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
 
@@ -451,12 +452,24 @@ export function ConflictResolver({
             <main className="main-content" ref={mainContentRef}>
                 {conflict.autoResolveResult && conflict.autoResolveResult.autoResolvedCount > 0 && (
                     <div className="auto-resolve-banner">
-                        <span className="icon">✓</span>
-                        <span className="text">
-                            Auto-resolved {conflict.autoResolveResult.autoResolvedCount} conflict{conflict.autoResolveResult.autoResolvedCount !== 1 ? 's' : ''}
-                            {conflict.autoResolveResult.autoResolvedDescriptions.length > 0 &&
-                                ` (${conflict.autoResolveResult.autoResolvedDescriptions.join(', ')})`}
-                        </span>
+                        <button
+                            className="auto-resolve-summary"
+                            onClick={() => setAutoResolveBannerOpen(o => !o)}
+                            aria-expanded={autoResolveBannerOpen}
+                        >
+                            <span className="icon">✓</span>
+                            <span className="text">
+                                Auto-resolved {conflict.autoResolveResult.autoResolvedCount} conflict{conflict.autoResolveResult.autoResolvedCount !== 1 ? 's' : ''}
+                            </span>
+                            <span className="chevron">{autoResolveBannerOpen ? '▲' : '▼'}</span>
+                        </button>
+                        {autoResolveBannerOpen && conflict.autoResolveResult.autoResolvedDescriptions.length > 0 && (
+                            <ul className="auto-resolve-list">
+                                {conflict.autoResolveResult.autoResolvedDescriptions.map((desc, i) => (
+                                    <li key={i}>{desc}</li>
+                                ))}
+                            </ul>
+                        )}
                     </div>
                 )}
 

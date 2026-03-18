@@ -718,19 +718,51 @@ body {
     background: rgba(78, 201, 176, 0.1);
     border: 1px solid var(--accent-green);
     border-radius: 6px;
-    padding: 12px 16px;
     margin-bottom: 16px;
+    overflow: hidden;
+}
+
+.auto-resolve-summary {
     display: flex;
     align-items: center;
     gap: 12px;
+    width: 100%;
+    padding: 12px 16px;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+}
+
+.auto-resolve-summary:hover {
+    background: rgba(78, 201, 176, 0.08);
 }
 
 .auto-resolve-banner .icon {
     font-size: 20px;
+    flex-shrink: 0;
 }
 
 .auto-resolve-banner .text {
     font-size: 13px;
+    flex: 1;
+}
+
+.auto-resolve-banner .chevron {
+    font-size: 10px;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.auto-resolve-list {
+    margin: 0;
+    padding: 0 16px 12px 48px;
+    list-style: disc;
+    font-size: 13px;
+    opacity: 0.85;
+    line-height: 1.8;
 }
 
 /* Loading/Error states */
