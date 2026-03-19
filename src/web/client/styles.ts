@@ -123,9 +123,11 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --logo-blend-mode: ${colors.logoBlendMode};
 }
 
-body {
+html, body {
     margin: 0;
     padding: 0;
+    height: 100%;
+    overflow: hidden;
 }
 
 * {
@@ -143,7 +145,7 @@ body {
 }
 
 .app-container {
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
 }
@@ -159,6 +161,7 @@ body {
     position: sticky;
     top: 0;
     z-index: 100;
+    user-select: none;
 }
 
 .header-left {
@@ -372,6 +375,7 @@ body {
     flex: 1;
     padding: 16px;
     overflow-y: auto;
+    overflow-anchor: none;
 }
 
 /* Column labels */
@@ -385,6 +389,7 @@ body {
     background: transparent;
     padding: 8px 0;
     z-index: 50;
+    user-select: none;
 }
 
 .column-labels.two-column {
@@ -409,7 +414,7 @@ body {
 .merge-row {
     margin-bottom: 0;
     border-radius: 6px;
-    overflow: hidden;
+    overflow: clip;
     position: relative;
 }
 
@@ -450,7 +455,7 @@ body {
 /* Cell content */
 .notebook-cell {
     border-radius: 4px;
-    overflow: hidden;
+    overflow: clip;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -466,6 +471,7 @@ body {
     color: var(--text-secondary);
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
+    user-select: none;
 }
 
 .cell-header-type {
@@ -534,7 +540,6 @@ body {
     white-space: pre-wrap;
     word-break: break-word;
     border-left: 3px solid var(--accent-blue);
-    background: var(--bg-primary);
 }
 
 .cell-source-cm .cm-line {
@@ -594,6 +599,7 @@ body {
 .resolution-bar {
     background: var(--bg-quarternary);
     border-top: 1px solid var(--border-color);
+    user-select: none;
 }
 
 .resolution-bar .cell-column {
@@ -642,6 +648,18 @@ body {
 
 .btn-resolve.selected {
     box-shadow: 0 0 0 2px var(--accent-blue);
+}
+
+/* Static diff line wrappers — span (not div) so selection works across lines */
+.source-line {
+    display: block;
+}
+
+/* Static highlighted code — clip instead of auto so the <pre> doesn't become
+   an inner scroll container that fights with the outer autoscroll during drag-select.
+   Specificity 0-2-0 to beat .cell-content pre (0-1-1) which sets overflow-x: auto. */
+.cell-content .cell-source-static {
+    overflow: clip;
 }
 
 /* Diff highlighting — applied as CodeMirror line decorations on .cm-line elements */
@@ -720,6 +738,7 @@ body {
     border-radius: 6px;
     margin-bottom: 16px;
     overflow: hidden;
+    user-select: none;
 }
 
 .auto-resolve-summary {
@@ -1035,6 +1054,7 @@ body {
     margin-bottom: 10px;
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(78, 201, 176, 0.3);
+    user-select: none;
 }
 
 .resolved-label {
@@ -1266,6 +1286,7 @@ body {
     border: 2px dashed var(--border-color);
     border-radius: 4px;
     background: var(--cell-placeholder-bg);
+    user-select: none;
 }
 
 /* Delete button */
@@ -1314,6 +1335,7 @@ body {
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
     font-size: 12px;
+    user-select: none;
 }
 
 .conflict-action-left {
@@ -1339,6 +1361,7 @@ body {
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
     font-size: 12px;
+    user-select: none;
 }
 
 .reorder-delta {
@@ -1426,6 +1449,7 @@ body {
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
     font-size: 12px;
+    user-select: none;
 }
 
 .rematch-label {

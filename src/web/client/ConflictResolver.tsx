@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
@@ -55,6 +55,9 @@ export function ConflictResolver({
     const [autoResolveBannerOpen, setAutoResolveBannerOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
+    const isDraggingRef = useRef(false);
+    const dragRenderedIndicesRef = useRef<number[] | null>(null);
+    const pendingMeasureNodesRef = useRef<Set<HTMLElement>>(new Set());
 
     const choices = useStore(resolverStore, state => state.choices);
     const rows = useStore(resolverStore, state => state.rows);
@@ -191,6 +194,61 @@ export function ConflictResolver({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [enableUndoRedoHotkeys, handleRedo, handleUndo, isMac, isEditableTarget]);
 
+    useEffect(() => {
+        const el = mainContentRef.current;
+        let prevScrollTop = el?.scrollTop ?? 0;
+        let correcting = false;
+
+        const onDown = () => {
+            isDraggingRef.current = true;
+            prevScrollTop = el?.scrollTop ?? 0;
+        };
+        const onUp = () => {
+            isDraggingRef.current = false;
+            dragRenderedIndicesRef.current = null;
+            prevScrollTop = el?.scrollTop ?? 0;
+            const pending = pendingMeasureNodesRef.current;
+            if (pending.size > 0) {
+                for (const node of pending) {
+                    if (node.isConnected) {
+                        virtualizerRef.current.measureElement(node);
+                    }
+                }
+                pending.clear();
+            }
+        };
+
+        const onScroll = () => {
+            if (!el || correcting) {
+                prevScrollTop = el?.scrollTop ?? 0;
+                return;
+            }
+            if (!isDraggingRef.current) {
+                prevScrollTop = el.scrollTop;
+                return;
+            }
+            const delta = el.scrollTop - prevScrollTop;
+            const MAX_DELTA = 200;
+            if (Math.abs(delta) > MAX_DELTA) {
+                correcting = true;
+                el.scrollTop = prevScrollTop + Math.sign(delta) * MAX_DELTA;
+                correcting = false;
+                prevScrollTop = el.scrollTop;
+            } else {
+                prevScrollTop = el.scrollTop;
+            }
+        };
+
+        window.addEventListener('mousedown', onDown);
+        window.addEventListener('mouseup', onUp);
+        el?.addEventListener('scroll', onScroll);
+        return () => {
+            window.removeEventListener('mousedown', onDown);
+            window.removeEventListener('mouseup', onUp);
+            el?.removeEventListener('scroll', onScroll);
+        };
+    }, []);
+
     const handleResolve = () => {
         const {
             rows: liveRows,
@@ -246,27 +304,49 @@ export function ConflictResolver({
     const estimateRowSize = useCallback((index: number) => {
         return estimatedRowHeights[index] ?? 200;
     }, [estimatedRowHeights]);
+
+    // During drag-select, never remove rows from the DOM — only accumulate.
+    // The browser anchors its selection to specific DOM nodes; if the
+    // virtualizer removes the selection-start node (scrolled out of the
+    // overscan window), the browser resets the selection and scroll position.
+    const dragSafeRangeExtractor = useCallback((range: Range) => {
+        const normal = defaultRangeExtractor(range);
+
+        if (!isDraggingRef.current) {
+            dragRenderedIndicesRef.current = null;
+            return normal;
+        }
+
+        if (!dragRenderedIndicesRef.current) {
+            dragRenderedIndicesRef.current = [...normal];
+            return normal;
+        }
+
+        const merged = new Set([...dragRenderedIndicesRef.current, ...normal]);
+        const result = Array.from(merged).sort((a, b) => a - b);
+        dragRenderedIndicesRef.current = result;
+        return result;
+    }, []);
+
     const rowVirtualizer = useVirtualizer({
         count: rows.length,
         getScrollElement,
         estimateSize: estimateRowSize,
         overscan: 6,
+        rangeExtractor: dragSafeRangeExtractor,
     });
-    const virtualRows = rowVirtualizer.getVirtualItems();
 
-    // Defer measureElement by one animation frame so CodeMirror's useEffect
-    // has time to create the EditorView before TanStack samples the DOM height.
-    // Without this, the initial measurement captures the empty CodeMirror shell
-    // (near-zero height), causing subsequent rows to overlap ("flicker").
+    const virtualRows = rowVirtualizer.getVirtualItems();
     const virtualizerRef = useRef(rowVirtualizer);
     virtualizerRef.current = rowVirtualizer;
-    const deferredMeasureRef = useCallback((node: HTMLElement | null) => {
+    const measureRef = useCallback((node: HTMLElement | null) => {
         if (!node) return;
-        requestAnimationFrame(() => {
-            if (node.isConnected) {
-                virtualizerRef.current.measureElement(node);
-            }
-        });
+        if (isDraggingRef.current) {
+            pendingMeasureNodesRef.current.add(node);
+            return;
+        }
+        pendingMeasureNodesRef.current.delete(node);
+        virtualizerRef.current.measureElement(node);
     }, []);
     // Keep the container height monotonically non-decreasing so the scrollbar
     // doesn't jump when TanStack refines its measurements.
@@ -505,7 +585,7 @@ export function ConflictResolver({
                             <div
                                 key={virtualRow.key}
                                 data-index={virtualRow.index}
-                                ref={deferredMeasureRef}
+                                ref={measureRef}
                                 className="virtual-row"
                                 style={{
                                     position: 'absolute',
