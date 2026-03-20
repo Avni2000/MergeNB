@@ -101,7 +101,6 @@ jobs:
             --title "[RELEASE] v${VERSION}" \
             --body "Automated release PR for v${VERSION}" \
             --label "release" \
-            --merge-method squash
 
       - name: Create GitHub Release
         env:
