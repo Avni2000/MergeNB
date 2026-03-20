@@ -194,7 +194,7 @@ export function MergeRowInner({
                         )}
                     </div>
                 )}
-                <div className="cell-columns highlight-identical">
+                <div className="cell-columns">
                     <div className="cell-column" style={{ gridColumn: '1 / -1' }}>
                         <CellContent
                             cell={cell}

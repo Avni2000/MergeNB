@@ -362,18 +362,25 @@ function loadFenceLanguageSupport(languageTag: string): Promise<Extension | null
     return supportPromise;
 }
 
-/** Replace <pre><code> blocks with statically syntax-highlighted HTML (no CM views). */
 async function enhanceMarkdownCodeBlocks(host: HTMLElement): Promise<void> {
     const codeNodes = Array.from(host.querySelectorAll('pre > code')) as HTMLElement[];
+    if (codeNodes.length === 0) return;
 
-    for (const codeNode of codeNodes) {
+    // Load all fence language bundles in parallel so the DOM replacements
+    // below happen in a single synchronous pass instead of one per await.
+    const languageSupports = await Promise.all(
+        codeNodes.map(node => {
+            const tag = getFenceLanguageTag(node);
+            return tag ? loadFenceLanguageSupport(tag) : Promise.resolve(null);
+        })
+    );
+
+    for (let i = 0; i < codeNodes.length; i++) {
+        const codeNode = codeNodes[i];
         const preNode = codeNode.parentElement;
         if (!preNode) continue;
 
-        const languageTag = getFenceLanguageTag(codeNode);
-        if (!languageTag) continue;
-
-        const languageSupport = await loadFenceLanguageSupport(languageTag);
+        const languageSupport = languageSupports[i];
         if (!languageSupport) continue;
 
         const source = codeNode.textContent ?? '';

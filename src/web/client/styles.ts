@@ -135,6 +135,8 @@ html, body {
 }
 
 body {
+    margin: 0;
+    padding: 0;
     font-family: var(--font-ui);
     font-weight: 400;
     background: ${colors.bodyBackground};
@@ -154,14 +156,23 @@ body {
 .header {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
-    padding: 12px 20px;
+    padding: 14px 16px 16px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
     position: sticky;
     top: 0;
     z-index: 100;
     user-select: none;
+}
+
+.header-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .header-left {
@@ -378,7 +389,7 @@ body {
     overflow-anchor: none;
 }
 
-/* Column labels */
+/* Column labels (aligned with .main-content horizontal padding) */
 .column-labels {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -390,6 +401,7 @@ body {
     padding: 8px 0;
     z-index: 50;
     user-select: none;
+    border-top: 1px solid var(--border-color);
 }
 
 .column-labels.two-column {
@@ -1091,6 +1103,7 @@ body {
 .resolved-cell.markdown-cell .resolved-content-input .cm-content,
 .markdown-cell .cell-source-cm .cm-content {
     font-family: var(--font-ui) !important;
+    border-left-color: var(--accent-green);
 }
 
 .resolved-cell.code-cell .resolved-content-input.cm-editor {
