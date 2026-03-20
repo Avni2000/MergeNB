@@ -87,9 +87,9 @@ jobs:
           git checkout -b "${BRANCH}"
           git add package.json package-lock.json RELEASE_NOTES.md
           git commit -m "Release v${VERSION}"
-          git tag "${VERSION}"
+          git tag --force "${VERSION}"
           git push origin "${BRANCH}" --force-with-lease
-          git push origin "${VERSION}"
+          git push origin "${VERSION}" --force
 
       - name: Create Pull Request
         env:
