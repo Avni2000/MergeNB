@@ -277,175 +277,190 @@ export function ConflictResolver({
     return (
         <div className="app-container jp-Notebook">
             <header className="header">
-                <div className="header-left">
-                    <div className="logo-icon">
-                        <div className="logo-card logo-card-left"></div>
-                        <div className="logo-card logo-card-right"></div>
+                <div className="header-toolbar">
+                    <div className="header-left">
+                        <div className="logo-icon">
+                            <div className="logo-card logo-card-left"></div>
+                            <div className="logo-card logo-card-right"></div>
+                        </div>
+                        <div className="header-title">
+                            <span className="header-title-merge">Merge</span>
+                            <span className="header-title-nb">NB</span>
+                        </div>
+                        <span className="file-path">{fileName}</span>
                     </div>
-                    <div className="header-title">
-                        <span className="header-title-merge">Merge</span>
-                        <span className="header-title-nb">NB</span>
-                    </div>
-                    <span className="file-path">{fileName}</span>
-                </div>
-                <div className="header-right">
-                    <span className="conflict-counter">
-                        {resolvedCount} / {totalConflicts} resolved
-                    </span>
-                    <div className="header-group">
-                        <button
-                            className="btn btn-secondary"
-                            onClick={handleUndo}
-                            disabled={!canUndo}
-                            data-testid="history-undo"
-                            title={`Undo (${undoShortcutLabel})`}
-                        >
-                            Undo
-                        </button>
-                        <button
-                            className="btn btn-secondary"
-                            onClick={handleRedo}
-                            disabled={!canRedo}
-                            data-testid="history-redo"
-                            title={`Redo (${redoShortcutLabel})`}
-                        >
-                            Redo
-                        </button>
-                        <div className="history-menu" ref={historyMenuRef}>
+                    <div className="header-right">
+                        <span className="conflict-counter">
+                            {resolvedCount} / {totalConflicts} resolved
+                        </span>
+                        <div className="header-group">
                             <button
-                                className="btn btn-secondary history-toggle"
-                                onClick={() => setHistoryOpen(prev => !prev)}
-                                aria-expanded={historyOpen}
-                                data-testid="history-toggle"
+                                className="btn btn-secondary"
+                                onClick={handleUndo}
+                                disabled={!canUndo}
+                                data-testid="history-undo"
+                                title={`Undo (${undoShortcutLabel})`}
                             >
-                                History
+                                Undo
                             </button>
-                            <div
-                                className={`history-panel history-dropdown${historyOpen ? ' open' : ''}`}
-                                data-testid="history-panel"
-                                aria-hidden={!historyOpen}
+                            <button
+                                className="btn btn-secondary"
+                                onClick={handleRedo}
+                                disabled={!canRedo}
+                                data-testid="history-redo"
+                                title={`Redo (${redoShortcutLabel})`}
                             >
-                                <div className="history-header">
-                                    <span className="history-title">History</span>
-                                    <div className="history-actions">
-                                        <button
-                                            className="btn btn-secondary"
-                                            onClick={handleUndo}
-                                            disabled={!canUndo}
-                                            data-testid="history-panel-undo"
-                                        >
-                                            Undo
-                                        </button>
-                                        <button
-                                            className="btn btn-secondary"
-                                            onClick={handleRedo}
-                                            disabled={!canRedo}
-                                            data-testid="history-panel-redo"
-                                        >
-                                            Redo
-                                        </button>
+                                Redo
+                            </button>
+                            <div className="history-menu" ref={historyMenuRef}>
+                                <button
+                                    className="btn btn-secondary history-toggle"
+                                    onClick={() => setHistoryOpen(prev => !prev)}
+                                    aria-expanded={historyOpen}
+                                    data-testid="history-toggle"
+                                >
+                                    History
+                                </button>
+                                <div
+                                    className={`history-panel history-dropdown${historyOpen ? ' open' : ''}`}
+                                    data-testid="history-panel"
+                                    aria-hidden={!historyOpen}
+                                >
+                                    <div className="history-header">
+                                        <span className="history-title">History</span>
+                                        <div className="history-actions">
+                                            <button
+                                                className="btn btn-secondary"
+                                                onClick={handleUndo}
+                                                disabled={!canUndo}
+                                                data-testid="history-panel-undo"
+                                            >
+                                                Undo
+                                            </button>
+                                            <button
+                                                className="btn btn-secondary"
+                                                onClick={handleRedo}
+                                                disabled={!canRedo}
+                                                data-testid="history-panel-redo"
+                                            >
+                                                Redo
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                                <ul className="history-list">
-                                    {history.entries.map((entry, index) => (
-                                        <li
-                                            key={`${entry.label}-${index}`}
-                                            className={`history-item${index === history.index ? ' current' : ''}${index > history.index ? ' future' : ''}`}
-                                            data-testid="history-item"
-                                            role="button"
-                                            tabIndex={0}
-                                            aria-current={index === history.index ? 'true' : undefined}
-                                            onClick={() => {
-                                                handleJumpToHistory(index);
-                                                setHistoryOpen(false);
-                                            }}
-                                            onKeyDown={(event) => {
-                                                if (event.key === 'Enter' || event.key === ' ') {
-                                                    event.preventDefault();
+                                    <ul className="history-list">
+                                        {history.entries.map((entry, index) => (
+                                            <li
+                                                key={`${entry.label}-${index}`}
+                                                className={`history-item${index === history.index ? ' current' : ''}${index > history.index ? ' future' : ''}`}
+                                                data-testid="history-item"
+                                                role="button"
+                                                tabIndex={0}
+                                                aria-current={index === history.index ? 'true' : undefined}
+                                                onClick={() => {
                                                     handleJumpToHistory(index);
                                                     setHistoryOpen(false);
-                                                }
-                                            }}
-                                        >
-                                            <span className="history-label">{entry.label}</span>
-                                        </li>
-                                    ))}
-                                </ul>
+                                                }}
+                                                onKeyDown={(event) => {
+                                                    if (event.key === 'Enter' || event.key === ' ') {
+                                                        event.preventDefault();
+                                                        handleJumpToHistory(index);
+                                                        setHistoryOpen(false);
+                                                    }
+                                                }}
+                                            >
+                                                <span className="history-label">{entry.label}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, marginRight: 12, paddingRight: 12, borderRight: '1px solid var(--border-color)' }}>
-                        {showBaseColumn && (
+                        <div style={{ display: 'flex', gap: 6, marginRight: 12, paddingRight: 12, borderRight: '1px solid var(--border-color)' }}>
+                            {showBaseColumn && (
+                                <button
+                                    className="btn"
+                                    style={{
+                                        background: 'var(--base-bg)',
+                                        border: '1px solid var(--base-border)',
+                                        color: 'var(--text-primary)',
+                                        fontSize: 11,
+                                        padding: '4px 8px'
+                                    }}
+                                    title="Accept all base (original) changes"
+                                    onClick={() => handleAcceptAll('base')}
+                                >
+                                    All Base
+                                </button>
+                            )}
                             <button
                                 className="btn"
                                 style={{
-                                    background: 'var(--base-bg)',
-                                    border: '1px solid var(--base-border)',
+                                    background: 'var(--current-bg)',
+                                    border: '1px solid var(--current-border)',
                                     color: 'var(--text-primary)',
                                     fontSize: 11,
                                     padding: '4px 8px'
                                 }}
-                                title="Accept all base (original) changes"
-                                onClick={() => handleAcceptAll('base')}
+                                title="Accept all current (local) changes"
+                                onClick={() => handleAcceptAll('current')}
                             >
-                                All Base
+                                All Current
                             </button>
-                        )}
-                        <button
-                            className="btn"
-                            style={{
-                                background: 'var(--current-bg)',
-                                border: '1px solid var(--current-border)',
-                                color: 'var(--text-primary)',
-                                fontSize: 11,
-                                padding: '4px 8px'
-                            }}
-                            title="Accept all current (local) changes"
-                            onClick={() => handleAcceptAll('current')}
-                        >
-                            All Current
+                            <button
+                                className="btn"
+                                style={{
+                                    background: 'var(--incoming-bg)',
+                                    border: '1px solid var(--incoming-border)',
+                                    color: 'var(--text-primary)',
+                                    fontSize: 11,
+                                    padding: '4px 8px'
+                                }}
+                                title="Accept all incoming (remote) changes"
+                                onClick={() => handleAcceptAll('incoming')}
+                            >
+                                All Incoming
+                            </button>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                            <input
+                                type="checkbox"
+                                checked={renumberExecutionCounts}
+                                onChange={e => handleToggleRenumberExecutionCounts(e.target.checked)}
+                            />
+                            Renumber execution counts
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                            <input
+                                type="checkbox"
+                                checked={markAsResolved}
+                                onChange={e => handleToggleMarkAsResolved(e.target.checked)}
+                            />
+                            Mark as resolved (stage in Git)
+                        </label>
+                        <button className="btn btn-secondary" onClick={onCancel}>
+                            Cancel
                         </button>
                         <button
-                            className="btn"
-                            style={{
-                                background: 'var(--incoming-bg)',
-                                border: '1px solid var(--incoming-border)',
-                                color: 'var(--text-primary)',
-                                fontSize: 11,
-                                padding: '4px 8px'
-                            }}
-                            title="Accept all incoming (remote) changes"
-                            onClick={() => handleAcceptAll('incoming')}
+                            className="btn btn-primary"
+                            onClick={handleResolve}
+                            disabled={!allResolved}
                         >
-                            All Incoming
+                            Apply Resolution
                         </button>
                     </div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                        <input
-                            type="checkbox"
-                            checked={renumberExecutionCounts}
-                            onChange={e => handleToggleRenumberExecutionCounts(e.target.checked)}
-                        />
-                        Renumber execution counts
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                        <input
-                            type="checkbox"
-                            checked={markAsResolved}
-                            onChange={e => handleToggleMarkAsResolved(e.target.checked)}
-                        />
-                        Mark as resolved (stage in Git)
-                    </label>
-                    <button className="btn btn-secondary" onClick={onCancel}>
-                        Cancel
-                    </button>
-                    <button
-                        className="btn btn-primary"
-                        onClick={handleResolve}
-                        disabled={!allResolved}
-                    >
-                        Apply Resolution
-                    </button>
+                </div>
+                <div className={`column-labels${showBaseColumn ? '' : ' two-column'}`}>
+                    {showBaseColumn && (
+                        <div className="column-label base">
+                            Base
+                        </div>
+                    )}
+                    <div className="column-label current">
+                        Current {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
+                    </div>
+                    <div className="column-label incoming">
+                        Incoming {conflict.incomingBranch ? `(${conflict.incomingBranch})` : ''}
+                    </div>
                 </div>
             </header>
 
@@ -472,20 +487,6 @@ export function ConflictResolver({
                         )}
                     </div>
                 )}
-
-                <div className={`column-labels${showBaseColumn ? '' : ' two-column'}`}>
-                    {showBaseColumn && (
-                        <div className="column-label base">
-                            Base
-                        </div>
-                    )}
-                    <div className="column-label current">
-                        Current {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
-                    </div>
-                    <div className="column-label incoming">
-                        Incoming {conflict.incomingBranch ? `(${conflict.incomingBranch})` : ''}
-                    </div>
-                </div>
 
                 <div
                     style={{

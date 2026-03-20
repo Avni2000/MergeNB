@@ -152,13 +152,22 @@ body {
 .header {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
-    padding: 12px 20px;
+    padding: 14px 16px 16px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
     position: sticky;
     top: 0;
     z-index: 100;
+}
+
+.header-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .header-left {
@@ -374,17 +383,14 @@ body {
     overflow-y: auto;
 }
 
-/* Column labels */
+/* Column labels (aligned with .main-content horizontal padding) */
 .column-labels {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
-    margin-bottom: 12px;
-    position: sticky;
-    top: 0;
-    background: transparent;
-    padding: 8px 0;
-    z-index: 50;
+    margin: 0;
+    padding: 4px 0 0;
+    border-top: 1px solid var(--border-color);
 }
 
 .column-labels.two-column {
