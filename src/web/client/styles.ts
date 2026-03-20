@@ -513,7 +513,7 @@ body {
     padding: 12px;
     background: var(--cell-surface);
     border-radius: 4px;
-    overflow-x: auto;
+    overflow: clip;
     white-space: pre-wrap;
     word-break: break-word;
 }
@@ -653,13 +653,6 @@ body {
 /* Static diff line wrappers — span (not div) so selection works across lines */
 .source-line {
     display: block;
-}
-
-/* Static highlighted code — clip instead of auto so the <pre> doesn't become
-   an inner scroll container that fights with the outer autoscroll during drag-select.
-   Specificity 0-2-0 to beat .cell-content pre (0-1-1) which sets overflow-x: auto. */
-.cell-content .cell-source-static {
-    overflow: clip;
 }
 
 /* Diff highlighting — applied as CodeMirror line decorations on .cm-line elements */
