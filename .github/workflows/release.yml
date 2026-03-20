@@ -107,6 +107,25 @@ jobs:
             --auto \
             --merge
 
+      - name: Wait for PR to merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BRANCH="release/v${VERSION}"
+          echo "Waiting for PR to merge..."
+          for i in {1..20}; do
+            STATE=$(gh pr view "${BRANCH}" --json mergedAt --jq '.mergedAt')
+            if [ "$STATE" != "null" ]; then
+              echo "PR merged successfully"
+              exit 0
+            fi
+            echo "Attempt $i/20: PR not merged yet, waiting..."
+            sleep 30
+          done
+          echo "Timeout: PR did not merge within 10 minutes"
+          exit 1
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
