@@ -90,7 +90,7 @@ jobs:
           git tag --force "${VERSION}"
           git push origin "${BRANCH}" --force-with-lease
           git push origin "${VERSION}" --force
-
+          
       - name: Create Pull Request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -102,7 +102,10 @@ jobs:
             --head "${BRANCH}" \
             --title "[RELEASE] v${VERSION}" \
             --body "Automated release PR for v${VERSION}" \
-            --label "release" \
+            --label "release"
+          gh pr merge "${BRANCH}" \
+            --auto \
+            --merge
 
       - name: Create GitHub Release
         env:
