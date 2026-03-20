@@ -13,7 +13,11 @@ import {
     setupConflictResolver,
     applyResolutionAndReadNotebook,
 } from './testHarness';
-import { getCellSource, validateNotebookStructure } from './testHelpers';
+import {
+    assertConsistentCellSourceFormat,
+    getCellSource,
+    validateNotebookStructure,
+} from './testHelpers';
 
 function readFixtureNotebook(fileName: string): any {
     const fixturePath = path.resolve(__dirname, '../../test', fileName);
@@ -119,6 +123,7 @@ export async function run(): Promise<void> {
 
         const resolvedNotebook = await applyResolutionAndReadNotebook(page, session.conflictFile);
         validateNotebookStructure(resolvedNotebook);
+        assertConsistentCellSourceFormat(resolvedNotebook);
 
         const resolvedStep1Source = getStep1GradientDescentSource(resolvedNotebook, 'Resolved notebook');
 
@@ -130,6 +135,7 @@ export async function run(): Promise<void> {
 
         console.log('✓ Non-conflict incoming-only Step 1 content preserved');
         console.log('✓ Notebook structure valid');
+        console.log('✓ Notebook cell source format is consistent');
     } finally {
         if (page) await page.close();
         if (browser) await browser.close();

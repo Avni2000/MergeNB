@@ -193,6 +193,26 @@ export function validateNotebookStructure(notebook: any): void {
     }
 }
 
+/** Assert that all notebook cells use the same `source` representation (all string or all array). */
+export function assertConsistentCellSourceFormat(notebook: any): void {
+    if (!notebook || !Array.isArray(notebook.cells) || notebook.cells.length === 0) {
+        return;
+    }
+
+    const firstCellSource = notebook.cells[0]?.source;
+    const expectedFormat = Array.isArray(firstCellSource) ? 'array' : 'string';
+
+    for (let i = 1; i < notebook.cells.length; i++) {
+        const cell = notebook.cells[i];
+        const actualFormat = Array.isArray(cell?.source) ? 'array' : 'string';
+        if (actualFormat !== expectedFormat) {
+            throw new Error(
+                `Inconsistent cell source format at cell ${i}: expected ${expectedFormat}, got ${actualFormat}`
+            );
+        }
+    }
+}
+
 /**
  * Wait for the conflict file to be written (mtime within last 10 seconds).
  * Returns true if confirmed, false otherwise.
