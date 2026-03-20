@@ -229,14 +229,25 @@ function loadFenceLanguageSupport(languageTag: string): Promise<Extension | null
 
 async function enhanceMarkdownCodeBlocks(host: HTMLElement, theme: 'dark' | 'light'): Promise<EditorView[]> {
     const codeNodes = Array.from(host.querySelectorAll('pre > code')) as HTMLElement[];
+    if (codeNodes.length === 0) return [];
+
+    // Load all fence language bundles in parallel so the DOM replacements
+    // below happen in a single synchronous pass instead of one per await.
+    const languageSupports = await Promise.all(
+        codeNodes.map(node => {
+            const tag = getFenceLanguageTag(node);
+            return tag ? loadFenceLanguageSupport(tag) : Promise.resolve(null);
+        })
+    );
+
     const views: EditorView[] = [];
 
-    for (const codeNode of codeNodes) {
+    for (let i = 0; i < codeNodes.length; i++) {
+        const codeNode = codeNodes[i];
         const preNode = codeNode.parentElement;
         if (!preNode) continue;
 
-        const languageTag = getFenceLanguageTag(codeNode);
-        const languageSupport = languageTag ? await loadFenceLanguageSupport(languageTag) : null;
+        const languageSupport = languageSupports[i];
 
         const mount = document.createElement('div');
         mount.className = 'markdown-code-cm';
