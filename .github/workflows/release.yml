@@ -82,10 +82,27 @@ jobs:
       - name: Commit and tag
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          git add package.json package-lock.json
+          BRANCH="release/v${VERSION}"
+          git checkout -b "${BRANCH}"
+          git add package.json package-lock.json RELEASE_NOTES.md
           git commit -m "Release v${VERSION}"
           git tag "${VERSION}"
-          git push origin HEAD --follow-tags
+          git push origin "${BRANCH}" --follow-tags
+
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          BRANCH="release/v${VERSION}"
+          gh pr create \
+            --base main \
+            --head "${BRANCH}" \
+            --title "[RELEASE] v${VERSION}" \
+            --body "Automated release PR for v${VERSION}" \
+            --label "release" \
+            --auto-merge \
+            --merge-method squash
 
       - name: Create GitHub Release
         env:
