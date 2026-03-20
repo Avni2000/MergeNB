@@ -87,7 +87,7 @@ jobs:
           git add package.json package-lock.json RELEASE_NOTES.md
           git commit -m "Release v${VERSION}"
           git tag "${VERSION}"
-          git push origin "${BRANCH}" --follow-tags
+          git push origin "${BRANCH}" --follow-tags --force-with-lease
 
       - name: Create Pull Request
         env:
