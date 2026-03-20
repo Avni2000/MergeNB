@@ -123,16 +123,13 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --logo-blend-mode: ${colors.logoBlendMode};
 }
 
-body {
-    margin: 0;
-    padding: 0;
-}
-
 * {
     box-sizing: border-box;
 }
 
 body {
+    margin: 0;
+    padding: 0;
     font-family: var(--font-ui);
     font-weight: 400;
     background: ${colors.bodyBackground};
@@ -1084,6 +1081,7 @@ body {
 .resolved-cell.markdown-cell .resolved-content-input .cm-content,
 .markdown-cell .cell-source-cm .cm-content {
     font-family: var(--font-ui) !important;
+    border-left-color: var(--accent-green);
 }
 
 .resolved-cell.code-cell .resolved-content-input.cm-editor {
