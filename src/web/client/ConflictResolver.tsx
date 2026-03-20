@@ -268,11 +268,7 @@ export function ConflictResolver({
             }
         });
     }, []);
-    // Keep the container height monotonically non-decreasing so the scrollbar
-    // doesn't jump when TanStack refines its measurements.
     const totalSize = rowVirtualizer.getTotalSize();
-    const stableTotalSizeRef = useRef(0);
-    stableTotalSizeRef.current = Math.max(stableTotalSizeRef.current, totalSize);
 
     return (
         <div className="app-container jp-Notebook">
@@ -490,7 +486,7 @@ export function ConflictResolver({
 
                 <div
                     style={{
-                        height: stableTotalSizeRef.current,
+                        height: totalSize,
                         position: 'relative',
                     }}
                 >
