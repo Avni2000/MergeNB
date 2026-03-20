@@ -21,21 +21,22 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         bgSecondary: '#1e1e1e',
         bgTertiary: '#2d2d30',
         bgQuarternary: '#2d2d30',
+        bgHover: '#333337',
         borderColor: 'rgba(255, 255, 255, 0.10)',
         textPrimary: '#d4d4d4',
         textSecondary: '#858585',
         accentBlue: '#569cd6',
         accentGreen: '#4ec9b0',
-        currentBg: 'rgba(86, 156, 214, 0.18)',
+        currentBg: 'rgba(86, 156, 214, 0.45)',
         currentBorder: '#569cd6',
         currentRgb: '86, 156, 214',
-        incomingBg: 'rgba(78, 201, 176, 0.18)',
+        incomingBg: 'rgba(78, 201, 176, 0.45)',
         incomingBorder: '#4ec9b0',
         incomingRgb: '78, 201, 176',
-        baseBg: 'rgba(133, 133, 133, 0.15)',
+        baseBg: 'rgba(133, 133, 133, 0.35)',
         baseBorder: '#555555',
         diffAdd: 'rgba(78, 201, 176, 0.20)',
-        diffRemove: 'rgba(244, 135, 113, 0.18)',
+        diffRemove: 'rgba(217, 54, 21, 0.33)',
         diffChange: 'rgba(86, 156, 214, 0.15)',
         cellSurface: 'rgba(45, 45, 48, 0.90)',
         cellSurfaceSoft: 'rgba(45, 45, 48, 0.70)',
@@ -52,21 +53,22 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
         bgSecondary: '#ebe3d8',
         bgTertiary: '#e2d8ca',
         bgQuarternary: '#ebe3d8b7',
+        bgHover: '#d9cfbf',
         borderColor: 'rgba(0, 0, 0, 0.1)',
         textPrimary: '#1A202C',
         textSecondary: '#6B7280',
         accentBlue: '#569cd6',
         accentGreen: '#4ec9b0',
-        currentBg: 'rgba(164, 212, 222, 0.25)',
+        currentBg: 'rgba(164, 212, 222, 0.45)',
         currentBorder: '#A4D4DE',
         currentRgb: '164, 212, 222',
-        incomingBg: 'rgba(159, 168, 221, 0.30)',
+        incomingBg: 'rgba(159, 168, 221, 0.50)',
         incomingBorder: '#9FA8DD',
         incomingRgb: '159, 168, 221',
-        baseBg: 'rgba(128, 128, 128, 0.18)',
+        baseBg: 'rgba(128, 128, 128, 0.38)',
         baseBorder: '#8b7f70',
         diffAdd: 'rgba(195, 201, 242, 0.4)',
-        diffRemove: 'rgba(244, 135, 113, 0.35)',
+        diffRemove: 'rgba(217, 54, 21, 0.33)',
         diffChange: 'rgba(255, 193, 7, 0.35)',
         cellSurface: 'rgba(226, 216, 202, 0.78)',
         cellSurfaceSoft: 'rgba(226, 216, 202, 0.62)',
@@ -95,6 +97,7 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --bg-secondary: ${colors.bgSecondary};
     --bg-tertiary: ${colors.bgTertiary};
     --bg-quarternary: ${colors.bgQuarternary};
+    --bg-hover: ${colors.bgHover};
     --border-color: ${colors.borderColor};
     --text-primary: ${colors.textPrimary};
     --text-secondary: ${colors.textSecondary};
@@ -122,11 +125,11 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
 
 * {
     box-sizing: border-box;
-    margin: 0;
-    padding: 0;
 }
 
 body {
+    margin: 0;
+    padding: 0;
     font-family: var(--font-ui);
     font-weight: 400;
     background: ${colors.bodyBackground};
@@ -146,13 +149,22 @@ body {
 .header {
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
-    padding: 12px 20px;
+    padding: 14px 16px 16px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
     position: sticky;
     top: 0;
     z-index: 100;
+}
+
+.header-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
 }
 
 .header-left {
@@ -368,17 +380,14 @@ body {
     overflow-y: auto;
 }
 
-/* Column labels */
+/* Column labels (aligned with .main-content horizontal padding) */
 .column-labels {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
-    margin-bottom: 12px;
-    position: sticky;
-    top: 0;
-    background: transparent;
-    padding: 8px 0;
-    z-index: 50;
+    margin: 0;
+    padding: 4px 0 0;
+    border-top: 1px solid var(--border-color);
 }
 
 .column-labels.two-column {
@@ -414,7 +423,7 @@ body {
     border-top: 3px solid rgba(244, 135, 113, 0.6);
     border-right: 3px solid rgba(244, 135, 113, 0.6);
     border-bottom: 3px solid rgba(244, 135, 113, 0.6);
-    border-left: 4px solid #f48771;
+    border-left: 4px solid rgba(244, 135, 113, 0.6);
     border-radius: 6px;
 }
 
@@ -485,7 +494,11 @@ body {
 
 /* Ensure markdown and inline/code blocks use the same primary text color */
 .markdown-content,
-.markdown-content *,
+.markdown-content p,
+.markdown-content li,
+.markdown-content td,
+.markdown-content th,
+.markdown-content blockquote,
 .cell-content pre,
 .markdown-content pre,
 .markdown-content code {
@@ -503,6 +516,7 @@ body {
 }
 
 .code-cell .cell-content pre {
+    background: var(--bg-primary);
     border-left: 3px solid var(--accent-blue);
 }
 
@@ -522,6 +536,8 @@ body {
     padding: 12px;
     white-space: pre-wrap;
     word-break: break-word;
+    border-left: 3px solid var(--accent-blue);
+    background: var(--bg-primary);
 }
 
 .cell-source-cm .cm-line {
@@ -530,7 +546,8 @@ body {
 
 /* Replicate the left-border accent that <pre> had for code cells */
 .code-cell .cell-content .cell-source-cm.cm-editor {
-    border-left: 3px solid var(--accent-blue);
+    background: var(--bg-primary);
+    /* Border now on .cm-content for better visibility */
 }
 
 .markdown-cell .cell-content {
@@ -538,6 +555,12 @@ body {
     background: var(--cell-surface);
     border-radius: 4px;
     border-left: 3px solid var(--accent-green);
+}
+
+.markdown-cell .cell-content pre {
+    font-family: var(--font-ui);
+    white-space: pre-wrap;
+    margin: 0;
 }
 
 /* Placeholder for empty cells */
@@ -672,7 +695,7 @@ body {
 }
 
 .cell-output-host .jp-RenderedText[data-mime-type='application/vnd.jupyter.stderr'] {
-    background: rgba(244, 135, 113, 0.18);
+    background: var(--diff-remove);
     border-radius: 4px;
     padding: 8px;
 }
@@ -698,19 +721,51 @@ body {
     background: rgba(78, 201, 176, 0.1);
     border: 1px solid var(--accent-green);
     border-radius: 6px;
-    padding: 12px 16px;
     margin-bottom: 16px;
+    overflow: hidden;
+}
+
+.auto-resolve-summary {
     display: flex;
     align-items: center;
     gap: 12px;
+    width: 100%;
+    padding: 12px 16px;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+}
+
+.auto-resolve-summary:hover {
+    background: rgba(78, 201, 176, 0.08);
 }
 
 .auto-resolve-banner .icon {
     font-size: 20px;
+    flex-shrink: 0;
 }
 
 .auto-resolve-banner .text {
     font-size: 13px;
+    flex: 1;
+}
+
+.auto-resolve-banner .chevron {
+    font-size: 10px;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.auto-resolve-list {
+    margin: 0;
+    padding: 0 16px 12px 48px;
+    list-style: disc;
+    font-size: 13px;
+    opacity: 0.85;
+    line-height: 1.8;
 }
 
 /* Loading/Error states */
@@ -805,22 +860,24 @@ body {
     }
 }
 
-/* Markdown rendering */
+/* Markdown rendering - inherited from JupyterLab jp-RenderedMarkdown
+   with minimal local overrides for container spacing and code blocks */
 .markdown-content {
     color: var(--text-primary);
+    word-break: break-word; /* Ensure text wraps */
 }
 
-.markdown-content h1, .markdown-content h2, .markdown-content h3,
-.markdown-content h4, .markdown-content h5, .markdown-content h6 {
-    margin-top: 16px;
-    margin-bottom: 8px;
-    font-weight: 600;
+/* Ensure consistent text colors in all Jupyter widgets */
+.jp-RenderedText,
+.jp-RenderedHTMLCommon,
+.jp-RenderedImage,
+.jp-RenderedSVG,
+.jp-RenderedMarkdown,
+.jp-RenderedLatex {
+    color: var(--text-primary) !important;
 }
 
-.markdown-content p {
-    margin-bottom: 8px;
-}
-
+/* Local overrides for JupyterLab's rendering to maintain consistent feel */
 .markdown-content code {
     background: var(--bg-primary);
     padding: 2px 6px;
@@ -836,31 +893,101 @@ body {
     overflow-x: auto;
 }
 
-.markdown-content ul, .markdown-content ol {
-    margin-left: 24px;
+.markdown-content p {
     margin-bottom: 8px;
 }
 
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+    color: var(--text-primary);
+    line-height: 1.25;
+    margin: 16px 0 8px;
+    font-weight: 650;
+}
+
+.markdown-content h1 { font-size: 1.5rem; }
+.markdown-content h2 { font-size: 1.3rem; }
+.markdown-content h3 { font-size: 1.15rem; }
+.markdown-content h4 { font-size: 1.05rem; }
+.markdown-content h5 { font-size: 0.95rem; }
+.markdown-content h6 { font-size: 0.9rem; color: var(--text-secondary); }
+
+.markdown-content a {
+    color: var(--accent-blue);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.markdown-content a:hover {
+    text-decoration-thickness: 2px;
+}
+
 .markdown-content blockquote {
-    border-left: 4px solid var(--border-color);
-    padding-left: 16px;
-    margin: 8px 0;
+    margin: 10px 0;
+    padding: 2px 0 2px 12px;
+    border-left: 3px solid var(--border-color);
     color: var(--text-secondary);
 }
 
-/* Hide automatic heading permalink anchors (pilcrow/¶) inserted
-   by the markdown renderer (e.g. markdown-it-anchor / rendermime). */
-.markdown-content a.anchor-link,
-.markdown-content .anchor-link,
-.markdown-content a.header-link,
-.markdown-content .header-anchor,
-.markdown-content h1 > a,
-.markdown-content h2 > a,
-.markdown-content h3 > a,
-.markdown-content h4 > a,
-.markdown-content h5 > a,
-.markdown-content h6 > a {
-    display: none !important;
+.markdown-content hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 16px 0;
+}
+
+.markdown-content strong {
+    font-weight: 650;
+}
+
+.markdown-content em {
+    font-style: italic;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin-bottom: 8px;
+    padding-left: 24px;
+}
+
+.markdown-content li {
+    margin-bottom: 4px;
+}
+
+/* Markdown tables - JupyterLab-like styling */
+.markdown-content table {
+    border-collapse: collapse;
+    margin: 16px 0;
+    width: 100%;
+    border-spacing: 0;
+}
+
+.markdown-content th,
+.markdown-content td {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    text-align: left;
+}
+
+.markdown-content th {
+    background-color: var(--bg-secondary);
+    font-weight: 600;
+}
+
+.markdown-content tr:nth-child(even) {
+    background-color: var(--bg-secondary);
+}
+
+.markdown-content tr:hover {
+    background-color: var(--bg-hover);
+}
+
+.markdown-content img {
+    max-width: 100%;
+    height: auto;
 }
 
 /* KaTeX styles */
@@ -895,7 +1022,9 @@ body {
 
 /* Resolved cell styling - green highlighting to mark as resolved */
 .resolved-cell {
-    margin-top: 12px;
+    margin: 12px 24px;
+    width: calc(100% - 48px);
+    box-sizing: border-box;
     padding: 12px;
     background: var(--cell-surface);
     border: 2px solid var(--accent-green);
@@ -952,9 +1081,11 @@ body {
 .resolved-cell.markdown-cell .resolved-content-input .cm-content,
 .markdown-cell .cell-source-cm .cm-content {
     font-family: var(--font-ui) !important;
+    border-left-color: var(--accent-green);
 }
 
 .resolved-cell.code-cell .resolved-content-input.cm-editor {
+    background: var(--bg-primary);
     border-left: 3px solid var(--accent-blue);
 }
 
@@ -989,7 +1120,7 @@ body {
 
 /* Resolved row styling */
 .merge-row.resolved-row {
-    border-left-color: var(--accent-green);
+    border-color: var(--accent-green);
     background: rgba(78, 201, 176, 0.03);
 }
 
@@ -1107,7 +1238,6 @@ body {
 /* Unmatched row - subtle indicator for cells that couldn't be matched */
 .merge-row.unmatched-row {
     background: transparent;
-    border-left: 4px solid rgba(255, 255, 255, 0.15);
     border-radius: 4px;
 }
 
@@ -1121,8 +1251,7 @@ body {
 
 /* When a row is both conflict and unmatched, keep conflict styling */
 .merge-row.conflict-row.unmatched-row {
-    border-left-color: #f48771;
-    background: rgba(244, 135, 113, 0.05);
+    background: transparent;
 }
 
 .virtual-row {
@@ -1145,18 +1274,18 @@ body {
 
 /* Delete button */
 .btn-delete {
-    background: rgba(244, 135, 113, 0.2);
-    color: var(--text-primary);
-    border: 1px solid rgba(244, 135, 113, 0.5);
+    background: rgba(255, 75, 75, 0.4);
+    color: rgb(255, 255, 255);
+    border: 1px solid rgba(211, 47, 47, 0.5);
 }
 
 .btn-delete:hover {
-    background: rgba(244, 135, 113, 0.3);
+    background: rgba(211, 49, 49, 0.5);
 }
 
 .btn-delete.selected {
-    background: rgba(244, 135, 113, 0.4);
-    border-color: #f48771;
+    background: rgba(183, 28, 28, 0.5);
+    border-color: rgba(183, 28, 28, 0.5);
     font-weight: 600;
 }
 
@@ -1176,7 +1305,6 @@ body {
 
 /* Reordered row — subtle left border only */
 .merge-row.reordered-row {
-    border-left: 4px solid rgba(86, 156, 214, 0.30);
     background: transparent;
     border-radius: 4px;
 }
@@ -1289,7 +1417,6 @@ body {
 
 /* User-unmatched row — subtle indicator */
 .merge-row.user-unmatched-row {
-    border-left: 4px solid rgba(255, 255, 255, 0.12);
     background: transparent;
     border-radius: 4px;
 }

@@ -6,8 +6,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
-import { StateField, RangeSetBuilder } from '@codemirror/state';
+import { EditorState, StateField, RangeSetBuilder } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
+import { LanguageDescription } from '@codemirror/language';
+import { languages } from '@codemirror/language-data';
 import { IRenderMime, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 import DOMPurify from 'dompurify';
@@ -122,6 +124,7 @@ export function CellContentInner({
                 {cellType === 'markdown' && !isConflict ? (
                     <MarkdownContent
                         source={source}
+                        theme={theme}
                     />
                 ) : isConflict && (compareCell || baseCell) ? (
                     // Show conflict diffs with syntax highlighting + diff decorations
@@ -161,14 +164,125 @@ export function CellContentInner({
 
 interface MarkdownContentProps {
     source: string;
+    theme: 'dark' | 'light';
 }
 
-function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
+const markdownFenceLanguageSupportCache = new Map<string, Promise<Extension | null>>();
+
+const markdownFenceEditorStructure: Extension = EditorView.theme({
+    '&': {
+        outline: 'none !important',
+        border: '1px solid var(--border-color)',
+        borderRadius: '4px',
+        backgroundColor: 'var(--bg-primary)',
+    },
+    '.cm-content': {
+        fontFamily: 'var(--font-code)',
+        fontSize: '13px',
+        lineHeight: '1.5',
+        padding: '12px',
+        background: 'var(--bg-primary)',
+    },
+    '.cm-line': { padding: '0' },
+    '.cm-scroller': { overflow: 'auto' },
+    '.cm-gutters': { display: 'none' },
+});
+
+function getFenceLanguageTag(codeNode: HTMLElement): string | null {
+    for (const className of Array.from(codeNode.classList)) {
+        if (className.startsWith('language-')) {
+            return className.slice('language-'.length).trim().toLowerCase();
+        }
+        if (className.startsWith('lang-')) {
+            return className.slice('lang-'.length).trim().toLowerCase();
+        }
+    }
+    return null;
+}
+
+function loadFenceLanguageSupport(languageTag: string): Promise<Extension | null> {
+    const key = languageTag.trim().toLowerCase();
+    if (!key) return Promise.resolve(null);
+
+    const cached = markdownFenceLanguageSupportCache.get(key);
+    if (cached) return cached;
+
+    const supportPromise = (async () => {
+        const description =
+            LanguageDescription.matchLanguageName(languages, key, true) ??
+            LanguageDescription.matchFilename(languages, `file.${key}`);
+
+        if (!description) return null;
+        if (description.support) return description.support;
+
+        try {
+            return await description.load();
+        } catch (err) {
+            logger.warn('[MergeNB] Failed to load markdown fence language support:', err);
+            return null;
+        }
+    })();
+
+    markdownFenceLanguageSupportCache.set(key, supportPromise);
+    return supportPromise;
+}
+
+async function enhanceMarkdownCodeBlocks(host: HTMLElement, theme: 'dark' | 'light'): Promise<EditorView[]> {
+    const codeNodes = Array.from(host.querySelectorAll('pre > code')) as HTMLElement[];
+    if (codeNodes.length === 0) return [];
+
+    // Load all fence language bundles in parallel so the DOM replacements
+    // below happen in a single synchronous pass instead of one per await.
+    const languageSupports = await Promise.all(
+        codeNodes.map(node => {
+            const tag = getFenceLanguageTag(node);
+            return tag ? loadFenceLanguageSupport(tag) : Promise.resolve(null);
+        })
+    );
+
+    const views: EditorView[] = [];
+
+    for (let i = 0; i < codeNodes.length; i++) {
+        const codeNode = codeNodes[i];
+        const preNode = codeNode.parentElement;
+        if (!preNode) continue;
+
+        const languageSupport = languageSupports[i];
+
+        const mount = document.createElement('div');
+        mount.className = 'markdown-code-cm';
+
+        const view = new EditorView({
+            state: EditorState.create({
+                doc: codeNode.textContent ?? '',
+                extensions: [
+                    theme === 'dark' ? githubDark : githubLight,
+                    markdownFenceEditorStructure,
+                    mergeNBSyntaxClassHighlighter,
+                    EditorState.readOnly.of(true),
+                    EditorView.editable.of(false),
+                    ...(languageSupport ? [languageSupport] : []),
+                ],
+            }),
+            parent: mount,
+        });
+
+        preNode.replaceWith(mount);
+        views.push(view);
+    }
+
+    return views;
+}
+
+function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactElement {
     const hostRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const host = hostRef.current;
         if (!host || !host.isConnected) return;
+
+        let disposed = false;
+        let codeViews: EditorView[] = [];
 
         host.replaceChildren();
 
@@ -190,8 +304,28 @@ function MarkdownContent({ source }: MarkdownContentProps): React.ReactElement {
             }
         });
 
-        return () => { host.replaceChildren(); };
-    }, [source]);
+        void enhanceMarkdownCodeBlocks(host, theme)
+            .then((views) => {
+                if (disposed) {
+                    for (const view of views) {
+                        view.destroy();
+                    }
+                    return;
+                }
+                codeViews = views;
+            })
+            .catch((err) => {
+                logger.warn('[MergeNB] Failed to render markdown fenced code blocks with CodeMirror:', err);
+            });
+
+        return () => {
+            disposed = true;
+            for (const view of codeViews) {
+                view.destroy();
+            }
+            host.replaceChildren();
+        };
+    }, [source, theme]);
 
     return <div className="markdown-content" ref={hostRef} />;
 }

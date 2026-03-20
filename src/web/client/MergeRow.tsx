@@ -201,6 +201,7 @@ export function MergeRowInner({
                             cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
                             side="current"
                             notebookPath={notebookPath}
+                            isConflict={false}
                             languageExtensions={languageExtensions}
                             theme={theme}
                             showOutputs={showOutputs}
