@@ -16,10 +16,10 @@
  *   (requestAnimationFrame is throttled to ~4 fps in headless Chromium, making
  *   it unreliable for sub-second flicker detection; setInterval fires at the
  *   requested rate regardless of frame visibility.)
- *   After the observation window, the test first finds when scrollHeight reaches
- *   ~stable size, then only analyses samples after that stabilization point.
- *   It fails if height later drops to <50% of stable.  This avoids startup
- *   false positives from the list growing during initial render.
+ *   After the observation window, the test tracks the rolling peak height and
+ *   fails if any sample drops to less than 50% of that peak. Gradual downward
+ *   drift from TanStack measurement refinement is expected and tolerated; only
+ *   a sudden large collapse (the original flicker symptom) triggers failure.
  */
 
 import * as path from 'path';
@@ -139,16 +139,22 @@ export async function run(): Promise<void> {
             `[FlickerTest] Height range: min=${minHeight}px, max=${maxHeight}px`
         );
 
-        // ── 6. Fail if height is not monotonically increasing ────────────────────
-        // If height ever goes down, that's a flicker (layout collapse and recovery).
+        // ── 6. Fail if height collapses suddenly ─────────────────────────────────
+        // TanStack Virtualizer refines over-estimated row heights downward as it
+        // measures the real DOM — a gradual decrease is expected and not a flicker.
+        // A real flicker is a sudden large drop (>50% of the rolling peak), which
+        // indicates a momentary layout collapse from async CodeMirror activation.
+        let rollingPeak = samplesAfterRender[0];
         for (let i = 1; i < samplesAfterRender.length; i++) {
-            if (samplesAfterRender[i] < samplesAfterRender[i - 1]) {
-                const prevHeight = samplesAfterRender[i - 1];
-                const currHeight = samplesAfterRender[i];
-                const dropPct = ((prevHeight - currHeight) / prevHeight) * 100;
+            const h = samplesAfterRender[i];
+            if (h > rollingPeak) {
+                rollingPeak = h;
+            }
+            if (rollingPeak > 0 && h < rollingPeak * 0.5) {
+                const dropPct = ((rollingPeak - h) / rollingPeak) * 100;
                 throw new Error(
                     `[FLICKER DETECTED] .main-content scrollHeight dropped from ` +
-                    `${prevHeight}px to ${currHeight}px (${dropPct.toFixed(0)}% drop) ` +
+                    `${rollingPeak}px to ${h}px (${dropPct.toFixed(0)}% drop) ` +
                     `at sample index ${firstNonZero + i}. ` +
                     `This indicates a layout collapse, likely from async CodeMirror language-extension activation.`
                 );
