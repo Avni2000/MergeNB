@@ -75,6 +75,10 @@ jobs:
             fi
           } > RELEASE_NOTES.md
 
+
+      - name: Build .vsix
+        run: npx @vscode/vsce package
+        
       - name: Commit and tag
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -82,9 +86,6 @@ jobs:
           git commit -m "Release v${VERSION}"
           git tag "${VERSION}"
           git push origin HEAD --follow-tags
-
-      - name: Build .vsix
-        run: npx @vscode/vsce package
 
       - name: Create GitHub Release
         env:
