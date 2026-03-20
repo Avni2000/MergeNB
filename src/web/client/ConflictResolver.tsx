@@ -201,12 +201,22 @@ export function ConflictResolver({
 
         const onDown = () => {
             isDraggingRef.current = true;
+            dragRenderedIndicesRef.current = null;
             prevScrollTop = el?.scrollTop ?? 0;
         };
         const onUp = () => {
             isDraggingRef.current = false;
-            dragRenderedIndicesRef.current = null;
             prevScrollTop = el?.scrollTop ?? 0;
+
+            // If the user completed a drag-selection, keep the accumulated
+            // row indices pinned so the browser selection survives scrolling.
+            const sel = window.getSelection();
+            const hasSelection = sel && !sel.isCollapsed
+                && el?.contains(sel.anchorNode ?? null);
+            if (!hasSelection) {
+                dragRenderedIndicesRef.current = null;
+            }
+
             const pending = pendingMeasureNodesRef.current;
             if (pending.size > 0) {
                 for (const node of pending) {
@@ -215,6 +225,14 @@ export function ConflictResolver({
                     }
                 }
                 pending.clear();
+            }
+        };
+
+        const onSelectionChange = () => {
+            if (isDraggingRef.current) return;
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || !el?.contains(sel.anchorNode ?? null)) {
+                dragRenderedIndicesRef.current = null;
             }
         };
 
@@ -241,10 +259,12 @@ export function ConflictResolver({
 
         window.addEventListener('mousedown', onDown);
         window.addEventListener('mouseup', onUp);
+        document.addEventListener('selectionchange', onSelectionChange);
         el?.addEventListener('scroll', onScroll);
         return () => {
             window.removeEventListener('mousedown', onDown);
             window.removeEventListener('mouseup', onUp);
+            document.removeEventListener('selectionchange', onSelectionChange);
             el?.removeEventListener('scroll', onScroll);
         };
     }, []);
@@ -311,20 +331,22 @@ export function ConflictResolver({
     // overscan window), the browser resets the selection and scroll position.
     const dragSafeRangeExtractor = useCallback((range: Range) => {
         const normal = defaultRangeExtractor(range);
+        const pinned = dragRenderedIndicesRef.current;
 
-        if (!isDraggingRef.current) {
-            dragRenderedIndicesRef.current = null;
+        if (!isDraggingRef.current && !pinned) {
             return normal;
         }
 
-        if (!dragRenderedIndicesRef.current) {
+        if (!pinned) {
             dragRenderedIndicesRef.current = [...normal];
             return normal;
         }
 
-        const merged = new Set([...dragRenderedIndicesRef.current, ...normal]);
+        const merged = new Set([...pinned, ...normal]);
         const result = Array.from(merged).sort((a, b) => a - b);
-        dragRenderedIndicesRef.current = result;
+        if (isDraggingRef.current) {
+            dragRenderedIndicesRef.current = result;
+        }
         return result;
     }, []);
 
