@@ -350,11 +350,16 @@ export function ConflictResolver({
         return result;
     }, []);
 
+    const noVirtualize = useMemo(() => {
+        if (typeof window === 'undefined') return false;
+        return new URLSearchParams(window.location.search).has('noVirtualize');
+    }, []);
+
     const rowVirtualizer = useVirtualizer({
         count: rows.length,
         getScrollElement,
         estimateSize: estimateRowSize,
-        overscan: 6,
+        overscan: noVirtualize ? Infinity : 6,
         rangeExtractor: dragSafeRangeExtractor,
     });
 
