@@ -550,7 +550,7 @@ body {
     /* Border now on .cm-content for better visibility */
 }
 
-.markdown-cell .cell-content {
+.markdown-cell:not(.has-conflict) .cell-content {
     padding: 12px;
     background: var(--cell-surface);
     border-radius: 4px;

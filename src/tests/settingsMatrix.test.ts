@@ -208,7 +208,7 @@ export async function run(): Promise<void> {
         });
         const current = makeCodeCell('x = 1  ', {     // trailing whitespace
             execution_count: 2,
-            outputs: [{ output_type: 'execute_result', data: { 'text/plain': '1' } }],
+            outputs: [{ output_type: 'execute_result', data: { 'text/plain': '2' } }],
         });
         const incoming = makeCodeCell('x = 1\t', {     // trailing tab
             execution_count: 3,
