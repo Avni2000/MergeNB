@@ -331,8 +331,9 @@ function compareCells(
         const currentExecCount = currentCell.execution_count;
         const incomingExecCount = incomingCell.execution_count;
 
-        if (currentExecCount !== incomingExecCount &&
-            (currentExecCount !== baseExecCount || incomingExecCount !== baseExecCount)) {
+        if (currentExecCount !== incomingExecCount && // current vs. incoming differ
+            (currentExecCount !== baseExecCount && // and current differs from base
+                 incomingExecCount !== baseExecCount)) { // and incoming differs from base
             conflicts.push({
                 type: 'execution-count-changed',
                 baseCellIndex: baseIndex,
@@ -350,7 +351,7 @@ function compareCells(
         const incomingOutputs = stableStringify(incomingCell.outputs || []);
 
         if (currentOutputs !== incomingOutputs &&
-            (currentOutputs !== baseOutputs || incomingOutputs !== baseOutputs)) {
+            (currentOutputs !== baseOutputs && incomingOutputs !== baseOutputs)) {
             conflicts.push({
                 type: 'outputs-changed',
                 baseCellIndex: baseIndex,
@@ -511,8 +512,9 @@ export function applyAutoResolutions(
     const incomingKernelStr = stableStringify(incomingKernel ?? null);  
     const baseKernelStr = stableStringify(baseKernel ?? null);  
 
-    if (currentKernelStr !== incomingKernelStr &&
-        (currentKernelStr !== baseKernelStr || incomingKernelStr !== baseKernelStr)) {
+    if (currentKernelStr !== incomingKernelStr && // current vs. incoming differ
+        (currentKernelStr !== baseKernelStr &&  // and current differs from base
+            incomingKernelStr !== baseKernelStr)) { // and incoming differs from base
         // Kernel version differs. Handle based on autoResolveKernelVersion setting.
         if (effectiveSettings.autoResolveKernelVersion) {
             kernelAutoResolved = true;
@@ -532,8 +534,10 @@ export function applyAutoResolutions(
     
     const currentLangStr = stableStringify(currentLangInfo ?? null);
     const incomingLangStr = stableStringify(incomingLangInfo ?? null);
-    const baseLangStr = stableStringify(baseLangInfo ?? null);        if (currentLangStr !== incomingLangStr &&
-        (currentLangStr !== baseLangStr || incomingLangStr !== baseLangStr)) {
+    const baseLangStr = stableStringify(baseLangInfo ?? null);        
+    if (currentLangStr !== incomingLangStr && // current vs. incoming differ
+        (currentLangStr !== baseLangStr && // and current differs from base
+             incomingLangStr !== baseLangStr)) { // and incoming differs from base
         // Language version differs. Handle based on autoResolveKernelVersion setting.
         if (effectiveSettings.autoResolveKernelVersion) {
             if (!kernelAutoResolved) {
@@ -564,7 +568,7 @@ export function applyAutoResolutions(
             }
         }
     }
-
+    
     return {
         remainingConflicts,
         autoResolvedCount,
@@ -593,6 +597,9 @@ export function hasKernelVersionConflict(
     const currentStr = stableStringify(currentKernel);
     const incomingStr = stableStringify(incomingKernel);
     const baseStr = baseKernel ? stableStringify(baseKernel) : '';
-
-    return currentStr !== incomingStr && (currentStr !== baseStr || incomingStr !== baseStr);
+    /**
+     * Only consider it a conflict if current and incoming kernelspecs differ, and both differ from base
+     */
+    return currentStr !== incomingStr && 
+    (currentStr !== baseStr && incomingStr !== baseStr); // both differ from base
 }
