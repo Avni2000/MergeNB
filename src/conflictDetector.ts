@@ -592,14 +592,13 @@ export function hasKernelVersionConflict(
     const incomingKernel = incoming.metadata?.kernelspec;
     const baseKernel = base?.metadata?.kernelspec;
 
-    if (!currentKernel || !incomingKernel) return false;
 
-    const currentStr = stableStringify(currentKernel);
-    const incomingStr = stableStringify(incomingKernel);
-    const baseStr = baseKernel ? stableStringify(baseKernel) : '';
-    /**
-     * Only consider it a conflict if current and incoming kernelspecs differ, and both differ from base
-     */
+    const currentStr = stableStringify(currentKernel ?? null);
+    const incomingStr = stableStringify(incomingKernel ?? null);
+    const baseStr = stableStringify(baseKernel ?? null);
+
+    // Only consider it a conflict if current and incoming kernelspecs differ, and both differ from base
+     
     return currentStr !== incomingStr && 
     (currentStr !== baseStr && incomingStr !== baseStr); // both differ from base
 }
