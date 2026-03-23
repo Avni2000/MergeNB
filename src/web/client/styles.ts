@@ -123,6 +123,13 @@ export function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --logo-blend-mode: ${colors.logoBlendMode};
 }
 
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
 * {
     box-sizing: border-box;
 }
@@ -140,7 +147,7 @@ body {
 }
 
 .app-container {
-    min-height: 100vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
 }
@@ -157,6 +164,7 @@ body {
     position: sticky;
     top: 0;
     z-index: 100;
+    user-select: none;
 }
 
 .header-toolbar {
@@ -378,6 +386,7 @@ body {
     flex: 1;
     padding: 16px;
     overflow-y: auto;
+    overflow-anchor: none;
 }
 
 /* Column labels (aligned with .main-content horizontal padding) */
@@ -385,8 +394,13 @@ body {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
-    margin: 0;
-    padding: 4px 0 0;
+    margin-bottom: 12px;
+    position: sticky;
+    top: 0;
+    background: transparent;
+    padding: 8px 0;
+    z-index: 50;
+    user-select: none;
     border-top: 1px solid var(--border-color);
 }
 
@@ -412,7 +426,7 @@ body {
 .merge-row {
     margin-bottom: 0;
     border-radius: 6px;
-    overflow: hidden;
+    overflow: clip;
     position: relative;
 }
 
@@ -453,7 +467,7 @@ body {
 /* Cell content */
 .notebook-cell {
     border-radius: 4px;
-    overflow: hidden;
+    overflow: clip;
     flex: 1;
     display: flex;
     flex-direction: column;
@@ -469,6 +483,7 @@ body {
     color: var(--text-secondary);
     border-bottom: 1px solid var(--border-color);
     background: var(--bg-secondary);
+    user-select: none;
 }
 
 .cell-header-type {
@@ -510,7 +525,7 @@ body {
     padding: 12px;
     background: var(--cell-surface);
     border-radius: 4px;
-    overflow-x: auto;
+    overflow: clip;
     white-space: pre-wrap;
     word-break: break-word;
 }
@@ -537,7 +552,6 @@ body {
     white-space: pre-wrap;
     word-break: break-word;
     border-left: 3px solid var(--accent-blue);
-    background: var(--bg-primary);
 }
 
 .cell-source-cm .cm-line {
@@ -597,6 +611,7 @@ body {
 .resolution-bar {
     background: var(--bg-quarternary);
     border-top: 1px solid var(--border-color);
+    user-select: none;
 }
 
 .resolution-bar .cell-column {
@@ -645,6 +660,18 @@ body {
 
 .btn-resolve.selected {
     box-shadow: 0 0 0 2px var(--accent-blue);
+}
+
+/* Static diff line wrappers — span (not div) so selection works across lines */
+.source-line {
+    display: block;
+}
+
+/* Static code uses @uiw/codemirror-theme-github HighlightStyle (see CellContent.tsx) */
+.cell-source-static code,
+.markdown-content pre.has-syntax-highlight code {
+    font-family: var(--font-code);
+    font-weight: 400;
 }
 
 /* Diff highlighting — applied as CodeMirror line decorations on .cm-line elements */
@@ -723,6 +750,7 @@ body {
     border-radius: 6px;
     margin-bottom: 16px;
     overflow: hidden;
+    user-select: none;
 }
 
 .auto-resolve-summary {
@@ -1038,6 +1066,7 @@ body {
     margin-bottom: 10px;
     padding-bottom: 8px;
     border-bottom: 1px solid rgba(78, 201, 176, 0.3);
+    user-select: none;
 }
 
 .resolved-label {
@@ -1270,6 +1299,7 @@ body {
     border: 2px dashed var(--border-color);
     border-radius: 4px;
     background: var(--cell-placeholder-bg);
+    user-select: none;
 }
 
 /* Delete button */
@@ -1318,6 +1348,7 @@ body {
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
     font-size: 12px;
+    user-select: none;
 }
 
 .conflict-action-left {
@@ -1343,6 +1374,7 @@ body {
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
     font-size: 12px;
+    user-select: none;
 }
 
 .reorder-delta {
@@ -1430,6 +1462,7 @@ body {
     background: var(--bg-tertiary);
     border-bottom: 1px solid var(--border-color);
     font-size: 12px;
+    user-select: none;
 }
 
 .rematch-label {

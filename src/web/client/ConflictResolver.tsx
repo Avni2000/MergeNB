@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
@@ -55,6 +55,9 @@ export function ConflictResolver({
     const [autoResolveBannerOpen, setAutoResolveBannerOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
+    const isDraggingRef = useRef(false);
+    const dragRenderedIndicesRef = useRef<number[] | null>(null);
+    const pendingMeasureNodesRef = useRef<Set<HTMLElement>>(new Set());
 
     const choices = useStore(resolverStore, state => state.choices);
     const rows = useStore(resolverStore, state => state.rows);
@@ -191,6 +194,88 @@ export function ConflictResolver({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [enableUndoRedoHotkeys, handleRedo, handleUndo, isMac, isEditableTarget]);
 
+    useEffect(() => {
+        const el = mainContentRef.current;
+        let prevScrollTop = el?.scrollTop ?? 0;
+        let correcting = false;
+
+        const onDown = (event: MouseEvent) => {
+            if (event.button !== 0) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target?.closest?.(
+                '.cell-content, .cell-output-host, .cell-output-fallback, .resolved-content-input, .markdown-content'
+            )) return;
+            isDraggingRef.current = true;
+            dragRenderedIndicesRef.current = null;
+            prevScrollTop = el?.scrollTop ?? 0;
+        };
+        const onUp = () => {
+            isDraggingRef.current = false;
+            prevScrollTop = el?.scrollTop ?? 0;
+
+            // If the user completed a drag-selection, keep the accumulated
+            // row indices pinned so the browser selection survives scrolling.
+            const sel = window.getSelection();
+            const hasSelection = sel && !sel.isCollapsed
+                && el?.contains(sel.anchorNode ?? null);
+            if (!hasSelection) {
+                dragRenderedIndicesRef.current = null;
+            }
+
+            const pending = pendingMeasureNodesRef.current;
+            if (pending.size > 0) {
+                for (const node of pending) {
+                    if (node.isConnected) {
+                        virtualizerRef.current.measureElement(node);
+                    }
+                }
+                pending.clear();
+            }
+        };
+
+        const onSelectionChange = () => {
+            if (isDraggingRef.current) return;
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || !el?.contains(sel.anchorNode ?? null)) {
+                dragRenderedIndicesRef.current = null;
+            }
+        };
+
+        const onScroll = () => {
+            if (!el || correcting) {
+                prevScrollTop = el?.scrollTop ?? 0;
+                return;
+            }
+            if (!isDraggingRef.current) {
+                prevScrollTop = el.scrollTop;
+                return;
+            }
+            const delta = el.scrollTop - prevScrollTop;
+            const MAX_DELTA = 200;
+            if (Math.abs(delta) > MAX_DELTA) {
+                correcting = true;
+                el.scrollTop = prevScrollTop + Math.sign(delta) * MAX_DELTA;
+                correcting = false;
+                prevScrollTop = el.scrollTop;
+            } else {
+                prevScrollTop = el.scrollTop;
+            }
+        };
+
+        window.addEventListener('mousedown', onDown);
+        window.addEventListener('mouseup', onUp);
+        window.addEventListener('blur', onUp);
+        document.addEventListener('selectionchange', onSelectionChange);
+        el?.addEventListener('scroll', onScroll);
+        return () => {
+            window.removeEventListener('mousedown', onDown);
+            window.removeEventListener('mouseup', onUp);
+            window.removeEventListener('blur', onUp);
+            document.removeEventListener('selectionchange', onSelectionChange);
+            el?.removeEventListener('scroll', onScroll);
+        };
+    }, []);
+
     const handleResolve = () => {
         const {
             rows: liveRows,
@@ -246,27 +331,56 @@ export function ConflictResolver({
     const estimateRowSize = useCallback((index: number) => {
         return estimatedRowHeights[index] ?? 200;
     }, [estimatedRowHeights]);
+
+    // During drag-select, never remove rows from the DOM — only accumulate.
+    // The browser anchors its selection to specific DOM nodes; if the
+    // virtualizer removes the selection-start node (scrolled out of the
+    // overscan window), the browser resets the selection and scroll position.
+    const dragSafeRangeExtractor = useCallback((range: Range) => {
+        const normal = defaultRangeExtractor(range);
+        const pinned = dragRenderedIndicesRef.current;
+
+        if (!isDraggingRef.current && !pinned) {
+            return normal;
+        }
+
+        if (!pinned) {
+            dragRenderedIndicesRef.current = [...normal];
+            return normal;
+        }
+
+        const merged = new Set([...pinned, ...normal]);
+        const result = Array.from(merged).sort((a, b) => a - b);
+        if (isDraggingRef.current) {
+            dragRenderedIndicesRef.current = result;
+        }
+        return result;
+    }, []);
+
+    const noVirtualize = useMemo(() => {
+        if (typeof window === 'undefined') return false;
+        return new URLSearchParams(window.location.search).has('noVirtualize');
+    }, []);
+
     const rowVirtualizer = useVirtualizer({
         count: rows.length,
         getScrollElement,
         estimateSize: estimateRowSize,
-        overscan: 6,
+        overscan: noVirtualize ? Infinity : 6,
+        rangeExtractor: dragSafeRangeExtractor,
     });
-    const virtualRows = rowVirtualizer.getVirtualItems();
 
-    // Defer measureElement by one animation frame so CodeMirror's useEffect
-    // has time to create the EditorView before TanStack samples the DOM height.
-    // Without this, the initial measurement captures the empty CodeMirror shell
-    // (near-zero height), causing subsequent rows to overlap ("flicker").
+    const virtualRows = rowVirtualizer.getVirtualItems();
     const virtualizerRef = useRef(rowVirtualizer);
     virtualizerRef.current = rowVirtualizer;
-    const deferredMeasureRef = useCallback((node: HTMLElement | null) => {
+    const measureRef = useCallback((node: HTMLElement | null) => {
         if (!node) return;
-        requestAnimationFrame(() => {
-            if (node.isConnected) {
-                virtualizerRef.current.measureElement(node);
-            }
-        });
+        if (isDraggingRef.current) {
+            pendingMeasureNodesRef.current.add(node);
+            return;
+        }
+        pendingMeasureNodesRef.current.delete(node);
+        virtualizerRef.current.measureElement(node);
     }, []);
     const totalSize = rowVirtualizer.getTotalSize();
 
@@ -502,7 +616,7 @@ export function ConflictResolver({
                             <div
                                 key={virtualRow.key}
                                 data-index={virtualRow.index}
-                                ref={deferredMeasureRef}
+                                ref={measureRef}
                                 className="virtual-row"
                                 style={{
                                     position: 'absolute',

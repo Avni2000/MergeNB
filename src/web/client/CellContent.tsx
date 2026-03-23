@@ -4,12 +4,13 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import CodeMirror from '@uiw/react-codemirror';
-import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
-import { EditorState, StateField, RangeSetBuilder } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
+import { EditorState } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
-import { LanguageDescription } from '@codemirror/language';
+import { HighlightStyle, LanguageDescription, ensureSyntaxTree } from '@codemirror/language';
+import { githubDarkStyle, githubLightStyle } from '@uiw/codemirror-theme-github';
 import { languages } from '@codemirror/language-data';
+import { StyleModule } from 'style-mod';
 import { IRenderMime, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 import DOMPurify from 'dompurify';
@@ -17,11 +18,9 @@ import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { diff as computeDiff } from '@codemirror/merge';
 import * as logger from '../../logger';
-import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
-import { classHighlighter } from '@lezer/highlight';
-import { syntaxHighlighting } from '@codemirror/language';
+import type { Highlighter } from '@lezer/highlight';
+import { highlightCode } from '@lezer/highlight';
 import { renderMarkdown } from './markdown';
-
 
 export const mergeNBEditorStructure: Extension = EditorView.theme({
     '&': { outline: 'none !important', backgroundColor: 'var(--cell-surface) !important' },
@@ -32,7 +31,299 @@ export const mergeNBEditorStructure: Extension = EditorView.theme({
     '.cm-gutters': { display: 'none' },
 });
 
-export const mergeNBSyntaxClassHighlighter: Extension = syntaxHighlighting(classHighlighter);
+/** Same tag→color rules as @uiw/codemirror-theme-github (resolved CodeMirror uses those themes). */
+const staticGithubLightHighlight = HighlightStyle.define(githubLightStyle);
+const staticGithubDarkHighlight = HighlightStyle.define(githubDarkStyle);
+
+if (typeof document !== 'undefined') {
+    const mods = [staticGithubLightHighlight.module, staticGithubDarkHighlight.module].filter(
+        (m): m is StyleModule => m != null
+    );
+    if (mods.length > 0) StyleModule.mount(document, mods);
+}
+
+// ─── Static syntax highlighting helpers ───────────────────────────────────────
+// Plain HTML (<pre><code>) with HighlightStyle classes (GitHub light/dark), mounted
+// via style-mod — same palette as the resolved CodeMirror editor, no duplicate CSS.
+
+/** Parse `source` with the given language extensions and return token spans. */
+function getSyntaxTokens(
+    source: string,
+    langExtensions: Extension[],
+    theme: 'dark' | 'light',
+): { from: number; to: number; classes: string }[] {
+    const tokens: { from: number; to: number; classes: string }[] = [];
+    if (!source || langExtensions.length === 0) return tokens;
+
+    const highlighter: Highlighter =
+        theme === 'dark' ? staticGithubDarkHighlight : staticGithubLightHighlight;
+
+    try {
+        const state = EditorState.create({ doc: source, extensions: langExtensions });
+        const tree = ensureSyntaxTree(state, source.length, 50);
+        if (!tree) return tokens;
+
+        let pos = 0;
+        highlightCode(source, tree, highlighter,
+            (text, classes) => {
+                tokens.push({ from: pos, to: pos + text.length, classes: classes || '' });
+                pos += text.length;
+            },
+            () => { pos++; }, // newline
+        );
+        return tokens;
+    } catch (err) {
+        logger.debug('[MergeNB] Failed to parse syntax tree for highlighting:', err);
+        return tokens;
+    }
+}
+
+/** Compute diff line- and inline-level marks (standalone, no CodeMirror state). */
+function computeDiffMarks(
+    source: string,
+    compareSource: string,
+    side: 'base' | 'current' | 'incoming',
+    diffMode: 'base' | 'conflict',
+): { lineClasses: Map<number, string>; inlineRanges: { from: number; to: number; classes: string }[] } {
+    const lineClasses = new Map<number, string>();
+    const inlineRanges: { from: number; to: number; classes: string }[] = [];
+    const changes = computeDiff(compareSource, source);
+
+    // Build line-start lookup (0-based line indices)
+    const lineStarts: number[] = [0];
+    for (let i = 0; i < source.length; i++) {
+        if (source[i] === '\n') lineStarts.push(i + 1);
+    }
+    const lineOfPos = (pos: number): number => {
+        let lo = 0, hi = lineStarts.length - 1;
+        while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            if (lineStarts[mid] <= pos) lo = mid; else hi = mid - 1;
+        }
+        return lo;
+    };
+
+    for (const change of changes) {
+        if (change.fromB === change.toB) continue;
+
+        const changedText = source.slice(change.fromB, change.toB);
+        const isWhitespaceOnly = changedText.length > 0 && changedText.trim() === '';
+        const useConflictClass = diffMode === 'conflict' || isWhitespaceOnly;
+
+        const lineClass = useConflictClass
+            ? 'diff-line diff-line-conflict'
+            : side === 'current'
+                ? 'diff-line diff-line-current'
+                : side === 'base'
+                    ? 'diff-line diff-line-base'
+                    : 'diff-line diff-line-incoming';
+        const inlineClass = useConflictClass
+            ? 'diff-inline-conflict'
+            : side === 'current'
+                ? 'diff-inline-current'
+                : side === 'base'
+                    ? 'diff-inline-base'
+                    : 'diff-inline-incoming';
+
+        const firstLine = lineOfPos(change.fromB);
+        const lastLine = lineOfPos(Math.max(change.fromB, change.toB - 1));
+        for (let ln = firstLine; ln <= lastLine; ln++) lineClasses.set(ln, lineClass);
+
+        const aSlice = compareSource.slice(change.fromA, change.toA);
+        const bSlice = source.slice(change.fromB, change.toB);
+        for (const sub of computeDiff(aSlice, bSlice)) {
+            if (sub.fromB < sub.toB) {
+                inlineRanges.push({ from: change.fromB + sub.fromB, to: change.fromB + sub.toB, classes: inlineClass });
+            }
+        }
+    }
+
+    return { lineClasses, inlineRanges };
+}
+
+interface StaticSegment {
+    text: string;
+    classes?: string;
+}
+
+interface StaticLine {
+    lineClass?: string;
+    segments: StaticSegment[];
+}
+
+type StaticRender = {
+    kind: 'flat';
+    segments: StaticSegment[];
+} | {
+    kind: 'lines';
+    lines: StaticLine[];
+};
+
+/** Build inline spans with syntax tokens only (flat + newlines preserved). */
+function buildFlatSegments(source: string, tokens: { from: number; to: number; classes: string }[]): StaticSegment[] {
+    const parts: StaticSegment[] = [];
+    let lastTo = 0;
+    for (const t of tokens) {
+        if (t.from > lastTo) parts.push({ text: source.slice(lastTo, t.from) });
+        const text = source.slice(t.from, t.to);
+        parts.push(t.classes ? { text, classes: t.classes } : { text });
+        lastTo = t.to;
+    }
+    if (lastTo < source.length) parts.push({ text: source.slice(lastTo) });
+    return parts;
+}
+
+/** Build line-wrapped spans with merged syntax + diff highlighting. */
+function buildLineSegments(
+    source: string,
+    syntaxTokens: { from: number; to: number; classes: string }[],
+    lineClasses: Map<number, string>,
+    inlineRanges: { from: number; to: number; classes: string }[],
+): StaticLine[] {
+    const lines = source.split('\n');
+    const sortedSyntax = syntaxTokens.slice().sort((a, b) => a.from - b.from);
+    const sortedInline = inlineRanges.slice().sort((a, b) => a.from - b.from);
+    const result: StaticLine[] = [];
+    let offset = 0;
+    let syntaxIndex = 0;
+    let inlineIndex = 0;
+
+    for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+        const line = lines[lineIdx];
+        const lineStart = offset;
+        const lineEnd = offset + line.length;
+
+        const lineClass = lineClasses.get(lineIdx);
+        const segments: StaticSegment[] = [];
+
+        if (line.length > 0) {
+            const bounds = new Set<number>();
+            bounds.add(lineStart);
+            bounds.add(lineEnd);
+
+            while (syntaxIndex < sortedSyntax.length && sortedSyntax[syntaxIndex].to <= lineStart) syntaxIndex++;
+            while (inlineIndex < sortedInline.length && sortedInline[inlineIndex].to <= lineStart) inlineIndex++;
+
+            for (let scanIndex = syntaxIndex; scanIndex < sortedSyntax.length && sortedSyntax[scanIndex].from < lineEnd; scanIndex++) {
+                const t = sortedSyntax[scanIndex];
+                if (t.to > lineStart) {
+                    bounds.add(Math.max(t.from, lineStart));
+                    bounds.add(Math.min(t.to, lineEnd));
+                }
+            }
+            for (let scanIndex = inlineIndex; scanIndex < sortedInline.length && sortedInline[scanIndex].from < lineEnd; scanIndex++) {
+                const r = sortedInline[scanIndex];
+                if (r.to > lineStart) {
+                    bounds.add(Math.max(r.from, lineStart));
+                    bounds.add(Math.min(r.to, lineEnd));
+                }
+            }
+
+            const sorted = Array.from(bounds).sort((a, b) => a - b);
+            const syntaxClassAtPos = new Map<number, string>();
+            const inlineClassAtPos = new Map<number, string>();
+            let lineSyntaxIndex = syntaxIndex;
+            let lineInlineIndex = inlineIndex;
+
+            for (const pos of sorted) {
+                while (lineSyntaxIndex < sortedSyntax.length && sortedSyntax[lineSyntaxIndex].to <= pos) lineSyntaxIndex++;
+                const token = sortedSyntax[lineSyntaxIndex];
+                if (token && token.from <= pos && token.to > pos && token.classes) {
+                    syntaxClassAtPos.set(pos, token.classes);
+                }
+
+                while (lineInlineIndex < sortedInline.length && sortedInline[lineInlineIndex].to <= pos) lineInlineIndex++;
+                const range = sortedInline[lineInlineIndex];
+                if (range && range.from <= pos && range.to > pos && range.classes) {
+                    inlineClassAtPos.set(pos, range.classes);
+                }
+            }
+            syntaxIndex = lineSyntaxIndex;
+            inlineIndex = lineInlineIndex;
+
+            for (let i = 0; i < sorted.length - 1; i++) {
+                const from = sorted[i];
+                const to = sorted[i + 1];
+                const text = source.slice(from, to);
+
+                const sc = syntaxClassAtPos.get(from) ?? '';
+                const dc = inlineClassAtPos.get(from) ?? '';
+                const cls = [sc, dc].filter(Boolean).join(' ');
+
+                segments.push(cls ? { text, classes: cls } : { text });
+            }
+        }
+
+        result.push({ lineClass, segments });
+        offset = lineEnd + 1;
+    }
+
+    return result;
+}
+
+/** Build a static render plan with syntax highlighting and optional diff marks. */
+function buildStaticRender(
+    source: string,
+    syntaxTokens: { from: number; to: number; classes: string }[],
+    lineClasses?: Map<number, string>,
+    inlineRanges?: { from: number; to: number; classes: string }[],
+): StaticRender {
+    if (!source) return { kind: 'flat', segments: [] };
+    const hasDiff = (lineClasses && lineClasses.size > 0) || (inlineRanges && inlineRanges.length > 0);
+    if (!hasDiff) return { kind: 'flat', segments: buildFlatSegments(source, syntaxTokens) };
+    return {
+        kind: 'lines',
+        lines: buildLineSegments(source, syntaxTokens, lineClasses ?? new Map(), inlineRanges ?? []),
+    };
+}
+
+function renderSegmentsToReact(segments: StaticSegment[]): React.ReactNode[] {
+    return segments.map((segment, index) => (
+        segment.classes
+            ? <span key={index} className={segment.classes}>{segment.text}</span>
+            : segment.text
+    ));
+}
+
+function renderStaticToReact(render: StaticRender): React.ReactNode {
+    if (render.kind === 'flat') return renderSegmentsToReact(render.segments);
+    return render.lines.map((line, index) => (
+        <span
+            key={index}
+            className={line.lineClass ? `source-line ${line.lineClass}` : 'source-line'}
+        >
+            {renderSegmentsToReact(line.segments)}
+        </span>
+    ));
+}
+
+function renderSegmentsToDom(parent: HTMLElement | DocumentFragment, segments: StaticSegment[]): void {
+    for (const segment of segments) {
+        if (segment.classes) {
+            const span = document.createElement('span');
+            span.className = segment.classes;
+            span.textContent = segment.text;
+            parent.appendChild(span);
+        } else {
+            parent.appendChild(document.createTextNode(segment.text));
+        }
+    }
+}
+
+function renderStaticToDom(render: StaticRender): DocumentFragment {
+    const fragment = document.createDocumentFragment();
+    if (render.kind === 'flat') {
+        renderSegmentsToDom(fragment, render.segments);
+        return fragment;
+    }
+    for (const line of render.lines) {
+        const span = document.createElement('span');
+        span.className = line.lineClass ? `source-line ${line.lineClass}` : 'source-line';
+        renderSegmentsToDom(span, line.segments);
+        fragment.appendChild(span);
+    }
+    return fragment;
+}
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
@@ -76,16 +367,7 @@ export function CellContentInner({
         [cell]
     );
 
-    // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
-    // (deps: [theme, extensions, ...]) only fires StateEffect.reconfigure when
-    // these values truly change — not on every render due to new object/array refs.
-    const cmTheme = useMemo(() => theme === 'dark' ? githubDark : githubLight, [theme]);
-
     const cellType = cell?.cell_type || 'code';
-    const cellExtensions = useMemo(
-        () => [...(cellType === 'markdown' ? [] : languageExtensions), mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
-        [languageExtensions, cellType]
-    );
 
     if (!cell) {
         return (
@@ -127,25 +409,19 @@ export function CellContentInner({
                         theme={theme}
                     />
                 ) : isConflict && (compareCell || baseCell) ? (
-                    // Show conflict diffs with syntax highlighting + diff decorations
-                    <DiffContent
+                    <StaticDiffContent
                         source={source}
                         compareSource={normalizeCellSource((compareCell ?? baseCell)!.source)}
                         side={side}
                         diffMode={diffMode}
-                        langExtension={cellType === 'markdown' ? [] : languageExtensions}
+                        langExtensions={cellType === 'markdown' ? EMPTY_EXTENSIONS : languageExtensions}
                         theme={theme}
                     />
                 ) : cellType !== 'markdown' ? (
-                    // Non-markdown cells: syntax-highlighted read-only CodeMirror
-                    <CodeMirror
-                        value={source}
-                        readOnly={true}
-                        editable={false}
-                        extensions={cellExtensions}
-                        theme={cmTheme}
-                        basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
-                        className="cell-source-cm"
+                    <StaticHighlightedCode
+                        source={source}
+                        langExtensions={languageExtensions}
+                        theme={theme}
                     />
                 ) : (
                     // Markdown in conflict mode: plain pre (diff view takes over)
@@ -168,25 +444,6 @@ interface MarkdownContentProps {
 }
 
 const markdownFenceLanguageSupportCache = new Map<string, Promise<Extension | null>>();
-
-const markdownFenceEditorStructure: Extension = EditorView.theme({
-    '&': {
-        outline: 'none !important',
-        border: '1px solid var(--border-color)',
-        borderRadius: '4px',
-        backgroundColor: 'var(--bg-primary)',
-    },
-    '.cm-content': {
-        fontFamily: 'var(--font-code)',
-        fontSize: '13px',
-        lineHeight: '1.5',
-        padding: '12px',
-        background: 'var(--bg-primary)',
-    },
-    '.cm-line': { padding: '0' },
-    '.cm-scroller': { overflow: 'auto' },
-    '.cm-gutters': { display: 'none' },
-});
 
 function getFenceLanguageTag(codeNode: HTMLElement): string | null {
     for (const className of Array.from(codeNode.classList)) {
@@ -218,6 +475,7 @@ function loadFenceLanguageSupport(languageTag: string): Promise<Extension | null
         try {
             return await description.load();
         } catch (err) {
+            markdownFenceLanguageSupportCache.delete(key);
             logger.warn('[MergeNB] Failed to load markdown fence language support:', err);
             return null;
         }
@@ -227,9 +485,9 @@ function loadFenceLanguageSupport(languageTag: string): Promise<Extension | null
     return supportPromise;
 }
 
-async function enhanceMarkdownCodeBlocks(host: HTMLElement, theme: 'dark' | 'light'): Promise<EditorView[]> {
+async function enhanceMarkdownCodeBlocks(host: HTMLElement, theme: 'dark' | 'light'): Promise<void> {
     const codeNodes = Array.from(host.querySelectorAll('pre > code')) as HTMLElement[];
-    if (codeNodes.length === 0) return [];
+    if (codeNodes.length === 0) return;
 
     // Load all fence language bundles in parallel so the DOM replacements
     // below happen in a single synchronous pass instead of one per await.
@@ -240,38 +498,20 @@ async function enhanceMarkdownCodeBlocks(host: HTMLElement, theme: 'dark' | 'lig
         })
     );
 
-    const views: EditorView[] = [];
-
     for (let i = 0; i < codeNodes.length; i++) {
         const codeNode = codeNodes[i];
         const preNode = codeNode.parentElement;
         if (!preNode) continue;
 
         const languageSupport = languageSupports[i];
+        if (!languageSupport) continue;
 
-        const mount = document.createElement('div');
-        mount.className = 'markdown-code-cm';
-
-        const view = new EditorView({
-            state: EditorState.create({
-                doc: codeNode.textContent ?? '',
-                extensions: [
-                    theme === 'dark' ? githubDark : githubLight,
-                    markdownFenceEditorStructure,
-                    mergeNBSyntaxClassHighlighter,
-                    EditorState.readOnly.of(true),
-                    EditorView.editable.of(false),
-                    ...(languageSupport ? [languageSupport] : []),
-                ],
-            }),
-            parent: mount,
-        });
-
-        preNode.replaceWith(mount);
-        views.push(view);
+        const source = codeNode.textContent ?? '';
+        const tokens = getSyntaxTokens(source, [languageSupport], theme);
+        const renderPlan = buildStaticRender(source, tokens);
+        codeNode.replaceChildren(renderStaticToDom(renderPlan));
+        preNode.classList.add('has-syntax-highlight');
     }
-
-    return views;
 }
 
 function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactElement {
@@ -280,9 +520,6 @@ function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactEl
     useEffect(() => {
         const host = hostRef.current;
         if (!host || !host.isConnected) return;
-
-        let disposed = false;
-        let codeViews: EditorView[] = [];
 
         host.replaceChildren();
 
@@ -305,24 +542,11 @@ function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactEl
         });
 
         void enhanceMarkdownCodeBlocks(host, theme)
-            .then((views) => {
-                if (disposed) {
-                    for (const view of views) {
-                        view.destroy();
-                    }
-                    return;
-                }
-                codeViews = views;
-            })
             .catch((err) => {
-                logger.warn('[MergeNB] Failed to render markdown fenced code blocks with CodeMirror:', err);
+                logger.warn('[MergeNB] Failed to highlight markdown fenced code blocks:', err);
             });
 
         return () => {
-            disposed = true;
-            for (const view of codeViews) {
-                view.destroy();
-            }
             host.replaceChildren();
         };
     }, [source, theme]);
@@ -330,131 +554,43 @@ function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactEl
     return <div className="markdown-content" ref={hostRef} />;
 }
 
-interface DiffContentProps {
+// ─── Static display components (replace CodeMirror read-only instances) ───────
+
+function StaticHighlightedCode({ source, langExtensions, theme }: {
     source: string;
-    compareSource: string;
-    side?: 'base' | 'current' | 'incoming';
-    diffMode: 'base' | 'conflict';
-    langExtension: Extension[];
+    langExtensions: Extension[];
     theme: 'dark' | 'light';
-}
-
-/**
- * Build a CodeMirror StateField extension that decorates changed lines and
- * inline character ranges using the same CSS classes as the previous implementation.
- * Uses @codemirror/merge's character-level diff — no line-pairing heuristics needed.
- *
- * NOTE: `source` is intentionally NOT taken as a parameter. It is read from
- * `state.doc` inside `create(state)` so that positions always match the active
- * document. @uiw/react-codemirror has two separate useEffects — one for
- * `extensions` (StateEffect.reconfigure → StateField.create) and one for
- * `value` (document update). The extensions effect fires first, so if we
- * captured `source` from the render closure the document would still hold the
- * old content while diff positions are computed against the new string,
- * causing `state.doc.lineAt(pos)` to throw "Invalid position".
- */
-function createDiffExtension(
-    compareSource: string,
-    side: 'base' | 'current' | 'incoming',
-    diffMode: 'base' | 'conflict',
-): Extension {
-    return StateField.define<DecorationSet>({
-        create(state) {
-            const source = state.doc.toString();
-            const changes = computeDiff(compareSource, source);
-
-            // Collect all decorations first, then sort + deduplicate before adding to the
-            // builder. This avoids ordering violations when multiple Changes share a line
-            // (which would cause duplicate line decorations at the same `from` position).
-            type Entry = { from: number; to: number; decoration: Decoration; isLine: boolean };
-            const entries: Entry[] = [];
-
-            for (const change of changes) {
-                if (change.fromB === change.toB) continue; // nothing on the B (source) side
-
-                const changedText = source.slice(change.fromB, change.toB);
-                const isWhitespaceOnly = changedText.length > 0 && changedText.trim() === '';
-                const useConflictClass = diffMode === 'conflict' || isWhitespaceOnly;
-
-                const lineClass = useConflictClass
-                    ? 'diff-line diff-line-conflict'
-                    : side === 'current' ? 'diff-line diff-line-current' : 'diff-line diff-line-incoming';
-                const inlineClass = useConflictClass
-                    ? 'diff-inline-conflict'
-                    : side === 'current' ? 'diff-inline-current' : 'diff-inline-incoming';
-
-                const firstLine = state.doc.lineAt(change.fromB);
-                const lastLine = state.doc.lineAt(Math.max(change.fromB, change.toB - 1));
-
-                for (let lineNum = firstLine.number; lineNum <= lastLine.number; lineNum++) {
-                    const line = state.doc.line(lineNum);
-                    entries.push({ from: line.from, to: line.from, decoration: Decoration.line({ class: lineClass }), isLine: true });
-                }
-
-                // Re-diff the hunk's text slices for character-level inline marks.
-                // Sub-change positions are relative to the slice, so offset by change.fromB.
-                const aSlice = compareSource.slice(change.fromA, change.toA);
-                const bSlice = source.slice(change.fromB, change.toB);
-                for (const sub of computeDiff(aSlice, bSlice)) {
-                    if (sub.fromB < sub.toB) {
-                        entries.push({
-                            from: change.fromB + sub.fromB,
-                            to: change.fromB + sub.toB,
-                            decoration: Decoration.mark({ class: inlineClass }),
-                            isLine: false,
-                        });
-                    }
-                }
-            }
-
-            // Sort: ascending from; line decs (startSide -1) before marks (startSide 0) at same
-            // position. For marks at the same from, secondary sort by to (ascending) is required
-            // by RangeSetBuilder.
-            entries.sort((a, b) => {
-                if (a.from !== b.from) return a.from - b.from;
-                if (a.isLine !== b.isLine) return a.isLine ? -1 : 1;
-                if (!a.isLine) return a.to - b.to;
-                return 0;
-            });
-
-            const builder = new RangeSetBuilder<Decoration>();
-            const seenLineDecs = new Set<number>();
-            for (const { from, to, decoration, isLine } of entries) {
-                if (isLine) {
-                    if (seenLineDecs.has(from)) continue; // skip duplicate line decs on same line
-                    seenLineDecs.add(from);
-                }
-                builder.add(from, to, decoration);
-            }
-
-            return builder.finish();
-        },
-        update(deco) { return deco; },
-        provide: f => EditorView.decorations.from(f),
-    });
-}
-
-function DiffContent({ source, compareSource, side, diffMode, langExtension, theme }: DiffContentProps): React.ReactElement {
-    const diffExtension = useMemo(
-        () => createDiffExtension(compareSource, side ?? 'current', diffMode),
-        [compareSource, side, diffMode]
-    );
-    const cmTheme = useMemo(() => theme === 'dark' ? githubDark : githubLight, [theme]);
-    const allExtensions = useMemo(
-        () => [...langExtension, mergeNBSyntaxClassHighlighter, mergeNBEditorStructure, diffExtension],
-        [langExtension, diffExtension]
-    );
+}): React.ReactElement {
+    const nodes = useMemo(() => {
+        const tokens = getSyntaxTokens(source, langExtensions, theme);
+        return renderStaticToReact(buildStaticRender(source, tokens));
+    }, [source, langExtensions, theme]);
 
     return (
-        <CodeMirror
-            value={source}
-            readOnly={true}
-            editable={false}
-            extensions={allExtensions}
-            theme={cmTheme}
-            basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
-            className="cell-source-cm"
-        />
+        <pre className="cell-source-static">
+            <code>{nodes}</code>
+        </pre>
+    );
+}
+
+function StaticDiffContent({ source, compareSource, side, diffMode, langExtensions, theme }: {
+    source: string;
+    compareSource: string;
+    side: 'base' | 'current' | 'incoming';
+    diffMode: 'base' | 'conflict';
+    langExtensions: Extension[];
+    theme: 'dark' | 'light';
+}): React.ReactElement {
+    const nodes = useMemo(() => {
+        const tokens = getSyntaxTokens(source, langExtensions, theme);
+        const { lineClasses, inlineRanges } = computeDiffMarks(source, compareSource, side, diffMode);
+        return renderStaticToReact(buildStaticRender(source, tokens, lineClasses, inlineRanges));
+    }, [source, compareSource, side, diffMode, langExtensions, theme]);
+
+    return (
+        <pre className="cell-source-static">
+            <code>{nodes}</code>
+        </pre>
     );
 }
 

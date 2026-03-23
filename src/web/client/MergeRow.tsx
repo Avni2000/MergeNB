@@ -12,7 +12,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
-import { CellContent, mergeNBEditorStructure, mergeNBSyntaxClassHighlighter } from './CellContent';
+import { CellContent, mergeNBEditorStructure } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 
@@ -92,7 +92,7 @@ export function MergeRowInner({
         : (row.currentCell?.cell_type || row.incomingCell?.cell_type || row.baseCell?.cell_type || 'code');
     
     const editorExtensions = useMemo(
-        () => [...(resolvedCellType === 'markdown' ? [] : languageExtensions), mergeNBSyntaxClassHighlighter, mergeNBEditorStructure],
+        () => [...(resolvedCellType === 'markdown' ? [] : languageExtensions), mergeNBEditorStructure],
         [languageExtensions, resolvedCellType, resolutionState?.choice]
     );
 

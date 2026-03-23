@@ -108,7 +108,8 @@ export async function setupConflictResolver(
     try {
         const page = await browser.newPage();
 
-        await page.goto(sessionUrl);
+        const testUrl = sessionUrl + '&noVirtualize=1';
+        await page.goto(testUrl);
         await sleep(options.afterNavigateDelayMs ?? 3000);
 
         await page.waitForSelector('.header-title', { timeout: 15000 });
