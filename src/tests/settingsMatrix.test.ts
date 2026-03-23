@@ -10,7 +10,6 @@
  */
 
 import * as assert from 'assert';
-import * as vscode from 'vscode';
 import { expect } from '@playwright/test';
 import type { Locator, Page } from 'playwright';
 import {
@@ -29,6 +28,11 @@ import {
     setupConflictResolver,
 } from './testHarness';
 import type { TestConfig } from './testHelpers';
+import {
+    readSettingsFileSnapshot,
+    restoreSettingsFileSnapshot,
+    writeSettingsFile,
+} from './settingsFile';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -45,18 +49,6 @@ type SettingKey =
     | 'ui.enableUndoRedoHotkeys'
     | 'ui.showBaseColumn'
     | 'ui.theme';
-
-const SETTING_KEYS: SettingKey[] = [
-    'autoResolve.executionCount',
-    'autoResolve.kernelVersion',
-    'autoResolve.stripOutputs',
-    'autoResolve.whitespace',
-    'ui.hideNonConflictOutputs',
-    'ui.showCellHeaders',
-    'ui.enableUndoRedoHotkeys',
-    'ui.showBaseColumn',
-    'ui.theme',
-];
 
 type SettingsState = Record<SettingKey, boolean | Theme>;
 
@@ -118,15 +110,6 @@ function makeCodeCell(
     };
 }
 
-async function applyVSCodeSettings(
-    config: vscode.WorkspaceConfiguration,
-    settings: SettingsState
-): Promise<void> {
-    for (const key of SETTING_KEYS) {
-        await config.update(key, settings[key], vscode.ConfigurationTarget.Workspace);
-    }
-}
-
 async function runUIScenario(
     scenarioName: string,
     settings: SettingsState,
@@ -135,8 +118,7 @@ async function runUIScenario(
 ): Promise<void> {
     console.log(`\n=== UI Scenario: ${scenarioName} ===`);
 
-    const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
-    await applyVSCodeSettings(mergeNBConfig, settings);
+    writeSettingsFile(settings);
 
     const session = await setupConflictResolver(testConfig);
     const { page, browser } = session;
@@ -887,12 +869,7 @@ export async function run(): Promise<void> {
     console.log('\n====== SECTION B: UI Integration Tests ======');
 
     const testConfig = readTestConfig();
-    const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
-    const previousValues: Partial<Record<SettingKey, boolean | Theme | undefined>> = {};
-
-    for (const key of SETTING_KEYS) {
-        previousValues[key] = mergeNBConfig.get<boolean | Theme>(key);
-    }
+    const settingsSnapshot = readSettingsFileSnapshot();
 
     try {
         // B1: Theme applied
@@ -1110,13 +1087,6 @@ export async function run(): Promise<void> {
 
         console.log('\n=== SETTINGS MATRIX TEST COMPLETE ===');
     } finally {
-        // Restore previous workspace settings
-        for (const key of SETTING_KEYS) {
-            await mergeNBConfig.update(
-                key,
-                previousValues[key],
-                vscode.ConfigurationTarget.Workspace
-            );
-        }
+        restoreSettingsFileSnapshot(settingsSnapshot);
     }
 }
