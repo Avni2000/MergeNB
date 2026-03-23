@@ -58,21 +58,50 @@ jobs:
         run: npm install --package-lock-only
 
       - name: Generate changelog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PREV_TAG="${{ steps.prev.outputs.tag }}"
           NEW_VERSION="${{ steps.version.outputs.version }}"
+          REPO="${{ github.repository }}"
+
+          if [ -n "$PREV_TAG" ]; then
+            SINCE=$(git log -1 --format="%cI" "${PREV_TAG}")
+          else
+            SINCE="1970-01-01T00:00:00Z"
+          fi
+
+          ALL_PRS=$(gh pr list --state merged --base main --limit 500 --json number,title,author,mergedAt)
+
+          NEW_PRS=$(echo "$ALL_PRS" | jq --arg since "$SINCE" \
+            '[.[] | select(.mergedAt > $since) | select(.title | startswith("[RELEASE]") | not)] | sort_by(.mergedAt)')
+
+          PREV_AUTHORS=$(echo "$ALL_PRS" | jq -r --arg since "$SINCE" \
+            '[.[] | select(.mergedAt <= $since)] | .[].author.login' | sort -u)
+
+          PR_LINES=$(echo "$NEW_PRS" | jq -r --arg repo "$REPO" \
+            '.[] | "* \(.title) by @\(.author.login) in https://github.com/\($repo)/pull/\(.number)"')
+
+          NEW_CONTRIB_LINES=$(echo "$NEW_PRS" | jq -r '.[].author.login' | sort -u | while read -r author; do
+            if ! echo "$PREV_AUTHORS" | grep -qx "$author"; then
+              PR_NUM=$(echo "$NEW_PRS" | jq -r --arg a "$author" 'first(.[] | select(.author.login == $a)) | .number')
+              echo "* @${author} made their first contribution in https://github.com/${REPO}/pull/${PR_NUM}"
+            fi
+          done)
+
           {
             echo "## What's Changed"
             echo ""
-            if [ -n "$PREV_TAG" ]; then
-              git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges
-            else
-              git log --pretty=format:"- %s (%h)" --no-merges
+            echo "$PR_LINES"
+            echo ""
+            if [ -n "$NEW_CONTRIB_LINES" ]; then
+              echo "## New Contributors"
+              echo ""
+              echo "$NEW_CONTRIB_LINES"
+              echo ""
             fi
-            echo ""
-            echo ""
             if [ -n "$PREV_TAG" ]; then
-              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${NEW_VERSION}"
+              echo "**Full Changelog**: https://github.com/${REPO}/compare/${PREV_TAG}...${NEW_VERSION}"
             fi
           } > RELEASE_NOTES.md
 
@@ -118,16 +147,16 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH="release/v${VERSION}"
-          for i in {1..20}; do
+          for i in {1..30}; do
             STATE=$(gh pr view "${BRANCH}" --json state --jq '.state')
             if [ "$STATE" = "MERGED" ]; then
               echo "PR merged successfully"
               exit 0
             fi
-            echo "Attempt $i/20: PR state is $STATE, waiting..."
-            sleep 30
+            echo "Attempt $i/30: PR state is $STATE, waiting..."
+            sleep 60
           done
-          echo "Timeout: PR did not merge within 5 minutes"
+          echo "Timeout: PR did not merge within 30 minutes"
           exit 1
 
       - name: Create GitHub Release
