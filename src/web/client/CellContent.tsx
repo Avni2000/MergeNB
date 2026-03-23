@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
-import { HighlightStyle, LanguageDescription, ensureSyntaxTree, syntaxHighlighting } from '@codemirror/language';
+import { HighlightStyle, LanguageDescription, ensureSyntaxTree } from '@codemirror/language';
 import { githubDarkStyle, githubLightStyle } from '@uiw/codemirror-theme-github';
 import { languages } from '@codemirror/language-data';
 import { StyleModule } from 'style-mod';
@@ -19,7 +19,7 @@ import { normalizeCellSource } from '../../notebookUtils';
 import { diff as computeDiff } from '@codemirror/merge';
 import * as logger from '../../logger';
 import type { Highlighter } from '@lezer/highlight';
-import { classHighlighter, highlightCode } from '@lezer/highlight';
+import { highlightCode } from '@lezer/highlight';
 import { renderMarkdown } from './markdown';
 
 export const mergeNBEditorStructure: Extension = EditorView.theme({
@@ -30,8 +30,6 @@ export const mergeNBEditorStructure: Extension = EditorView.theme({
     '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit' },
     '.cm-gutters': { display: 'none' },
 });
-
-export const mergeNBSyntaxClassHighlighter: Extension = syntaxHighlighting(classHighlighter);
 
 /** Same tag→color rules as @uiw/codemirror-theme-github (resolved CodeMirror uses those themes). */
 const staticGithubLightHighlight = HighlightStyle.define(githubLightStyle);
