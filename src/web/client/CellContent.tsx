@@ -461,6 +461,7 @@ function loadFenceLanguageSupport(languageTag: string): Promise<Extension | null
         try {
             return await description.load();
         } catch (err) {
+            markdownFenceLanguageSupportCache.delete(key);
             logger.warn('[MergeNB] Failed to load markdown fence language support:', err);
             return null;
         }
