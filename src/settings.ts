@@ -172,16 +172,24 @@ export function getSettings(): MergeNBSettings {
     const config = vscode.workspace.getConfiguration('mergeNB');
     const mergedDefaults = { ...defaults, ...fileOverrides };
 
+    const resolveConfigValue = <T>(key: string, fallback: T): T => {
+        const inspected = config.inspect<T>(key);
+        if (!inspected) return fallback;
+        if (inspected.workspaceFolderValue !== undefined) return inspected.workspaceFolderValue;
+        if (inspected.workspaceValue !== undefined) return inspected.workspaceValue;
+        if (inspected.globalValue !== undefined) return inspected.globalValue;
+        return fallback;
+    };
+
     return {
-        autoResolveExecutionCount: config.get<boolean>('autoResolve.executionCount', mergedDefaults.autoResolveExecutionCount),
-        autoResolveKernelVersion: config.get<boolean>('autoResolve.kernelVersion', mergedDefaults.autoResolveKernelVersion),
-        stripOutputs: config.get<boolean>('autoResolve.stripOutputs', mergedDefaults.stripOutputs),
-        autoResolveWhitespace: config.get<boolean>('autoResolve.whitespace', mergedDefaults.autoResolveWhitespace),
-        hideNonConflictOutputs: config.get<boolean>('ui.hideNonConflictOutputs', mergedDefaults.hideNonConflictOutputs),
-        showCellHeaders: config.get<boolean>('ui.showCellHeaders', mergedDefaults.showCellHeaders),
-        enableUndoRedoHotkeys: config.get<boolean>('ui.enableUndoRedoHotkeys', mergedDefaults.enableUndoRedoHotkeys),
-        showBaseColumn: config.get<boolean>('ui.showBaseColumn', mergedDefaults.showBaseColumn),
-        theme: config.get<'dark' | 'light'>('ui.theme', mergedDefaults.theme),
+        autoResolveExecutionCount: resolveConfigValue<boolean>('autoResolve.executionCount', mergedDefaults.autoResolveExecutionCount),
+        autoResolveKernelVersion: resolveConfigValue<boolean>('autoResolve.kernelVersion', mergedDefaults.autoResolveKernelVersion),
+        stripOutputs: resolveConfigValue<boolean>('autoResolve.stripOutputs', mergedDefaults.stripOutputs),
+        autoResolveWhitespace: resolveConfigValue<boolean>('autoResolve.whitespace', mergedDefaults.autoResolveWhitespace),
+        hideNonConflictOutputs: resolveConfigValue<boolean>('ui.hideNonConflictOutputs', mergedDefaults.hideNonConflictOutputs),
+        showCellHeaders: resolveConfigValue<boolean>('ui.showCellHeaders', mergedDefaults.showCellHeaders),
+        enableUndoRedoHotkeys: resolveConfigValue<boolean>('ui.enableUndoRedoHotkeys', mergedDefaults.enableUndoRedoHotkeys),
+        showBaseColumn: resolveConfigValue<boolean>('ui.showBaseColumn', mergedDefaults.showBaseColumn),
+        theme: resolveConfigValue<'dark' | 'light'>('ui.theme', mergedDefaults.theme),
     };
 }
-
