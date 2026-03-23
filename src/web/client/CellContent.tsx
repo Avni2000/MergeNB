@@ -60,7 +60,7 @@ function getSyntaxTokens(
 
     try {
         const state = EditorState.create({ doc: source, extensions: langExtensions });
-        const tree = ensureSyntaxTree(state, source.length, 5000);
+        const tree = ensureSyntaxTree(state, source.length, 50);
         if (!tree) return tokens;
 
         let pos = 0;
