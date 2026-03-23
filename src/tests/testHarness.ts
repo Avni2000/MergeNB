@@ -317,7 +317,6 @@ async function setupConflictResolverHeadless(
         }
 
         await connectionPromise;
-        sendConflictData();
 
         await sleep(options.postHeaderDelayMs ?? 1000);
 

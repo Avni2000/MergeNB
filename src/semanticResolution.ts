@@ -163,7 +163,7 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
     const preferredSide = inferPreferredSide(resolvedRows, preferredSideHint);
 
     let rowsForResolution = resolvedRows;
-    if (preferredSide === 'base' || preferredSide === 'current' || preferredSide === 'incoming') {
+    if (preferredSide) {
         const indexKey = preferredSide === 'base'
             ? 'baseCellIndex'
             : preferredSide === 'current'
@@ -225,7 +225,7 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
                         : [];
                 }
             }
-        } else if (preferredSide === 'base' || preferredSide === 'current' || preferredSide === 'incoming') {
+        } else if (preferredSide) {
             if (preferredSide === 'base') cellToUse = baseCell;
             else if (preferredSide === 'current') cellToUse = currentCellForFallback;
             else if (preferredSide === 'incoming') cellToUse = incomingCell;

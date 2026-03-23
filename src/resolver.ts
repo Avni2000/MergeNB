@@ -661,11 +661,6 @@ export class NotebookConflictResolver {
         onDidResolveConflict.fire(uri);
     }
 
-    private async readFile(uri: vscode.Uri): Promise<string> {
-        const data = await vscode.workspace.fs.readFile(uri);
-        return new TextDecoder().decode(data);
-    }
-
     /**
      * Mark a file as resolved by staging it through the VS Code Git API.
      */

@@ -157,17 +157,7 @@ export function getSettings(): MergeNBSettings {
         return { ...DEFAULT_SETTINGS, ...fileOverrides };
     }
 
-    const defaults: MergeNBSettings = {
-        autoResolveExecutionCount: true,
-        autoResolveKernelVersion: true,
-        stripOutputs: true,
-        autoResolveWhitespace: true,
-        hideNonConflictOutputs: false,
-        showCellHeaders: false,
-        enableUndoRedoHotkeys: true,
-        showBaseColumn: false,
-        theme: 'dark',
-    };
+    const defaults: MergeNBSettings = { ...DEFAULT_SETTINGS, showBaseColumn: false };
 
     const config = vscode.workspace.getConfiguration('mergeNB');
     const mergedDefaults = { ...defaults, ...fileOverrides };

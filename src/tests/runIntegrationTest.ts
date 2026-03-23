@@ -395,8 +395,9 @@ async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
     const start = Date.now();
     const extensionDevelopmentPath = path.resolve(__dirname, '../..');
     let workspacePath: string | undefined;
-    const testEnv: NodeJS.ProcessEnv = { ...process.env, MERGENB_TEST_MODE: 'true' };
     const configInfo = prepareIsolatedConfigPath(test.id);
+    const previousTestMode = process.env.MERGENB_TEST_MODE;
+    const testEnv: NodeJS.ProcessEnv = { ...process.env, MERGENB_TEST_MODE: 'true' };
     // Some environments set this globally, which makes the VS Code binary run
     // in Node mode and reject normal Electron/Code CLI flags.
     testEnv.ELECTRON_RUN_AS_NODE = undefined;
@@ -442,6 +443,11 @@ async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
     } finally {
         if (workspacePath) cleanup(workspacePath);
         restoreIsolatedConfigPath(configInfo);
+        if (previousTestMode === undefined) {
+            delete process.env.MERGENB_TEST_MODE;
+        } else {
+            process.env.MERGENB_TEST_MODE = previousTestMode;
+        }
     }
 }
 
