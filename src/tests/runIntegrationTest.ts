@@ -150,6 +150,14 @@ function resolveManualFixtureSelections(rawValues: string[]): {
     return { selectedIds, unknownTokens };
 }
 
+function toSafePathSegment(value: string): string {
+    const cleaned = value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return cleaned || 'test';
+}
+
 // ─── List command ───────────────────────────────────────────────────────────
 
 function printTestList(): void {
@@ -349,11 +357,18 @@ async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
     const extensionDevelopmentPath = path.resolve(__dirname, '../..');
     let workspacePath: string | undefined;
     const testEnv: NodeJS.ProcessEnv = { ...process.env, MERGENB_TEST_MODE: 'true' };
+    const previousConfigPath = process.env.MERGENB_CONFIG_PATH;
+    const configRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), `mergenb-test-${toSafePathSegment(test.id)}-`)
+    );
+    const configPath = path.join(configRoot, 'config.json');
     // Some environments set this globally, which makes the VS Code binary run
     // in Node mode and reject normal Electron/Code CLI flags.
     testEnv.ELECTRON_RUN_AS_NODE = undefined;
+    testEnv.MERGENB_CONFIG_PATH = configPath;
     const vscodeVersion = process.env.VSCODE_VERSION?.trim();
     process.env.MERGENB_TEST_MODE = 'true';
+    process.env.MERGENB_CONFIG_PATH = configPath;
 
     try {
         const [baseFile, currentFile, incomingFile] = resolveNotebookTripletPaths(test);
@@ -389,6 +404,14 @@ async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
         };
     } finally {
         if (workspacePath) cleanup(workspacePath);
+        try {
+            fs.rmSync(configRoot, { recursive: true, force: true });
+        } catch { /* ignore */ }
+        if (previousConfigPath === undefined) {
+            delete process.env.MERGENB_CONFIG_PATH;
+        } else {
+            process.env.MERGENB_CONFIG_PATH = previousConfigPath;
+        }
     }
 }
 
