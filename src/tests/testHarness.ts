@@ -13,8 +13,19 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as vscode from 'vscode';
 import { chromium, type Browser, type Page } from 'playwright';
+import * as gitIntegration from '../gitIntegration';
+import { detectSemanticConflicts, applyAutoResolutions } from '../conflictDetector';
+import { getSettings } from '../settings';
+import { getWebServer } from '../web/webServer';
+import {
+    toWebSemanticConflict,
+    type BrowserToExtensionMessage,
+    type UnifiedConflict,
+    type WebConflictData,
+} from '../web/webTypes';
+import { buildResolvedNotebookFromRows } from '../semanticResolution';
+import { serializeNotebook, renumberExecutionCounts } from '../notebookParser';
 import {
     type ExpectedCell,
     type TestConfig,
@@ -24,6 +35,14 @@ import {
     waitForFileWrite,
 } from './testHelpers';
 import { ensureCheckboxChecked } from './integrationUtils';
+
+// Optional vscode import for headless test support.
+let vscode: typeof import('vscode') | undefined;
+try {
+    vscode = require('vscode');
+} catch {
+    // Running in headless mode (tests) - vscode not available
+}
 
 export interface ConflictSession {
     config: TestConfig;
@@ -64,7 +83,10 @@ function sleep(ms: number): Promise<void> {
 
 /** Read the test config JSON written to disk by the runner before VS Code launched. */
 export function readTestConfig(): TestConfig {
-    const configPath = path.join(os.tmpdir(), 'mergenb-test-config.json');
+    const override = process.env.MERGENB_TEST_CONFIG_PATH;
+    const configPath = override && override.trim()
+        ? path.resolve(override.trim())
+        : path.join(os.tmpdir(), 'mergenb-test-config.json');
     return JSON.parse(fs.readFileSync(configPath, 'utf8'));
 }
 
@@ -79,6 +101,10 @@ export async function setupConflictResolver(
     config: TestConfig,
     options: SetupOptions = {}
 ): Promise<ConflictSession> {
+    if (!vscode) {
+        return setupConflictResolverHeadless(config, options);
+    }
+
     const workspacePath = config.workspacePath;
     const conflictFile = path.join(workspacePath, 'conflict.ipynb');
 
@@ -125,6 +151,181 @@ export async function setupConflictResolver(
             workspacePath,
             conflictFile,
             serverPort,
+            sessionId,
+            sessionUrl,
+            browser,
+            page,
+        };
+    } catch (err) {
+        await browser.close();
+        throw err;
+    }
+}
+
+async function setupConflictResolverHeadless(
+    config: TestConfig,
+    options: SetupOptions = {}
+): Promise<ConflictSession> {
+    const workspacePath = config.workspacePath;
+    const conflictFile = path.join(workspacePath, 'conflict.ipynb');
+
+    const semanticConflict = await detectSemanticConflicts(conflictFile);
+    if (!semanticConflict) {
+        throw new Error('No semantic conflicts detected (headless mode).');
+    }
+
+    const settings = getSettings();
+    const autoResolveResult = applyAutoResolutions(semanticConflict, settings);
+
+    if (autoResolveResult.remainingConflicts.length === 0) {
+        throw new Error('No remaining conflicts after auto-resolve (headless mode).');
+    }
+
+    const filteredSemanticConflict = {
+        ...semanticConflict,
+        semanticConflicts: autoResolveResult.remainingConflicts,
+    };
+
+    const unifiedConflict: UnifiedConflict = {
+        filePath: conflictFile,
+        type: 'semantic',
+        semanticConflict: filteredSemanticConflict,
+        autoResolveResult,
+        hideNonConflictOutputs: settings.hideNonConflictOutputs,
+        showCellHeaders: settings.showCellHeaders,
+        enableUndoRedoHotkeys: settings.enableUndoRedoHotkeys,
+        showBaseColumn: settings.showBaseColumn,
+        theme: settings.theme,
+    };
+
+    const server = getWebServer();
+    server.setTestMode(true);
+    server.setExtensionUri({ fsPath: path.resolve(__dirname, '../..') });
+
+    if (!server.isRunning()) {
+        await server.start();
+    }
+
+    const sessionId = server.generateSessionId();
+    const conflictVersion = 1;
+    const sendConflictData = (): void => {
+        const data: WebConflictData = {
+            filePath: unifiedConflict.filePath,
+            conflictKey: `${sessionId}:v${conflictVersion}`,
+            fileName: path.basename(unifiedConflict.filePath) || 'notebook.ipynb',
+            type: 'semantic',
+            semanticConflict: unifiedConflict.semanticConflict
+                ? toWebSemanticConflict(unifiedConflict.semanticConflict)
+                : undefined,
+            autoResolveResult: unifiedConflict.autoResolveResult,
+            hideNonConflictOutputs: unifiedConflict.hideNonConflictOutputs,
+            showCellHeaders: unifiedConflict.showCellHeaders,
+            enableUndoRedoHotkeys: unifiedConflict.enableUndoRedoHotkeys,
+            showBaseColumn: unifiedConflict.showBaseColumn,
+            theme: unifiedConflict.theme,
+            currentBranch: unifiedConflict.semanticConflict?.currentBranch,
+            incomingBranch: unifiedConflict.semanticConflict?.incomingBranch,
+        };
+        server.sendConflictData(sessionId, data);
+    };
+
+    const handleResolution = async (
+        message: Extract<BrowserToExtensionMessage, { command: 'resolve' }>
+    ): Promise<void> => {
+        try {
+            const markAsResolved = message.markAsResolved ?? false;
+            const shouldRenumber = message.renumberExecutionCounts ?? false;
+            let resolvedNotebook;
+
+            if (!message.resolvedRows || message.resolvedRows.length === 0) {
+                if (!autoResolveResult) {
+                    throw new Error('No resolved rows provided.');
+                }
+                resolvedNotebook = autoResolveResult.resolvedNotebook;
+                if (shouldRenumber) {
+                    resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
+                }
+            } else {
+                resolvedNotebook = buildResolvedNotebookFromRows({
+                    semanticConflict: filteredSemanticConflict,
+                    resolvedRows: message.resolvedRows,
+                    autoResolveResult,
+                    settings,
+                    shouldRenumber,
+                    preferredSideHint: message.semanticChoice,
+                });
+            }
+
+            fs.writeFileSync(conflictFile, serializeNotebook(resolvedNotebook), 'utf8');
+            if (markAsResolved) {
+                await gitIntegration.stageFile(conflictFile);
+            }
+
+            server.sendMessage(sessionId, {
+                type: 'resolution-success',
+                message: 'Conflicts resolved successfully!',
+            });
+            await sleep(500);
+            server.closeSession(sessionId);
+        } catch (error) {
+            server.sendMessage(sessionId, {
+                type: 'resolution-error',
+                message: `Failed to apply resolutions: ${error}`,
+            });
+        }
+    };
+
+    const handleMessage = (message: unknown): void => {
+        const msg = message as BrowserToExtensionMessage;
+        switch (msg.command) {
+            case 'ready':
+                sendConflictData();
+                break;
+            case 'resolve':
+                void handleResolution(msg);
+                break;
+            case 'cancel':
+                server.closeSession(sessionId);
+                break;
+        }
+    };
+
+    const connectionPromise = server.openSession(
+        sessionId,
+        '',
+        handleMessage,
+        unifiedConflict.theme ?? 'light',
+        unifiedConflict.filePath
+    );
+
+    const sessionUrl = server.getLatestSessionUrl();
+    if (!sessionUrl) {
+        throw new Error('Headless session URL not available.');
+    }
+
+    const browser = await chromium.launch({ headless: options.headless ?? true });
+    try {
+        const page = await browser.newPage();
+        const testUrl = sessionUrl + '&noVirtualize=1';
+        await page.goto(testUrl);
+        await sleep(options.afterNavigateDelayMs ?? 3000);
+
+        await page.waitForSelector('.header-title', { timeout: 15000 });
+        const title = await page.locator('.header-title').textContent();
+        if (title?.trim() !== 'MergeNB') {
+            throw new Error(`Expected header 'MergeNB', got '${title}'`);
+        }
+
+        await connectionPromise;
+        sendConflictData();
+
+        await sleep(options.postHeaderDelayMs ?? 1000);
+
+        return {
+            config,
+            workspacePath,
+            conflictFile,
+            serverPort: server.getPort(),
             sessionId,
             sessionUrl,
             browser,

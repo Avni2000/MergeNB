@@ -36,6 +36,8 @@ export interface AutomatedTestDef extends TestBase {
     testModule: string;
     /** Optional params forwarded to the test via the config file */
     params?: Record<string, unknown>;
+    /** Whether this test must run inside the VS Code extension host. */
+    requiresVSCode?: boolean;
 }
 
 /** A manual sandbox launcher (creates conflict repo + opens VS Code). */
@@ -152,6 +154,7 @@ export const TEST_GROUPS: TestGroup[] = [
                 description: 'Non-conflict metadata + renumber execution_count correctness',
                 notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
                 testModule: './logicRegression.test.js',
+                requiresVSCode: true,
             },
             {
                 id: 'regression_null_current_cell_indexing',
@@ -170,24 +173,28 @@ export const TEST_GROUPS: TestGroup[] = [
                 description: 'Status bar + file decoration update on startup/conflict/add',
                 notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
                 testModule: './statusIndicatorsRegression.test.js',
+                requiresVSCode: true,
             },
             {
                 id: 'regression_unmerged_status_matrix',
                 description: 'Detect all unmerged statuses and enforce DD discoverability exclusion',
                 notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
                 testModule: './unmergedStatusMatrix.test.js',
+                requiresVSCode: true,
             },
             {
                 id: 'regression_du_ud_pick_one',
                 description: 'DU/UD file-level pick flow (keep-content/keep-delete) stages correctly',
                 notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
                 testModule: './duUdPickOneRegression.test.js',
+                requiresVSCode: true,
             },
             {
                 id: 'regression_au_ua_pick_one',
                 description: 'AU/UA add-only pick flow (apply-and-stage/cancel) stages correctly',
                 notebooks: ['02_base.ipynb', '02_current.ipynb', '02_incoming.ipynb'],
                 testModule: './auUaPickOneRegression.test.js',
+                requiresVSCode: true,
             },
         ],
     },

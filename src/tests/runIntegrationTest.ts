@@ -158,6 +158,45 @@ function toSafePathSegment(value: string): string {
     return cleaned || 'test';
 }
 
+function prepareIsolatedConfigPath(testId: string): {
+    configRoot: string;
+    configPath: string;
+    testConfigPath: string;
+    previousConfigPath: string | undefined;
+    previousTestConfigPath: string | undefined;
+} {
+    const previousConfigPath = process.env.MERGENB_CONFIG_PATH;
+    const previousTestConfigPath = process.env.MERGENB_TEST_CONFIG_PATH;
+    const configRoot = fs.mkdtempSync(
+        path.join(os.tmpdir(), `mergenb-test-${toSafePathSegment(testId)}-`)
+    );
+    const configPath = path.join(configRoot, 'config.json');
+    const testConfigPath = path.join(configRoot, 'test-config.json');
+    return { configRoot, configPath, testConfigPath, previousConfigPath, previousTestConfigPath };
+}
+
+function restoreIsolatedConfigPath(info: {
+    configRoot: string;
+    previousConfigPath: string | undefined;
+    previousTestConfigPath: string | undefined;
+}): void {
+    try {
+        fs.rmSync(info.configRoot, { recursive: true, force: true });
+    } catch { /* ignore */ }
+
+    if (info.previousConfigPath === undefined) {
+        delete process.env.MERGENB_CONFIG_PATH;
+    } else {
+        process.env.MERGENB_CONFIG_PATH = info.previousConfigPath;
+    }
+
+    if (info.previousTestConfigPath === undefined) {
+        delete process.env.MERGENB_TEST_CONFIG_PATH;
+    } else {
+        process.env.MERGENB_TEST_CONFIG_PATH = info.previousTestConfigPath;
+    }
+}
+
 // ─── List command ───────────────────────────────────────────────────────────
 
 function printTestList(): void {
@@ -357,18 +396,16 @@ async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
     const extensionDevelopmentPath = path.resolve(__dirname, '../..');
     let workspacePath: string | undefined;
     const testEnv: NodeJS.ProcessEnv = { ...process.env, MERGENB_TEST_MODE: 'true' };
-    const previousConfigPath = process.env.MERGENB_CONFIG_PATH;
-    const configRoot = fs.mkdtempSync(
-        path.join(os.tmpdir(), `mergenb-test-${toSafePathSegment(test.id)}-`)
-    );
-    const configPath = path.join(configRoot, 'config.json');
+    const configInfo = prepareIsolatedConfigPath(test.id);
     // Some environments set this globally, which makes the VS Code binary run
     // in Node mode and reject normal Electron/Code CLI flags.
     testEnv.ELECTRON_RUN_AS_NODE = undefined;
-    testEnv.MERGENB_CONFIG_PATH = configPath;
+    testEnv.MERGENB_CONFIG_PATH = configInfo.configPath;
+    testEnv.MERGENB_TEST_CONFIG_PATH = configInfo.testConfigPath;
     const vscodeVersion = process.env.VSCODE_VERSION?.trim();
     process.env.MERGENB_TEST_MODE = 'true';
-    process.env.MERGENB_CONFIG_PATH = configPath;
+    process.env.MERGENB_CONFIG_PATH = configInfo.configPath;
+    process.env.MERGENB_TEST_CONFIG_PATH = configInfo.testConfigPath;
 
     try {
         const [baseFile, currentFile, incomingFile] = resolveNotebookTripletPaths(test);
@@ -404,13 +441,50 @@ async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
         };
     } finally {
         if (workspacePath) cleanup(workspacePath);
-        try {
-            fs.rmSync(configRoot, { recursive: true, force: true });
-        } catch { /* ignore */ }
-        if (previousConfigPath === undefined) {
-            delete process.env.MERGENB_CONFIG_PATH;
+        restoreIsolatedConfigPath(configInfo);
+    }
+}
+
+async function runHeadlessTest(test: AutomatedTestDef): Promise<RunResult> {
+    const start = Date.now();
+    let workspacePath: string | undefined;
+    let configPath: string | undefined;
+    const configInfo = prepareIsolatedConfigPath(test.id);
+    const previousTestMode = process.env.MERGENB_TEST_MODE;
+
+    process.env.MERGENB_TEST_MODE = 'true';
+    process.env.MERGENB_CONFIG_PATH = configInfo.configPath;
+    process.env.MERGENB_TEST_CONFIG_PATH = configInfo.testConfigPath;
+
+    try {
+        const [baseFile, currentFile, incomingFile] = resolveNotebookTripletPaths(test);
+        workspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile);
+        configPath = writeTestConfig(workspacePath, test.id, test.params);
+
+        const testModulePath = path.resolve(__dirname, test.testModule);
+        delete require.cache[require.resolve(testModulePath)];
+        const testModule = require(testModulePath);
+        if (!testModule?.run || typeof testModule.run !== 'function') {
+            throw new Error(`Test module ${testModulePath} does not export run()`);
+        }
+
+        await Promise.resolve(testModule.run());
+        return { test, passed: true, durationMs: Date.now() - start };
+    } catch (err) {
+        return {
+            test,
+            passed: false,
+            error: err instanceof Error ? err : new Error(String(err)),
+            durationMs: Date.now() - start,
+        };
+    } finally {
+        if (configPath) cleanup(configPath);
+        if (workspacePath) cleanup(workspacePath);
+        restoreIsolatedConfigPath(configInfo);
+        if (previousTestMode === undefined) {
+            delete process.env.MERGENB_TEST_MODE;
         } else {
-            process.env.MERGENB_CONFIG_PATH = previousConfigPath;
+            process.env.MERGENB_TEST_MODE = previousTestMode;
         }
     }
 }
@@ -481,7 +555,10 @@ async function runTest(test: TestDef): Promise<RunResult> {
     if (isManualTest(test)) {
         return runManualSandbox(test);
     }
-    return runAutomatedTest(test);
+    if (test.requiresVSCode) {
+        return runAutomatedTest(test);
+    }
+    return runHeadlessTest(test);
 }
 
 function formatDuration(ms: number): string {
@@ -500,7 +577,9 @@ async function runAll(tests: TestDef[]): Promise<void> {
     for (let i = 0; i < tests.length; i++) {
         const test = tests[i];
         const prefix = pc.dim(`[${i + 1}/${tests.length}]`);
-        const typeLabel = isManualTest(test) ? 'manual' : 'automated';
+        const typeLabel = isManualTest(test)
+            ? 'manual'
+            : (test.requiresVSCode ? 'vscode' : 'headless');
         console.log(`\n${prefix} ${pc.cyan(test.id)} ${pc.dim('·')} ${test.description} ${pc.dim(`[${typeLabel}]`)}`);
 
         const result = await runTest(test);
