@@ -112,10 +112,18 @@ function computeDiffMarks(
 
         const lineClass = useConflictClass
             ? 'diff-line diff-line-conflict'
-            : side === 'current' ? 'diff-line diff-line-current' : 'diff-line diff-line-incoming';
+            : side === 'current'
+                ? 'diff-line diff-line-current'
+                : side === 'base'
+                    ? 'diff-line diff-line-base'
+                    : 'diff-line diff-line-incoming';
         const inlineClass = useConflictClass
             ? 'diff-inline-conflict'
-            : side === 'current' ? 'diff-inline-current' : 'diff-inline-incoming';
+            : side === 'current'
+                ? 'diff-inline-current'
+                : side === 'base'
+                    ? 'diff-inline-base'
+                    : 'diff-inline-incoming';
 
         const firstLine = lineOfPos(change.fromB);
         const lastLine = lineOfPos(Math.max(change.fromB, change.toB - 1));
