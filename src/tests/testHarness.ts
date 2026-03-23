@@ -259,7 +259,10 @@ async function setupConflictResolverHeadless(
 
             fs.writeFileSync(conflictFile, serializeNotebook(resolvedNotebook), 'utf8');
             if (markAsResolved) {
-                await gitIntegration.stageFile(conflictFile);
+                const staged = await gitIntegration.stageFile(conflictFile);
+                if (!staged) {
+                    throw new Error(`Failed to stage ${path.basename(conflictFile)}`);
+                }
             }
 
             server.sendMessage(sessionId, {
