@@ -7,8 +7,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
-import { LanguageDescription, ensureSyntaxTree, syntaxHighlighting } from '@codemirror/language';
+import { HighlightStyle, LanguageDescription, ensureSyntaxTree, syntaxHighlighting } from '@codemirror/language';
+import { githubDarkStyle, githubLightStyle } from '@uiw/codemirror-theme-github';
 import { languages } from '@codemirror/language-data';
+import { StyleModule } from 'style-mod';
 import { IRenderMime, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 import DOMPurify from 'dompurify';
@@ -16,6 +18,7 @@ import type { NotebookCell, CellOutput } from './types';
 import { normalizeCellSource } from '../../notebookUtils';
 import { diff as computeDiff } from '@codemirror/merge';
 import * as logger from '../../logger';
+import type { Highlighter } from '@lezer/highlight';
 import { classHighlighter, highlightCode } from '@lezer/highlight';
 import { renderMarkdown } from './markdown';
 
@@ -30,20 +33,36 @@ export const mergeNBEditorStructure: Extension = EditorView.theme({
 
 export const mergeNBSyntaxClassHighlighter: Extension = syntaxHighlighting(classHighlighter);
 
+/** Same tag→color rules as @uiw/codemirror-theme-github (resolved CodeMirror uses those themes). */
+const staticGithubLightHighlight = HighlightStyle.define(githubLightStyle);
+const staticGithubDarkHighlight = HighlightStyle.define(githubDarkStyle);
+
+if (typeof document !== 'undefined') {
+    const mods = [staticGithubLightHighlight.module, staticGithubDarkHighlight.module].filter(
+        (m): m is StyleModule => m != null
+    );
+    if (mods.length > 0) StyleModule.mount(document, mods);
+}
+
 // ─── Static syntax highlighting helpers ───────────────────────────────────────
-// These render code as plain HTML (<pre><code>) with .tok-* class spans from
-// @lezer/highlight's classHighlighter. No CodeMirror editor instances are
-// created, so browser-native text selection (click-drag, Ctrl+A, cross-element)
-// works exactly like normal text.
+// Plain HTML (<pre><code>) with HighlightStyle classes (GitHub light/dark), mounted
+// via style-mod — same palette as the resolved CodeMirror editor, no duplicate CSS.
 
 function escapeHtml(text: string): string {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /** Parse `source` with the given language extensions and return token spans. */
-function getSyntaxTokens(source: string, langExtensions: Extension[]): { from: number; to: number; classes: string }[] {
+function getSyntaxTokens(
+    source: string,
+    langExtensions: Extension[],
+    theme: 'dark' | 'light',
+): { from: number; to: number; classes: string }[] {
     const tokens: { from: number; to: number; classes: string }[] = [];
     if (!source || langExtensions.length === 0) return tokens;
+
+    const highlighter: Highlighter =
+        theme === 'dark' ? staticGithubDarkHighlight : staticGithubLightHighlight;
 
     try {
         const state = EditorState.create({ doc: source, extensions: langExtensions });
@@ -51,7 +70,7 @@ function getSyntaxTokens(source: string, langExtensions: Extension[]): { from: n
         if (!tree) return tokens;
 
         let pos = 0;
-        highlightCode(source, tree, classHighlighter,
+        highlightCode(source, tree, highlighter,
             (text, classes) => {
                 tokens.push({ from: pos, to: pos + text.length, classes: classes || '' });
                 pos += text.length;
@@ -295,11 +314,13 @@ export function CellContentInner({
                         side={side}
                         diffMode={diffMode}
                         langExtensions={cellType === 'markdown' ? EMPTY_EXTENSIONS : languageExtensions}
+                        theme={theme}
                     />
                 ) : cellType !== 'markdown' ? (
                     <StaticHighlightedCode
                         source={source}
                         langExtensions={languageExtensions}
+                        theme={theme}
                     />
                 ) : (
                     // Markdown in conflict mode: plain pre (diff view takes over)
@@ -362,7 +383,7 @@ function loadFenceLanguageSupport(languageTag: string): Promise<Extension | null
     return supportPromise;
 }
 
-async function enhanceMarkdownCodeBlocks(host: HTMLElement): Promise<void> {
+async function enhanceMarkdownCodeBlocks(host: HTMLElement, theme: 'dark' | 'light'): Promise<void> {
     const codeNodes = Array.from(host.querySelectorAll('pre > code')) as HTMLElement[];
     if (codeNodes.length === 0) return;
 
@@ -384,7 +405,7 @@ async function enhanceMarkdownCodeBlocks(host: HTMLElement): Promise<void> {
         if (!languageSupport) continue;
 
         const source = codeNode.textContent ?? '';
-        const tokens = getSyntaxTokens(source, [languageSupport]);
+        const tokens = getSyntaxTokens(source, [languageSupport], theme);
         const html = renderStaticCode(source, tokens);
         codeNode.innerHTML = html;
         preNode.classList.add('has-syntax-highlight');
@@ -418,7 +439,7 @@ function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactEl
             }
         });
 
-        void enhanceMarkdownCodeBlocks(host)
+        void enhanceMarkdownCodeBlocks(host, theme)
             .catch((err) => {
                 logger.warn('[MergeNB] Failed to highlight markdown fenced code blocks:', err);
             });
@@ -433,14 +454,15 @@ function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactEl
 
 // ─── Static display components (replace CodeMirror read-only instances) ───────
 
-function StaticHighlightedCode({ source, langExtensions }: {
+function StaticHighlightedCode({ source, langExtensions, theme }: {
     source: string;
     langExtensions: Extension[];
+    theme: 'dark' | 'light';
 }): React.ReactElement {
     const html = useMemo(() => {
-        const tokens = getSyntaxTokens(source, langExtensions);
+        const tokens = getSyntaxTokens(source, langExtensions, theme);
         return renderStaticCode(source, tokens);
-    }, [source, langExtensions]);
+    }, [source, langExtensions, theme]);
 
     return (
         <pre className="cell-source-static">
@@ -449,18 +471,19 @@ function StaticHighlightedCode({ source, langExtensions }: {
     );
 }
 
-function StaticDiffContent({ source, compareSource, side, diffMode, langExtensions }: {
+function StaticDiffContent({ source, compareSource, side, diffMode, langExtensions, theme }: {
     source: string;
     compareSource: string;
     side: 'base' | 'current' | 'incoming';
     diffMode: 'base' | 'conflict';
     langExtensions: Extension[];
+    theme: 'dark' | 'light';
 }): React.ReactElement {
     const html = useMemo(() => {
-        const tokens = getSyntaxTokens(source, langExtensions);
+        const tokens = getSyntaxTokens(source, langExtensions, theme);
         const { lineClasses, inlineRanges } = computeDiffMarks(source, compareSource, side, diffMode);
         return renderStaticCode(source, tokens, lineClasses, inlineRanges);
-    }, [source, compareSource, side, diffMode, langExtensions]);
+    }, [source, compareSource, side, diffMode, langExtensions, theme]);
 
     return (
         <pre className="cell-source-static">

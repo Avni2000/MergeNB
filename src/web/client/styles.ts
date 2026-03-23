@@ -667,6 +667,13 @@ body {
     display: block;
 }
 
+/* Static code uses @uiw/codemirror-theme-github HighlightStyle (see CellContent.tsx) */
+.cell-source-static code,
+.markdown-content pre.has-syntax-highlight code {
+    font-family: var(--font-code);
+    font-weight: 400;
+}
+
 /* Diff highlighting — applied as CodeMirror line decorations on .cm-line elements */
 .diff-line.diff-line-conflict {
     background: var(--diff-remove);
