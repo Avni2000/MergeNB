@@ -177,6 +177,8 @@ function buildLineSegments(
     const sortedInline = inlineRanges.slice().sort((a, b) => a.from - b.from);
     const result: StaticLine[] = [];
     let offset = 0;
+    let syntaxIndex = 0;
+    let inlineIndex = 0;
 
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
         const line = lines[lineIdx];
@@ -191,14 +193,19 @@ function buildLineSegments(
             bounds.add(lineStart);
             bounds.add(lineEnd);
 
-            for (const t of syntaxTokens) {
-                if (t.from < lineEnd && t.to > lineStart) {
+            while (syntaxIndex < sortedSyntax.length && sortedSyntax[syntaxIndex].to <= lineStart) syntaxIndex++;
+            while (inlineIndex < sortedInline.length && sortedInline[inlineIndex].to <= lineStart) inlineIndex++;
+
+            for (let scanIndex = syntaxIndex; scanIndex < sortedSyntax.length && sortedSyntax[scanIndex].from < lineEnd; scanIndex++) {
+                const t = sortedSyntax[scanIndex];
+                if (t.to > lineStart) {
                     bounds.add(Math.max(t.from, lineStart));
                     bounds.add(Math.min(t.to, lineEnd));
                 }
             }
-            for (const r of inlineRanges) {
-                if (r.from < lineEnd && r.to > lineStart) {
+            for (let scanIndex = inlineIndex; scanIndex < sortedInline.length && sortedInline[scanIndex].from < lineEnd; scanIndex++) {
+                const r = sortedInline[scanIndex];
+                if (r.to > lineStart) {
                     bounds.add(Math.max(r.from, lineStart));
                     bounds.add(Math.min(r.to, lineEnd));
                 }
@@ -207,25 +214,24 @@ function buildLineSegments(
             const sorted = Array.from(bounds).sort((a, b) => a - b);
             const syntaxClassAtPos = new Map<number, string>();
             const inlineClassAtPos = new Map<number, string>();
-            let syntaxIndex = 0;
-            let inlineIndex = 0;
-
-            while (syntaxIndex < sortedSyntax.length && sortedSyntax[syntaxIndex].to <= lineStart) syntaxIndex++;
-            while (inlineIndex < sortedInline.length && sortedInline[inlineIndex].to <= lineStart) inlineIndex++;
+            let lineSyntaxIndex = syntaxIndex;
+            let lineInlineIndex = inlineIndex;
 
             for (const pos of sorted) {
-                while (syntaxIndex < sortedSyntax.length && sortedSyntax[syntaxIndex].to <= pos) syntaxIndex++;
-                const token = sortedSyntax[syntaxIndex];
+                while (lineSyntaxIndex < sortedSyntax.length && sortedSyntax[lineSyntaxIndex].to <= pos) lineSyntaxIndex++;
+                const token = sortedSyntax[lineSyntaxIndex];
                 if (token && token.from <= pos && token.to > pos && token.classes) {
                     syntaxClassAtPos.set(pos, token.classes);
                 }
 
-                while (inlineIndex < sortedInline.length && sortedInline[inlineIndex].to <= pos) inlineIndex++;
-                const range = sortedInline[inlineIndex];
+                while (lineInlineIndex < sortedInline.length && sortedInline[lineInlineIndex].to <= pos) lineInlineIndex++;
+                const range = sortedInline[lineInlineIndex];
                 if (range && range.from <= pos && range.to > pos && range.classes) {
                     inlineClassAtPos.set(pos, range.classes);
                 }
             }
+            syntaxIndex = lineSyntaxIndex;
+            inlineIndex = lineInlineIndex;
 
             for (let i = 0; i < sorted.length - 1; i++) {
                 const from = sorted[i];
