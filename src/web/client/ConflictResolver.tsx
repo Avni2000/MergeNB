@@ -199,7 +199,12 @@ export function ConflictResolver({
         let prevScrollTop = el?.scrollTop ?? 0;
         let correcting = false;
 
-        const onDown = () => {
+        const onDown = (event: MouseEvent) => {
+            if (event.button !== 0) return;
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target?.closest?.(
+                '.cell-content, .cell-output-host, .cell-output-fallback, .resolved-content-input, .markdown-content'
+            )) return;
             isDraggingRef.current = true;
             dragRenderedIndicesRef.current = null;
             prevScrollTop = el?.scrollTop ?? 0;
@@ -259,11 +264,13 @@ export function ConflictResolver({
 
         window.addEventListener('mousedown', onDown);
         window.addEventListener('mouseup', onUp);
+        window.addEventListener('blur', onUp);
         document.addEventListener('selectionchange', onSelectionChange);
         el?.addEventListener('scroll', onScroll);
         return () => {
             window.removeEventListener('mousedown', onDown);
             window.removeEventListener('mouseup', onUp);
+            window.removeEventListener('blur', onUp);
             document.removeEventListener('selectionchange', onSelectionChange);
             el?.removeEventListener('scroll', onScroll);
         };
