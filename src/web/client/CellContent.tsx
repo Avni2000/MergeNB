@@ -72,7 +72,8 @@ function getSyntaxTokens(
             () => { pos++; }, // newline
         );
         return tokens;
-    } catch {
+    } catch (err) {
+        logger.debug('[MergeNB] Failed to parse syntax tree for highlighting:', err);
         return tokens;
     }
 }
@@ -172,6 +173,8 @@ function buildLineSegments(
     inlineRanges: { from: number; to: number; classes: string }[],
 ): StaticLine[] {
     const lines = source.split('\n');
+    const sortedSyntax = syntaxTokens.slice().sort((a, b) => a.from - b.from);
+    const sortedInline = inlineRanges.slice().sort((a, b) => a.from - b.from);
     const result: StaticLine[] = [];
     let offset = 0;
 
@@ -202,14 +205,35 @@ function buildLineSegments(
             }
 
             const sorted = Array.from(bounds).sort((a, b) => a - b);
+            const syntaxClassAtPos = new Map<number, string>();
+            const inlineClassAtPos = new Map<number, string>();
+            let syntaxIndex = 0;
+            let inlineIndex = 0;
+
+            while (syntaxIndex < sortedSyntax.length && sortedSyntax[syntaxIndex].to <= lineStart) syntaxIndex++;
+            while (inlineIndex < sortedInline.length && sortedInline[inlineIndex].to <= lineStart) inlineIndex++;
+
+            for (const pos of sorted) {
+                while (syntaxIndex < sortedSyntax.length && sortedSyntax[syntaxIndex].to <= pos) syntaxIndex++;
+                const token = sortedSyntax[syntaxIndex];
+                if (token && token.from <= pos && token.to > pos && token.classes) {
+                    syntaxClassAtPos.set(pos, token.classes);
+                }
+
+                while (inlineIndex < sortedInline.length && sortedInline[inlineIndex].to <= pos) inlineIndex++;
+                const range = sortedInline[inlineIndex];
+                if (range && range.from <= pos && range.to > pos && range.classes) {
+                    inlineClassAtPos.set(pos, range.classes);
+                }
+            }
 
             for (let i = 0; i < sorted.length - 1; i++) {
                 const from = sorted[i];
                 const to = sorted[i + 1];
                 const text = source.slice(from, to);
 
-                const sc = syntaxTokens.find(t => t.from <= from && t.to >= to)?.classes ?? '';
-                const dc = inlineRanges.find(r => r.from <= from && r.to >= to)?.classes ?? '';
+                const sc = syntaxClassAtPos.get(from) ?? '';
+                const dc = inlineClassAtPos.get(from) ?? '';
                 const cls = [sc, dc].filter(Boolean).join(' ');
 
                 segments.push(cls ? { text, classes: cls } : { text });
