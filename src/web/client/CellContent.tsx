@@ -46,10 +46,6 @@ if (typeof document !== 'undefined') {
 // Plain HTML (<pre><code>) with HighlightStyle classes (GitHub light/dark), mounted
 // via style-mod — same palette as the resolved CodeMirror editor, no duplicate CSS.
 
-function escapeHtml(text: string): string {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 /** Parse `source` with the given language extensions and return token spans. */
 function getSyntaxTokens(
     source: string,
@@ -136,29 +132,47 @@ function computeDiffMarks(
     return { lineClasses, inlineRanges };
 }
 
-/** Render source as HTML with syntax tokens only (flat inline spans + newlines). */
-function renderTokensFlat(source: string, tokens: { from: number; to: number; classes: string }[]): string {
-    const parts: string[] = [];
-    let lastTo = 0;
-    for (const t of tokens) {
-        if (t.from > lastTo) parts.push(escapeHtml(source.slice(lastTo, t.from)));
-        const text = source.slice(t.from, t.to);
-        parts.push(t.classes ? `<span class="${t.classes}">${escapeHtml(text)}</span>` : escapeHtml(text));
-        lastTo = t.to;
-    }
-    if (lastTo < source.length) parts.push(escapeHtml(source.slice(lastTo)));
-    return parts.join('');
+interface StaticSegment {
+    text: string;
+    classes?: string;
 }
 
-/** Render source as HTML with merged syntax + diff highlighting, line-wrapped. */
-function renderWithDiffs(
+interface StaticLine {
+    lineClass?: string;
+    segments: StaticSegment[];
+}
+
+type StaticRender = {
+    kind: 'flat';
+    segments: StaticSegment[];
+} | {
+    kind: 'lines';
+    lines: StaticLine[];
+};
+
+/** Build inline spans with syntax tokens only (flat + newlines preserved). */
+function buildFlatSegments(source: string, tokens: { from: number; to: number; classes: string }[]): StaticSegment[] {
+    const parts: StaticSegment[] = [];
+    let lastTo = 0;
+    for (const t of tokens) {
+        if (t.from > lastTo) parts.push({ text: source.slice(lastTo, t.from) });
+        const text = source.slice(t.from, t.to);
+        parts.push(t.classes ? { text, classes: t.classes } : { text });
+        lastTo = t.to;
+    }
+    if (lastTo < source.length) parts.push({ text: source.slice(lastTo) });
+    return parts;
+}
+
+/** Build line-wrapped spans with merged syntax + diff highlighting. */
+function buildLineSegments(
     source: string,
     syntaxTokens: { from: number; to: number; classes: string }[],
     lineClasses: Map<number, string>,
     inlineRanges: { from: number; to: number; classes: string }[],
-): string {
+): StaticLine[] {
     const lines = source.split('\n');
-    const result: string[] = [];
+    const result: StaticLine[] = [];
     let offset = 0;
 
     for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
@@ -166,8 +180,8 @@ function renderWithDiffs(
         const lineStart = offset;
         const lineEnd = offset + line.length;
 
-        const lc = lineClasses.get(lineIdx);
-        result.push(lc ? `<span class="source-line ${lc}">` : '<span class="source-line">');
+        const lineClass = lineClasses.get(lineIdx);
+        const segments: StaticSegment[] = [];
 
         if (line.length > 0) {
             const bounds = new Set<number>();
@@ -198,28 +212,79 @@ function renderWithDiffs(
                 const dc = inlineRanges.find(r => r.from <= from && r.to >= to)?.classes ?? '';
                 const cls = [sc, dc].filter(Boolean).join(' ');
 
-                result.push(cls ? `<span class="${cls}">${escapeHtml(text)}</span>` : escapeHtml(text));
+                segments.push(cls ? { text, classes: cls } : { text });
             }
         }
 
-        result.push('</span>');
+        result.push({ lineClass, segments });
         offset = lineEnd + 1;
     }
 
-    return result.join('');
+    return result;
 }
 
-/** Render source as static HTML with syntax highlighting and optional diff marks. */
-function renderStaticCode(
+/** Build a static render plan with syntax highlighting and optional diff marks. */
+function buildStaticRender(
     source: string,
     syntaxTokens: { from: number; to: number; classes: string }[],
     lineClasses?: Map<number, string>,
     inlineRanges?: { from: number; to: number; classes: string }[],
-): string {
-    if (!source) return '';
+): StaticRender {
+    if (!source) return { kind: 'flat', segments: [] };
     const hasDiff = (lineClasses && lineClasses.size > 0) || (inlineRanges && inlineRanges.length > 0);
-    if (!hasDiff) return renderTokensFlat(source, syntaxTokens);
-    return renderWithDiffs(source, syntaxTokens, lineClasses ?? new Map(), inlineRanges ?? []);
+    if (!hasDiff) return { kind: 'flat', segments: buildFlatSegments(source, syntaxTokens) };
+    return {
+        kind: 'lines',
+        lines: buildLineSegments(source, syntaxTokens, lineClasses ?? new Map(), inlineRanges ?? []),
+    };
+}
+
+function renderSegmentsToReact(segments: StaticSegment[]): React.ReactNode[] {
+    return segments.map((segment, index) => (
+        segment.classes
+            ? <span key={index} className={segment.classes}>{segment.text}</span>
+            : segment.text
+    ));
+}
+
+function renderStaticToReact(render: StaticRender): React.ReactNode {
+    if (render.kind === 'flat') return renderSegmentsToReact(render.segments);
+    return render.lines.map((line, index) => (
+        <span
+            key={index}
+            className={line.lineClass ? `source-line ${line.lineClass}` : 'source-line'}
+        >
+            {renderSegmentsToReact(line.segments)}
+        </span>
+    ));
+}
+
+function renderSegmentsToDom(parent: HTMLElement | DocumentFragment, segments: StaticSegment[]): void {
+    for (const segment of segments) {
+        if (segment.classes) {
+            const span = document.createElement('span');
+            span.className = segment.classes;
+            span.textContent = segment.text;
+            parent.appendChild(span);
+        } else {
+            parent.appendChild(document.createTextNode(segment.text));
+        }
+    }
+}
+
+function renderStaticToDom(render: StaticRender): DocumentFragment {
+    const fragment = document.createDocumentFragment();
+    if (render.kind === 'flat') {
+        renderSegmentsToDom(fragment, render.segments);
+        return fragment;
+    }
+    for (const line of render.lines) {
+        const span = document.createElement('span');
+        span.className = line.lineClass ? `source-line ${line.lineClass}` : 'source-line';
+        renderSegmentsToDom(span, line.segments);
+        fragment.appendChild(span);
+    }
+    return fragment;
 }
 
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
@@ -404,8 +469,8 @@ async function enhanceMarkdownCodeBlocks(host: HTMLElement, theme: 'dark' | 'lig
 
         const source = codeNode.textContent ?? '';
         const tokens = getSyntaxTokens(source, [languageSupport], theme);
-        const html = renderStaticCode(source, tokens);
-        codeNode.innerHTML = html;
+        const renderPlan = buildStaticRender(source, tokens);
+        codeNode.replaceChildren(renderStaticToDom(renderPlan));
         preNode.classList.add('has-syntax-highlight');
     }
 }
@@ -457,14 +522,14 @@ function StaticHighlightedCode({ source, langExtensions, theme }: {
     langExtensions: Extension[];
     theme: 'dark' | 'light';
 }): React.ReactElement {
-    const html = useMemo(() => {
+    const nodes = useMemo(() => {
         const tokens = getSyntaxTokens(source, langExtensions, theme);
-        return renderStaticCode(source, tokens);
+        return renderStaticToReact(buildStaticRender(source, tokens));
     }, [source, langExtensions, theme]);
 
     return (
         <pre className="cell-source-static">
-            <code dangerouslySetInnerHTML={{ __html: html }} />
+            <code>{nodes}</code>
         </pre>
     );
 }
@@ -477,15 +542,15 @@ function StaticDiffContent({ source, compareSource, side, diffMode, langExtensio
     langExtensions: Extension[];
     theme: 'dark' | 'light';
 }): React.ReactElement {
-    const html = useMemo(() => {
+    const nodes = useMemo(() => {
         const tokens = getSyntaxTokens(source, langExtensions, theme);
         const { lineClasses, inlineRanges } = computeDiffMarks(source, compareSource, side, diffMode);
-        return renderStaticCode(source, tokens, lineClasses, inlineRanges);
+        return renderStaticToReact(buildStaticRender(source, tokens, lineClasses, inlineRanges));
     }, [source, compareSource, side, diffMode, langExtensions, theme]);
 
     return (
         <pre className="cell-source-static">
-            <code dangerouslySetInnerHTML={{ __html: html }} />
+            <code>{nodes}</code>
         </pre>
     );
 }
