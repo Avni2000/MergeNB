@@ -175,11 +175,12 @@ export function writeTestConfig(
     workspacePath: string,
     testName: string,
     params?: Record<string, unknown>,
+    targetPath?: string,
 ): string {
-    const override = process.env.MERGENB_TEST_CONFIG_PATH;
-    const configPath = override && override.trim()
-        ? path.resolve(override.trim())
-        : path.join(os.tmpdir(), 'mergenb-test-config.json');
+    const configPath = targetPath
+        ?? (process.env.MERGENB_TEST_CONFIG_PATH?.trim()
+            ? path.resolve(process.env.MERGENB_TEST_CONFIG_PATH.trim())
+            : path.join(os.tmpdir(), 'mergenb-test-config.json'));
     fs.writeFileSync(configPath, JSON.stringify({ workspacePath, testName, params }));
     return configPath;
 }

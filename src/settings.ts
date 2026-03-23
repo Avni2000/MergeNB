@@ -19,6 +19,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { AsyncLocalStorage } from 'async_hooks';
 
 // Optional vscode import for headless testing support
 let vscode: typeof import('vscode') | undefined;
@@ -55,7 +56,19 @@ const DEFAULT_SETTINGS: MergeNBSettings = {
 
 const CONFIG_ENV_VAR = 'MERGENB_CONFIG_PATH';
 
+/** Async-context-scoped config paths — allows parallel headless tests in one process. */
+export interface ConfigContext {
+    configPath?: string;
+    testConfigPath?: string;
+}
+export const configContext = new AsyncLocalStorage<ConfigContext>();
+
 export function getConfigFilePath(): string {
+    const ctx = configContext.getStore();
+    if (ctx?.configPath) {
+        return ctx.configPath;
+    }
+
     const override = process.env[CONFIG_ENV_VAR];
     if (override && override.trim()) {
         return path.resolve(override.trim());

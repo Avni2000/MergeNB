@@ -16,7 +16,7 @@ import * as path from 'path';
 import { chromium, type Browser, type Page } from 'playwright';
 import * as gitIntegration from '../gitIntegration';
 import { detectSemanticConflicts, applyAutoResolutions } from '../conflictDetector';
-import { getSettings } from '../settings';
+import { getSettings, configContext } from '../settings';
 import { getWebServer } from '../web/webServer';
 import {
     toWebSemanticConflict,
@@ -83,7 +83,8 @@ function sleep(ms: number): Promise<void> {
 
 /** Read the test config JSON written to disk by the runner before VS Code launched. */
 export function readTestConfig(): TestConfig {
-    const override = process.env.MERGENB_TEST_CONFIG_PATH;
+    const ctx = configContext.getStore();
+    const override = ctx?.testConfigPath ?? process.env.MERGENB_TEST_CONFIG_PATH;
     const configPath = override && override.trim()
         ? path.resolve(override.trim())
         : path.join(os.tmpdir(), 'mergenb-test-config.json');
@@ -290,18 +291,13 @@ async function setupConflictResolverHeadless(
         }
     };
 
-    const connectionPromise = server.openSession(
+    const { sessionUrl, connectionPromise } = await server.openSession(
         sessionId,
         '',
         handleMessage,
         unifiedConflict.theme ?? 'light',
         unifiedConflict.filePath
     );
-
-    const sessionUrl = server.getLatestSessionUrl();
-    if (!sessionUrl) {
-        throw new Error('Headless session URL not available.');
-    }
 
     const browser = await chromium.launch({ headless: options.headless ?? true });
     try {

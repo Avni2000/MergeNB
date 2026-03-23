@@ -99,7 +99,9 @@ export class WebConflictPanel {
             (message: unknown) => this._handleMessage(message),
             this._conflict?.theme ?? 'light',
             this._conflict?.filePath
-        ).then(() => {
+        ).then(({ connectionPromise }) => {
+            return connectionPromise;
+        }).then(() => {
             // Send conflict data to browser once connected
             this._sendConflictData();
             logger.info(`[WebConflictPanel] Opened conflict resolver in browser, session: ${this._sessionId}`);

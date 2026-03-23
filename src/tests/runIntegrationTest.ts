@@ -41,6 +41,13 @@ import {
     writeTestConfig,
     cleanup,
 } from './repoSetup';
+import {
+    prepareIsolatedConfigPath,
+    cleanupIsolatedConfigPath,
+    resolveNotebookTripletPaths,
+} from './testRunnerShared';
+import { runHeadlessTest } from './headlessTestRun';
+import { getWebServer } from '../web/webServer';
 
 // @clack/prompts is ESM-only, so we load it lazily via dynamic import.
 let _clack: any;
@@ -148,53 +155,6 @@ function resolveManualFixtureSelections(rawValues: string[]): {
     }
 
     return { selectedIds, unknownTokens };
-}
-
-function toSafePathSegment(value: string): string {
-    const cleaned = value
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-    return cleaned || 'test';
-}
-
-function prepareIsolatedConfigPath(testId: string): {
-    configRoot: string;
-    configPath: string;
-    testConfigPath: string;
-    previousConfigPath: string | undefined;
-    previousTestConfigPath: string | undefined;
-} {
-    const previousConfigPath = process.env.MERGENB_CONFIG_PATH;
-    const previousTestConfigPath = process.env.MERGENB_TEST_CONFIG_PATH;
-    const configRoot = fs.mkdtempSync(
-        path.join(os.tmpdir(), `mergenb-test-${toSafePathSegment(testId)}-`)
-    );
-    const configPath = path.join(configRoot, 'config.json');
-    const testConfigPath = path.join(configRoot, 'test-config.json');
-    return { configRoot, configPath, testConfigPath, previousConfigPath, previousTestConfigPath };
-}
-
-function restoreIsolatedConfigPath(info: {
-    configRoot: string;
-    previousConfigPath: string | undefined;
-    previousTestConfigPath: string | undefined;
-}): void {
-    try {
-        fs.rmSync(info.configRoot, { recursive: true, force: true });
-    } catch { /* ignore */ }
-
-    if (info.previousConfigPath === undefined) {
-        delete process.env.MERGENB_CONFIG_PATH;
-    } else {
-        process.env.MERGENB_CONFIG_PATH = info.previousConfigPath;
-    }
-
-    if (info.previousTestConfigPath === undefined) {
-        delete process.env.MERGENB_TEST_CONFIG_PATH;
-    } else {
-        process.env.MERGENB_TEST_CONFIG_PATH = info.previousTestConfigPath;
-    }
 }
 
 // ─── List command ───────────────────────────────────────────────────────────
@@ -320,21 +280,6 @@ interface RunResult {
     workspacePath?: string;
 }
 
-function resolveNotebookTripletPaths(test: TestDef): [string, string, string] {
-    const testDir = path.resolve(__dirname, '../../test');
-    const [baseFile, currentFile, incomingFile] = test.notebooks.map(n =>
-        path.join(testDir, n),
-    ) as [string, string, string];
-
-    for (const f of [baseFile, currentFile, incomingFile]) {
-        if (!fs.existsSync(f)) {
-            throw new Error(`Notebook not found: ${f}`);
-        }
-    }
-
-    return [baseFile, currentFile, incomingFile];
-}
-
 function isCodeCliAvailable(): boolean {
     const result = spawnSync('code', ['--version'], { stdio: 'ignore' });
     return !result.error && result.status === 0;
@@ -442,51 +387,7 @@ async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
         };
     } finally {
         if (workspacePath) cleanup(workspacePath);
-        restoreIsolatedConfigPath(configInfo);
-        if (previousTestMode === undefined) {
-            delete process.env.MERGENB_TEST_MODE;
-        } else {
-            process.env.MERGENB_TEST_MODE = previousTestMode;
-        }
-    }
-}
-
-async function runHeadlessTest(test: AutomatedTestDef): Promise<RunResult> {
-    const start = Date.now();
-    let workspacePath: string | undefined;
-    let configPath: string | undefined;
-    const configInfo = prepareIsolatedConfigPath(test.id);
-    const previousTestMode = process.env.MERGENB_TEST_MODE;
-
-    process.env.MERGENB_TEST_MODE = 'true';
-    process.env.MERGENB_CONFIG_PATH = configInfo.configPath;
-    process.env.MERGENB_TEST_CONFIG_PATH = configInfo.testConfigPath;
-
-    try {
-        const [baseFile, currentFile, incomingFile] = resolveNotebookTripletPaths(test);
-        workspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile);
-        configPath = writeTestConfig(workspacePath, test.id, test.params);
-
-        const testModulePath = path.resolve(__dirname, test.testModule);
-        delete require.cache[require.resolve(testModulePath)];
-        const testModule = require(testModulePath);
-        if (!testModule?.run || typeof testModule.run !== 'function') {
-            throw new Error(`Test module ${testModulePath} does not export run()`);
-        }
-
-        await Promise.resolve(testModule.run());
-        return { test, passed: true, durationMs: Date.now() - start };
-    } catch (err) {
-        return {
-            test,
-            passed: false,
-            error: err instanceof Error ? err : new Error(String(err)),
-            durationMs: Date.now() - start,
-        };
-    } finally {
-        if (configPath) cleanup(configPath);
-        if (workspacePath) cleanup(workspacePath);
-        restoreIsolatedConfigPath(configInfo);
+        cleanupIsolatedConfigPath(configInfo.configRoot);
         if (previousTestMode === undefined) {
             delete process.env.MERGENB_TEST_MODE;
         } else {
@@ -557,14 +458,11 @@ async function runManualSandbox(test: ManualSandboxDef): Promise<RunResult> {
     }
 }
 
-async function runTest(test: TestDef): Promise<RunResult> {
+async function runSequentialTest(test: TestDef): Promise<RunResult> {
     if (isManualTest(test)) {
         return runManualSandbox(test);
     }
-    if (test.requiresVSCode) {
-        return runAutomatedTest(test);
-    }
-    return runHeadlessTest(test);
+    return runAutomatedTest(test as AutomatedTestDef);
 }
 
 function formatDuration(ms: number): string {
@@ -574,22 +472,55 @@ function formatDuration(ms: number): string {
 
 async function runAll(tests: TestDef[]): Promise<void> {
     const totalStart = Date.now();
-    const results: RunResult[] = [];
+
+    // Split into headless (parallelizable) and sequential (VS Code / manual) tests
+    const headlessTests = tests.filter(
+        (t): t is AutomatedTestDef => isAutomatedTest(t) && !t.requiresVSCode,
+    );
+    const sequentialTests = tests.filter(
+        t => isManualTest(t) || (isAutomatedTest(t) && t.requiresVSCode),
+    );
 
     console.log();
     console.log(pc.bold(`Running ${tests.length} entr${tests.length > 1 ? 'ies' : 'y'}…`));
+    if (headlessTests.length > 0) {
+        console.log(pc.dim(`  ${headlessTests.length} headless (parallel) + ${sequentialTests.length} sequential`));
+    }
     console.log(pc.dim('─'.repeat(60)));
 
+    // Run all headless tests in parallel via Promise.all
+    const headlessResultsMap = new Map<string, RunResult>();
+    if (headlessTests.length > 0) {
+        console.log(`\n${pc.dim('Running headless tests in parallel…')}`);
+        const headlessResults = await Promise.all(
+            headlessTests.map(async (test): Promise<RunResult> => {
+                const result = await runHeadlessTest(test);
+                return { test, passed: result.passed, error: result.error, durationMs: result.durationMs };
+            }),
+        );
+        for (const r of headlessResults) {
+            headlessResultsMap.set(r.test.id, r);
+        }
+    }
+
+    // Run sequential tests one at a time
+    const sequentialResultsMap = new Map<string, RunResult>();
+    for (const test of sequentialTests) {
+        const result = await runSequentialTest(test);
+        sequentialResultsMap.set(test.id, result);
+    }
+
+    // Print results in original order
+    const results: RunResult[] = [];
     for (let i = 0; i < tests.length; i++) {
         const test = tests[i];
+        const result = headlessResultsMap.get(test.id) ?? sequentialResultsMap.get(test.id)!;
+        results.push(result);
         const prefix = pc.dim(`[${i + 1}/${tests.length}]`);
         const typeLabel = isManualTest(test)
             ? 'manual'
-            : (test.requiresVSCode ? 'vscode' : 'headless');
+            : ((isAutomatedTest(test) && test.requiresVSCode) ? 'vscode' : 'headless');
         console.log(`\n${prefix} ${pc.cyan(test.id)} ${pc.dim('·')} ${test.description} ${pc.dim(`[${typeLabel}]`)}`);
-
-        const result = await runTest(test);
-        results.push(result);
 
         if (result.passed) {
             console.log(
@@ -633,9 +564,16 @@ async function runAll(tests: TestDef[]): Promise<void> {
 
     console.log();
 
+    // Stop the web server if it was started by headless tests to ensure the process can exit
+    if (getWebServer().isRunning()) {
+        await getWebServer().stop();
+    }
+
     if (failed > 0) {
         process.exit(1);
     }
+
+    process.exit(0);
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────

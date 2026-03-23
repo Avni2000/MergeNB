@@ -241,12 +241,12 @@ export class ConflictResolverWebServer {
 
     /**
      * Open a new conflict resolution session in the browser.
-     * Returns a promise that resolves when the browser connects via WebSocket.
-     * 
+     * Returns the session URL and a promise that resolves when the browser connects via WebSocket.
+     *
      * @param sessionId - Unique identifier for this session
      * @param htmlContent - The HTML content to serve for this session
      * @param onMessage - Callback for handling messages from the browser
-     * @returns Promise that resolves to the WebSocket connection
+     * @returns Object with sessionUrl and connectionPromise
      */
     public async openSession(
         sessionId: string,
@@ -254,7 +254,7 @@ export class ConflictResolverWebServer {
         onMessage: (message: unknown) => void,
         theme: 'dark' | 'light' = 'light',
         notebookFilePath?: string
-    ): Promise<WebSocket> {
+    ): Promise<{ sessionUrl: string; connectionPromise: Promise<WebSocket> }> {
         const sessionToken = this.generateSecret();
 
         // Store session data
@@ -282,7 +282,7 @@ export class ConflictResolverWebServer {
             });
         });
 
-        // Open the browser to the session URL
+        // Build the session URL
         const sessionUrl = `${this.getServerUrl()}/?session=${encodeURIComponent(sessionId)}&token=${encodeURIComponent(sessionToken)}`;
         if (this.testMode) {
             this.latestSessionUrl = sessionUrl;
@@ -295,7 +295,7 @@ export class ConflictResolverWebServer {
             logger.debug(`[MergeNB Web] VSCode not available, skipping browser open. URL: ${redactedUrl}`);
         }
 
-        return connectionPromise;
+        return { sessionUrl, connectionPromise };
     }
 
     /**
