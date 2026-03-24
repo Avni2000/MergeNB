@@ -195,35 +195,33 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
             let referenceCell: NotebookCell | undefined;
             switch (choice) {
                 case 'base':
-                    referenceCell = baseCell || currentCell || incomingCell;
+                    referenceCell = baseCell;
                     break;
                 case 'current':
-                    referenceCell = currentCellForFallback || incomingCell || baseCell;
+                    referenceCell = currentCellForFallback;
                     break;
                 case 'incoming':
-                    referenceCell = incomingCell || currentCell || baseCell;
+                    referenceCell = incomingCell;
                     break;
                 case 'delete':
                     continue;
             }
 
-            const cellType = referenceCell?.cell_type || 'code';
-            cellToUse = {
-                cell_type: cellType,
-                metadata: referenceCell?.metadata ? JSON.parse(JSON.stringify(referenceCell.metadata)) : {},
-                source: resolvedContent.split(/(?<=\n)/)
-            } as NotebookCell;
+            if (!referenceCell) {
+                continue;
+            }
+
+            const cellType = referenceCell.cell_type || 'code';
+            cellToUse = JSON.parse(JSON.stringify(referenceCell)) as NotebookCell;
+            cellToUse.cell_type = cellType;
+            cellToUse.source = resolvedContent.split(/(?<=\n)/);
 
             if (cellType === 'code') {
                 if (settings.stripOutputs) {
                     (cellToUse as any).execution_count = null;
                     (cellToUse as any).outputs = [];
-                } else {
-                    (cellToUse as any).execution_count = (referenceCell as any)?.execution_count ?? null;
-                    (cellToUse as any).outputs = (referenceCell as any)?.outputs
-                        ? JSON.parse(JSON.stringify((referenceCell as any).outputs))
-                        : [];
                 }
+                // else: outputs/execution_count already preserved from the deep clone
             }
         } else if (preferredSide) {
             if (preferredSide === 'base') cellToUse = baseCell;

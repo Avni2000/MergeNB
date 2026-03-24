@@ -110,9 +110,12 @@ import {
 } from './settingsFile';
 
 const snapshot = readSettingsFileSnapshot();
-writeSettingsFile({ 'autoResolve.executionCount': false });
-// ... run test ...
-restoreSettingsFileSnapshot(snapshot);
+try {
+  writeSettingsFile({ 'autoResolve.executionCount': false });
+  // ... run test ...
+} finally {
+  restoreSettingsFileSnapshot(snapshot);
+}
 ```
 
 ---
