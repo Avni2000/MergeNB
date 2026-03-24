@@ -86,6 +86,7 @@ function applySettings(
 
     for (const [key, value] of Object.entries(settings)) {
         if (value === undefined) continue;
+        delete next[key];
         if (key.startsWith('autoResolve.')) {
             const prop = key.replace('autoResolve.', '');
             autoResolve[prop] = value;
