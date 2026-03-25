@@ -9,9 +9,9 @@
  */
 
 import * as path from 'path';
-import { execFileSync } from 'child_process';
 import * as vscode from 'vscode';
 import { readTestConfig } from './testHarness';
+import { git, gitAllowFailure, hasUnmergedConflict } from './gitTestUtils';
 
 interface StatusBarState {
     visible: boolean;
@@ -33,30 +33,6 @@ function assert(condition: unknown, message: string): asserts condition {
     if (!condition) {
         throw new Error(message);
     }
-}
-
-function git(cwd: string, args: string[], allowFailure: boolean = false): string {
-    try {
-        return execFileSync('git', args, {
-            cwd,
-            encoding: 'utf8',
-            stdio: ['pipe', 'pipe', 'pipe']
-        });
-    } catch (error: any) {
-        const stdout = typeof error?.stdout === 'string' ? error.stdout : '';
-        const stderr = typeof error?.stderr === 'string' ? error.stderr : '';
-        if (allowFailure) {
-            return `${stdout}\n${stderr}`.trim();
-        }
-        throw new Error(`Git command failed: git ${args.join(' ')}\n${stderr || error?.message || stdout}`);
-    }
-}
-
-function hasUnmergedConflict(statusOutput: string): boolean {
-    return statusOutput
-        .split('\n')
-        .map((line) => line.trim())
-        .some((line) => /^(UU|AA|DD|AU|UA|DU|UD)\s+conflict\.ipynb$/.test(line));
 }
 
 async function getStatusBarState(): Promise<StatusBarState> {
@@ -153,7 +129,7 @@ export async function run(): Promise<void> {
     // b) Recreate a merge conflict during the same VS Code session.
     git(workspacePath, ['merge', '--abort']);
     ensureNoUnmergedConflict(workspacePath, 'after merge --abort');
-    const mergeOutput = git(workspacePath, ['merge', 'incoming'], true);
+    const mergeOutput = gitAllowFailure(workspacePath, ['merge', 'incoming']);
     console.log(`[statusIndicatorsRegression] merge output:\n${mergeOutput}`);
     ensureHasUnmergedConflict(workspacePath, 'after recreating conflict');
     await waitForIndicatorState(conflictFile, true, 'after recreating conflict');

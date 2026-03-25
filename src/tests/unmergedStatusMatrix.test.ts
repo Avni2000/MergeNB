@@ -1,10 +1,10 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
 import * as vscode from 'vscode';
 import * as gitIntegration from '../gitIntegration';
 import { NotebookConflictResolver } from '../resolver';
 import { readTestConfig } from './testHarness';
+import { git, gitAllowFailure, hashBlob } from './gitTestUtils';
 
 type GitStage = '1' | '2' | '3';
 type StatusSpec = {
@@ -55,25 +55,6 @@ const STATUS_SPECS: Record<gitIntegration.GitUnmergedStatus, StatusSpec> = {
     },
 };
 
-function git(cwd: string, args: string[], input?: string): string {
-    return execFileSync('git', args, {
-        cwd,
-        encoding: 'utf8',
-        input,
-        stdio: ['pipe', 'pipe', 'pipe'],
-    });
-}
-
-function gitAllowFailure(cwd: string, args: string[], input?: string): string {
-    try {
-        return git(cwd, args, input);
-    } catch (error: any) {
-        const stdout = typeof error?.stdout === 'string' ? error.stdout : '';
-        const stderr = typeof error?.stderr === 'string' ? error.stderr : '';
-        return `${stdout}\n${stderr}`.trim();
-    }
-}
-
 function notebookContent(label: string): string {
     return `${JSON.stringify({
         nbformat: 4,
@@ -87,10 +68,6 @@ function notebookContent(label: string): string {
             },
         ],
     }, null, 2)}\n`;
-}
-
-function hashBlob(cwd: string, content: string): string {
-    return git(cwd, ['hash-object', '-w', '--stdin'], content).trim();
 }
 
 function setUnmergedIndexEntries(
