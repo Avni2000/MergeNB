@@ -337,8 +337,9 @@ export class ConflictResolverWebServer {
         if (pending) {
             clearTimeout(pending.timeout);
             this.pendingConnections.delete(sessionId);
+            pending.reject(new Error('Session closed before WebSocket connected'));
         }
-        
+
         logger.debug(`[MergeNB Web] Session closed: ${sessionId}`);
     }
 
