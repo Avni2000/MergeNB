@@ -335,7 +335,14 @@ async function setupConflictResolverHeadless(
             throw new Error(`Expected header 'MergeNB', got '${title}'`);
         }
 
-        await connectionPromise;
+        // Wait for browser 'ready' message with timeout to prevent infinite hang
+        const connectionTimeoutMs = 30000;
+        await Promise.race([
+            connectionPromise,
+            new Promise<void>((_, reject) =>
+                setTimeout(() => reject(new Error(`Browser connection timeout after ${connectionTimeoutMs}ms`)), connectionTimeoutMs)
+            ),
+        ]);
 
         await sleep(options.postHeaderDelayMs ?? 1000);
 
