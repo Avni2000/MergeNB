@@ -41,6 +41,13 @@ import {
     writeTestConfig,
     cleanup,
 } from './repoSetup';
+import {
+    prepareIsolatedConfigPath,
+    cleanupIsolatedConfigPath,
+    resolveNotebookTripletPaths,
+} from './testRunnerShared';
+import { runHeadlessTest } from './headlessTestRun';
+import { getWebServer } from '../web/webServer';
 
 // @clack/prompts is ESM-only, so we load it lazily via dynamic import.
 let _clack: any;
@@ -273,21 +280,6 @@ interface RunResult {
     workspacePath?: string;
 }
 
-function resolveNotebookTripletPaths(test: TestDef): [string, string, string] {
-    const testDir = path.resolve(__dirname, '../../test');
-    const [baseFile, currentFile, incomingFile] = test.notebooks.map(n =>
-        path.join(testDir, n),
-    ) as [string, string, string];
-
-    for (const f of [baseFile, currentFile, incomingFile]) {
-        if (!fs.existsSync(f)) {
-            throw new Error(`Notebook not found: ${f}`);
-        }
-    }
-
-    return [baseFile, currentFile, incomingFile];
-}
-
 function isCodeCliAvailable(): boolean {
     const result = spawnSync('code', ['--version'], { stdio: 'ignore' });
     return !result.error && result.status === 0;
@@ -348,12 +340,20 @@ async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
     const start = Date.now();
     const extensionDevelopmentPath = path.resolve(__dirname, '../..');
     let workspacePath: string | undefined;
+    const configInfo = prepareIsolatedConfigPath(test.id);
+    const previousTestMode = process.env.MERGENB_TEST_MODE;
+    const previousConfigPath = process.env.MERGENB_CONFIG_PATH;
+    const previousTestConfigPath = process.env.MERGENB_TEST_CONFIG_PATH;
     const testEnv: NodeJS.ProcessEnv = { ...process.env, MERGENB_TEST_MODE: 'true' };
     // Some environments set this globally, which makes the VS Code binary run
     // in Node mode and reject normal Electron/Code CLI flags.
     testEnv.ELECTRON_RUN_AS_NODE = undefined;
+    testEnv.MERGENB_CONFIG_PATH = configInfo.configPath;
+    testEnv.MERGENB_TEST_CONFIG_PATH = configInfo.testConfigPath;
     const vscodeVersion = process.env.VSCODE_VERSION?.trim();
     process.env.MERGENB_TEST_MODE = 'true';
+    process.env.MERGENB_CONFIG_PATH = configInfo.configPath;
+    process.env.MERGENB_TEST_CONFIG_PATH = configInfo.testConfigPath;
 
     try {
         const [baseFile, currentFile, incomingFile] = resolveNotebookTripletPaths(test);
@@ -389,6 +389,22 @@ async function runAutomatedTest(test: AutomatedTestDef): Promise<RunResult> {
         };
     } finally {
         if (workspacePath) cleanup(workspacePath);
+        cleanupIsolatedConfigPath(configInfo.configRoot);
+        if (previousTestMode === undefined) {
+            delete process.env.MERGENB_TEST_MODE;
+        } else {
+            process.env.MERGENB_TEST_MODE = previousTestMode;
+        }
+        if (previousConfigPath === undefined) {
+            delete process.env.MERGENB_CONFIG_PATH;
+        } else {
+            process.env.MERGENB_CONFIG_PATH = previousConfigPath;
+        }
+        if (previousTestConfigPath === undefined) {
+            delete process.env.MERGENB_TEST_CONFIG_PATH;
+        } else {
+            process.env.MERGENB_TEST_CONFIG_PATH = previousTestConfigPath;
+        }
     }
 }
 
@@ -454,11 +470,11 @@ async function runManualSandbox(test: ManualSandboxDef): Promise<RunResult> {
     }
 }
 
-async function runTest(test: TestDef): Promise<RunResult> {
+async function runSequentialTest(test: TestDef): Promise<RunResult> {
     if (isManualTest(test)) {
         return runManualSandbox(test);
     }
-    return runAutomatedTest(test);
+    return runAutomatedTest(test as AutomatedTestDef);
 }
 
 function formatDuration(ms: number): string {
@@ -468,20 +484,61 @@ function formatDuration(ms: number): string {
 
 async function runAll(tests: TestDef[]): Promise<void> {
     const totalStart = Date.now();
-    const results: RunResult[] = [];
+
+    // Split into headless (parallelizable) and sequential (VS Code / manual) tests
+    const headlessTests = tests.filter(
+        (t): t is AutomatedTestDef => isAutomatedTest(t) && !t.requiresVSCode,
+    );
+    const sequentialTests = tests.filter(
+        t => isManualTest(t) || (isAutomatedTest(t) && t.requiresVSCode),
+    );
 
     console.log();
     console.log(pc.bold(`Running ${tests.length} entr${tests.length > 1 ? 'ies' : 'y'}…`));
+    if (headlessTests.length > 0) {
+        console.log(pc.dim(`  ${headlessTests.length} headless (parallel) + ${sequentialTests.length} sequential`));
+    }
     console.log(pc.dim('─'.repeat(60)));
 
+    // Run all headless tests in parallel via Promise.all
+    const headlessResultsMap = new Map<string, RunResult>();
+    if (headlessTests.length > 0) {
+        // Start the shared web server once before fanning out to avoid a race
+        // where multiple parallel workers each try to start it concurrently.
+        const sharedServer = getWebServer();
+        if (!sharedServer.isRunning()) {
+            await sharedServer.start();
+        }
+        console.log(`\n${pc.dim('Running headless tests in parallel…')}`);
+        const headlessResults = await Promise.all(
+            headlessTests.map(async (test): Promise<RunResult> => {
+                const result = await runHeadlessTest(test);
+                return { test, passed: result.passed, error: result.error, durationMs: result.durationMs };
+            }),
+        );
+        for (const r of headlessResults) {
+            headlessResultsMap.set(r.test.id, r);
+        }
+    }
+
+    // Run sequential tests one at a time
+    const sequentialResultsMap = new Map<string, RunResult>();
+    for (const test of sequentialTests) {
+        const result = await runSequentialTest(test);
+        sequentialResultsMap.set(test.id, result);
+    }
+
+    // Print results in original order
+    const results: RunResult[] = [];
     for (let i = 0; i < tests.length; i++) {
         const test = tests[i];
-        const prefix = pc.dim(`[${i + 1}/${tests.length}]`);
-        const typeLabel = isManualTest(test) ? 'manual' : 'automated';
-        console.log(`\n${prefix} ${pc.cyan(test.id)} ${pc.dim('·')} ${test.description} ${pc.dim(`[${typeLabel}]`)}`);
-
-        const result = await runTest(test);
+        const result = headlessResultsMap.get(test.id) ?? sequentialResultsMap.get(test.id)!;
         results.push(result);
+        const prefix = pc.dim(`[${i + 1}/${tests.length}]`);
+        const typeLabel = isManualTest(test)
+            ? 'manual'
+            : ((isAutomatedTest(test) && test.requiresVSCode) ? 'vscode' : 'headless');
+        console.log(`\n${prefix} ${pc.cyan(test.id)} ${pc.dim('·')} ${test.description} ${pc.dim(`[${typeLabel}]`)}`);
 
         if (result.passed) {
             console.log(
@@ -525,9 +582,16 @@ async function runAll(tests: TestDef[]): Promise<void> {
 
     console.log();
 
+    // Stop the web server if it was started by headless tests to ensure the process can exit
+    if (getWebServer().isRunning()) {
+        await getWebServer().stop();
+    }
+
     if (failed > 0) {
         process.exit(1);
     }
+
+    process.exit(0);
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────

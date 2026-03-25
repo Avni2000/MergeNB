@@ -103,11 +103,19 @@ export async function run() {
 Integration tests should temporarily disable settings that could interfere (e.g. `autoResolve`).
 
 ```typescript
-const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
-const prev = mergeNBConfig.get('autoResolve.executionCount');
-await mergeNBConfig.update('autoResolve.executionCount', false, vscode.ConfigurationTarget.Workspace);
-// ... run test ...
-await mergeNBConfig.update('autoResolve.executionCount', prev, vscode.ConfigurationTarget.Workspace);
+import {
+  readSettingsFileSnapshot,
+  restoreSettingsFileSnapshot,
+  writeSettingsFile,
+} from './settingsFile';
+
+const snapshot = readSettingsFileSnapshot();
+try {
+  writeSettingsFile({ 'autoResolve.executionCount': false });
+  // ... run test ...
+} finally {
+  restoreSettingsFileSnapshot(snapshot);
+}
 ```
 
 ---

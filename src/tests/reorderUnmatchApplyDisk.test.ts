@@ -3,7 +3,6 @@
  * @description Integration test for unmatch -> resolve -> apply disk output.
  */
 
-import * as vscode from 'vscode';
 import type { Page } from 'playwright';
 import {
     verifyAllConflictsMatchSide,
@@ -19,6 +18,11 @@ import {
     setupConflictResolver,
 } from './testHarness';
 import { validateNotebookStructure } from './testHelpers';
+import {
+    readSettingsFileSnapshot,
+    restoreSettingsFileSnapshot,
+    writeSettingsFile,
+} from './settingsFile';
 
 function withRowIndex<T extends { rowIndex: number }>(cell: T, rowIndex: number): T {
     return { ...cell, rowIndex };
@@ -29,17 +33,15 @@ export async function run(): Promise<void> {
 
     let browser;
     let page: Page | undefined;
-    const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
-    const previousAutoResolveExecutionCount = mergeNBConfig.get<boolean>('autoResolve.executionCount');
-    const previousStripOutputs = mergeNBConfig.get<boolean>('autoResolve.stripOutputs');
-    const previousAutoResolveWhitespace = mergeNBConfig.get<boolean>('autoResolve.whitespace');
-    const previousShowBaseColumn = mergeNBConfig.get<boolean>('ui.showBaseColumn');
+    const settingsSnapshot = readSettingsFileSnapshot();
 
     try {
-        await mergeNBConfig.update('autoResolve.executionCount', false, vscode.ConfigurationTarget.Workspace);
-        await mergeNBConfig.update('autoResolve.stripOutputs', false, vscode.ConfigurationTarget.Workspace);
-        await mergeNBConfig.update('autoResolve.whitespace', false, vscode.ConfigurationTarget.Workspace);
-        await mergeNBConfig.update('ui.showBaseColumn', true, vscode.ConfigurationTarget.Workspace);
+        writeSettingsFile({
+            'autoResolve.executionCount': false,
+            'autoResolve.stripOutputs': false,
+            'autoResolve.whitespace': false,
+            'ui.showBaseColumn': true,
+        });
 
         const config = readTestConfig();
         const session = await setupConflictResolver(config);
@@ -175,26 +177,7 @@ export async function run(): Promise<void> {
 
         console.log('\n=== TEST PASSED ===');
     } finally {
-        await mergeNBConfig.update(
-            'autoResolve.executionCount',
-            previousAutoResolveExecutionCount,
-            vscode.ConfigurationTarget.Workspace
-        );
-        await mergeNBConfig.update(
-            'autoResolve.stripOutputs',
-            previousStripOutputs,
-            vscode.ConfigurationTarget.Workspace
-        );
-        await mergeNBConfig.update(
-            'autoResolve.whitespace',
-            previousAutoResolveWhitespace,
-            vscode.ConfigurationTarget.Workspace
-        );
-        await mergeNBConfig.update(
-            'ui.showBaseColumn',
-            previousShowBaseColumn,
-            vscode.ConfigurationTarget.Workspace
-        );
+        restoreSettingsFileSnapshot(settingsSnapshot);
         if (page) await page.close();
         if (browser) await browser.close();
     }

@@ -95,10 +95,17 @@ export function selectNonConflictMergedCell(
 
 /**
  * Convert cell source back to the array format expected by nbformat.
+ * Avoids producing empty strings at the end when source ends with \n.
  */
 export function sourceToCellFormat(source: string): string[] {
+    if (!source) return [];
     const lines = source.split('\n');
-    return lines.map((line, i) => i < lines.length - 1 ? line + '\n' : line);
+    const result = lines.map((line, i) => i < lines.length - 1 ? line + '\n' : line);
+    // Remove empty string at the end if source ended with \n (split produces ["a", "b", ""])
+    if (result.length > 0 && result[result.length - 1] === '') {
+        result.pop();
+    }
+    return result;
 }
 
 /**

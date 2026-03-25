@@ -3,7 +3,6 @@
  * @description Integration test covering undo/redo for conflict resolver actions.
  */
 
-import * as vscode from 'vscode';
 import type { Page, Locator } from 'playwright';
 import {
     clickHistoryUndo,
@@ -17,6 +16,11 @@ import {
     readTestConfig,
     setupConflictResolver,
 } from './testHarness';
+import {
+    readSettingsFileSnapshot,
+    restoreSettingsFileSnapshot,
+    writeSettingsFile,
+} from './settingsFile';
 
 async function pickBranchButton(row: Locator): Promise<{ selector: string; side: MergeSide }> {
     const options: Array<{ selector: string; side: MergeSide }> = [
@@ -62,16 +66,15 @@ export async function run(): Promise<void> {
     let browser;
     let page: Page | undefined;
     const primaryModifier = process.platform === 'darwin' ? 'Meta' : 'Control';
-    const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
-    const previousAutoResolveExecutionCount = mergeNBConfig.get<boolean>('autoResolve.executionCount');
-    const previousStripOutputs = mergeNBConfig.get<boolean>('autoResolve.stripOutputs');
-    const previousAutoResolveWhitespace = mergeNBConfig.get<boolean>('autoResolve.whitespace');
+    const settingsSnapshot = readSettingsFileSnapshot();
 
     try {
         // Keep manual undo/redo scenarios deterministic despite auto-resolve defaults.
-        await mergeNBConfig.update('autoResolve.executionCount', false, vscode.ConfigurationTarget.Workspace);
-        await mergeNBConfig.update('autoResolve.stripOutputs', false, vscode.ConfigurationTarget.Workspace);
-        await mergeNBConfig.update('autoResolve.whitespace', false, vscode.ConfigurationTarget.Workspace);
+        writeSettingsFile({
+            'autoResolve.executionCount': false,
+            'autoResolve.stripOutputs': false,
+            'autoResolve.whitespace': false,
+        });
 
         const config = readTestConfig();
         const session = await setupConflictResolver(config);
@@ -212,21 +215,7 @@ export async function run(): Promise<void> {
 
         console.log('\n=== TEST PASSED ===');
     } finally {
-        await mergeNBConfig.update(
-            'autoResolve.executionCount',
-            previousAutoResolveExecutionCount,
-            vscode.ConfigurationTarget.Workspace
-        );
-        await mergeNBConfig.update(
-            'autoResolve.stripOutputs',
-            previousStripOutputs,
-            vscode.ConfigurationTarget.Workspace
-        );
-        await mergeNBConfig.update(
-            'autoResolve.whitespace',
-            previousAutoResolveWhitespace,
-            vscode.ConfigurationTarget.Workspace
-        );
+        restoreSettingsFileSnapshot(settingsSnapshot);
         if (page) await page.close();
         if (browser) await browser.close();
     }

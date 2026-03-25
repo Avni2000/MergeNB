@@ -10,8 +10,12 @@
  * 3. The highlighted span text matches a real Python keyword (def/return/import/etc.).
  */
 
-import * as vscode from 'vscode';
 import { readTestConfig, setupConflictResolver } from './testHarness';
+import {
+    readSettingsFileSnapshot,
+    restoreSettingsFileSnapshot,
+    writeSettingsFile,
+} from './settingsFile';
 
 export async function run(): Promise<void> {
     console.log('Starting syntax highlighting integration test...');
@@ -19,13 +23,13 @@ export async function run(): Promise<void> {
     let browser: import('playwright').Browser | undefined;
     let page: import('playwright').Page | undefined;
 
-    const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
-    const previousAutoResolveExecutionCount = mergeNBConfig.get<boolean>('autoResolve.executionCount');
-    const previousStripOutputs = mergeNBConfig.get<boolean>('autoResolve.stripOutputs');
+    const settingsSnapshot = readSettingsFileSnapshot();
 
     try {
-        await mergeNBConfig.update('autoResolve.executionCount', false, vscode.ConfigurationTarget.Workspace);
-        await mergeNBConfig.update('autoResolve.stripOutputs', false, vscode.ConfigurationTarget.Workspace);
+        writeSettingsFile({
+            'autoResolve.executionCount': false,
+            'autoResolve.stripOutputs': false,
+        });
 
         const config = readTestConfig();
         const session = await setupConflictResolver(config);
@@ -94,12 +98,7 @@ export async function run(): Promise<void> {
 
         console.log('✓ Syntax highlighting test passed');
     } finally {
-        try {
-            await mergeNBConfig.update('autoResolve.executionCount', previousAutoResolveExecutionCount, vscode.ConfigurationTarget.Workspace);
-        } catch { /* ignore */ }
-        try {
-            await mergeNBConfig.update('autoResolve.stripOutputs', previousStripOutputs, vscode.ConfigurationTarget.Workspace);
-        } catch { /* ignore */ }
+        restoreSettingsFileSnapshot(settingsSnapshot);
 
         if (page) {
             try { await page.close(); } catch { /* ignore */ }

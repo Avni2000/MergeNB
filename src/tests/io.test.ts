@@ -6,7 +6,6 @@
  * current/incoming choices, with optional deletion, then verifies the written notebook.
  */
 
-import * as vscode from 'vscode';
 import {
     validateNotebookStructure,
 } from './testHelpers';
@@ -27,22 +26,26 @@ import {
     applyResolutionAndReadNotebook,
     assertNotebookMatches,
 } from './testHarness';
+import {
+    readSettingsFileSnapshot,
+    restoreSettingsFileSnapshot,
+    writeSettingsFile,
+} from './settingsFile';
 
 export async function run(): Promise<void> {
     console.log('Starting MergeNB VS Code Integration Test...');
 
     let browser;
     let page;
-    const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
-    const previousAutoResolveExecutionCount = mergeNBConfig.get<boolean>('autoResolve.executionCount');
-    const previousStripOutputs = mergeNBConfig.get<boolean>('autoResolve.stripOutputs');
-    const previousAutoResolveWhitespace = mergeNBConfig.get<boolean>('autoResolve.whitespace');
+    const settingsSnapshot = readSettingsFileSnapshot();
 
     try {
         // Keep manual-resolution fixtures deterministic despite auto-resolve defaults.
-        await mergeNBConfig.update('autoResolve.executionCount', false, vscode.ConfigurationTarget.Workspace);
-        await mergeNBConfig.update('autoResolve.stripOutputs', false, vscode.ConfigurationTarget.Workspace);
-        await mergeNBConfig.update('autoResolve.whitespace', false, vscode.ConfigurationTarget.Workspace);
+        writeSettingsFile({
+            'autoResolve.executionCount': false,
+            'autoResolve.stripOutputs': false,
+            'autoResolve.whitespace': false,
+        });
 
         // Setup: Read config and open conflict file
         const config = readTestConfig();
@@ -259,21 +262,7 @@ export async function run(): Promise<void> {
         console.log('✓ Notebook structure valid');
 
     } finally {
-        await mergeNBConfig.update(
-            'autoResolve.executionCount',
-            previousAutoResolveExecutionCount,
-            vscode.ConfigurationTarget.Workspace
-        );
-        await mergeNBConfig.update(
-            'autoResolve.stripOutputs',
-            previousStripOutputs,
-            vscode.ConfigurationTarget.Workspace
-        );
-        await mergeNBConfig.update(
-            'autoResolve.whitespace',
-            previousAutoResolveWhitespace,
-            vscode.ConfigurationTarget.Workspace
-        );
+        restoreSettingsFileSnapshot(settingsSnapshot);
         if (page) await page.close();
         if (browser) await browser.close();
     }

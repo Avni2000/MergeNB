@@ -7,11 +7,15 @@
  */
 
 import type { Locator } from 'playwright';
-import * as vscode from 'vscode';
 import {
     readTestConfig,
     setupConflictResolver,
 } from './testHarness';
+import {
+    readSettingsFileSnapshot,
+    restoreSettingsFileSnapshot,
+    writeSettingsFile,
+} from './settingsFile';
 
 type RenderMimeTestMode = 'full' | 'markdownOnly';
 
@@ -100,13 +104,13 @@ export async function run(): Promise<void> {
 
     let browser: import('playwright').Browser | undefined;
     let page: import('playwright').Page | undefined;
-    const mergeNBConfig = vscode.workspace.getConfiguration('mergeNB');
-    const previousHideOutputs = mergeNBConfig.get<boolean>('ui.hideNonConflictOutputs');
-    const previousStripOutputs = mergeNBConfig.get<boolean>('autoResolve.stripOutputs');
+    const settingsSnapshot = readSettingsFileSnapshot();
 
     try {
-        await mergeNBConfig.update('ui.hideNonConflictOutputs', false, vscode.ConfigurationTarget.Workspace);
-        await mergeNBConfig.update('autoResolve.stripOutputs', false, vscode.ConfigurationTarget.Workspace);
+        writeSettingsFile({
+            'ui.hideNonConflictOutputs': false,
+            'autoResolve.stripOutputs': false,
+        });
 
         const config = readTestConfig();
         const mode: RenderMimeTestMode = config.params?.mode === 'markdownOnly' ? 'markdownOnly' : 'full';
@@ -258,25 +262,7 @@ export async function run(): Promise<void> {
         console.log('✓ Rendermime rendered text/html/png/svg/json outputs');
         console.log('✓ Unsupported MIME output used fallback text');
     } finally {
-        try {
-            await mergeNBConfig.update(
-                'ui.hideNonConflictOutputs',
-                previousHideOutputs,
-                vscode.ConfigurationTarget.Workspace
-            );
-        } catch (err) {
-            console.warn('Failed to restore mergeNB.ui.hideNonConflictOutputs:', err);
-        }
-
-        try {
-            await mergeNBConfig.update(
-                'autoResolve.stripOutputs',
-                previousStripOutputs,
-                vscode.ConfigurationTarget.Workspace
-            );
-        } catch (err) {
-            console.warn('Failed to restore mergeNB.autoResolve.stripOutputs:', err);
-        }
+        restoreSettingsFileSnapshot(settingsSnapshot);
 
         if (page) {
             try {
