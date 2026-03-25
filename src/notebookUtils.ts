@@ -101,7 +101,7 @@ export function sourceToCellFormat(source: string): string[] {
     if (!source) return [];
     const lines = source.split('\n');
     const result = lines.map((line, i) => i < lines.length - 1 ? line + '\n' : line);
-    // Remove empty string at the end if source ended with \n (split produces ["a\n", "b\n", ""])
+    // Remove empty string at the end if source ended with \n (split produces ["a", "b", ""])
     if (result.length > 0 && result[result.length - 1] === '') {
         result.pop();
     }
