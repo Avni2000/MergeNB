@@ -36,9 +36,13 @@ export function cleanupIsolatedConfigPath(configRoot: string): void {
 
 export function resolveNotebookTripletPaths(test: Pick<TestDef, 'notebooks'>): [string, string, string] {
     const testDir = path.resolve(__dirname, '../../test');
-    const [baseFile, currentFile, incomingFile] = test.notebooks.map(n =>
-        path.join(testDir, n),
-    ) as [string, string, string];
+    const [baseFile, currentFile, incomingFile] = test.notebooks.map(n => {
+        const resolved = path.resolve(testDir, n);
+        if (!resolved.startsWith(testDir + path.sep) && resolved !== testDir) {
+            throw new Error(`Notebook path escapes test directory: ${n}`);
+        }
+        return resolved;
+    }) as [string, string, string];
 
     for (const f of [baseFile, currentFile, incomingFile]) {
         if (!fs.existsSync(f)) {
