@@ -36,6 +36,10 @@ export async function runHeadlessTest(test: AutomatedTestDef): Promise<HeadlessR
             { configPath: configInfo.configPath, testConfigPath: configInfo.testConfigPath },
             async () => {
                 const testModulePath = path.resolve(__dirname, test.testModule);
+                // Clear the test module from require.cache to ensure fresh module load.
+                // Note: This doesn't clear dependencies already loaded by the test module,
+                // so it's a best-effort isolation. True isolation is provided by
+                // AsyncLocalStorage context above for config paths.
                 delete require.cache[require.resolve(testModulePath)];
                 const testModule = require(testModulePath);
                 if (!testModule?.run || typeof testModule.run !== 'function') {
