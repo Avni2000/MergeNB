@@ -503,6 +503,12 @@ async function runAll(tests: TestDef[]): Promise<void> {
     // Run all headless tests in parallel via Promise.all
     const headlessResultsMap = new Map<string, RunResult>();
     if (headlessTests.length > 0) {
+        // Start the shared web server once before fanning out to avoid a race
+        // where multiple parallel workers each try to start it concurrently.
+        const sharedServer = getWebServer();
+        if (!sharedServer.isRunning()) {
+            await sharedServer.start();
+        }
         console.log(`\n${pc.dim('Running headless tests in parallel…')}`);
         const headlessResults = await Promise.all(
             headlessTests.map(async (test): Promise<RunResult> => {
