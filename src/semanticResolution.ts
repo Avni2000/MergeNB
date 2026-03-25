@@ -7,7 +7,7 @@ import type { Notebook, NotebookCell, NotebookSemanticConflict } from './types';
 import type { ResolvedRow } from './web/webTypes';
 import type { AutoResolveResult } from './conflictDetector';
 import type { MergeNBSettings } from './settings';
-import { selectNonConflictMergedCell, stableStringify } from './notebookUtils';
+import { selectNonConflictMergedCell, stableStringify, sourceToCellFormat } from './notebookUtils';
 import { renumberExecutionCounts } from './notebookParser';
 
 export type PreferredSide = 'base' | 'current' | 'incoming';
@@ -219,7 +219,7 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
             const cellType = referenceCell.cell_type || 'code';
             cellToUse = JSON.parse(JSON.stringify(referenceCell)) as NotebookCell;
             cellToUse.cell_type = cellType;
-            cellToUse.source = resolvedContent.split(/(?<=\n)/);
+            cellToUse.source = sourceToCellFormat(resolvedContent);
 
             if (cellType === 'code') {
                 if (settings.stripOutputs) {
