@@ -280,13 +280,33 @@ async function setupConflictResolverHeadless(
     };
 
     const handleMessage = (message: unknown): void => {
+        // Validate message structure before casting to avoid undefined property access
+        if (!message || typeof message !== 'object') {
+            console.error('[TestHarness] Invalid message format (not an object):', message);
+            return;
+        }
         const msg = message as BrowserToExtensionMessage;
+        if (typeof msg.command !== 'string') {
+            console.error('[TestHarness] Invalid message format (no command property):', message);
+            return;
+        }
         switch (msg.command) {
             case 'ready':
                 sendConflictData();
                 break;
             case 'resolve':
-                void handleResolution(msg);
+                if ('resolvedRows' in msg) {
+                    void handleResolution(msg as Extract<BrowserToExtensionMessage, { command: 'resolve' }>)
+                        .catch(err => {
+                            console.error('[TestHarness] Resolution handler failed:', err);
+                            server.sendMessage(sessionId, {
+                                type: 'resolution-error',
+                                message: `Resolution handler error: ${err}`,
+                            });
+                        });
+                } else {
+                    console.error('[TestHarness] Resolve message missing resolvedRows');
+                }
                 break;
             case 'cancel':
                 server.closeSession(sessionId);
