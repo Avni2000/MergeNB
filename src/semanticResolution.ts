@@ -83,7 +83,9 @@ function isConsistentTakeAllSelection(
 ): boolean {
     const rowsWithResolution = resolvedRows.filter(
         (row): row is ResolvedRow & { resolution: { choice: string; resolvedContent: string } } =>
-            !!row.resolution
+            !!row.resolution &&
+            typeof (row.resolution as any).choice === 'string' &&
+            typeof (row.resolution as any).resolvedContent === 'string'
     );
 
     if (rowsWithResolution.length === 0) {
