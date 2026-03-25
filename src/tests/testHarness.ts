@@ -357,6 +357,7 @@ async function setupConflictResolverHeadless(
             page,
         };
     } catch (err) {
+        server.closeSession(sessionId);
         await browser.close();
         throw err;
     }
