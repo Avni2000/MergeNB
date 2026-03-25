@@ -32,7 +32,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 18
+          node-version: 22
 
       - name: Install apt deps (Xvfb)
         if: runner.os == 'Linux'
