@@ -112,15 +112,12 @@ function readConfigFileSettings(): Partial<MergeNBSettings> {
 
     const result: Partial<MergeNBSettings> = {};
 
-    const pickBoolean = (flatKey: string, nestedValue: unknown): boolean | undefined => {
-        if (typeof data[flatKey] === 'boolean') return data[flatKey] as boolean;
+    const pickBoolean = (_flatKey: string, nestedValue: unknown): boolean | undefined => {
         if (typeof nestedValue === 'boolean') return nestedValue as boolean;
         return undefined;
     };
 
-    const pickTheme = (flatKey: string, nestedValue: unknown): 'dark' | 'light' | undefined => {
-        const flat = data[flatKey];
-        if (flat === 'dark' || flat === 'light') return flat;
+    const pickTheme = (_flatKey: string, nestedValue: unknown): 'dark' | 'light' | undefined => {
         if (nestedValue === 'dark' || nestedValue === 'light') return nestedValue;
         return undefined;
     };
