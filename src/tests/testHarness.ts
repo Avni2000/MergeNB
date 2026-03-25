@@ -238,7 +238,7 @@ async function setupConflictResolverHeadless(
             const shouldRenumber = message.renumberExecutionCounts ?? false;
             let resolvedNotebook;
 
-            if (!message.resolvedRows || message.resolvedRows.length === 0) {
+            if (message.resolvedRows == null) {
                 if (!autoResolveResult) {
                     throw new Error('No resolved rows provided.');
                 }
