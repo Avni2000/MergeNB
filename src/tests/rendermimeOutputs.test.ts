@@ -7,6 +7,7 @@
  */
 
 import type { Locator } from 'playwright';
+import * as logger from '../logger';
 import {
     readTestConfig,
     setupConflictResolver,
@@ -100,7 +101,7 @@ async function assertMarkdownKatexRendered(page: import('playwright').Page): Pro
 }
 
 export async function run(): Promise<void> {
-    console.log('Starting rendermime outputs integration test...');
+    logger.info('Starting rendermime outputs integration test...');
 
     let browser: import('playwright').Browser | undefined;
     let page: import('playwright').Page | undefined;
@@ -125,9 +126,9 @@ export async function run(): Promise<void> {
         }
 
         await assertMarkdownLogoRendered(page);
-        console.log('✓ Markdown local SVG asset rendered through notebook-asset endpoint');
+        logger.info('✓ Markdown local SVG asset rendered through notebook-asset endpoint');
         await assertMarkdownKatexRendered(page);
-        console.log('✓ Markdown KaTeX content rendered');
+        logger.info('✓ Markdown KaTeX content rendered');
         if (mode === 'markdownOnly') {
             return;
         }
@@ -161,7 +162,7 @@ export async function run(): Promise<void> {
         await incomingConflictOutputs.waitFor({ timeout: 10000 });
         await assertSvgMarkerRendered(currentConflictOutputs, 'SVG_CONFLICT_CURRENT');
         await assertSvgMarkerRendered(incomingConflictOutputs, 'SVG_CONFLICT_INCOMING');
-        console.log('✓ Same MIME type with different SVG payloads surfaced as rich conflict output');
+        logger.info('✓ Same MIME type with different SVG payloads surfaced as rich conflict output');
 
         const inputPayloadConflictRow = conflictRows.filter({
             hasText: 'MIME_INPUT_PAYLOAD_CONFLICT_SENTINEL',
@@ -188,7 +189,7 @@ export async function run(): Promise<void> {
         if (!incomingInputConflictSource.includes('INPUT_SVG_INCOMING')) {
             throw new Error(`Expected incoming input payload marker, got "${incomingInputConflictSource}"`);
         }
-        console.log('✓ Input payload differences surfaced as source conflict');
+        logger.info('✓ Input payload differences surfaced as source conflict');
 
         const mimeRow = page.locator('.merge-row.identical-row').filter({
             hasText: 'MIME_OUTPUT_SENTINEL',
@@ -259,8 +260,8 @@ export async function run(): Promise<void> {
             throw new Error(`Expected unsupported MIME fallback text, got "${fallbackText}"`);
         }
 
-        console.log('✓ Rendermime rendered text/html/png/svg/json outputs');
-        console.log('✓ Unsupported MIME output used fallback text');
+        logger.info('✓ Rendermime rendered text/html/png/svg/json outputs');
+        logger.info('✓ Unsupported MIME output used fallback text');
     } finally {
         restoreSettingsFileSnapshot(settingsSnapshot);
 
@@ -268,7 +269,7 @@ export async function run(): Promise<void> {
             try {
                 await page.close();
             } catch (err) {
-                console.warn('Failed to close Playwright page:', err);
+                logger.warn('Failed to close Playwright page:', err);
             }
         }
 
@@ -276,7 +277,7 @@ export async function run(): Promise<void> {
             try {
                 await browser.close();
             } catch (err) {
-                console.warn('Failed to close Playwright browser:', err);
+                logger.warn('Failed to close Playwright browser:', err);
             }
         }
     }

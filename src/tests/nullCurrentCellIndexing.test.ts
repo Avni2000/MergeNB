@@ -11,9 +11,10 @@
 import * as assert from 'assert';
 import { applyAutoResolutions } from '../conflictDetector';
 import type { NotebookSemanticConflict, Notebook, SemanticConflict } from '../types';
+import * as logger from '../logger';
 
 export async function run(): Promise<void> {
-    console.log('[nullCurrentCellIndexing] Starting test...');
+    logger.info('[nullCurrentCellIndexing] Starting test...');
 
     // -------------------------------------------------------------------------
     // Setup: Delete/Modify conflict
@@ -98,7 +99,7 @@ export async function run(): Promise<void> {
         theme: 'dark',
     });
 
-    console.log('[nullCurrentCellIndexing] Auto-resolution result:', {
+    logger.info('[nullCurrentCellIndexing] Auto-resolution result:', {
         autoResolvedCount: result.autoResolvedCount,
         remainingConflicts: result.remainingConflicts.length,
         resolvedNotebook: result.resolvedNotebook,
@@ -128,7 +129,7 @@ export async function run(): Promise<void> {
     const cell1 = result.resolvedNotebook?.cells[1];
     const cell2 = result.resolvedNotebook?.cells[2];
 
-    console.log('[nullCurrentCellIndexing] Cell execution counts:', {
+    logger.info('[nullCurrentCellIndexing] Cell execution counts:', {
         cell0: cell0?.execution_count,
         cell1: cell1?.execution_count,
         cell2: cell2?.execution_count,
@@ -152,5 +153,5 @@ export async function run(): Promise<void> {
         'Cell 2 execution_count should be null (was in conflict at incomingCellIndex 2)'
     );
 
-    console.log('[nullCurrentCellIndexing] ✓ Test passed');
+    logger.info('[nullCurrentCellIndexing] ✓ Test passed');
 }

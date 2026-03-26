@@ -9,6 +9,7 @@ import type { AutoResolveResult } from './conflictDetector';
 import type { MergeNBSettings } from './settings';
 import { selectNonConflictMergedCell, stableStringify, sourceToCellFormat } from './notebookUtils';
 import { renumberExecutionCounts } from './notebookParser';
+import * as logger from './logger';
 
 export type PreferredSide = 'base' | 'current' | 'incoming';
 
@@ -212,7 +213,7 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
             if (!referenceCell) {
                 // User selected a side but that cell doesn't exist in that branch.
                 // Skip the cell to avoid adding undefined cells to the resolved notebook.
-                console.warn(`[semanticResolution] Skipping row: user chose '${choice}' but cell not found in that branch`);
+                logger.warn(`[semanticResolution] Skipping row: user chose '${choice}' but cell not found in that branch`);
                 continue;
             }
 

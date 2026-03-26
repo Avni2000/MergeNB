@@ -6,6 +6,7 @@
 import type { Page } from 'playwright';
 import { waitForResolvedCount } from './integrationUtils';
 import { readTestConfig, setupConflictResolver } from './testHarness';
+import * as logger from '../logger';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,
@@ -38,7 +39,7 @@ async function findUnmatchButtonWhileScrolling(page: Page): Promise<{ found: boo
 }
 
 export async function run(): Promise<void> {
-    console.log('Starting MergeNB Non-Reorder Unmatch Guard Test...');
+    logger.info('Starting MergeNB Non-Reorder Unmatch Guard Test...');
 
     let browser;
     let page: Page | undefined;
@@ -69,8 +70,8 @@ export async function run(): Promise<void> {
             );
         }
 
-        console.log('  \u2713 No Unmatch button exposed for non-reorder fixtures');
-        console.log('\n=== TEST PASSED ===');
+        logger.info('  \u2713 No Unmatch button exposed for non-reorder fixtures');
+        logger.info('\n=== TEST PASSED ===');
     } finally {
         restoreSettingsFileSnapshot(settingsSnapshot);
         if (page) await page.close();

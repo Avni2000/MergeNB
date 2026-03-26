@@ -21,6 +21,7 @@ import {
     type TakeAllChoice,
 } from './resolverStore';
 import { buildMergeRowsFromSemantic } from './mergeRowBuilder';
+import * as logger from '../../logger';
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
@@ -127,7 +128,7 @@ export function ConflictResolver({
             .catch(err => {
                 if (cancelled) return;
                 setLanguageSupport(null);
-                console.warn('[MergeNB] Failed to load CodeMirror language support:', err);
+                logger.warn('[MergeNB] Failed to load CodeMirror language support:', err);
             });
 
         return () => {

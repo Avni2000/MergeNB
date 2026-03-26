@@ -14,6 +14,7 @@ import {
     applyResolutionAndReadNotebook,
 } from './testHarness';
 import { getCellSource, validateNotebookStructure } from './testHelpers';
+import * as logger from '../logger';
 
 function readFixtureNotebook(fileName: string): any {
     const fixturePath = path.resolve(__dirname, '../../test', fileName);
@@ -36,7 +37,7 @@ function getStep1GradientDescentSource(notebook: any, label: string): string {
 }
 
 export async function run(): Promise<void> {
-    console.log('Starting incoming non-conflict regression integration test...');
+    logger.info('Starting incoming non-conflict regression integration test...');
 
     let browser: import('playwright').Browser | undefined;
     let page: import('playwright').Page | undefined;
@@ -128,8 +129,8 @@ export async function run(): Promise<void> {
             );
         }
 
-        console.log('✓ Non-conflict incoming-only Step 1 content preserved');
-        console.log('✓ Notebook structure valid');
+        logger.info('✓ Non-conflict incoming-only Step 1 content preserved');
+        logger.info('✓ Notebook structure valid');
     } finally {
         if (page) await page.close();
         if (browser) await browser.close();

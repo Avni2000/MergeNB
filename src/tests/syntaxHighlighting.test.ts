@@ -11,6 +11,7 @@
  */
 
 import { readTestConfig, setupConflictResolver } from './testHarness';
+import * as logger from '../logger';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,
@@ -18,7 +19,7 @@ import {
 } from './settingsFile';
 
 export async function run(): Promise<void> {
-    console.log('Starting syntax highlighting integration test...');
+    logger.info('Starting syntax highlighting integration test...');
 
     let browser: import('playwright').Browser | undefined;
     let page: import('playwright').Page | undefined;
@@ -51,7 +52,7 @@ export async function run(): Promise<void> {
 
         const resolvedCell = firstRow.locator('.resolved-cell');
         await resolvedCell.waitFor({ timeout: 10_000 });
-        console.log('✓ Resolved cell appeared after clicking Use Current');
+        logger.info('✓ Resolved cell appeared after clicking Use Current');
 
         // ── 3. Assert CodeMirror editor is present (textarea was replaced) ────────
         const textarea = resolvedCell.locator('textarea.resolved-content-input');
@@ -64,7 +65,7 @@ export async function run(): Promise<void> {
 
         const cmEditor = resolvedCell.locator('.cm-editor');
         await cmEditor.waitFor({ timeout: 10_000 });
-        console.log('✓ .cm-editor element is present (textarea replaced by CodeMirror)');
+        logger.info('✓ .cm-editor element is present (textarea replaced by CodeMirror)');
 
         // ── 4. Assert syntax-highlighted keyword tokens appear ───────────────────
         // We give it up to 8 s for the async language pack to load and the editor to re-parse.
@@ -94,9 +95,9 @@ export async function run(): Promise<void> {
         );
 
         const keywordInfo = await keywordInfoHandle.jsonValue() as { text: string; color: string };
-        console.log(`✓ Highlighted keyword "${keywordInfo.text}" has color: ${keywordInfo.color}`);
+        logger.info(`✓ Highlighted keyword "${keywordInfo.text}" has color: ${keywordInfo.color}`);
 
-        console.log('✓ Syntax highlighting test passed');
+        logger.info('✓ Syntax highlighting test passed');
     } finally {
         restoreSettingsFileSnapshot(settingsSnapshot);
 
