@@ -20,6 +20,10 @@
  *   npm run test:list                    # List available tests
  */
 
+// Must be imported first: installs the AsyncLocalStorage-aware console patch
+// so parallel headless tests each capture their own logs without interference.
+import './logCollection';
+
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -48,7 +52,9 @@ import {
     resolveNotebookTripletPaths,
 } from './testRunnerShared';
 import { runHeadlessTest } from './headlessTestRun';
+import { withLogCollection, startGlobalCapture, flushGlobalCapture } from './logCollection';
 import { getWebServer } from '../web/webServer';
+import * as logger from '../logger';
 
 // @clack/prompts is ESM-only, so we load it lazily via dynamic import.
 let _clack: any;
@@ -170,39 +176,39 @@ function printTestList(): void {
     const manualCount = all.length - automatedCount;
     const manualFixtures = manualSandboxTests().map(test => test.id.replace(/^manual_/, ''));
 
-    console.log();
-    console.log(pc.bold('Available test entries'));
-    console.log(pc.dim('─'.repeat(60)));
+    logger.info();
+    logger.info(pc.bold('Available test entries'));
+    logger.info(pc.dim('─'.repeat(60)));
 
     for (const group of TEST_GROUPS) {
-        console.log();
-        console.log(
+        logger.info();
+        logger.info(
             `  ${pc.cyan(pc.bold(group.id))}  ${pc.dim('·')}  ${group.name}`,
         );
-        console.log(`  ${pc.dim(group.description)}`);
+        logger.info(`  ${pc.dim(group.description)}`);
 
         for (const test of group.tests) {
             const typeHint = isManualTest(test) ? 'manual' : 'automated';
-            console.log(
+            logger.info(
                 `    ${pc.yellow(test.id.padEnd(32))} ${pc.dim(`[${typeHint}] ${test.description}`)}`,
             );
         }
     }
 
-    console.log();
-    console.log(pc.dim('─'.repeat(60)));
-    console.log(
+    logger.info();
+    logger.info(pc.dim('─'.repeat(60)));
+    logger.info(
         `  ${pc.dim('Total:')} ${all.length} entries in ${TEST_GROUPS.length} groups`,
     );
-    console.log(
+    logger.info(
         `  ${pc.dim('Breakdown:')} ${automatedCount} automated, ${manualCount} manual`,
     );
     if (manualFixtures.length > 0) {
-        console.log(
+        logger.info(
             `  ${pc.dim('Manual fixtures:')} ${manualFixtures.join(', ')} ${pc.dim('(use --manual <fixture>)')}`,
         );
     }
-    console.log();
+    logger.info();
 }
 
 // ─── TUI picker ─────────────────────────────────────────────────────────────
@@ -439,10 +445,10 @@ async function runManualSandbox(test: ManualSandboxDef): Promise<RunResult> {
         ];
         const openCommand = `code ${openArgs.map(arg => JSON.stringify(arg)).join(' ')}`;
 
-        console.log(`  ${pc.dim(`Sandbox repo: ${workspacePath}`)}`);
-        console.log(`  ${pc.dim(`Conflict notebook: ${conflictNotebookPath}`)}`);
-        console.log(`  ${pc.dim(`Reference notebooks: ${path.dirname(referencePaths.base)}`)}`);
-        console.log(`  ${pc.dim(`Open command: ${openCommand}`)}`);
+        logger.info(`  ${pc.dim(`Sandbox repo: ${workspacePath}`)}`);
+        logger.info(`  ${pc.dim(`Conflict notebook: ${conflictNotebookPath}`)}`);
+        logger.info(`  ${pc.dim(`Reference notebooks: ${path.dirname(referencePaths.base)}`)}`);
+        logger.info(`  ${pc.dim(`Open command: ${openCommand}`)}`);
 
         if (isCodeCliAvailable()) {
             const launched = spawnSync('code', openArgs, { stdio: 'inherit' });
@@ -455,7 +461,7 @@ async function runManualSandbox(test: ManualSandboxDef): Promise<RunResult> {
                 );
             }
         } else {
-            console.log(
+            logger.info(
                 `  ${pc.yellow(`VS Code CLI 'code' not found. Open manually with the command above.`)}`,
             );
         }
@@ -499,15 +505,16 @@ async function runAll(tests: TestDef[], debug = false): Promise<void> {
         t => isManualTest(t) || (isAutomatedTest(t) && t.requiresVSCode),
     );
 
-    console.log();
-    console.log(pc.bold(`Running ${tests.length} entr${tests.length > 1 ? 'ies' : 'y'}…`));
+    logger.info();
+    logger.info(pc.bold(`Running ${tests.length} entr${tests.length > 1 ? 'ies' : 'y'}…`));
     if (headlessTests.length > 0) {
-        console.log(pc.dim(`  ${headlessTests.length} headless (parallel) + ${sequentialTests.length} sequential`));
+        logger.info(pc.dim(`  ${headlessTests.length} headless (parallel) + ${sequentialTests.length} sequential`));
     }
-    console.log(pc.dim('─'.repeat(60)));
+    logger.info(pc.dim('─'.repeat(60)));
 
     // Run all headless tests in parallel via Promise.all
     const headlessResultsMap = new Map<string, RunResult>();
+    let serverLogs = '';
     if (headlessTests.length > 0) {
         // Start the shared web server once before fanning out to avoid a race
         // where multiple parallel workers each try to start it concurrently.
@@ -515,7 +522,11 @@ async function runAll(tests: TestDef[], debug = false): Promise<void> {
         if (!sharedServer.isRunning()) {
             await sharedServer.start();
         }
-        console.log(`\n${pc.dim('Running headless tests in parallel…')}`);
+        logger.info(`\n${pc.dim('Running headless tests in parallel…')}`);
+        // Capture server-level I/O callbacks (WebSocket connect/message/close)
+        // that fire outside any per-test withLogCollection context so they don't
+        // bleed into the terminal mid-run.
+        startGlobalCapture();
         const headlessResults = await Promise.all(
             headlessTests.map(async (test): Promise<RunResult> => {
                 const result = await runHeadlessTest(test);
@@ -528,6 +539,7 @@ async function runAll(tests: TestDef[], debug = false): Promise<void> {
                 };
             }),
         );
+        serverLogs = flushGlobalCapture();
         for (const r of headlessResults) {
             headlessResultsMap.set(r.test.id, r);
         }
@@ -540,44 +552,34 @@ async function runAll(tests: TestDef[], debug = false): Promise<void> {
         sequentialResultsMap.set(test.id, result);
     }
 
-    // Print results in original order
+    // Collect results in original order
     const results: RunResult[] = [];
     for (let i = 0; i < tests.length; i++) {
         const test = tests[i];
         const result = headlessResultsMap.get(test.id) ?? sequentialResultsMap.get(test.id)!;
         results.push(result);
+    }
+
+    // Compact status line per test
+    logger.info();
+    for (let i = 0; i < results.length; i++) {
+        const { test, passed: p, error, durationMs, workspacePath } = results[i];
         const prefix = pc.dim(`[${i + 1}/${tests.length}]`);
         const typeLabel = isManualTest(test)
             ? 'manual'
-            : ((isAutomatedTest(test) && test.requiresVSCode) ? 'vscode' : 'headless');
-        console.log(`\n${prefix} ${pc.cyan(test.id)} ${pc.dim('·')} ${test.description} ${pc.dim(`[${typeLabel}]`)}`);
-
-        if (result.passed) {
-            console.log(
-                `${prefix} ${pc.green('✓ PASS')} ${pc.dim(formatDuration(result.durationMs))}`,
-            );
-            if (result.workspacePath) {
-                console.log(`  ${pc.dim(`Workspace: ${result.workspacePath}`)}`);
-                console.log(`  ${pc.dim('Note: Manual sandbox path is deterministic and reused.')}`);
-            }
-        } else {
-            console.log(
-                `${prefix} ${pc.red('✗ FAIL')} ${pc.dim(formatDuration(result.durationMs))}`,
-            );
-            if (result.error) {
-                console.log(`  ${pc.red(result.error.message)}`);
-            }
+            : (isAutomatedTest(test) && test.requiresVSCode ? 'vscode' : 'headless');
+        const status = p
+            ? pc.green('✓ PASS')
+            : pc.red('✗ FAIL');
+        logger.info(
+            `${prefix} ${pc.cyan(test.id)} ${pc.dim('·')} ${test.description} ${pc.dim(`[${typeLabel}]`)}  ${status} ${pc.dim(formatDuration(durationMs))}`,
+        );
+        if (!p && error) {
+            logger.info(`       ${pc.red(error.message)}`);
         }
-
-        if (result.logs && (debug || !result.passed)) {
-            console.log(pc.dim('\n  --- Test Logs ---'));
-            console.log(
-                result.logs
-                    .split('\n')
-                    .map(line => `  ${pc.dim(line)}`)
-                    .join('\n'),
-            );
-            console.log(pc.dim('  -----------------\n'));
+        if (workspacePath) {
+            logger.info(`       ${pc.dim(`Workspace: ${workspacePath}`)}`);
+            logger.info(`       ${pc.dim('Note: Manual sandbox path is deterministic and reused.')}`);
         }
     }
 
@@ -586,24 +588,49 @@ async function runAll(tests: TestDef[], debug = false): Promise<void> {
     const failed = results.filter(r => !r.passed).length;
     const totalDuration = Date.now() - totalStart;
 
-    console.log();
-    console.log(pc.dim('─'.repeat(60)));
-    console.log(
+    logger.info();
+    logger.info(pc.dim('─'.repeat(60)));
+    logger.info(
         pc.bold('Results: ') +
             pc.green(`${passed} passed`) +
             (failed > 0 ? `, ${pc.red(`${failed} failed`)}` : '') +
             pc.dim(` (${formatDuration(totalDuration)})`),
     );
 
-    if (failed > 0) {
-        console.log();
-        console.log(pc.red(pc.bold('Failed tests:')));
-        for (const r of results.filter(r => !r.passed)) {
-            console.log(`  ${pc.red('✗')} ${r.test.id}: ${r.error?.message ?? 'unknown error'}`);
+    // Per-test log blocks — failures always, all tests with --debug
+    const logsToShow = results.filter(r => r.logs && (debug || !r.passed));
+    if (logsToShow.length > 0) {
+        const header = debug ? 'Test Logs (--debug: all tests)' : 'Test Logs (failed tests)';
+        logger.info();
+        logger.info(pc.bold(header));
+        for (const r of logsToShow) {
+            const statusLabel = r.passed ? pc.green('PASSED') : pc.red('FAILED');
+            const bar = '═'.repeat(Math.max(0, 60 - r.test.id.length - 12));
+            logger.info(`\n${pc.bold(`══ ${r.test.id} [${statusLabel}${pc.bold(']')} ${pc.dim(bar)}`)}`)            ;
+            logger.info(
+                r.logs!
+                    .split('\n')
+                    .map(line => `  ${pc.dim(line)}`)
+                    .join('\n'),
+            );
         }
+        logger.info();
     }
 
-    console.log();
+    // Server-level logs (WebSocket/HTTP events captured outside per-test context)
+    if (debug && serverLogs) {
+        logger.info(pc.bold('Server Logs (--debug)'));
+        logger.info(pc.dim('─'.repeat(60)));
+        logger.info(
+            serverLogs
+                .split('\n')
+                .map(line => `  ${pc.dim(line)}`)
+                .join('\n'),
+        );
+        logger.info();
+    }
+
+    logger.info();
 
     // Stop the web server if it was started by headless tests to ensure the process can exit
     if (getWebServer().isRunning()) {
@@ -643,27 +670,27 @@ async function main(): Promise<void> {
         const manualFixtures = manualSandboxTests()
             .map(test => test.id.replace(/^manual_/, ''))
             .join(', ');
-        console.error(
+        logger.error(
             pc.red(
                 `Unknown --manual fixture selector(s): ${manualSelection.unknownTokens.join(', ')}`,
             ),
         );
-        console.error(
+        logger.error(
             pc.dim(`Available manual fixtures: ${manualFixtures}`),
         );
-        console.error(
+        logger.error(
             pc.dim('Examples: --manual 02, --manual 02/03, --manual manual_04'),
         );
         process.exit(1);
     }
 
     if (manualSelection.selectedIds.length > 1) {
-        console.error(
+        logger.error(
             pc.red(
                 `--manual accepts exactly one fixture, but received ${manualSelection.selectedIds.length}.`,
             ),
         );
-        console.error(
+        logger.error(
             pc.dim('Use one fixture at a time, e.g. --manual 02'),
         );
         process.exit(1);
@@ -677,10 +704,10 @@ async function main(): Promise<void> {
             ...manualSelection.selectedIds,
         ]);
         if (tests.length === 0) {
-            console.error(
+            logger.error(
                 pc.red('No tests matched the given --group / --test / --manual flags.'),
             );
-            console.error(pc.dim('Run with --list to see available ids.'));
+            logger.error(pc.dim('Run with --list to see available ids.'));
             process.exit(1);
         }
         return runAll(tests, cli.debug);
@@ -692,6 +719,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(err => {
-    console.error(pc.red('Fatal error:'), err);
+    logger.error(pc.red('Fatal error:'), err);
     process.exit(1);
 });
