@@ -33,6 +33,7 @@ import {
     getCellSource,
 } from '../testHelpers';
 import { ensureCheckboxChecked } from '../integrationUtils';
+import { randomUUID } from 'crypto';
 import * as logger from '../../logger';
 import {
     prepareIsolatedConfigPath,
@@ -491,6 +492,13 @@ export function assertNotebookMatches(
 // ─── Playwright Test Extension ──────────────────────────────────────────────
 
 export interface MergeNBFixtures {
+    /**
+     * Isolated MergeNB config file path (auto fixture).
+     * Matches `runIntegrationTest.ts` setting `MERGENB_CONFIG_PATH` per test so
+     * `writeSettingsFile` / `getSettings()` do not race on the global config file
+     * or pick up a user `ui.showBaseColumn: true` while a test expects `false`.
+     */
+    mergeNBIsolatedConfig: string;
     /** Create a merge conflict repository from notebook files */
     conflictRepo: (notebooks: NotebookTriplet) => string;
     /** Set up the conflict resolver UI and return a session */
@@ -531,6 +539,22 @@ export interface MergeNBFixtures {
  * ```
  */
 export const test = base.extend<MergeNBFixtures>({
+    mergeNBIsolatedConfig: [
+        async ({}, use) => {
+            const { configRoot, configPath } = prepareIsolatedConfigPath(`pw-${randomUUID()}`);
+            const previous = process.env.MERGENB_CONFIG_PATH;
+            process.env.MERGENB_CONFIG_PATH = configPath;
+            await use(configPath);
+            if (previous === undefined) {
+                delete process.env.MERGENB_CONFIG_PATH;
+            } else {
+                process.env.MERGENB_CONFIG_PATH = previous;
+            }
+            cleanupIsolatedConfigPath(configRoot);
+        },
+        { auto: true },
+    ],
+
     conflictRepo: async ({}, use) => {
         const createdRepos: string[] = [];
 
