@@ -76,15 +76,6 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
 
         const { base, current, incoming } = versions;
 
-        // Debug: Check if we're getting different versions
-        console.log('[MergeNB] detectSemanticConflicts for:', filePath);
-        console.log('[MergeNB] base length:', base?.length ?? 0);
-        console.log('[MergeNB] current length:', current?.length ?? 0);
-        console.log('[MergeNB] incoming length:', incoming?.length ?? 0);
-        console.log('[MergeNB] base === current:', base === current);
-        console.log('[MergeNB] base === incoming:', base === incoming);
-        console.log('[MergeNB] current === incoming:', current === incoming);
-
         // Parse each version as a notebook
         let baseNotebook: Notebook | undefined;
         let currentNotebook: Notebook | undefined;
