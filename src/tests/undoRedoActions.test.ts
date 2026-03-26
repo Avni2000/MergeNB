@@ -4,6 +4,7 @@
  */
 
 import type { Page, Locator } from 'playwright';
+import * as logger from '../logger';
 import {
     clickHistoryUndo,
     clickHistoryRedo,
@@ -61,7 +62,7 @@ async function waitForResolvedEditorText(
 
 
 export async function run(): Promise<void> {
-    console.log('Starting MergeNB Undo/Redo Actions Integration Test...');
+    logger.info('Starting MergeNB Undo/Redo Actions Integration Test...');
 
     let browser;
     let page: Page | undefined;
@@ -83,14 +84,14 @@ export async function run(): Promise<void> {
 
         const conflictRows = page.locator('.merge-row.conflict-row');
         const conflictCount = await conflictRows.count();
-        console.log(`Found ${conflictCount} conflict rows`);
+        logger.info(`Found ${conflictCount} conflict rows`);
 
         if (conflictCount === 0) {
             throw new Error('Expected at least one conflict row');
         }
 
         // Action 1: branch selection + keyboard undo/redo
-        console.log('\n=== Undo/Redo: Branch Selection (Keyboard) ===');
+        logger.info('\n=== Undo/Redo: Branch Selection (Keyboard) ===');
         const firstRow = conflictRows.nth(0);
         await firstRow.scrollIntoViewIfNeeded();
         const branchChoice = await pickBranchButton(firstRow);
@@ -104,10 +105,10 @@ export async function run(): Promise<void> {
         await page.click('.header-title');
         await page.keyboard.press(`${primaryModifier}+Shift+Z`);
         await firstRow.locator('.resolved-content-input').waitFor({ timeout: 5000 });
-        console.log('  ✓ Keyboard undo/redo toggled branch selection');
+        logger.info('  ✓ Keyboard undo/redo toggled branch selection');
 
         // Action 2: delete selection + header undo/redo
-        console.log('\n=== Undo/Redo: Delete Selection (Header Buttons) ===');
+        logger.info('\n=== Undo/Redo: Delete Selection (Header Buttons) ===');
         const deleteRow = conflictRows.nth(conflictCount > 1 ? 1 : 0);
         await deleteRow.scrollIntoViewIfNeeded();
         await deleteRow.locator('.btn-delete').click();
@@ -118,10 +119,10 @@ export async function run(): Promise<void> {
 
         await clickHistoryRedo(page);
         await deleteRow.locator('.resolved-deleted').waitFor({ timeout: 5000 });
-        console.log('  ✓ Header undo/redo toggled delete resolution');
+        logger.info('  ✓ Header undo/redo toggled delete resolution');
 
         // Action 3: edit content + undo/redo
-        console.log('\n=== Undo/Redo: Content Edit ===');
+        logger.info('\n=== Undo/Redo: Content Edit ===');
         await firstRow.scrollIntoViewIfNeeded();
         if (await firstRow.locator('.resolved-content-input').count() === 0) {
             await firstRow.locator(branchChoice.selector).click();
@@ -159,10 +160,10 @@ export async function run(): Promise<void> {
                 `Redo did not restore edited content after edit (expected len=${edited.length}, actual len=${afterRedo.length})`
             );
         }
-        console.log('  ✓ Undo/redo restored edited content');
+        logger.info('  ✓ Undo/redo restored edited content');
 
         // Action 4: toggle checkboxes + undo/redo
-        console.log('\n=== Undo/Redo: Toggle Options ===');
+        logger.info('\n=== Undo/Redo: Toggle Options ===');
         const renumberCheckbox = page.locator('label:has-text("Renumber execution counts") input[type="checkbox"]');
         const markCheckbox = page.locator('label:has-text("Mark as resolved") input[type="checkbox"]');
 
@@ -195,10 +196,10 @@ export async function run(): Promise<void> {
         if (await markCheckbox.isChecked() !== toggledMark) {
             throw new Error('Redo did not reapply mark-as-resolved checkbox');
         }
-        console.log('  ✓ Undo/redo restored checkbox states');
+        logger.info('  ✓ Undo/redo restored checkbox states');
 
 
-        console.log('\n=== History Timeline Jump ===');
+        logger.info('\n=== History Timeline Jump ===');
         await page.locator('[data-testid="history-toggle"]').click();
         const historyItems = page.locator('[data-testid="history-item"]');
         const historyCount = await historyItems.count();
@@ -211,9 +212,9 @@ export async function run(): Promise<void> {
         if (resolvedAfterJump.resolved !== 0) {
             throw new Error(`Expected 0 resolved after jumping to initial history, got ${resolvedAfterJump.resolved}`);
         }
-        console.log('  ✓ History jump restored initial state');
+        logger.info('  ✓ History jump restored initial state');
 
-        console.log('\n=== TEST PASSED ===');
+        logger.info('\n=== TEST PASSED ===');
     } finally {
         restoreSettingsFileSnapshot(settingsSnapshot);
         if (page) await page.close();

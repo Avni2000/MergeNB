@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { chromium, type Browser, type Page } from 'playwright';
+import * as logger from '../logger';
 import * as gitIntegration from '../gitIntegration';
 import { detectSemanticConflicts, applyAutoResolutions } from '../conflictDetector';
 import { getSettings, configContext } from '../settings';
@@ -113,23 +114,23 @@ export async function setupConflictResolver(
     await vscode.window.showTextDocument(doc);
     await sleep(1000);
 
-    console.log('[TestHarness] Executing merge-nb.findConflicts command...');
+    logger.info('[TestHarness] Executing merge-nb.findConflicts command...');
     await vscode.commands.executeCommand('merge-nb.findConflicts');
-    console.log('[TestHarness] merge-nb.findConflicts command executed');
+    logger.info('[TestHarness] merge-nb.findConflicts command executed');
 
-    console.log('[TestHarness] Waiting for server to start...');
+    logger.info('[TestHarness] Waiting for server to start...');
     const serverPort = await waitForServer(
         () => Promise.resolve(vscode.commands.executeCommand<number>('merge-nb.getWebServerPort')),
         options.serverTimeoutMs
     );
-    console.log(`[TestHarness] Server started on port ${serverPort}`);
+    logger.info(`[TestHarness] Server started on port ${serverPort}`);
 
     const sessionUrl = await waitForSessionUrl(
         () => Promise.resolve(vscode.commands.executeCommand<string>('merge-nb.getLatestWebSessionUrl')),
         options.sessionTimeoutMs
     );
     const sessionId = new URL(sessionUrl).searchParams.get('session') || 'unknown';
-    console.log(`Session created: ${sessionId}`);
+    logger.info(`Session created: ${sessionId}`);
 
     const browser = await chromium.launch({ headless: options.headless ?? true });
     try {
@@ -282,12 +283,12 @@ async function setupConflictResolverHeadless(
     const handleMessage = (message: unknown): void => {
         // Validate message structure before casting to avoid undefined property access
         if (!message || typeof message !== 'object') {
-            console.error('[TestHarness] Invalid message format (not an object):', message);
+            logger.error('[TestHarness] Invalid message format (not an object):', message);
             return;
         }
         const msg = message as BrowserToExtensionMessage;
         if (typeof msg.command !== 'string') {
-            console.error('[TestHarness] Invalid message format (no command property):', message);
+            logger.error('[TestHarness] Invalid message format (no command property):', message);
             return;
         }
         switch (msg.command) {
@@ -298,14 +299,14 @@ async function setupConflictResolverHeadless(
                 if ('resolvedRows' in msg) {
                     void handleResolution(msg as Extract<BrowserToExtensionMessage, { command: 'resolve' }>)
                         .catch(err => {
-                            console.error('[TestHarness] Resolution handler failed:', err);
+                            logger.error('[TestHarness] Resolution handler failed:', err);
                             server.sendMessage(sessionId, {
                                 type: 'resolution-error',
                                 message: `Resolution handler error: ${err}`,
                             });
                         });
                 } else {
-                    console.error('[TestHarness] Resolve message missing resolvedRows');
+                    logger.error('[TestHarness] Resolve message missing resolvedRows');
                 }
                 break;
             case 'cancel':
@@ -376,7 +377,7 @@ export async function applyResolutionAndReadNotebook(
         await ensureCheckboxChecked(page, 'Mark as resolved');
     }
 
-    console.log('\n=== Applying resolution ===');
+    logger.info('\n=== Applying resolution ===');
     const applyButton = page.locator('button.btn-primary:has-text("Apply Resolution")');
     await applyButton.waitFor({ timeout: 5000 });
 
@@ -389,7 +390,7 @@ export async function applyResolutionAndReadNotebook(
 
     const fileWritten = await waitForFileWrite(conflictFile, fs, options.writeTimeoutMs);
     if (!fileWritten) {
-        console.log('Warning: Could not confirm file write, proceeding anyway');
+        logger.info('Warning: Could not confirm file write, proceeding anyway');
     }
 
     const notebookContent = fs.readFileSync(conflictFile, 'utf8');
@@ -449,20 +450,20 @@ export function assertNotebookMatches(
     }
 
     if (logCounts) {
-        console.log(`Notebook on disk: ${resolvedNotebook.cells.length} cells`);
-        console.log(`${label}: ${expectedNonDeleted.length} cells`);
+        logger.info(`Notebook on disk: ${resolvedNotebook.cells.length} cells`);
+        logger.info(`${label}: ${expectedNonDeleted.length} cells`);
     }
 
     if (resolvedNotebook.cells.length !== expectedNonDeleted.length) {
-        console.log('Cell count mismatch:');
-        console.log('Expected cells:');
+        logger.info('Cell count mismatch:');
+        logger.info('Expected cells:');
         for (const cell of expectedNonDeleted) {
-            console.log(`  Row ${cell.rowIndex}: ${cell.cellType}, ${cell.source.length} chars`);
+            logger.info(`  Row ${cell.rowIndex}: ${cell.cellType}, ${cell.source.length} chars`);
         }
-        console.log('Actual cells:');
+        logger.info('Actual cells:');
         for (let i = 0; i < resolvedNotebook.cells.length; i++) {
             const src = getCellSource(resolvedNotebook.cells[i]);
-            console.log(`  Cell ${i}: ${resolvedNotebook.cells[i].cell_type}, ${src.length} chars`);
+            logger.info(`  Cell ${i}: ${resolvedNotebook.cells[i].cell_type}, ${src.length} chars`);
         }
         throw new Error(`Cell count mismatch: expected ${expectedNonDeleted.length}, got ${resolvedNotebook.cells.length}`);
     }
@@ -481,14 +482,14 @@ export function assertNotebookMatches(
 
         if (expected.source !== actualSource) {
             sourceMismatches++;
-            console.log(`Source mismatch at cell ${i}:`);
-            console.log(`  Expected: "${expected.source.substring(0, 80).replace(/\n/g, '\\n')}..."`);
-            console.log(`  Actual:   "${actualSource.substring(0, 80).replace(/\n/g, '\\n')}..."`);
+            logger.info(`Source mismatch at cell ${i}:`);
+            logger.info(`  Expected: "${expected.source.substring(0, 80).replace(/\n/g, '\\n')}..."`);
+            logger.info(`  Actual:   "${actualSource.substring(0, 80).replace(/\n/g, '\\n')}..."`);
         }
 
         if (expected.cellType !== actual.cell_type) {
             typeMismatches++;
-            console.log(`Type mismatch at cell ${i}: expected ${expected.cellType}, got ${actual.cell_type}`);
+            logger.info(`Type mismatch at cell ${i}: expected ${expected.cellType}, got ${actual.cell_type}`);
         }
 
         if (options.compareMetadata) {
@@ -496,7 +497,7 @@ export function assertNotebookMatches(
             const actualMetadata = actual.metadata || {};
             if (JSON.stringify(expectedMetadata) !== JSON.stringify(actualMetadata)) {
                 metadataMismatches++;
-                console.log(`Metadata mismatch at cell ${i}`);
+                logger.info(`Metadata mismatch at cell ${i}`);
             }
         }
 
@@ -512,9 +513,9 @@ export function assertNotebookMatches(
                     : o);
             if (JSON.stringify(stripExecCount(expected.outputs)) !== JSON.stringify(stripExecCount(actualOutputs))) {
                 outputMismatches++;
-                console.log(`Outputs mismatch at cell ${i}:`);
-                console.log(`  Expected: ${JSON.stringify(expected.outputs).substring(0, 100)}...`);
-                console.log(`  Actual:   ${JSON.stringify(actualOutputs).substring(0, 100)}...`);
+                logger.info(`Outputs mismatch at cell ${i}:`);
+                logger.info(`  Expected: ${JSON.stringify(expected.outputs).substring(0, 100)}...`);
+                logger.info(`  Actual:   ${JSON.stringify(actualOutputs).substring(0, 100)}...`);
             }
         }
 
@@ -525,7 +526,7 @@ export function assertNotebookMatches(
             const actualExecutionCount = actual.execution_count ?? null;
             if (expectedExecutionCount !== actualExecutionCount) {
                 executionMismatches++;
-                console.log(`Execution count mismatch at cell ${i}: expected ${expectedExecutionCount}, got ${actualExecutionCount}`);
+                logger.info(`Execution count mismatch at cell ${i}: expected ${expectedExecutionCount}, got ${actualExecutionCount}`);
             }
         }
     }

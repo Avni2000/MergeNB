@@ -4,6 +4,7 @@
  */
 
 import type { Page } from 'playwright';
+import * as logger from '../logger';
 import {
     clickHistoryUndo,
     clickHistoryRedo,
@@ -59,7 +60,7 @@ async function waitForUserUnmatchedRowsToDisappear(page: Page, timeoutMs = 5000)
 }
 
 export async function run(): Promise<void> {
-    console.log('Starting MergeNB Reorder Unmatch/Rematch Integration Test...');
+    logger.info('Starting MergeNB Reorder Unmatch/Rematch Integration Test...');
 
     let browser;
     let page: Page | undefined;
@@ -80,12 +81,12 @@ export async function run(): Promise<void> {
         page = session.page;
 
         // === Step 1: Verify reorder indicators appear ===
-        console.log('\n=== Step 1: Verify reorder indicators ===');
+        logger.info('\n=== Step 1: Verify reorder indicators ===');
         await page.locator('.merge-row').first().waitFor({ timeout: 5000 });
         const reorderIndicators = page.locator('[data-testid="reorder-indicator"]');
         await reorderIndicators.first().waitFor({ timeout: 5000 });
         const indicatorCount = await reorderIndicators.count();
-        console.log(`  Found ${indicatorCount} reorder indicator(s)`);
+        logger.info(`  Found ${indicatorCount} reorder indicator(s)`);
         if (indicatorCount === 0) {
             throw new Error('Expected at least one reorder indicator for reordered cells');
         }
@@ -94,7 +95,7 @@ export async function run(): Promise<void> {
         const reorderedRows = page.locator('.merge-row.reordered-row');
         await reorderedRows.first().waitFor({ timeout: 5000 });
         const reorderedCount = await reorderedRows.count();
-        console.log(`  Found ${reorderedCount} reordered row(s)`);
+        logger.info(`  Found ${reorderedCount} reordered row(s)`);
         if (reorderedCount === 0) {
             throw new Error('Expected at least one .reordered-row');
         }
@@ -103,21 +104,21 @@ export async function run(): Promise<void> {
         const unmatchButtons = page.locator('[data-testid="unmatch-btn"]');
         await unmatchButtons.first().waitFor({ timeout: 5000 });
         const unmatchBtnCount = await unmatchButtons.count();
-        console.log(`  Found ${unmatchBtnCount} unmatch button(s)`);
+        logger.info(`  Found ${unmatchBtnCount} unmatch button(s)`);
         if (unmatchBtnCount === 0) {
             throw new Error('Expected at least one unmatch button');
         }
-        console.log('  \u2713 Reorder indicators and unmatch buttons present');
+        logger.info('  \u2713 Reorder indicators and unmatch buttons present');
 
         // === Step 2: Get conflict count before unmatch ===
-        console.log('\n=== Step 2: Count conflicts before unmatch ===');
+        logger.info('\n=== Step 2: Count conflicts before unmatch ===');
         const conflictCounterBefore = await waitForResolvedCount(page, 0, 5000);
         assertResolvedCount(conflictCounterBefore, 0, 'before unmatch');
         const totalBefore = conflictCounterBefore.total;
-        console.log(`  Conflicts before unmatch: ${totalBefore}`);
+        logger.info(`  Conflicts before unmatch: ${totalBefore}`);
 
         // === Step 3: Click Unmatch on first reordered row ===
-        console.log('\n=== Step 3: Click Unmatch ===');
+        logger.info('\n=== Step 3: Click Unmatch ===');
         const alphaConflictRow = page.locator('.merge-row.conflict-row').filter({ hasText: 'alpha modified' });
         await alphaConflictRow.waitFor({ timeout: 5000 });
         const alphaUnmatchBtn = alphaConflictRow.locator('[data-testid="unmatch-btn"]');
@@ -129,7 +130,7 @@ export async function run(): Promise<void> {
 
         const userUnmatchedRows = page.locator('.merge-row.user-unmatched-row');
         const unmatchedRowCount = await userUnmatchedRows.count();
-        console.log(`  User-unmatched rows after unmatch: ${unmatchedRowCount}`);
+        logger.info(`  User-unmatched rows after unmatch: ${unmatchedRowCount}`);
         if (unmatchedRowCount === 0) {
             throw new Error('Expected user-unmatched rows after clicking Unmatch');
         }
@@ -144,7 +145,7 @@ export async function run(): Promise<void> {
         // Verify rematch buttons appear
         const rematchButtons = page.locator('[data-testid="rematch-btn"]');
         const rematchBtnCount = await rematchButtons.count();
-        console.log(`  Rematch buttons visible: ${rematchBtnCount}`);
+        logger.info(`  Rematch buttons visible: ${rematchBtnCount}`);
         if (rematchBtnCount === 0) {
             throw new Error('Expected rematch buttons on unmatched rows');
         }
@@ -165,14 +166,14 @@ export async function run(): Promise<void> {
         const conflictCounterAfterUnmatch = await waitForResolvedCount(page, 0, 5000);
         assertResolvedCount(conflictCounterAfterUnmatch, 0, 'after unmatch');
         const totalAfterUnmatch = conflictCounterAfterUnmatch.total;
-        console.log(`  Conflicts after unmatch: ${totalAfterUnmatch} (was ${totalBefore})`);
+        logger.info(`  Conflicts after unmatch: ${totalAfterUnmatch} (was ${totalBefore})`);
         if (totalAfterUnmatch <= totalBefore) {
             throw new Error(`Expected conflict count to increase after unmatch (was ${totalBefore}, now ${totalAfterUnmatch})`);
         }
-        console.log('  \u2713 Unmatch created split rows with rematch buttons');
+        logger.info('  \u2713 Unmatch created split rows with rematch buttons');
 
         // === Step 4: Resolve one split row ===
-        console.log('\n=== Step 4: Resolve a split row ===');
+        logger.info('\n=== Step 4: Resolve a split row ===');
         const firstSplitRow = userUnmatchedRows.first();
         await firstSplitRow.scrollIntoViewIfNeeded();
 
@@ -180,10 +181,10 @@ export async function run(): Promise<void> {
         const availableBtn = firstSplitRow.locator('.btn-resolve').first();
         await availableBtn.click();
         await firstSplitRow.locator('.resolved-cell').waitFor({ timeout: 5000 });
-        console.log('  \u2713 Split row resolved');
+        logger.info('  \u2713 Split row resolved');
 
         // === Step 5: Undo — verify unmatch is reverted ===
-        console.log('\n=== Step 5: Undo unmatch ===');
+        logger.info('\n=== Step 5: Undo unmatch ===');
 
         // Undo the resolution we just made
         await clickHistoryUndo(page);
@@ -196,14 +197,14 @@ export async function run(): Promise<void> {
         // Verify conflict count went back
         const conflictCounterAfterUndo = await waitForResolvedCount(page, 0, 5000);
         assertResolvedCount(conflictCounterAfterUndo, 0, 'after undo');
-        console.log(`  Conflicts after undo: ${conflictCounterAfterUndo.total} (original: ${totalBefore})`);
+        logger.info(`  Conflicts after undo: ${conflictCounterAfterUndo.total} (original: ${totalBefore})`);
         if (conflictCounterAfterUndo.total !== totalBefore) {
             throw new Error(`Expected conflict count to revert to ${totalBefore} after undo, got ${conflictCounterAfterUndo.total}`);
         }
-        console.log('  \u2713 Undo reverted unmatch');
+        logger.info('  \u2713 Undo reverted unmatch');
 
         // === Step 6: Redo — verify unmatch is re-applied ===
-        console.log('\n=== Step 6: Redo unmatch ===');
+        logger.info('\n=== Step 6: Redo unmatch ===');
         await clickHistoryRedo(page);
 
         // Wait for user-unmatched rows to reappear
@@ -212,10 +213,10 @@ export async function run(): Promise<void> {
         if (unmatchedAfterRedo === 0) {
             throw new Error('Expected user-unmatched rows after redo');
         }
-        console.log('  \u2713 Redo re-applied unmatch');
+        logger.info('  \u2713 Redo re-applied unmatch');
 
         // === Step 7: Click Rematch ===
-        console.log('\n=== Step 7: Click Rematch ===');
+        logger.info('\n=== Step 7: Click Rematch ===');
         const rematchBtn = page.locator('[data-testid="rematch-btn"]').first();
         await rematchBtn.scrollIntoViewIfNeeded();
         await rematchBtn.click();
@@ -226,14 +227,14 @@ export async function run(): Promise<void> {
         // Verify conflict count went back
         const conflictCounterAfterRematch = await waitForResolvedCount(page, 0, 5000);
         assertResolvedCount(conflictCounterAfterRematch, 0, 'after rematch');
-        console.log(`  Conflicts after rematch: ${conflictCounterAfterRematch.total} (original: ${totalBefore})`);
+        logger.info(`  Conflicts after rematch: ${conflictCounterAfterRematch.total} (original: ${totalBefore})`);
         if (conflictCounterAfterRematch.total !== totalBefore) {
             throw new Error(`Expected conflict count to revert to ${totalBefore} after rematch, got ${conflictCounterAfterRematch.total}`);
         }
-        console.log('  \u2713 Rematch restored original row');
+        logger.info('  \u2713 Rematch restored original row');
 
         // === Step 7b: Unmatch the restored Alpha row again ===
-        console.log('\n=== Step 7b: Unmatch restored row again ===');
+        logger.info('\n=== Step 7b: Unmatch restored row again ===');
         const restoredAlphaRow = page.locator('.merge-row.conflict-row').filter({ hasText: 'alpha modified' });
         const restoredAlphaUnmatchBtn = restoredAlphaRow.locator('[data-testid="unmatch-btn"]');
         await restoredAlphaUnmatchBtn.waitFor({ timeout: 5000 });
@@ -260,10 +261,10 @@ export async function run(): Promise<void> {
                 `Expected conflict count to revert to ${totalBefore} after second rematch, got ${conflictCounterAfterSecondRematch.total}`
             );
         }
-        console.log('  \u2713 Restored row stayed unmatchable after rematch');
+        logger.info('  \u2713 Restored row stayed unmatchable after rematch');
 
         // === Step 8: Resolve with explicit mixed choices + verify notebook written to disk ===
-        console.log('\n=== Step 8: Resolve with explicit mixed choices + verify disk output ===');
+        logger.info('\n=== Step 8: Resolve with explicit mixed choices + verify disk output ===');
         const baseFixture = readNotebookFixtureFromRepo('09_reorder_base.ipynb');
         const currentFixture = readNotebookFixtureFromRepo('09_reorder_current.ipynb');
         const incomingFixture = readNotebookFixtureFromRepo('09_reorder_incoming.ipynb');
@@ -318,9 +319,9 @@ export async function run(): Promise<void> {
             renumberEnabled,
         });
         validateNotebookStructure(resolvedNotebook);
-        console.log('  \u2713 On-disk notebook matches UI selections after rematch');
+        logger.info('  \u2713 On-disk notebook matches UI selections after rematch');
 
-        console.log('\n=== TEST PASSED ===');
+        logger.info('\n=== TEST PASSED ===');
     } finally {
         restoreSettingsFileSnapshot(settingsSnapshot);
         if (page) await page.close();

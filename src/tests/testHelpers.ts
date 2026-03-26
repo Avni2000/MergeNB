@@ -10,6 +10,7 @@
  */
 
 import * as http from 'http';
+import * as logger from '../logger';
 
 /** Shape returned by the /health endpoint */
 export interface HealthResponse {
@@ -46,16 +47,16 @@ export function checkHealth(port: number): Promise<boolean> {
             res.resume(); // Drain body to free the socket
             const isHealthy = res.statusCode === 200;
             if (!isHealthy) {
-                console.log(`[TestHelpers] Health check failed: got status ${res.statusCode} from ${url}`);
+                logger.info(`[TestHelpers] Health check failed: got status ${res.statusCode} from ${url}`);
             }
             resolve(isHealthy);
         });
         req.on('error', (err) => {
-            console.log(`[TestHelpers] Health check error on ${url}: ${err.message}`);
+            logger.info(`[TestHelpers] Health check error on ${url}: ${err.message}`);
             resolve(false);
         });
         req.on('timeout', () => {
-            console.log(`[TestHelpers] Health check timeout on ${url}`);
+            logger.info(`[TestHelpers] Health check timeout on ${url}`);
             req.destroy();
             resolve(false);
         });
@@ -94,13 +95,13 @@ export function getCellSource(cell: any): string {
 /** Parse a cell from data-cell attribute JSON */
 export function parseCellFromAttribute(cellJson: string | null, context: string): any {
     if (!cellJson) {
-        console.error(`Missing data-cell attribute for ${context}`);
+        logger.error(`Missing data-cell attribute for ${context}`);
         throw new Error(`Missing data-cell attribute for ${context}`);
     }
     try {
         return JSON.parse(decodeURIComponent(cellJson));
     } catch (err) {
-        console.error(`Failed to parse cell JSON for ${context}`, err);
+        logger.error(`Failed to parse cell JSON for ${context}`, err);
         throw new Error(`Failed to parse cell JSON for ${context}`);
     }
 }
@@ -110,7 +111,7 @@ export async function waitForServer(
     getPort: () => Promise<number | undefined> | number | undefined,
     timeoutMs = 30000
 ): Promise<number> {
-    console.log(`[TestHelpers] Waiting for server startup (timeout: ${timeoutMs}ms)`);
+    logger.info(`[TestHelpers] Waiting for server startup (timeout: ${timeoutMs}ms)`);
     const maxAttempts = Math.ceil(timeoutMs / 500);
     for (let i = 0; i < maxAttempts; i++) {
         await new Promise(r => setTimeout(r, 500));
@@ -120,22 +121,22 @@ export async function waitForServer(
             serverPort = typeof port === 'number' ? port : 0;
         } catch (error) {
             if (i % 10 === 0) {
-                console.log(`[TestHelpers] Failed to query server port yet (attempt ${i + 1}/${maxAttempts}): ${error}`);
+                logger.info(`[TestHelpers] Failed to query server port yet (attempt ${i + 1}/${maxAttempts}): ${error}`);
             }
             continue;
         }
         if (serverPort > 0) {
-            console.log(`[TestHelpers] Found running server on port ${serverPort} (attempt ${i + 1}/${maxAttempts})`);
+            logger.info(`[TestHelpers] Found running server on port ${serverPort} (attempt ${i + 1}/${maxAttempts})`);
             const isHealthy = await checkHealth(serverPort);
             if (isHealthy) {
-                console.log(`[TestHelpers] Server health check passed on port ${serverPort}`);
+                logger.info(`[TestHelpers] Server health check passed on port ${serverPort}`);
                 return serverPort;
             }
             if (i % 10 === 0) {
-                console.log(`[TestHelpers] Server port present but health not ready yet: ${serverPort} (attempt ${i + 1}/${maxAttempts})`);
+                logger.info(`[TestHelpers] Server port present but health not ready yet: ${serverPort} (attempt ${i + 1}/${maxAttempts})`);
             }
         } else if (i % 10 === 0) {
-            console.log(`[TestHelpers] Server not started yet (attempt ${i + 1}/${maxAttempts})`);
+            logger.info(`[TestHelpers] Server not started yet (attempt ${i + 1}/${maxAttempts})`);
         }
     }
     throw new Error('Web server did not start within timeout');

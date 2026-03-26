@@ -9,6 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { runTests } from '@vscode/test-electron';
 import { createMergeConflictRepo, cleanup } from './repoSetup';
+import * as logger from '../logger';
 
 async function main(): Promise<void> {
     if (process.env.MERGENB_NBDIME_GUARD_CI !== 'true') {
@@ -82,6 +83,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-    console.error('[runNbdimeGuardTest] Failed:', error);
+    logger.error('[runNbdimeGuardTest] Failed:', error);
     process.exit(1);
 });

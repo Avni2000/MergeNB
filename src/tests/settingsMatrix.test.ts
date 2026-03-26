@@ -28,6 +28,7 @@ import {
     setupConflictResolver,
 } from './testHarness';
 import type { TestConfig } from './testHelpers';
+import * as logger from '../logger';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,
@@ -116,7 +117,7 @@ async function runUIScenario(
     testConfig: TestConfig,
     callback: (page: Page) => Promise<void>
 ): Promise<void> {
-    console.log(`\n=== UI Scenario: ${scenarioName} ===`);
+    logger.info(`\n=== UI Scenario: ${scenarioName} ===`);
 
     writeSettingsFile(settings);
 
@@ -125,10 +126,10 @@ async function runUIScenario(
 
     try {
         await callback(page);
-        console.log(`  pass: ${scenarioName}`);
+        logger.info(`  pass: ${scenarioName}`);
     } finally {
-        try { await page.close(); } catch (e) { console.error('failed to close page', e); }
-        try { await browser.close(); } catch (e) { console.error('failed to close browser', e); }
+        try { await page.close(); } catch (e) { logger.error('failed to close page', e); }
+        try { await browser.close(); } catch (e) { logger.error('failed to close browser', e); }
     }
 }
 
@@ -169,12 +170,12 @@ async function findExecutionConflictRow(page: Page): Promise<Locator> {
 // ===========================================================================
 
 export async function run(): Promise<void> {
-    console.log('Starting settings matrix test...');
+    logger.info('Starting settings matrix test...');
 
     // -----------------------------------------------------------------------
     // SECTION A -- Backend logic tests (direct function calls, no browser)
     // -----------------------------------------------------------------------
-    console.log('\n====== SECTION A: Backend Logic Tests ======');
+    logger.info('\n====== SECTION A: Backend Logic Tests ======');
 
     // --- A1: analyzeSemanticConflictsFromMappings is settings-agnostic ---
     //
@@ -182,7 +183,7 @@ export async function run(): Promise<void> {
     // All settings-based filtering happens in applyAutoResolutions.
     // This test verifies that detection is exhaustive and settings-independent.
     {
-        console.log('\n--- A1: detection is settings-agnostic ---');
+        logger.info('\n--- A1: detection is settings-agnostic ---');
 
         const base = makeCodeCell('x = 1', {
             execution_count: 1,
@@ -258,7 +259,7 @@ export async function run(): Promise<void> {
             resolveWithAutoOff.autoResolvedCount,
             'Settings should affect auto-resolution counts'
         );
-        console.log('  pass: A1');
+        logger.info('  pass: A1');
     }
 
     // --- A2: kernel-only diff silently swallowed when setting is off ---
@@ -272,7 +273,7 @@ export async function run(): Promise<void> {
     // The kernel diff should either surface as a remaining conflict or be
     // counted so the resolver doesn't exit early.
     {
-        console.log('\n--- A2: kernel-only diff not swallowed ---');
+        logger.info('\n--- A2: kernel-only diff not swallowed ---');
 
         const cell = makeCodeCell('x = 1');
         const currentNb = makeNotebook([{ ...cell }], {
@@ -326,7 +327,7 @@ export async function run(): Promise<void> {
             result.kernelAutoResolved, false,
             'kernelAutoResolved must be false when autoResolveKernelVersion=false'
         );
-        console.log('  pass: A2');
+        logger.info('  pass: A2');
     }
 
     // --- A3: stripOutputs must respect autoResolveExecutionCount ---
@@ -336,7 +337,7 @@ export async function run(): Promise<void> {
     // autoResolveExecutionCount is also enabled.  A previous bug nulled it
     // unconditionally; this test ensures that is never re-introduced.
     {
-        console.log('\n--- A3: stripOutputs masks executionCount ---');
+        logger.info('\n--- A3: stripOutputs masks executionCount ---');
 
         const source = 'print("hello")';
         const base = makeCodeCell(source, {
@@ -389,7 +390,7 @@ export async function run(): Promise<void> {
             'autoResolveExecutionCount=false; got ' +
             JSON.stringify(resolvedCell.execution_count)
         );
-        console.log('  pass: A3');
+        logger.info('  pass: A3');
     }
 
     // --- A4: stripOutputs side-effect on remaining conflicts ---
@@ -398,7 +399,7 @@ export async function run(): Promise<void> {
     // were NOT auto-resolved (conflictDetector.ts:549-560).  This validates
     // that the side-effect is present and consistent.
     {
-        console.log('\n--- A4: stripOutputs strips remaining conflict outputs ---');
+        logger.info('\n--- A4: stripOutputs strips remaining conflict outputs ---');
 
         const base = makeCodeCell('x = 1', {
             outputs: [{ output_type: 'stream', text: 'old\n', name: 'stdout' }],
@@ -444,12 +445,12 @@ export async function run(): Promise<void> {
             result.resolvedNotebook.cells[0].outputs, [],
             'Remaining conflict outputs should be stripped when stripOutputs=true'
         );
-        console.log('  pass: A4');
+        logger.info('  pass: A4');
     }
 
     // --- A5: executionCount auto-resolve independent when stripOutputs=false ---
     {
-        console.log('\n--- A5: executionCount auto-resolve independent of stripOutputs ---');
+        logger.info('\n--- A5: executionCount auto-resolve independent of stripOutputs ---');
 
         const base = makeCodeCell('a = 1', { execution_count: 1 });
         const current = makeCodeCell('a = 1', { execution_count: 5 });
@@ -497,12 +498,12 @@ export async function run(): Promise<void> {
             'Should not auto-resolve when autoResolveExecutionCount=false');
         assert.strictEqual(off.remainingConflicts.length, 1,
             'Execution count conflict should remain unresolved');
-        console.log('  pass: A5');
+        logger.info('  pass: A5');
     }
 
     // --- A6: whitespace auto-resolve toggles ---
     {
-        console.log('\n--- A6: whitespace auto-resolve toggles ---');
+        logger.info('\n--- A6: whitespace auto-resolve toggles ---');
 
         const base = makeCodeCell('x = 1\n');
         const current = makeCodeCell('x = 1  \n');     // trailing space
@@ -546,12 +547,12 @@ export async function run(): Promise<void> {
             'Whitespace diff should not be auto-resolved when setting is off');
         assert.strictEqual(off.remainingConflicts.length, 1,
             'Whitespace diff should remain as conflict');
-        console.log('  pass: A6');
+        logger.info('  pass: A6');
     }
 
     // --- A7: kernel auto-resolve ON correctly resolves ---
     {
-        console.log('\n--- A7: kernel auto-resolve ON ---');
+        logger.info('\n--- A7: kernel auto-resolve ON ---');
 
         const cell = makeCodeCell('x = 1');
         const currentNb = makeNotebook([{ ...cell }], {
@@ -596,7 +597,7 @@ export async function run(): Promise<void> {
             'Expected kernel/python description, got: ' +
             result.autoResolvedDescriptions.join(', ')
         );
-        console.log('  pass: A7');
+        logger.info('  pass: A7');
     }
 
     // --- A8: kernel auto-resolve OFF — kernelAutoResolved NOT set, count stays 0 ---
@@ -606,7 +607,7 @@ export async function run(): Promise<void> {
     // A descriptive message about the conflict being present should still be
     // pushed so callers know the diff exists but was left for manual handling.
     {
-        console.log('\n--- A8: kernel auto-resolve OFF does not set kernelAutoResolved ---');
+        logger.info('\n--- A8: kernel auto-resolve OFF does not set kernelAutoResolved ---');
 
         const cell = makeCodeCell('x = 1');
         const currentNb = makeNotebook([{ ...cell }], {
@@ -656,7 +657,7 @@ export async function run(): Promise<void> {
             'Description should mention auto-resolve is disabled, got: ' +
             result.autoResolvedDescriptions.join(', ')
         );
-        console.log('  pass: A8');
+        logger.info('  pass: A8');
     }
 
     // --- A9: language_info auto-resolve OFF — count stays 0, flag not set ---
@@ -665,7 +666,7 @@ export async function run(): Promise<void> {
     // metadata diff, to verify the language_info branch is also correctly
     // gated behind autoResolveKernelVersion.
     {
-        console.log('\n--- A9: language_info auto-resolve OFF does not set kernelAutoResolved ---');
+        logger.info('\n--- A9: language_info auto-resolve OFF does not set kernelAutoResolved ---');
 
         const cell = makeCodeCell('x = 1');
         const currentNb = makeNotebook([{ ...cell }], {
@@ -711,7 +712,7 @@ export async function run(): Promise<void> {
             'Description should mention auto-resolve is disabled, got: ' +
             result.autoResolvedDescriptions.join(', ')
         );
-        console.log('  pass: A9');
+        logger.info('  pass: A9');
     }
 
     // --- A10: kernel + language_info both differ — ON vs OFF comparison ---
@@ -722,7 +723,7 @@ export async function run(): Promise<void> {
     //   - OFF: kernelAutoResolved=false, autoResolvedCount=0,
     //          descriptions mention both diffs with "disabled"
     {
-        console.log('\n--- A10: kernel + language_info ON vs OFF ---');
+        logger.info('\n--- A10: kernel + language_info ON vs OFF ---');
 
         const cell = makeCodeCell('x = 1');
         const currentNb = makeNotebook([{ ...cell }], {
@@ -787,7 +788,7 @@ export async function run(): Promise<void> {
             'OFF: every description should mention auto-resolve is disabled, got: ' +
             off.autoResolvedDescriptions.join(', ')
         );
-        console.log('  pass: A10');
+        logger.info('  pass: A10');
     }
 
     // --- A11: stripOutputs strips remaining-conflict execution_count when autoResolveExecutionCount=true ---
@@ -796,7 +797,7 @@ export async function run(): Promise<void> {
     // the UI preview (resolvedNotebook) must also null execution_count if
     // autoResolveExecutionCount=true, matching the auto-resolved-outputs path.
     {
-        console.log('\n--- A11: stripOutputs + autoResolveExecutionCount nulls execution_count on remaining conflicts ---');
+        logger.info('\n--- A11: stripOutputs + autoResolveExecutionCount nulls execution_count on remaining conflicts ---');
 
         const base = makeCodeCell('x = 1', {
             execution_count: 1,
@@ -860,13 +861,13 @@ export async function run(): Promise<void> {
             resultOff.resolvedNotebook.cells[0].execution_count, null,
             'A11(off): remaining-conflict execution_count must be preserved when autoResolveExecutionCount=false'
         );
-        console.log('  pass: A11');
+        logger.info('  pass: A11');
     }
 
     // -----------------------------------------------------------------------
     // SECTION B -- UI integration tests (Playwright against real web UI)
     // -----------------------------------------------------------------------
-    console.log('\n====== SECTION B: UI Integration Tests ======');
+    logger.info('\n====== SECTION B: UI Integration Tests ======');
 
     const testConfig = readTestConfig();
     const settingsSnapshot = readSettingsFileSnapshot();
@@ -1085,7 +1086,7 @@ export async function run(): Promise<void> {
             }
         );
 
-        console.log('\n=== SETTINGS MATRIX TEST COMPLETE ===');
+        logger.info('\n=== SETTINGS MATRIX TEST COMPLETE ===');
     } finally {
         restoreSettingsFileSnapshot(settingsSnapshot);
     }

@@ -4,6 +4,7 @@
  */
 
 import type { Page } from 'playwright';
+import * as logger from '../logger';
 import {
     verifyAllConflictsMatchSide,
     waitForAllConflictsResolved,
@@ -29,7 +30,7 @@ function withRowIndex<T extends { rowIndex: number }>(cell: T, rowIndex: number)
 }
 
 export async function run(): Promise<void> {
-    console.log('Starting MergeNB Reorder Unmatch -> Apply Integration Test...');
+    logger.info('Starting MergeNB Reorder Unmatch -> Apply Integration Test...');
 
     let browser;
     let page: Page | undefined;
@@ -48,7 +49,7 @@ export async function run(): Promise<void> {
         browser = session.browser;
         page = session.page;
 
-        console.log('\n=== Step 1: Verify unmatch is available ===');
+        logger.info('\n=== Step 1: Verify unmatch is available ===');
         await page.locator('.merge-row').first().waitFor({ timeout: 5000 });
         const initialCounter = await waitForResolvedCount(page, 0, 5000);
         if (initialCounter.total <= 0) {
@@ -61,9 +62,9 @@ export async function run(): Promise<void> {
         if (unmatchBtnCount <= 0) {
             throw new Error('Expected at least one unmatch button');
         }
-        console.log(`  Found ${unmatchBtnCount} unmatch button(s)`);
+        logger.info(`  Found ${unmatchBtnCount} unmatch button(s)`);
 
-        console.log('\n=== Step 2: Unmatch one reordered row ===');
+        logger.info('\n=== Step 2: Unmatch one reordered row ===');
         const betaConflictRow = page.locator('.merge-row.conflict-row').filter({ hasText: "print('beta')" });
         const betaUnmatchButton = betaConflictRow.locator('[data-testid="unmatch-btn"]');
         await betaUnmatchButton.waitFor({ timeout: 5000 });
@@ -76,7 +77,7 @@ export async function run(): Promise<void> {
                 `Expected conflict count to increase after unmatch (before=${initialCounter.total}, after=${afterUnmatchCounter.total})`
             );
         }
-        console.log(`  Conflicts after unmatch: ${afterUnmatchCounter.total} (before: ${initialCounter.total})`);
+        logger.info(`  Conflicts after unmatch: ${afterUnmatchCounter.total} (before: ${initialCounter.total})`);
 
         const remainingUnmatchButtons = await page.locator('[data-testid="unmatch-btn"]').count();
         if (remainingUnmatchButtons !== unmatchBtnCount - 1) {
@@ -120,7 +121,7 @@ export async function run(): Promise<void> {
             );
         }
 
-        console.log('\n=== Step 3: Accept all current and capture independent expectation ===');
+        logger.info('\n=== Step 3: Accept all current and capture independent expectation ===');
         const baseFixture = readNotebookFixtureFromRepo('09_reorder_base.ipynb');
         const currentFixture = readNotebookFixtureFromRepo('09_reorder_current.ipynb');
         const baseExpected = buildExpectedCellsFromNotebook(baseFixture);
@@ -164,7 +165,7 @@ export async function run(): Promise<void> {
             withRowIndex(baseExpected[4], 4),     // outro
         ];
 
-        console.log('\n=== Step 4: Apply resolution and verify notebook on disk ===');
+        logger.info('\n=== Step 4: Apply resolution and verify notebook on disk ===');
         const resolvedNotebook = await applyResolutionAndReadNotebook(page, session.conflictFile);
         assertNotebookMatches(expectedCells, resolvedNotebook, {
             expectedLabel: 'Expected All Current sequence after unmatching Beta',
@@ -173,9 +174,9 @@ export async function run(): Promise<void> {
             renumberEnabled,
         });
         validateNotebookStructure(resolvedNotebook);
-        console.log('  \u2713 On-disk notebook matches UI selections after unmatch');
+        logger.info('  \u2713 On-disk notebook matches UI selections after unmatch');
 
-        console.log('\n=== TEST PASSED ===');
+        logger.info('\n=== TEST PASSED ===');
     } finally {
         restoreSettingsFileSnapshot(settingsSnapshot);
         if (page) await page.close();

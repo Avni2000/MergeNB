@@ -18,6 +18,7 @@ import * as gitIntegration from './gitIntegration';
 import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
 import { getSettings, MergeNBSettings } from './settings';
+import * as logger from './logger';
 
 function stableStringify(value: unknown): string {
     if (value === undefined) return 'undefined';
@@ -83,19 +84,19 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
         try {
             if (base) baseNotebook = parseNotebook(base);
         } catch (error) {
-            console.warn('Failed to parse base notebook:', error);
+            logger.warn('Failed to parse base notebook:', error);
         }
 
         try {
             if (current) currentNotebook = parseNotebook(current);
         } catch (error) {
-            console.warn('Failed to parse current notebook:', error);
+            logger.warn('Failed to parse current notebook:', error);
         }
 
         try {
             if (incoming) incomingNotebook = parseNotebook(incoming);
         } catch (error) {
-            console.warn('Failed to parse incoming notebook:', error);
+            logger.warn('Failed to parse incoming notebook:', error);
         }
 
 
@@ -127,7 +128,7 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
             incomingBranch: incomingBranch || undefined
         };
     } catch (error) {
-        console.error('Error detecting semantic conflicts:', error);
+        logger.error('Error detecting semantic conflicts:', error);
         return null;
     }
 }

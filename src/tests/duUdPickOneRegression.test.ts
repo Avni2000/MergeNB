@@ -10,6 +10,7 @@ import {
 } from '../resolver';
 import { readTestConfig } from './testHarness';
 import { git, gitAllowFailure, hashBlob, assertNoUnmergedConflict } from './gitTestUtils';
+import * as logger from '../logger';
 
 type GitStage = '1' | '2' | '3';
 type DeleteConflictStatus = 'DU' | 'UD';
@@ -147,5 +148,5 @@ export async function run(): Promise<void> {
     await gitIntegration.refreshUnmergedFilesSnapshot(workspacePath);
     await assertKeepDeleteResult(workspacePath, resolver, conflictUri, 'UD keep-delete');
 
-    console.log('DU/UD pick-one regression test passed.');
+    logger.info('DU/UD pick-one regression test passed.');
 }

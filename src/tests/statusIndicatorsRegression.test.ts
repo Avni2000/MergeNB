@@ -12,6 +12,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { readTestConfig } from './testHarness';
 import { git, gitAllowFailure, hasUnmergedConflict } from './gitTestUtils';
+import * as logger from '../logger';
 
 interface StatusBarState {
     visible: boolean;
@@ -105,7 +106,7 @@ function ensureHasUnmergedConflict(workspacePath: string, context: string): void
 }
 
 export async function run(): Promise<void> {
-    console.log('Starting status indicators regression test...');
+    logger.info('Starting status indicators regression test...');
 
     const config = readTestConfig();
     const workspacePath = config.workspacePath;
@@ -130,7 +131,7 @@ export async function run(): Promise<void> {
     git(workspacePath, ['merge', '--abort']);
     ensureNoUnmergedConflict(workspacePath, 'after merge --abort');
     const mergeOutput = gitAllowFailure(workspacePath, ['merge', 'incoming']);
-    console.log(`[statusIndicatorsRegression] merge output:\n${mergeOutput}`);
+    logger.info(`[statusIndicatorsRegression] merge output:\n${mergeOutput}`);
     ensureHasUnmergedConflict(workspacePath, 'after recreating conflict');
     await waitForIndicatorState(conflictFile, true, 'after recreating conflict');
 
@@ -139,5 +140,5 @@ export async function run(): Promise<void> {
     ensureNoUnmergedConflict(workspacePath, 'after final git add');
     await waitForIndicatorState(conflictFile, false, 'after final git add');
 
-    console.log('Status indicator regression test passed.');
+    logger.info('Status indicator regression test passed.');
 }

@@ -6,6 +6,7 @@
  * current/incoming choices, with optional deletion, then verifies the written notebook.
  */
 
+import * as logger from '../logger';
 import {
     validateNotebookStructure,
 } from './testHelpers';
@@ -33,7 +34,7 @@ import {
 } from './settingsFile';
 
 export async function run(): Promise<void> {
-    console.log('Starting MergeNB VS Code Integration Test...');
+    logger.info('Starting MergeNB VS Code Integration Test...');
 
     let browser;
     let page;
@@ -57,11 +58,11 @@ export async function run(): Promise<void> {
         // Count rows and conflicts
         const allRows = page.locator('.merge-row');
         const rowCount = await allRows.count();
-        console.log(`Found ${rowCount} merge rows`);
+        logger.info(`Found ${rowCount} merge rows`);
 
         const conflictRowElements = page.locator('.merge-row.conflict-row');
         const conflictCount = await conflictRowElements.count();
-        console.log(`Found ${conflictCount} conflict rows`);
+        logger.info(`Found ${conflictCount} conflict rows`);
 
         if (conflictCount === 0) {
             throw new Error('Should have at least one conflict row');
@@ -73,7 +74,7 @@ export async function run(): Promise<void> {
         }
 
         // Count unmatched cells before resolving
-        console.log('\n=== Analyzing unmatched cells ===');
+        logger.info('\n=== Analyzing unmatched cells ===');
         let unmatchedCurrentOnly = 0;  // current exists, base doesn't
         let unmatchedIncomingOnly = 0; // incoming exists, base doesn't
         let unmatchedBoth = 0;         // both current and incoming exist, but base doesn't
@@ -99,18 +100,18 @@ export async function run(): Promise<void> {
             }
         }
 
-        console.log(`Unmatched cells (before resolution):`);
-        console.log(`  - Base-matched conflicts: ${baseMatched}`);
-        console.log(`  - Current-only (unmatched): ${unmatchedCurrentOnly}`);
-        console.log(`  - Incoming-only (unmatched): ${unmatchedIncomingOnly}`);
-        console.log(`  - Both current & incoming (unmatched from base): ${unmatchedBoth}`);
-        console.log(`  - Total unmatched: ${unmatchedCurrentOnly + unmatchedIncomingOnly + unmatchedBoth}`);
+        logger.info(`Unmatched cells (before resolution):`);
+        logger.info(`  - Base-matched conflicts: ${baseMatched}`);
+        logger.info(`  - Current-only (unmatched): ${unmatchedCurrentOnly}`);
+        logger.info(`  - Incoming-only (unmatched): ${unmatchedIncomingOnly}`);
+        logger.info(`  - Both current & incoming (unmatched from base): ${unmatchedBoth}`);
+        logger.info(`  - Total unmatched: ${unmatchedCurrentOnly + unmatchedIncomingOnly + unmatchedBoth}`);
 
         // Track resolution choices for cell type determination
         const resolutionChoices: Map<number, { choice: ConflictChoice; chosenCellType: string }> = new Map();
 
         // Resolve each conflict
-        console.log('\n=== Resolving conflicts ===');
+        logger.info('\n=== Resolving conflicts ===');
         for (let conflictIdx = 0; conflictIdx < conflictCount; conflictIdx++) {
             const row = conflictRowElements.nth(conflictIdx);
             await row.scrollIntoViewIfNeeded();
@@ -223,12 +224,12 @@ export async function run(): Promise<void> {
         const renumberEnabled = await ensureCheckboxChecked(page, 'Renumber execution counts');
 
         // Capture expected cells from UI BEFORE clicking apply
-        console.log('\n=== Capturing expected cells from UI ===');
+        logger.info('\n=== Capturing expected cells from UI ===');
         const expectedCells = await collectExpectedCellsFromUI(page, {
             resolveConflictChoice: async (row, conflictIndex, rowIndex) => {
                 const resInfo = resolutionChoices.get(conflictIndex);
                 if (!resInfo) {
-                    console.error(`Missing resolution info for conflict row ${rowIndex}`);
+                    logger.error(`Missing resolution info for conflict row ${rowIndex}`);
                     throw new Error(`Missing resolution info for conflict row ${rowIndex}`);
                 }
                 return { choice: resInfo.choice, chosenCellType: resInfo.chosenCellType };
@@ -236,14 +237,14 @@ export async function run(): Promise<void> {
             includeMetadata: true,
             includeOutputs: true,
         });
-        console.log(`Captured ${expectedCells.length} cells from UI`);
+        logger.info(`Captured ${expectedCells.length} cells from UI`);
 
         // Filter to non-deleted cells (include empty-source cells - they are valid)
         const expectedNonDeletedCells = expectedCells.filter(c => !c.isDeleted);
-        console.log(`Expected ${expectedNonDeletedCells.length} cells in final notebook`);
+        logger.info(`Expected ${expectedNonDeletedCells.length} cells in final notebook`);
 
         // Apply resolution and verify notebook
-        console.log('\n=== Verifying UI matches disk ===');
+        logger.info('\n=== Verifying UI matches disk ===');
         const resolvedNotebook = await applyResolutionAndReadNotebook(page, conflictFile);
         assertNotebookMatches(expectedNonDeletedCells, resolvedNotebook, {
             expectedLabel: 'Expected from UI',
@@ -255,11 +256,11 @@ export async function run(): Promise<void> {
         // Verify notebook structure
         validateNotebookStructure(resolvedNotebook);
 
-        console.log('\n=== TEST PASSED ===');
-        console.log(`✓ ${expectedNonDeletedCells.length} cells verified`);
-        console.log('✓ All sources match');
-        console.log('✓ All types match');
-        console.log('✓ Notebook structure valid');
+        logger.info('\n=== TEST PASSED ===');
+        logger.info(`✓ ${expectedNonDeletedCells.length} cells verified`);
+        logger.info('✓ All sources match');
+        logger.info('✓ All types match');
+        logger.info('✓ Notebook structure valid');
 
     } finally {
         restoreSettingsFileSnapshot(settingsSnapshot);

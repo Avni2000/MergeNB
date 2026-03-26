@@ -11,6 +11,7 @@
  */
 
 import { execFileSync } from 'child_process';
+import * as logger from '../logger';
 import {
     getCellSource,
     validateNotebookStructure,
@@ -159,7 +160,7 @@ async function verifyManualSelectionsAfterUndo(
 }
 
 export async function run(): Promise<void> {
-    console.log('Starting MergeNB Take-All Buttons Integration Test...');
+    logger.info('Starting MergeNB Take-All Buttons Integration Test...');
 
     let browser;
     let page: import('playwright').Page | undefined;
@@ -176,12 +177,12 @@ export async function run(): Promise<void> {
         if (action !== 'base' && action !== 'current' && action !== 'incoming') {
             throw new Error(`Invalid or missing action param. Expected 'base'|'current'|'incoming', got '${action}'`);
         }
-        console.log(`Running test variant: Take All ${action.toUpperCase()} (${mode})`);
+        logger.info(`Running test variant: Take All ${action.toUpperCase()} (${mode})`);
 
         const workspacePath = config.workspacePath;
 
         // Load source notebooks from git stages for verification
-        console.log('Loading source notebooks from git history...');
+        logger.info('Loading source notebooks from git history...');
         // :1: = Base, :2: = Current, :3: = Incoming
         const baseContent = gitShow(workspacePath, ':1:conflict.ipynb');
         const currentContent = gitShow(workspacePath, ':2:conflict.ipynb');
@@ -193,7 +194,7 @@ export async function run(): Promise<void> {
             incoming: JSON.parse(incomingContent)
         };
         const targetNotebook = sourceNotebooks[action as MergeSide];
-        console.log(`Loaded source notebooks. Target ('${action}') has ${targetNotebook.cells.length} cells.`);
+        logger.info(`Loaded source notebooks. Target ('${action}') has ${targetNotebook.cells.length} cells.`);
 
         const session = await setupConflictResolver(config);
         browser = session.browser;
@@ -204,29 +205,29 @@ export async function run(): Promise<void> {
         // Verify we have conflict rows
         const conflictRowElements = p.locator('.merge-row.conflict-row');
         const conflictCount = await conflictRowElements.count();
-        console.log(`Found ${conflictCount} conflict rows`);
+        logger.info(`Found ${conflictCount} conflict rows`);
 
         if (conflictCount === 0) {
             throw new Error('Should have at least one conflict row');
         }
 
         const initial = await getResolvedCount(p);
-        console.log(`Initial resolution state: ${initial.resolved}/${initial.total}`);
+        logger.info(`Initial resolution state: ${initial.resolved}/${initial.total}`);
 
         // Resolve a few conflicts manually before take-all if in 'unresolved' mode
         let manualSelections: Array<{ index: number; expectedSource: string; expectedCellType: string }> = [];
         if (mode === 'unresolved') {
             const manualSide = manualChoice || 'incoming';
-            console.log(`Resolving ${manualCount} conflicts manually to "${manualSide}"...`);
+            logger.info(`Resolving ${manualCount} conflicts manually to "${manualSide}"...`);
             manualSelections = await selectManualRows(p, manualSide, manualCount);
-            console.log(`Manually resolved rows: ${manualSelections.map(m => m.index).join(', ')}`);
+            logger.info(`Manually resolved rows: ${manualSelections.map(m => m.index).join(', ')}`);
         }
 
         // ============================================================
         // EXECUTE ACTION
         // ============================================================
         const buttonLabel = `All ${action.charAt(0).toUpperCase() + action.slice(1)}`; // e.g., "All Base"
-        console.log(`\n=== Clicking "${buttonLabel}" ===`);
+        logger.info(`\n=== Clicking "${buttonLabel}" ===`);
 
         const actionButton = p.locator(`button:has-text("${buttonLabel}")`);
         await actionButton.waitFor({ timeout: 5000 });
@@ -234,7 +235,7 @@ export async function run(): Promise<void> {
 
         // Verify resolution count
         const afterAction = await waitForAllConflictsResolved(p);
-        console.log(`After "${buttonLabel}": ${afterAction.resolved}/${afterAction.total}`);
+        logger.info(`After "${buttonLabel}": ${afterAction.resolved}/${afterAction.total}`);
         if (afterAction.resolved !== afterAction.total) {
             throw new Error(`Expected all conflicts resolved after "${buttonLabel}", got ${afterAction.resolved}/${afterAction.total}`);
         }
@@ -242,19 +243,19 @@ export async function run(): Promise<void> {
         // Verify textareas match UI columns
         if (mode === 'unresolved') {
             await verifyTakeAllUnresolved(p, action as MergeSide, manualSelections);
-            console.log(`  ✓ Take-all respected manual resolutions and applied to unresolved rows only`);
+            logger.info(`  ✓ Take-all respected manual resolutions and applied to unresolved rows only`);
         } else {
             const result = await verifyAllConflictsMatchSide(p, action as MergeSide);
-            console.log(`  Matches: ${result.matchCount}, Deletes: ${result.deleteCount}`);
+            logger.info(`  Matches: ${result.matchCount}, Deletes: ${result.deleteCount}`);
             if (result.mismatches.length > 0) {
-                for (const m of result.mismatches) console.error(`  MISMATCH: ${m}`);
+                for (const m of result.mismatches) logger.error(`  MISMATCH: ${m}`);
                 throw new Error(`${result.mismatches.length} mismatches after "${buttonLabel}"`);
             }
-            console.log(`  ✓ All resolved cells match ${action}-side content in UI`);
+            logger.info(`  ✓ All resolved cells match ${action}-side content in UI`);
         }
 
         if (undoRedo) {
-            console.log('\n=== Undo/Redo Take-All ===');
+            logger.info('\n=== Undo/Redo Take-All ===');
             const expectedResolvedBefore = mode === 'unresolved' ? manualSelections.length : initial.resolved;
 
             await clickHistoryUndo(p);
@@ -306,7 +307,7 @@ export async function run(): Promise<void> {
         // ============================================================
         // Verify notebook on disk
         // ============================================================
-        console.log('\n=== Verifying UI matches disk ===');
+        logger.info('\n=== Verifying UI matches disk ===');
 
         if (mode === 'unresolved') {
             assertNotebookMatches(expectedCellsFromUI, resolvedNotebook, {
@@ -324,8 +325,8 @@ export async function run(): Promise<void> {
         // Validate structure
         validateNotebookStructure(resolvedNotebook);
 
-        console.log('\n=== TEST PASSED ===');
-        console.log(`✓ "All ${action.toUpperCase()}" action verified end-to-end`);
+        logger.info('\n=== TEST PASSED ===');
+        logger.info(`✓ "All ${action.toUpperCase()}" action verified end-to-end`);
 
     } finally {
         if (page) await page.close();
