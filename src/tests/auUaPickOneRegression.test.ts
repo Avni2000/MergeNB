@@ -1,7 +1,6 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
 import * as vscode from 'vscode';
 import * as gitIntegration from '../gitIntegration';
 import {
@@ -10,32 +9,9 @@ import {
     setResolverPromptTestHooks,
 } from '../resolver';
 import { readTestConfig } from './testHarness';
+import { git, gitAllowFailure, hashBlob, assertNoUnmergedConflict } from './gitTestUtils';
 
-type GitStage = '1' | '2' | '3';
 type AddOnlyStatus = 'AU' | 'UA';
-
-function git(cwd: string, args: string[], input?: string): string {
-    return execFileSync('git', args, {
-        cwd,
-        encoding: 'utf8',
-        input,
-        stdio: ['pipe', 'pipe', 'pipe'],
-    });
-}
-
-function gitAllowFailure(cwd: string, args: string[], input?: string): string {
-    try {
-        return git(cwd, args, input);
-    } catch (error: any) {
-        const stdout = typeof error?.stdout === 'string' ? error.stdout : '';
-        const stderr = typeof error?.stderr === 'string' ? error.stderr : '';
-        return `${stdout}\n${stderr}`.trim();
-    }
-}
-
-function hashBlob(cwd: string, content: string): string {
-    return git(cwd, ['hash-object', '-w', '--stdin'], content).trim();
-}
 
 function notebookContent(label: string): string {
     return `${JSON.stringify({
@@ -52,20 +28,6 @@ function notebookContent(label: string): string {
             },
         ],
     }, null, 2)}\n`;
-}
-
-function hasUnmergedStatusForConflict(statusOutput: string): boolean {
-    return statusOutput
-        .split('\n')
-        .map((line) => line.trim())
-        .some((line) => /^(UU|AA|DD|AU|UA|DU|UD)\s+conflict\.ipynb$/.test(line));
-}
-
-function assertNoUnmergedStatus(cwd: string, context: string): void {
-    const status = git(cwd, ['status', '--porcelain', '--', 'conflict.ipynb']);
-    if (hasUnmergedStatusForConflict(status)) {
-        throw new Error(`Expected no unmerged status ${context}, got:\n${status}`);
-    }
 }
 
 function setConflictStatus(
@@ -118,7 +80,7 @@ async function assertApplyAndStageResult(
     const actual = fs.readFileSync(uri.fsPath, 'utf8');
     assert.strictEqual(actual, expectedContent, `Unexpected file content after apply-and-stage (${context})`);
 
-    assertNoUnmergedStatus(cwd, context);
+    assertNoUnmergedConflict(cwd, context);
 
     await gitIntegration.refreshUnmergedFilesSnapshot(cwd);
     const unmergedStatus = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
