@@ -135,6 +135,7 @@
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "npm run compile && npm run compile-tests",
+    "pretest:pw": "npm run compile && npm run compile-tests",
     "pretest:vscode": "npm run compile && npm run compile-tests",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
