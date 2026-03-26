@@ -4,8 +4,8 @@
  *
  * debug() logs appear when:
  *   - Running in VSCode extension development mode (__VSCODE_EXTENSION_DEVELOPMENT__=true)
- *   - Running in CI (CI=true)
- *   - Running under a test runner (NODE_ENV=test or NODE_ENV=development)
+ *   - Debug mode explicitly enabled (MERGENB_DEBUG=true, e.g. via --debug flag)
+ *   - Running in CI with debug output (ACTIONS_DEBUG=1)
  *
  * info/warn/error always appear.
  *
@@ -21,7 +21,7 @@ function isDebugEnabled(): boolean {
     }
     return (
         process.env.__VSCODE_EXTENSION_DEVELOPMENT__ === 'true' ||
-        process.env.NODE_ENV === 'test' ||
+        process.env.MERGENB_DEBUG === 'true' ||
         process.env?.ACTIONS_DEBUG === '1'
     );
 }

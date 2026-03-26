@@ -12,6 +12,7 @@
  *   node out/tests/runIntegrationTest.js --manual 02
  *   node out/tests/runIntegrationTest.js --test takeAll_base --test perCell_02
  *   node out/tests/runIntegrationTest.js --list            # Print groups & tests
+ *   node out/tests/runIntegrationTest.js --all --debug     # Show all logs (pass + fail)
  *
  * npm scripts (see package.json):
  *   npm run test                          # Interactive picker
@@ -487,7 +488,7 @@ function formatDuration(ms: number): string {
     return `${(ms / 1000).toFixed(1)}s`;
 }
 
-async function runAll(tests: TestDef[]): Promise<void> {
+async function runAll(tests: TestDef[], debug = false): Promise<void> {
     const totalStart = Date.now();
 
     // Split into headless (parallelizable) and sequential (VS Code / manual) tests
@@ -566,16 +567,17 @@ async function runAll(tests: TestDef[]): Promise<void> {
             if (result.error) {
                 console.log(`  ${pc.red(result.error.message)}`);
             }
-            if (result.logs) {
-                console.log(pc.dim('\n  --- Test Logs ---'));
-                console.log(
-                    result.logs
-                        .split('\n')
-                        .map(line => `  ${pc.dim(line)}`)
-                        .join('\n'),
-                );
-                console.log(pc.dim('  -----------------\n'));
-            }
+        }
+
+        if (result.logs && (debug || !result.passed)) {
+            console.log(pc.dim('\n  --- Test Logs ---'));
+            console.log(
+                result.logs
+                    .split('\n')
+                    .map(line => `  ${pc.dim(line)}`)
+                    .join('\n'),
+            );
+            console.log(pc.dim('  -----------------\n'));
         }
     }
 
@@ -621,7 +623,7 @@ async function main(): Promise<void> {
     const cli = parseArgs(process.argv);
 
     if (cli.debug) {
-        process.env.NODE_ENV = 'test';
+        process.env.MERGENB_DEBUG = 'true';
     }
 
     const manualSelection = resolveManualFixtureSelections(cli.manualFixtures);
@@ -634,7 +636,7 @@ async function main(): Promise<void> {
 
     // --all
     if (cli.all) {
-        return runAll(testsForAll());
+        return runAll(testsForAll(), cli.debug);
     }
 
     if (manualSelection.unknownTokens.length > 0) {
@@ -681,12 +683,12 @@ async function main(): Promise<void> {
             console.error(pc.dim('Run with --list to see available ids.'));
             process.exit(1);
         }
-        return runAll(tests);
+        return runAll(tests, cli.debug);
     }
 
     // Interactive TUI picker (default when no flags)
     const tests = await pickTestsInteractively();
-    return runAll(tests);
+    return runAll(tests, cli.debug);
 }
 
 main().catch(err => {

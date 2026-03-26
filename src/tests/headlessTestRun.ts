@@ -17,6 +17,7 @@ export interface HeadlessRunResult {
     passed: boolean;
     error?: Error;
     durationMs: number;
+    logs?: string;
 }
 
 export async function runHeadlessTest(test: AutomatedTestDef): Promise<HeadlessRunResult> {
@@ -24,6 +25,20 @@ export async function runHeadlessTest(test: AutomatedTestDef): Promise<HeadlessR
     let workspacePath: string | undefined;
     let configPath: string | undefined;
     const configInfo = prepareIsolatedConfigPath(test.id);
+    const logs: string[] = [];
+
+    // Redirect console logs to buffer for this test
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+
+    const captureLog = (...args: any[]): void => {
+        logs.push(args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' '));
+    };
+
+    console.log = captureLog;
+    console.warn = captureLog;
+    console.error = captureLog;
 
     try {
         const [baseFile, currentFile, incomingFile] = resolveNotebookTripletPaths(test);
@@ -32,7 +47,7 @@ export async function runHeadlessTest(test: AutomatedTestDef): Promise<HeadlessR
 
         // Run inside an AsyncLocalStorage context so getConfigFilePath() and
         // readTestConfig() resolve to this test's isolated paths — no env vars needed.
-        return await configContext.run(
+        const result = await configContext.run(
             { configPath: configInfo.configPath, testConfigPath: configInfo.testConfigPath },
             async () => {
                 const testModulePath = path.resolve(__dirname, test.testModule);
@@ -47,17 +62,23 @@ export async function runHeadlessTest(test: AutomatedTestDef): Promise<HeadlessR
                 }
 
                 await Promise.resolve(testModule.run());
-                return { test, passed: true, durationMs: Date.now() - start };
+                return { test, passed: true, durationMs: Date.now() - start, logs: logs.join('\n') };
             },
         );
+        return result;
     } catch (err) {
         return {
             test,
             passed: false,
             error: err instanceof Error ? err : new Error(String(err)),
             durationMs: Date.now() - start,
+            logs: logs.join('\n'),
         };
     } finally {
+        console.log = originalLog;
+        console.warn = originalWarn;
+        console.error = originalError;
+
         if (configPath) cleanup(configPath);
         if (workspacePath) cleanup(workspacePath);
         cleanupIsolatedConfigPath(configInfo.configRoot);
