@@ -139,6 +139,7 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "node out/tests/runIntegrationTest.js",
+    "test:all": "npm run test:pw && npm run test:vscode",
     "test:vscode": "node out/tests/runIntegrationTest.js --vscode",
     "test:pw": "npx playwright test",
     "test:pw:ui": "npx playwright test --ui",
