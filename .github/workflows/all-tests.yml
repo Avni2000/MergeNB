@@ -70,7 +70,7 @@ jobs:
         run: npm install --no-save --no-package-lock @playwright/test@${{ matrix.playwright-version }} playwright@${{ matrix.playwright-version }}
 
       - name: Build
-        run: npm run compile
+        run: npm run compile && npm run compile-tests
 
       # Cache Playwright browsers
       - name: Cache Playwright browsers (Linux)
