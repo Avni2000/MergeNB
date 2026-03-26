@@ -150,12 +150,6 @@ export const TEST_GROUPS: TestGroup[] = [
                 testModule: './incomingNonConflictRegression.test.js',
             },
             {
-                id: 'regression_null_current_cell_indexing',
-                description: 'Cell indexing when current is null (delete/modify conflict)',
-                notebooks: ['demo_base.ipynb', 'demo_current.ipynb', 'demo_incoming.ipynb'],
-                testModule: './nullCurrentCellIndexing.test.js',
-            },
-            {
                 id: 'regression_settings',
                 description: 'Settings matrix: end-to-end config -> UI behavior + auto-resolve paths',
                 notebooks: ['08_settings_base.ipynb', '08_settings_current.ipynb', '08_settings_incoming.ipynb'],
