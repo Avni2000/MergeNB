@@ -74,5 +74,5 @@ export default defineConfig({
     ],
 
     // Output directory for test artifacts
-    outputDir: './test-results',
+    outputDir: './playwright-test-results',
 });
