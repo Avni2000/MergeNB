@@ -21,9 +21,8 @@ function isDebugEnabled(): boolean {
     }
     return (
         process.env.__VSCODE_EXTENSION_DEVELOPMENT__ === 'true' ||
-        process.env.CI === 'true' ||
         process.env.NODE_ENV === 'test' ||
-        process.env.NODE_ENV === 'development'
+        process.env?.ACTIONS_DEBUG === '1'
     );
 }
 

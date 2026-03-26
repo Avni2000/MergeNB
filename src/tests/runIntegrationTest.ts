@@ -61,6 +61,7 @@ async function clack(): Promise<any> {
 interface CliArgs {
     all: boolean;
     list: boolean;
+    debug: boolean;
     groups: string[];
     tests: string[];
     manualFixtures: string[];
@@ -70,6 +71,7 @@ function parseArgs(argv: string[]): CliArgs {
     const args: CliArgs = {
         all: false,
         list: false,
+        debug: false,
         groups: [],
         tests: [],
         manualFixtures: [],
@@ -79,6 +81,8 @@ function parseArgs(argv: string[]): CliArgs {
         const arg = argv[i];
         if (arg === '--all') {
             args.all = true;
+        } else if (arg === '--debug') {
+            args.debug = true;
         } else if (arg === '--list' || arg === '-l') {
             args.list = true;
         } else if (arg === '--group' || arg === '-g') {
@@ -278,6 +282,7 @@ interface RunResult {
     error?: Error;
     durationMs: number;
     workspacePath?: string;
+    logs?: string;
 }
 
 function isCodeCliAvailable(): boolean {
@@ -513,7 +518,13 @@ async function runAll(tests: TestDef[]): Promise<void> {
         const headlessResults = await Promise.all(
             headlessTests.map(async (test): Promise<RunResult> => {
                 const result = await runHeadlessTest(test);
-                return { test, passed: result.passed, error: result.error, durationMs: result.durationMs };
+                return {
+                    test,
+                    passed: result.passed,
+                    error: result.error,
+                    durationMs: result.durationMs,
+                    logs: result.logs,
+                };
             }),
         );
         for (const r of headlessResults) {
@@ -554,6 +565,16 @@ async function runAll(tests: TestDef[]): Promise<void> {
             );
             if (result.error) {
                 console.log(`  ${pc.red(result.error.message)}`);
+            }
+            if (result.logs) {
+                console.log(pc.dim('\n  --- Test Logs ---'));
+                console.log(
+                    result.logs
+                        .split('\n')
+                        .map(line => `  ${pc.dim(line)}`)
+                        .join('\n'),
+                );
+                console.log(pc.dim('  -----------------\n'));
             }
         }
     }
@@ -598,6 +619,11 @@ async function runAll(tests: TestDef[]): Promise<void> {
 
 async function main(): Promise<void> {
     const cli = parseArgs(process.argv);
+
+    if (cli.debug) {
+        process.env.NODE_ENV = 'test';
+    }
+
     const manualSelection = resolveManualFixtureSelections(cli.manualFixtures);
 
     // --list
