@@ -5,7 +5,6 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import type { TestDef } from './registry';
 
 export function toSafePathSegment(value: string): string {
     const cleaned = value
@@ -32,23 +31,4 @@ export function cleanupIsolatedConfigPath(configRoot: string): void {
     try {
         fs.rmSync(configRoot, { recursive: true, force: true });
     } catch { /* ignore */ }
-}
-
-export function resolveNotebookTripletPaths(test: Pick<TestDef, 'notebooks'>): [string, string, string] {
-    const testDir = path.resolve(__dirname, '../../test');
-    const [baseFile, currentFile, incomingFile] = test.notebooks.map(n => {
-        const resolved = path.resolve(testDir, n);
-        if (!resolved.startsWith(testDir + path.sep) && resolved !== testDir) {
-            throw new Error(`Notebook path escapes test directory: ${n}`);
-        }
-        return resolved;
-    }) as [string, string, string];
-
-    for (const f of [baseFile, currentFile, incomingFile]) {
-        if (!fs.existsSync(f)) {
-            throw new Error(`Notebook not found: ${f}`);
-        }
-    }
-
-    return [baseFile, currentFile, incomingFile];
 }

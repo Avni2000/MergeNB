@@ -5,6 +5,7 @@ import * as gitIntegration from '../gitIntegration';
 import { NotebookConflictResolver } from '../resolver';
 import { readTestConfig } from './testHarness';
 import { git, gitAllowFailure, hashBlob } from './gitTestUtils';
+import * as logger from '../logger';
 
 type GitStage = '1' | '2' | '3';
 type StatusSpec = {
@@ -170,5 +171,5 @@ export async function run(): Promise<void> {
         }
     }
 
-    console.log('Unmerged status matrix regression test passed.');
+    logger.info('Unmerged status matrix regression test passed.');
 }

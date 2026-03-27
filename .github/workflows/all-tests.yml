@@ -70,7 +70,7 @@ jobs:
         run: npm install --no-save --no-package-lock @playwright/test@${{ matrix.playwright-version }} playwright@${{ matrix.playwright-version }}
 
       - name: Build
-        run: npm run compile
+        run: npm run compile && npm run compile-tests
 
       # Cache Playwright browsers
       - name: Cache Playwright browsers (Linux)
@@ -141,3 +141,14 @@ jobs:
       - name: Run VS Code integration tests
         if: runner.os == 'Windows' || runner.os == 'macOS'
         run: npm run test:all
+
+      # Upload artifacts
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.os }}-vscode-${{ matrix.vscode-version }}
+          path: |
+            playwright-test-results/
+            playwright-report/
+          retention-days: 7

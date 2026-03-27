@@ -10,6 +10,7 @@
 import * as vscode from 'vscode';
 import { execSync } from 'child_process';
 import * as gitIntegration from '../gitIntegration';
+import * as logger from '../logger';
 
 type PromptCall = {
     message: string;
@@ -103,10 +104,10 @@ function configureIncompatibleNotebookSettings(workspacePath: string): void {
 export async function run(): Promise<void> {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     assert(workspacePath, 'Expected a workspace folder for nbdime guard test');
-    console.log(`[nbdimeGuard.test] workspacePath=${workspacePath}`);
+    logger.info(`[nbdimeGuard.test] workspacePath=${workspacePath}`);
 
     configureIncompatibleNotebookSettings(workspacePath);
-    console.log('[nbdimeGuard.test] incompatible git settings configured');
+    logger.info('[nbdimeGuard.test] incompatible git settings configured');
     ensureKeyValue(workspacePath, '--local', 'merge.tool', 'nbdime');
     ensureKeyValue(workspacePath, '--local', 'mergetool.nbdime.keepBackup', 'false');
     ensureKeyValue(workspacePath, '--local', 'nbdime.autoresolve', 'false');
@@ -141,7 +142,7 @@ export async function run(): Promise<void> {
             `Expected UnsupportedMergeToolError from terminal guidance path, got: ${String(error)}`
         );
     }
-    console.log('[nbdimeGuard.test] terminal guidance path completed');
+    logger.info('[nbdimeGuard.test] terminal guidance path completed');
 
     assert(terminalPromptCalls.length === 1, `Expected one terminal guidance prompt, got ${terminalPromptCalls.length}`);
     const terminalPrompt = terminalPromptCalls[0];
@@ -204,7 +205,7 @@ export async function run(): Promise<void> {
         15000,
         'ensureSupportedMergeTool(auto-fix)'
     );
-    console.log('[nbdimeGuard.test] ensureSupportedMergeTool auto-fix completed');
+    logger.info('[nbdimeGuard.test] ensureSupportedMergeTool auto-fix completed');
 
     assert(promptCalls.length === 1, `Expected one guidance prompt, got ${promptCalls.length}`);
     const prompt = promptCalls[0];
@@ -234,7 +235,7 @@ export async function run(): Promise<void> {
     ensureSectionMissing(workspacePath, '--local', 'mergetool.nbdime');
     ensureSectionMissing(workspacePath, '--global', 'difftool.nbdime');
     ensureSectionMissing(workspacePath, '--global', 'jupyter.merge');
-    console.log('[nbdimeGuard.test] config cleanup assertions completed');
+    logger.info('[nbdimeGuard.test] config cleanup assertions completed');
 
     // Second call should be a no-op with no additional guidance prompts.
     const promptCallsBeforeNoOp = promptCalls.length;
@@ -255,5 +256,5 @@ export async function run(): Promise<void> {
     );
     const promptCallsFromNoOp = promptCalls.slice(promptCallsBeforeNoOp);
     assert(promptCallsFromNoOp.length === 0, 'Unexpected extra guidance prompt after auto-fix cleanup');
-    console.log('[nbdimeGuard.test] completed');
+    logger.info('[nbdimeGuard.test] completed');
 }

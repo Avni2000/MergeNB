@@ -10,6 +10,7 @@ import {
 } from '../resolver';
 import { readTestConfig } from './testHarness';
 import { git, gitAllowFailure, hashBlob, assertNoUnmergedConflict } from './gitTestUtils';
+import * as logger from '../logger';
 
 type AddOnlyStatus = 'AU' | 'UA';
 
@@ -147,5 +148,5 @@ export async function run(): Promise<void> {
     await gitIntegration.refreshUnmergedFilesSnapshot(workspacePath);
     await assertCancelResult(workspacePath, resolver, conflictUri, 'UA', 'UA cancel');
 
-    console.log('AU/UA pick-one regression test passed.');
+    logger.info('AU/UA pick-one regression test passed.');
 }

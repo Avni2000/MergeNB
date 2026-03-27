@@ -1,6 +1,6 @@
 /**
- * @file incomingNonConflictRegression.test.ts
- * @description Regression test for one-sided incoming edits on non-conflict rows.
+ * @file incomingNonConflictRegression.spec.ts
+ * @description Playwright Test for regression: one-sided incoming edits on non-conflict rows.
  *
  * Verifies that when base/current are equal and incoming changed a cell's source,
  * the final resolved notebook preserves incoming content for that row.
@@ -8,15 +8,15 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import {
-    readTestConfig,
-    setupConflictResolver,
-    applyResolutionAndReadNotebook,
-} from './testHarness';
-import { getCellSource, validateNotebookStructure } from './testHelpers';
+import { test, expect } from './fixtures';
+import { applyResolutionAndReadNotebook } from './fixtures';
+import { getCellSource, validateNotebookStructure } from '../testHelpers';
+import * as logger from '../../logger';
+
+// ─── Helper Functions ───────────────────────────────────────────────────────
 
 function readFixtureNotebook(fileName: string): any {
-    const fixturePath = path.resolve(__dirname, '../../test', fileName);
+    const fixturePath = path.resolve(__dirname, '../../../test', fileName);
     if (!fs.existsSync(fixturePath)) {
         throw new Error(`Fixture not found: ${fixturePath}`);
     }
@@ -35,18 +35,22 @@ function getStep1GradientDescentSource(notebook: any, label: string): string {
     return getCellSource(cell);
 }
 
-export async function run(): Promise<void> {
-    console.log('Starting incoming non-conflict regression integration test...');
+// ─── Test Definitions ───────────────────────────────────────────────────────
 
-    let browser: import('playwright').Browser | undefined;
-    let page: import('playwright').Page | undefined;
+test.describe('Incoming Non-Conflict Regression', () => {
+    test('Preserve incoming-only content for non-conflict rows', async ({ conflictRepo, conflictSession }) => {
+        logger.info('Starting incoming non-conflict regression integration test...');
 
-    try {
-        const config = readTestConfig();
-        const session = await setupConflictResolver(config);
-        browser = session.browser;
-        page = session.page;
+        const workspacePath = conflictRepo({
+            base: 'demo_base.ipynb',
+            current: 'demo_current.ipynb',
+            incoming: 'demo_incoming.ipynb',
+        });
 
+        const session = await conflictSession(workspacePath);
+        const { page, conflictFile } = session;
+
+        // Read fixtures for comparison
         const baseNotebook = readFixtureNotebook('demo_base.ipynb');
         const currentNotebook = readFixtureNotebook('demo_current.ipynb');
         const incomingNotebook = readFixtureNotebook('demo_incoming.ipynb');
@@ -55,19 +59,16 @@ export async function run(): Promise<void> {
         const currentStep1Source = getStep1GradientDescentSource(currentNotebook, 'Current fixture');
         const incomingStep1Source = getStep1GradientDescentSource(incomingNotebook, 'Incoming fixture');
 
-        if (baseStep1Source !== currentStep1Source) {
-            throw new Error('Fixture precondition failed: expected base and current Step 1 to match');
-        }
-        if (incomingStep1Source === baseStep1Source) {
-            throw new Error('Fixture precondition failed: expected incoming Step 1 to differ from base/current');
-        }
+        // Verify fixture preconditions
+        expect(baseStep1Source).toBe(currentStep1Source);
+        expect(incomingStep1Source).not.toBe(baseStep1Source);
 
+        // Verify identical rows exist
         const identicalRows = page.locator('.merge-row.identical-row');
         const identicalCount = await identicalRows.count();
-        if (identicalCount === 0) {
-            throw new Error('Expected at least one identical row');
-        }
+        expect(identicalCount).toBeGreaterThan(0);
 
+        // Find Step 1 row in UI
         let step1UiSource: string | undefined;
         for (let i = 0; i < identicalCount; i++) {
             const rawSource = await identicalRows.nth(i).getAttribute('data-raw-source');
@@ -77,23 +78,14 @@ export async function run(): Promise<void> {
             }
         }
 
-        if (!step1UiSource) {
-            throw new Error('Could not find Step 1 identical row in UI');
-        }
+        expect(step1UiSource).toBeDefined();
+        expect(step1UiSource).toContain('We need a few things to get started.');
+        expect(step1UiSource).not.toContain('We need some optimization algorithm first.');
 
-        if (!step1UiSource.includes('We need a few things to get started.')) {
-            throw new Error('UI did not preserve incoming-only Step 1 content');
-        }
-
-        if (step1UiSource.includes('We need some optimization algorithm first.')) {
-            throw new Error('UI incorrectly used current/base Step 1 content');
-        }
-
+        // Resolve all conflicts
         const conflictRows = page.locator('.merge-row.conflict-row');
         const conflictCount = await conflictRows.count();
-        if (conflictCount === 0) {
-            throw new Error('Expected at least one conflict row to resolve');
-        }
+        expect(conflictCount).toBeGreaterThan(0);
 
         for (let i = 0; i < conflictCount; i++) {
             const row = conflictRows.nth(i);
@@ -117,21 +109,14 @@ export async function run(): Promise<void> {
             await row.locator('.resolved-cell').first().waitFor({ timeout: 5000 });
         }
 
-        const resolvedNotebook = await applyResolutionAndReadNotebook(page, session.conflictFile);
+        // Apply and verify
+        const resolvedNotebook = await applyResolutionAndReadNotebook(page, conflictFile);
         validateNotebookStructure(resolvedNotebook);
 
         const resolvedStep1Source = getStep1GradientDescentSource(resolvedNotebook, 'Resolved notebook');
+        expect(resolvedStep1Source).toBe(incomingStep1Source);
 
-        if (resolvedStep1Source !== incomingStep1Source) {
-            throw new Error(
-                'Regression: resolved Step 1 cell does not match incoming-only edit'
-            );
-        }
-
-        console.log('✓ Non-conflict incoming-only Step 1 content preserved');
-        console.log('✓ Notebook structure valid');
-    } finally {
-        if (page) await page.close();
-        if (browser) await browser.close();
-    }
-}
+        logger.info('✓ Non-conflict incoming-only Step 1 content preserved');
+        logger.info('✓ Notebook structure valid');
+    });
+});
