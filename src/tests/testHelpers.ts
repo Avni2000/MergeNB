@@ -30,6 +30,7 @@ export interface ExpectedCell {
     metadata?: Record<string, unknown>;
     hasOutputs?: boolean;
     outputs?: Array<Record<string, unknown>>;
+    execution_count?: number | null;
 }
 
 /** Config written to disk by the runner, read by the test */

@@ -366,6 +366,7 @@ export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
             cellType,
             metadata: cell?.metadata || {},
             hasOutputs,
+            execution_count: cellType === 'code' ? (cell.execution_count ?? null) : undefined,
         };
     });
 }
@@ -463,7 +464,7 @@ export function assertNotebookMatches(
         if (options.compareExecutionCounts && expected.cellType === 'code') {
             const expectedExecutionCount = options.renumberEnabled
                 ? (expected.hasOutputs ? nextExecutionCount++ : null)
-                : null;
+                : (expected.execution_count ?? null);
             const actualExecutionCount = actual.execution_count ?? null;
             if (expectedExecutionCount !== actualExecutionCount) {
                 executionMismatches++;
