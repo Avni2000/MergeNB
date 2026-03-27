@@ -143,9 +143,9 @@
     "test:all": "npm run test:pw && npm run test:vscode",
     "test:vscode": "node out/tests/runIntegrationTest.js --vscode",
     "test:pw": "npx playwright test",
-    "test:pw:ui": "npx playwright test --ui",
-    "test:pw:headed": "npx playwright test --headed",
-    "test:pw:debug": "npx playwright test --debug"
+    "test:pw:ui": "npm run compile && npm run compile-tests && npx playwright test --ui",
+    "test:pw:headed": "npm run compile && npm run compile-tests && npx playwright test --headed",
+    "test:pw:debug": "npm run compile && npm run compile-tests && npx playwright test --debug"
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
