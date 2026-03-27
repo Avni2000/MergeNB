@@ -8,9 +8,10 @@
 
 import { getWebServer } from '../../web/webServer';
 import * as path from 'path';
+import * as logger from '../../logger';
 
 async function globalSetup(): Promise<void> {
-    console.log('[GlobalSetup] Starting MergeNB web server...');
+    logger.info('[GlobalSetup] Starting MergeNB web server...');
 
     const server = getWebServer();
 
@@ -23,7 +24,7 @@ async function globalSetup(): Promise<void> {
     }
 
     const port = server.getPort();
-    console.log(`[GlobalSetup] Web server started on port ${port}`);
+    logger.info(`[GlobalSetup] Web server started on port ${port}`);
 
     // Store the port in an environment variable for workers to access
     process.env.MERGENB_TEST_SERVER_PORT = String(port);

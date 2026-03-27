@@ -6,16 +6,17 @@
  */
 
 import { getWebServer } from '../../web/webServer';
+import * as logger from '../../logger';
 
 async function globalTeardown(): Promise<void> {
-    console.log('[GlobalTeardown] Stopping MergeNB web server...');
+    logger.info('[GlobalTeardown] Stopping MergeNB web server...');
 
     const server = getWebServer();
     if (server.isRunning()) {
         await server.stop();
     }
 
-    console.log('[GlobalTeardown] Web server stopped');
+    logger.info('[GlobalTeardown] Web server stopped');
 }
 
 export default globalTeardown;
