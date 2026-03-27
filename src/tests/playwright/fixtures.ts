@@ -78,13 +78,13 @@ function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function waitForFileWrite(filePath: string, timeoutMs = 10000): Promise<boolean> {
+async function waitForFileWrite(filePath: string, timeoutMs = 10000, initialMtime = 0): Promise<boolean> {
     const maxAttempts = Math.ceil(timeoutMs / 500);
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         await sleep(500);
         try {
             const stat = fs.statSync(filePath);
-            if (Date.now() - stat.mtimeMs < 10000) {
+            if (stat.mtimeMs > initialMtime) {
                 return true;
             }
         } catch { /* continue */ }
@@ -332,10 +332,14 @@ export async function applyResolutionAndReadNotebook(
         throw new Error('Apply Resolution button is disabled');
     }
 
+    const initialMtime = (() => {
+        try { return fs.statSync(conflictFile).mtimeMs; } catch { return 0; }
+    })();
+
     await applyButton.click();
     await sleep(options.postClickDelayMs ?? 3000);
 
-    const fileWritten = await waitForFileWrite(conflictFile, options.writeTimeoutMs);
+    const fileWritten = await waitForFileWrite(conflictFile, options.writeTimeoutMs, initialMtime);
     if (!fileWritten) {
         logger.info('Warning: Could not confirm file write, proceeding anyway');
     }
