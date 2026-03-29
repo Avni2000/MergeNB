@@ -5,7 +5,7 @@
 **Resolve Jupyter notebook merge conflicts in VS Code with a cell-aware UI.**
 
 [![MergeNB Tests](https://github.com/Avni2000/MergeNB/actions/workflows/all-tests.yml/badge.svg)](https://github.com/Avni2000/MergeNB/actions/workflows/all-tests.yml)
-[![Version](https://img.shields.io/badge/version-0.0.5-blue.svg)](https://github.com/Avni2000/MergeNB)
+[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/Avni2000/MergeNB)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.80.0-007ACC.svg)](https://code.visualstudio.com/)
 [![License: GPLv3.0](https://img.shields.io/badge/License-GPLv3.0-yellow.svg)](https://www.gnu.org/licenses/gpl-3.0)
 </div>

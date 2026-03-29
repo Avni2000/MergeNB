@@ -53,6 +53,7 @@ jobs:
           npm version ${{ inputs.bump }} --no-git-tag-version
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          sed -i "s|img.shields.io/badge/version-.*-blue.svg|img.shields.io/badge/version-${VERSION}-blue.svg|" README.md
 
       - name: Update package-lock.json
         run: npm install --package-lock-only
