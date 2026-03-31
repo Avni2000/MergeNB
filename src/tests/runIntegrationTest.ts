@@ -19,7 +19,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { spawnSync, spawn } from 'child_process';
-import { runTests } from '@vscode/test-electron';
+import { runTests, downloadAndUnzipVSCode, resolveCliArgsFromVSCodeExecutablePath } from '@vscode/test-electron';
 import pc from 'picocolors';
 import {
     createMergeConflictRepo,
@@ -107,7 +107,90 @@ function runPlaywright(specFiles: string[] = []): Promise<boolean> {
 
 // ─── VS Code tests ────────────────────────────────────────────────────────────
 
+/**
+ * CI-only variant: installs the .vsix (packaged by the workflow) into the
+ * same VS Code instance that @vscode/test-electron downloads, then runs the
+ * regression suite against it rather than the dev source tree.
+ *
+ * Using the test-electron binary avoids any dependency on a machine-level
+ * `code` CLI, which is not guaranteed to exist in CI environments.
+ */
+async function runVSCodeRegressionTestsWithVsix(): Promise<boolean> {
+    const projectRoot = path.resolve(__dirname, '../..');
+    const configInfo = prepareIsolatedConfigPath('vscode-regression-vsix');
+    const vscodeVersion = process.env.VSCODE_VERSION?.trim();
+
+    const testDir = path.resolve(__dirname, '../../test');
+    const baseFile = path.join(testDir, '02_base.ipynb');
+    const currentFile = path.join(testDir, '02_current.ipynb');
+    const incomingFile = path.join(testDir, '02_incoming.ipynb');
+
+    // Find the .vsix produced by the workflow's `npx @vscode/vsce package` step.
+    const vsixFiles = fs.readdirSync(projectRoot).filter(f => f.endsWith('.vsix')).sort();
+    if (vsixFiles.length === 0) {
+        console.error('[CI] No .vsix file found — did the package step run?');
+        return false;
+    }
+    const vsixPath = path.join(projectRoot, vsixFiles[vsixFiles.length - 1]);
+    console.log(`[CI] Using vsix: ${path.basename(vsixPath)}`);
+
+    // Download (or reuse cached) the same VS Code that runTests will use,
+    // then install the vsix into its isolated extensions directory.
+    const vscodeExecutablePath = await downloadAndUnzipVSCode(
+        vscodeVersion && vscodeVersion !== 'stable' ? vscodeVersion : 'stable'
+    );
+    const [cli, ...cliArgs] = resolveCliArgsFromVSCodeExecutablePath(vscodeExecutablePath);
+    const installResult = spawnSync(cli, [...cliArgs, '--install-extension', vsixPath], {
+        encoding: 'utf-8',
+        stdio: 'inherit',
+        shell: process.platform === 'win32',
+    });
+    if (installResult.status !== 0) {
+        console.error('[CI] Failed to install vsix');
+        return false;
+    }
+
+    // Run the tests against the installed vsix.
+    // extensionDevelopmentPath: [] — no dev-source overlay, installed vsix is sole provider.
+    // --disable-extensions omitted so the installed extension loads.
+    const testEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        MERGENB_TEST_MODE: 'true',
+        MERGENB_CONFIG_PATH: configInfo.configPath,
+        MERGENB_TEST_CONFIG_PATH: configInfo.testConfigPath,
+    };
+    delete testEnv.ELECTRON_RUN_AS_NODE;
+
+    let workspacePath: string | undefined;
+    try {
+        workspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile);
+        writeTestConfig(workspacePath, 'regression_vscode', undefined, configInfo.testConfigPath);
+
+        await runTests({
+            vscodeExecutablePath,
+            extensionDevelopmentPath: [],
+            extensionTestsPath: path.resolve(__dirname, './vscodeRegression.test.js'),
+            extensionTestsEnv: testEnv,
+            launchArgs: [
+                workspacePath,
+                '--skip-welcome',
+                '--skip-release-notes',
+            ],
+        });
+        return true;
+    } catch {
+        return false;
+    } finally {
+        if (workspacePath) cleanup(workspacePath);
+        cleanupIsolatedConfigPath(configInfo.configRoot);
+    }
+}
+
 async function runVSCodeRegressionTests(): Promise<boolean> {
+    if (process.env.CI) {
+        return runVSCodeRegressionTestsWithVsix();
+    }
+
     const extensionDevelopmentPath = path.resolve(__dirname, '../..');
     const testDir = path.resolve(__dirname, '../../test');
     const configInfo = prepareIsolatedConfigPath('vscode-regression');
