@@ -73,7 +73,7 @@ jobs:
         run: npm run compile && npm run compile-tests
 
       - name: Package extension as .vsix
-        run: npx @vscode/vsce package
+        run: npm exec vsce package
 
       # Cache Playwright browsers
       - name: Cache Playwright browsers (Linux)
