@@ -150,9 +150,21 @@ async function runVSCodeRegressionTestsWithVsix(): Promise<boolean> {
         return false;
     }
 
-    // Run the tests against the installed vsix.
-    // extensionDevelopmentPath: [] — no dev-source overlay, installed vsix is sole provider.
-    // --disable-extensions omitted so the installed extension loads.
+    // VS Code's extension test host requires a non-empty extensionDevelopmentPath to
+    // initialise properly — passing [] causes it to hang indefinitely. We use a
+    // minimal no-op stub so VS Code enters test mode while the installed vsix (in
+    // a node_modules-free location) is the actual extension under test.
+    const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergenb-vsix-stub-'));
+    fs.writeFileSync(path.join(stubDir, 'package.json'), JSON.stringify({
+        name: 'mergenb-vsix-test-stub',
+        version: '0.0.1',
+        engines: { vscode: '^1.0.0' },
+        activationEvents: [],
+        main: './stub.js',
+    }));
+    fs.writeFileSync(path.join(stubDir, 'stub.js'),
+        'exports.activate=function(){}; exports.deactivate=function(){};');
+
     const testEnv: NodeJS.ProcessEnv = {
         ...process.env,
         MERGENB_TEST_MODE: 'true',
@@ -168,11 +180,12 @@ async function runVSCodeRegressionTestsWithVsix(): Promise<boolean> {
 
         await runTests({
             vscodeExecutablePath,
-            extensionDevelopmentPath: [],
+            extensionDevelopmentPath: stubDir,
             extensionTestsPath: path.resolve(__dirname, './vscodeRegression.test.js'),
             extensionTestsEnv: testEnv,
             launchArgs: [
                 workspacePath,
+                // no --disable-extensions: the installed vsix must be allowed to load
                 '--skip-welcome',
                 '--skip-release-notes',
             ],
@@ -183,6 +196,7 @@ async function runVSCodeRegressionTestsWithVsix(): Promise<boolean> {
     } finally {
         if (workspacePath) cleanup(workspacePath);
         cleanupIsolatedConfigPath(configInfo.configRoot);
+        fs.rmSync(stubDir, { recursive: true, force: true });
     }
 }
 
