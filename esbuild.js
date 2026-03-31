@@ -82,7 +82,7 @@ async function main() {
 		sourcesContent: false,
 		platform: 'node',
 		outfile: 'dist/extension.js',
-		external: ['vscode', 'ws', 'http', 'https', 'net', 'path', 'fs', 'os', 'util'],
+		external: ['vscode', 'http', 'https', 'net', 'path', 'fs', 'os', 'util'],
 		logLevel: 'silent',
 		plugins: [
 			esbuildProblemMatcherPlugin,

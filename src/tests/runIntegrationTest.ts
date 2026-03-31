@@ -7,19 +7,21 @@
  *   node out/tests/runIntegrationTest.js --playwright       # Run all Playwright specs
  *   node out/tests/runIntegrationTest.js --playwright <spec># Run one spec (basename)
  *   node out/tests/runIntegrationTest.js --vscode           # Run VS Code regression tests
+ *   node out/tests/runIntegrationTest.js --e2e              # Run E2E resolution tests (web server + WebSocket)
  *   node out/tests/runIntegrationTest.js --manual <fixture> # Open manual sandbox (02/03/04/09)
  *
  * npm scripts (see package.json):
  *   npm run test          # Interactive TUI picker
  *   npm run test:pw       # Run all Playwright specs directly
  *   npm run test:vscode   # Run VS Code regression tests
+ *   npm run test:e2e      # Run E2E resolution tests
  */
 
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { spawnSync, spawn } from 'child_process';
-import { runTests } from '@vscode/test-electron';
+import { runTests, downloadAndUnzipVSCode, resolveCliArgsFromVSCodeExecutablePath } from '@vscode/test-electron';
 import pc from 'picocolors';
 import {
     createMergeConflictRepo,
@@ -107,15 +109,77 @@ function runPlaywright(specFiles: string[] = []): Promise<boolean> {
 
 // ─── VS Code tests ────────────────────────────────────────────────────────────
 
-async function runVSCodeRegressionTests(): Promise<boolean> {
-    const extensionDevelopmentPath = path.resolve(__dirname, '../..');
+interface VSCodeTestOptions {
+    /** Identifier for isolated config path and logging (e.g., 'regression', 'e2e') */
+    id: string;
+    /** Test file basename without extension (e.g., 'vscodeRegression.test') */
+    testFile: string;
+    /** Label written to test config (e.g., 'regression_vscode', 'e2e_resolution') */
+    testConfigLabel: string;
+}
+
+/**
+ * Unified VS Code test runner. In CI, installs the .vsix first; locally uses
+ * the development extension. Handles workspace setup, config isolation, and cleanup.
+ */
+async function runVSCodeTests(options: VSCodeTestOptions): Promise<boolean> {
+    const { id, testFile, testConfigLabel } = options;
+    const isCi = !!process.env.CI;
+
+    const projectRoot = path.resolve(__dirname, '../..');
     const testDir = path.resolve(__dirname, '../../test');
-    const configInfo = prepareIsolatedConfigPath('vscode-regression');
+    const configInfo = prepareIsolatedConfigPath(`vscode-${id}${isCi ? '-vsix' : ''}`);
     const vscodeVersion = process.env.VSCODE_VERSION?.trim();
 
     const baseFile = path.join(testDir, '02_base.ipynb');
     const currentFile = path.join(testDir, '02_current.ipynb');
     const incomingFile = path.join(testDir, '02_incoming.ipynb');
+
+    let stubDir: string | undefined;
+    let vscodeExecutablePath: string | undefined;
+    let extensionDevelopmentPath: string;
+
+    // In CI, install the .vsix and use a stub extension for extensionDevelopmentPath
+    if (isCi) {
+        const vsixFiles = fs.readdirSync(projectRoot).filter(f => f.endsWith('.vsix')).sort();
+        if (vsixFiles.length === 0) {
+            console.error(`[CI ${id}] No .vsix file found — did the package step run?`);
+            return false;
+        }
+        const vsixPath = path.join(projectRoot, vsixFiles[vsixFiles.length - 1]);
+        console.log(`[CI ${id}] Using vsix: ${path.basename(vsixPath)}`);
+
+        vscodeExecutablePath = await downloadAndUnzipVSCode(
+            vscodeVersion && vscodeVersion !== 'stable' ? vscodeVersion : 'stable'
+        );
+        const [cli, ...cliArgs] = resolveCliArgsFromVSCodeExecutablePath(vscodeExecutablePath);
+        const installResult = spawnSync(cli, [...cliArgs, '--install-extension', vsixPath], {
+            encoding: 'utf-8',
+            stdio: 'inherit',
+            shell: process.platform === 'win32',
+        });
+        if (installResult.status !== 0) {
+            console.error(`[CI ${id}] Failed to install vsix`);
+            return false;
+        }
+
+        // VS Code's extension test host requires a non-empty extensionDevelopmentPath.
+        // We use a minimal no-op stub so VS Code enters test mode while the installed
+        // vsix is the actual extension under test.
+        stubDir = fs.mkdtempSync(path.join(os.tmpdir(), `mergenb-${id}-stub-`));
+        fs.writeFileSync(path.join(stubDir, 'package.json'), JSON.stringify({
+            name: `mergenb-${id}-test-stub`,
+            version: '0.0.1',
+            engines: { vscode: '^1.0.0' },
+            activationEvents: [],
+            main: './stub.js',
+        }));
+        fs.writeFileSync(path.join(stubDir, 'stub.js'),
+            'exports.activate=function(){}; exports.deactivate=function(){};');
+        extensionDevelopmentPath = stubDir;
+    } else {
+        extensionDevelopmentPath = projectRoot;
+    }
 
     const testEnv: NodeJS.ProcessEnv = {
         ...process.env,
@@ -128,16 +192,18 @@ async function runVSCodeRegressionTests(): Promise<boolean> {
     let workspacePath: string | undefined;
     try {
         workspacePath = createMergeConflictRepo(baseFile, currentFile, incomingFile);
-        writeTestConfig(workspacePath, 'regression_vscode', undefined, configInfo.testConfigPath);
+        writeTestConfig(workspacePath, testConfigLabel, undefined, configInfo.testConfigPath);
 
         await runTests({
+            ...(vscodeExecutablePath ? { vscodeExecutablePath } : {}),
             extensionDevelopmentPath,
-            extensionTestsPath: path.resolve(__dirname, './vscodeRegression.test.js'),
+            extensionTestsPath: path.resolve(__dirname, `./${testFile}.js`),
             extensionTestsEnv: testEnv,
-            ...(vscodeVersion && vscodeVersion !== 'stable' ? { version: vscodeVersion } : {}),
+            ...(!isCi && vscodeVersion && vscodeVersion !== 'stable' ? { version: vscodeVersion } : {}),
             launchArgs: [
                 workspacePath,
-                '--disable-extensions',
+                // In CI, allow the installed vsix to load; locally, disable other extensions
+                ...(isCi ? [] : ['--disable-extensions']),
                 '--skip-welcome',
                 '--skip-release-notes',
             ],
@@ -148,7 +214,26 @@ async function runVSCodeRegressionTests(): Promise<boolean> {
     } finally {
         if (workspacePath) cleanup(workspacePath);
         cleanupIsolatedConfigPath(configInfo.configRoot);
+        if (stubDir) fs.rmSync(stubDir, { recursive: true, force: true });
     }
+}
+
+/** Run VS Code regression tests (unit-level tests mocking the web panel). */
+function runVSCodeRegressionTests(): Promise<boolean> {
+    return runVSCodeTests({
+        id: 'regression',
+        testFile: 'vscodeRegression.test',
+        testConfigLabel: 'regression_vscode',
+    });
+}
+
+/** Run E2E resolution tests (full web server + WebSocket workflow). */
+function runVSCodeE2ETests(): Promise<boolean> {
+    return runVSCodeTests({
+        id: 'e2e',
+        testFile: 'e2eResolution.test',
+        testConfigLabel: 'e2e_resolution',
+    });
 }
 
 // ─── Manual sandbox ───────────────────────────────────────────────────────────
@@ -213,6 +298,7 @@ async function runTUI(): Promise<void> {
         options: [
             { value: 'playwright', label: 'Playwright tests', hint: 'headless browser, parallel' },
             { value: 'vscode', label: 'VS Code regression tests', hint: 'extension host via @vscode/test-electron' },
+            { value: 'e2e', label: 'E2E resolution tests', hint: 'full web server + WebSocket workflow' },
             { value: 'manual', label: 'Open manual sandbox', hint: 'creates a conflict repo and opens VS Code' },
         ],
     });
@@ -227,6 +313,13 @@ async function runTUI(): Promise<void> {
     if (mode === 'vscode') {
         c.outro('Running VS Code regression tests…');
         const passed = await runVSCodeRegressionTests();
+        if (!passed) process.exit(1);
+        return;
+    }
+
+    if (mode === 'e2e') {
+        c.outro('Running E2E resolution tests…');
+        const passed = await runVSCodeE2ETests();
         if (!passed) process.exit(1);
         return;
     }
@@ -298,11 +391,12 @@ interface CliArgs {
     playwright: boolean;
     playwrightSpecs: string[];
     vscode: boolean;
+    e2e: boolean;
     manual: string | null;
 }
 
 function parseArgs(argv: string[]): CliArgs {
-    const args: CliArgs = { playwright: false, playwrightSpecs: [], vscode: false, manual: null };
+    const args: CliArgs = { playwright: false, playwrightSpecs: [], vscode: false, e2e: false, manual: null };
     let i = 2;
     while (i < argv.length) {
         const arg = argv[i];
@@ -315,6 +409,8 @@ function parseArgs(argv: string[]): CliArgs {
             }
         } else if (arg === '--vscode' || arg === '-v') {
             args.vscode = true;
+        } else if (arg === '--e2e' || arg === '-e') {
+            args.e2e = true;
         } else if (arg === '--manual' || arg === '-m') {
             i++;
             if (i < argv.length) args.manual = argv[i];
@@ -343,6 +439,12 @@ async function main(): Promise<void> {
 
     if (cli.vscode) {
         const passed = await runVSCodeRegressionTests();
+        if (!passed) process.exit(1);
+        return;
+    }
+
+    if (cli.e2e) {
+        const passed = await runVSCodeE2ETests();
         if (!passed) process.exit(1);
         return;
     }

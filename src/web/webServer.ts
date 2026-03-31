@@ -71,7 +71,7 @@ export class ConflictResolverWebServer {
     private static instance: ConflictResolverWebServer | undefined;
     
     private httpServer: http.Server | undefined;
-    private wss: WebSocket.Server | undefined;
+    private wss: WebSocketServer | undefined;
     private port: number = 0;
     private host: string = '127.0.0.1';
     
@@ -136,7 +136,7 @@ export class ConflictResolverWebServer {
                 this.handleHttpRequest(req, res);
             });
 
-            this.wss = new WebSocket.Server({ server: this.httpServer });
+            this.wss = new WebSocketServer({ server: this.httpServer });
             
             this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
                 this.handleWebSocketConnection(ws, req);
