@@ -8,6 +8,10 @@
  * Order is meaningful: statusIndicators must run first because it asserts on
  * the startup conflict state created by repoSetup.  The remaining tests
  * manipulate the git index independently and tolerate any prior repo state.
+ *
+ * NOTE: e2eResolution.test.ts runs in a SEPARATE VS Code instance with a fresh
+ * workspace because it requires a clean UU merge conflict state and exercises
+ * the full web server + WebSocket workflow.
  */
 
 import { run as runStatusIndicators } from './statusIndicatorsRegression.test';
