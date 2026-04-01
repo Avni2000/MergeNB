@@ -9,7 +9,7 @@ updates:
       time: "09:00"
     open-pull-requests-limit: 10
     commit-message:
-      prefix: "chore"
+      prefix: "[chore]"
       include: "scope"
     pull-request-branch-name:
       separator: "/"
@@ -42,4 +42,4 @@ updates:
     schedule:
       interval: "monthly"
     commit-message:
-      prefix: "ci"
+      prefix: "[CI]"
