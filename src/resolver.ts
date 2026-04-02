@@ -17,7 +17,7 @@ import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from
 import { parseNotebook, serializeNotebook, renumberExecutionCounts } from '../packages/core/src/notebookParser';
 import { buildResolvedNotebookFromRows, type PreferredSide } from '../packages/core/src/semanticResolution';
 import { WebConflictPanel } from './web/WebConflictPanel';
-import { UnifiedConflict, UnifiedResolution } from './web/webTypes';
+import { UnifiedConflict, UnifiedResolution } from '../packages/web/server/src/webTypes';
 import { NotebookSemanticConflict, Notebook } from '../packages/core/src/types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
@@ -38,7 +38,7 @@ export const onDidResolveConflict = new vscode.EventEmitter<vscode.Uri>();
 export interface ResolvedConflictDetails {
     uri: vscode.Uri;
     resolvedNotebook?: Notebook;
-    resolvedRows?: import('./web/webTypes').ResolvedRow[];
+    resolvedRows?: import('../packages/web/server/src/webTypes').ResolvedRow[];
     markAsResolved: boolean;
     renumberExecutionCounts: boolean;
     fileDeleted?: boolean;
@@ -607,7 +607,7 @@ export class NotebookConflictResolver {
     private async applySemanticResolutionsFromRows(
         uri: vscode.Uri,
         semanticConflict: NotebookSemanticConflict,
-        resolvedRows: import('./web/webTypes').ResolvedRow[],
+        resolvedRows: import('../packages/web/server/src/webTypes').ResolvedRow[],
         markAsResolved: boolean,
         shouldRenumber: boolean,
         autoResolveResult?: AutoResolveResult,

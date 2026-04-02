@@ -4,10 +4,10 @@
  */
 
 import React, { useEffect } from 'react';
-import { useWebSocket } from './useWebSocket';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { ConflictResolver } from './ConflictResolver';
-import { injectStyles } from './styles';
-import type { ResolvedRow } from './types';
+import { injectStyles } from '../styles';
+import type { ResolvedRow } from '../types';
 
 export function App(): React.ReactElement {
     const { connected, conflictData, sendMessage, resolutionStatus, resolutionMessage } = useWebSocket();

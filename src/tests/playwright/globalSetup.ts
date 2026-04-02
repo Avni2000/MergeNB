@@ -6,7 +6,7 @@
  * as a shared resource that all parallel workers can connect to.
  */
 
-import { getWebServer } from '../../web/webServer';
+import { getWebServer } from '../../../packages/web/server/src/webServer';
 import * as path from 'path';
 import * as logger from '../../../packages/core/src/logger';
 

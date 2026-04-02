@@ -1,10 +1,10 @@
-import { sortByPosition } from '../../../packages/core/src/positionUtils';
-import { detectReordering } from '../../../packages/core/src/cellMatcher';
+import { sortByPosition } from '../../../../core/src/positionUtils';
+import { detectReordering } from '../../../../core/src/cellMatcher';
 import type {
     MergeRow as MergeRowType,
     NotebookSemanticConflict,
     SemanticConflict,
-} from './types';
+} from '../types';
 import { computeReorderedRowIndexSet } from './reorderUtils';
 
 const conflictPriority: Record<SemanticConflict['type'], number> = {
@@ -28,7 +28,7 @@ function sortMergeRowsByPosition(rows: MergeRowType[]): MergeRowType[] {
 
 export function buildMergeRowsFromSemantic(
     conflict: NotebookSemanticConflict,
-    currentNotebookOverride?: import('../../../packages/core/src/types').Notebook
+    currentNotebookOverride?: import('../../../../core/src/types').Notebook
 ): MergeRowType[] {
     const rows: MergeRowType[] = [];
     const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();

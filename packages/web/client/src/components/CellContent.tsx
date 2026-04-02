@@ -14,13 +14,13 @@ import { StyleModule } from 'style-mod';
 import { IRenderMime, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 import DOMPurify from 'dompurify';
-import type { NotebookCell, CellOutput } from './types';
-import { normalizeCellSource } from '../../../packages/core/src/notebookUtils';
+import type { NotebookCell, CellOutput } from '../types';
+import { normalizeCellSource } from '../../../../core/src/notebookUtils';
 import { diff as computeDiff } from '@codemirror/merge';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../../../core/src/logger';
 import type { Highlighter } from '@lezer/highlight';
 import { highlightCode } from '@lezer/highlight';
-import { renderMarkdown } from './markdown';
+import { renderMarkdown } from '../utils/markdown';
 
 export const mergeNBEditorStructure: Extension = EditorView.theme({
     '&': { outline: 'none !important', backgroundColor: 'var(--cell-surface) !important' },

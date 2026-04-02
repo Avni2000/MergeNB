@@ -8,27 +8,27 @@ import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/rea
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
-import { normalizeCellSource } from '../../../packages/core/src/notebookUtils';
+import { normalizeCellSource } from '../../../../core/src/notebookUtils';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
     NotebookCell,
-} from './types';
+} from '../types';
 import { MergeRow } from './MergeRow';
 import {
     createResolverStore,
     type ResolutionState,
     type TakeAllChoice,
-} from './resolverStore';
-import { buildMergeRowsFromSemantic } from './mergeRowBuilder';
-import * as logger from '../../../packages/core/src/logger';
+} from '../store/resolverStore';
+import { buildMergeRowsFromSemantic } from '../utils/mergeRowBuilder';
+import * as logger from '../../../../core/src/logger';
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
     onResolve: (
         markAsResolved: boolean,
         renumberExecutionCounts: boolean,
-        resolvedRows: import('./types').ResolvedRow[],
+        resolvedRows: import('../types').ResolvedRow[],
         semanticChoice?: 'base' | 'current' | 'incoming'
     ) => void;
     onCancel: () => void;
@@ -286,7 +286,7 @@ export function ConflictResolver({
             renumberExecutionCounts: liveRenumberExecutionCounts,
         } = resolverStore.getState();
         // Build resolved rows - this is the source of truth for reconstruction
-        const resolvedRows: import('./types').ResolvedRow[] = liveRows.map((row) => {
+        const resolvedRows: import('../types').ResolvedRow[] = liveRows.map((row) => {
             const conflictIdx = row.conflictIndex ?? -1;
             const resolutionState = conflictIdx >= 0 ? liveChoices.get(conflictIdx) : undefined;
 

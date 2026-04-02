@@ -17,9 +17,9 @@ import { renumberExecutionCounts } from '../../packages/core/src/notebookParser'
 import { analyzeSemanticConflictsFromMappings } from '../../packages/core/src/conflictDetector';
 import { detectReordering } from '../../packages/core/src/cellMatcher';
 import { NotebookConflictResolver, onDidResolveConflictWithDetails, setResolverPromptTestHooks } from '../resolver';
-import { createResolverStore } from '../web/client/resolverStore';
-import { buildMergeRowsFromSemantic } from '../web/client/mergeRowBuilder';
-import { computeReorderedRowIndexSet } from '../web/client/reorderUtils';
+import { createResolverStore } from '../../packages/web/client/src/store/resolverStore';
+import { buildMergeRowsFromSemantic } from '../../packages/web/client/src/utils/mergeRowBuilder';
+import { computeReorderedRowIndexSet } from '../../packages/web/client/src/utils/reorderUtils';
 import { WebConflictPanel } from '../web/WebConflictPanel';
 import type { NotebookCell, Notebook, NotebookSemanticConflict } from '../../packages/core/src/types';
 import type { CellMapping } from '../../packages/core/src/types';

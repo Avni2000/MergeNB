@@ -5,7 +5,7 @@
  * This runs once after all test workers complete.
  */
 
-import { getWebServer } from '../../web/webServer';
+import { getWebServer } from '../../../packages/web/server/src/webServer';
 import * as logger from '../../../packages/core/src/logger';
 
 async function globalTeardown(): Promise<void> {

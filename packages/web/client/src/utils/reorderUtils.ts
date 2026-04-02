@@ -1,4 +1,4 @@
-import type { MergeRow as MergeRowType } from './types';
+import type { MergeRow as MergeRowType } from '../types';
 
 interface IndexedRow {
     row: MergeRowType;

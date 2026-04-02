@@ -5,9 +5,9 @@
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { App } from './App';
+import { App } from './components/App';
 import { injectStyles } from './styles';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../../core/src/logger';
 
 // Use server-provided theme (via data-theme attribute on #root) so loading and app boot with the same palette.
 const rootEl = document.getElementById('root');

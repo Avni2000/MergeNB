@@ -4,7 +4,7 @@
  */
 
 import type { Notebook, NotebookCell, NotebookSemanticConflict } from './types';
-import type { ResolvedRow } from '../../../src/web/webTypes';
+import type { ResolvedRow } from '../../web/server/src/webTypes';
 import type { AutoResolveResult } from './conflictDetector';
 import type { MergeNBSettings } from '../../../src/settings';
 import { selectNonConflictMergedCell, stableStringify, sourceToCellFormat } from './notebookUtils';

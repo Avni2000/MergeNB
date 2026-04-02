@@ -18,8 +18,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { randomBytes, randomUUID } from 'crypto';
 import WebSocket, { WebSocketServer } from 'ws';
-import * as logger from '../../packages/core/src/logger';
-import type { WebConflictData } from './webTypes';
+import * as logger from '../../../core/src/logger';
+import type { WebConflictData } from '../../../src/web/webTypes';
 
 // VSCode is optional - only needed for openExternal
 let vscode: typeof import('vscode') | undefined;

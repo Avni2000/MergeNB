@@ -18,13 +18,13 @@ import { chromium } from 'playwright';
 import { createMergeConflictRepo, cleanup as cleanupRepo } from '../repoSetup';
 import { detectSemanticConflicts, applyAutoResolutions } from '../../../packages/core/src/conflictDetector';
 import { getSettings, configContext } from '../../settings';
-import { getWebServer } from '../../web/webServer';
+import { getWebServer } from '../../../packages/web/server/src/webServer';
 import {
     toWebSemanticConflict,
     type BrowserToExtensionMessage,
     type UnifiedConflict,
     type WebConflictData,
-} from '../../web/webTypes';
+} from '../../../packages/web/server/src/webTypes';
 import { buildResolvedNotebookFromRows } from '../../../packages/core/src/semanticResolution';
 import { serializeNotebook, renumberExecutionCounts } from '../../../packages/core/src/notebookParser';
 import * as gitIntegration from '../../gitIntegration';
