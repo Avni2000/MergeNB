@@ -73,7 +73,7 @@ async function main() {
 	// Extension bundle (Node.js / VSCode)
 	const extensionCtx = await esbuild.context({
 		entryPoints: [
-			'src/extension.ts'
+			'apps/vscode-extension/extension.ts'
 		],
 		bundle: true,
 		format: 'cjs',
@@ -92,7 +92,7 @@ async function main() {
 	// Web client bundle (Browser / React)
 	const webClientCtx = await esbuild.context({
 		entryPoints: [
-			'src/web/client/index.tsx'
+			'packages/web/client/src/index.tsx'
 		],
 		bundle: true,
 		format: 'esm',

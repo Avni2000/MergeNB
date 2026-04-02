@@ -11,7 +11,6 @@
  * - ConflictResolverWebServer: The HTTP/WebSocket server class
  */
 
-export { WebConflictPanel } from '../../../../src/web/WebConflictPanel';
 export { ConflictResolverWebServer, getWebServer } from './webServer';
 export type { WebServerOptions, SessionData, PendingConnection } from './webServer';
 export * from './webTypes';

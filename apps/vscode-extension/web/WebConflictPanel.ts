@@ -11,9 +11,9 @@
  */
 import path from 'path';
 import * as vscode from 'vscode';
-import * as logger from '../../packages/core/src/logger';
-import { getWebServer } from '../../packages/web/server/src/webServer';
-import { UnifiedConflict, UnifiedResolution, ResolvedRow, type WebConflictData } from '../../packages/web/server/src/webTypes';
+import * as logger from '../../../packages/core/src/logger';
+import { getWebServer } from '../../../packages/web/server/src/webServer';
+import { UnifiedConflict, UnifiedResolution, ResolvedRow, type WebConflictData } from '../../../packages/web/server/src/webTypes';
 
 /**
  * Web-based panel for resolving notebook conflicts in the browser.

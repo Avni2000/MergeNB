@@ -16,9 +16,9 @@
 import * as vscode from 'vscode';
 import { NotebookConflictResolver, ConflictedNotebook, onDidResolveConflict, onDidResolveConflictWithDetails } from './resolver';
 import * as gitIntegration from './gitIntegration';
-import { getWebServer } from '../packages/web/server/src';
+import { getWebServer } from '../../packages/web/server/src';
 import type { API as GitAPI, GitExtension, Repository } from './typings/git';
-import * as logger from '../packages/core/src/logger';
+import * as logger from '../../packages/core/src/logger';
 
 let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
