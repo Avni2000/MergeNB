@@ -21,7 +21,7 @@ import * as fs from 'fs';
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import type { API as GitAPI, Change, GitExtension, Repository } from './typings/git';
-import * as logger from './logger';
+import * as logger from '../packages/core/src/logger';
 
 // VSCode is optional - only needed for workspace-aware helpers.
 let vscode: typeof import('vscode') | undefined;

@@ -8,7 +8,7 @@
 
 import { getWebServer } from '../../web/webServer';
 import * as path from 'path';
-import * as logger from '../../logger';
+import * as logger from '../../../packages/core/src/logger';
 
 async function globalSetup(): Promise<void> {
     logger.info('[GlobalSetup] Starting MergeNB web server...');

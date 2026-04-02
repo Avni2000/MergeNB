@@ -14,15 +14,15 @@ import type { Locator, Page } from 'playwright';
 import {
     applyAutoResolutions,
     analyzeSemanticConflictsFromMappings,
-} from '../../conflictDetector';
+} from '../../../packages/core/src/conflictDetector';
 import type { MergeNBSettings } from '../../settings';
 import type {
     Notebook,
     NotebookCell,
     NotebookSemanticConflict,
     CellMapping,
-} from '../../types';
-import * as logger from '../../logger';
+} from '../../../packages/core/src/types';
+import * as logger from '../../../packages/core/src/logger';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,

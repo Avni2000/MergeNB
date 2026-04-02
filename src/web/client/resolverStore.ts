@@ -1,8 +1,8 @@
 import { enableMapSet } from 'immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { immer } from 'zustand/middleware/immer';
-import { normalizeCellSource } from '../../notebookUtils';
-import { sortByPosition } from '../../positionUtils';
+import { normalizeCellSource } from '../../../packages/core/src/notebookUtils';
+import { sortByPosition } from '../../../packages/core/src/positionUtils';
 import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from './types';
 
 enableMapSet();

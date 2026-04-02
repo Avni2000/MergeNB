@@ -15,9 +15,9 @@ import { IRenderMime, OutputModel, RenderMimeRegistry, standardRendererFactories
 import { Widget } from '@lumino/widgets';
 import DOMPurify from 'dompurify';
 import type { NotebookCell, CellOutput } from './types';
-import { normalizeCellSource } from '../../notebookUtils';
+import { normalizeCellSource } from '../../../packages/core/src/notebookUtils';
 import { diff as computeDiff } from '@codemirror/merge';
-import * as logger from '../../logger';
+import * as logger from '../../../packages/core/src/logger';
 import type { Highlighter } from '@lezer/highlight';
 import { highlightCode } from '@lezer/highlight';
 import { renderMarkdown } from './markdown';

@@ -4,9 +4,9 @@
  */
 
 import type { Notebook, NotebookCell, NotebookSemanticConflict } from './types';
-import type { ResolvedRow } from './web/webTypes';
+import type { ResolvedRow } from '../../../src/web/webTypes';
 import type { AutoResolveResult } from './conflictDetector';
-import type { MergeNBSettings } from './settings';
+import type { MergeNBSettings } from '../../../src/settings';
 import { selectNonConflictMergedCell, stableStringify, sourceToCellFormat } from './notebookUtils';
 import { renumberExecutionCounts } from './notebookParser';
 import * as logger from './logger';

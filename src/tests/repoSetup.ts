@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { execSync } from 'child_process';
-import * as logger from '../logger';
+import * as logger from '../../packages/core/src/logger';
 
 const IMAGE_EXTENSIONS = new Set([
     '.png',

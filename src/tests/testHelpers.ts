@@ -10,7 +10,7 @@
  */
 
 import * as http from 'http';
-import * as logger from '../logger';
+import * as logger from '../../packages/core/src/logger';
 
 /** Shape returned by the /health endpoint */
 export interface HealthResponse {

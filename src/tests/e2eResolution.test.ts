@@ -10,7 +10,7 @@
  * matches what was displayed in the UI.
  */
 
-import * as logger from '../logger';
+import * as logger from '../../packages/core/src/logger';
 import * as gitIntegration from '../gitIntegration';
 import {
     validateNotebookStructure,

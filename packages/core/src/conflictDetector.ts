@@ -12,12 +12,11 @@
  * outputs, kernel versions) based on user settings.
  */
 
-import { NotebookSemanticConflict, SemanticConflict, CellMapping } from './types';
-import { Notebook, NotebookCell, NotebookMetadata } from './types';
-import * as gitIntegration from './gitIntegration';
+import { NotebookSemanticConflict, SemanticConflict, CellMapping, Notebook, NotebookCell, NotebookMetadata } from './types';
+import * as gitIntegration from '../../../src/gitIntegration';
 import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
-import { getSettings, MergeNBSettings } from './settings';
+import { getSettings, MergeNBSettings } from '../../../src/settings';
 import * as logger from './logger';
 
 function stableStringify(value: unknown): string {

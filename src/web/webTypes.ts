@@ -13,10 +13,10 @@ import type {
     CellMapping,
     NotebookSemanticConflict,
     ResolutionChoice
-} from '../types';
-import type { AutoResolveResult } from '../conflictDetector';
+} from '../../packages/core/src/types';
+import type { AutoResolveResult } from '../../packages/core/src/conflictDetector';
 
-export type { AutoResolveResult } from '../conflictDetector';
+export type { AutoResolveResult } from '../../packages/core/src/conflictDetector';
 
 /**
  * Unified conflict data structure.

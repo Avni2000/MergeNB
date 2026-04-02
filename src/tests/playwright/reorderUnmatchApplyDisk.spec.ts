@@ -5,7 +5,7 @@
 
 import type { Page } from 'playwright';
 import { test, expect } from './fixtures';
-import * as logger from '../../logger';
+import * as logger from '../../../packages/core/src/logger';
 import {
     verifyAllConflictsMatchSide,
     waitForAllConflictsResolved,

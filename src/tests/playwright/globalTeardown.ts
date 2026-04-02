@@ -6,7 +6,7 @@
  */
 
 import { getWebServer } from '../../web/webServer';
-import * as logger from '../../logger';
+import * as logger from '../../../packages/core/src/logger';
 
 async function globalTeardown(): Promise<void> {
     logger.info('[GlobalTeardown] Stopping MergeNB web server...');

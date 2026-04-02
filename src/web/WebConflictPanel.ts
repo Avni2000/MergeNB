@@ -11,7 +11,7 @@
  */
 import path from 'path';
 import * as vscode from 'vscode';
-import * as logger from '../logger';
+import * as logger from '../../packages/core/src/logger';
 import { getWebServer } from './webServer';
 import { UnifiedConflict, UnifiedResolution, ResolvedRow, type WebConflictData } from './webTypes';
 

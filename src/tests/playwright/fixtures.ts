@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { chromium } from 'playwright';
 import { createMergeConflictRepo, cleanup as cleanupRepo } from '../repoSetup';
-import { detectSemanticConflicts, applyAutoResolutions } from '../../conflictDetector';
+import { detectSemanticConflicts, applyAutoResolutions } from '../../../packages/core/src/conflictDetector';
 import { getSettings, configContext } from '../../settings';
 import { getWebServer } from '../../web/webServer';
 import {
@@ -25,8 +25,8 @@ import {
     type UnifiedConflict,
     type WebConflictData,
 } from '../../web/webTypes';
-import { buildResolvedNotebookFromRows } from '../../semanticResolution';
-import { serializeNotebook, renumberExecutionCounts } from '../../notebookParser';
+import { buildResolvedNotebookFromRows } from '../../../packages/core/src/semanticResolution';
+import { serializeNotebook, renumberExecutionCounts } from '../../../packages/core/src/notebookParser';
 import * as gitIntegration from '../../gitIntegration';
 import {
     type ExpectedCell,
@@ -34,7 +34,7 @@ import {
 } from '../testHelpers';
 import { ensureCheckboxChecked } from '../integrationUtils';
 import { randomUUID } from 'crypto';
-import * as logger from '../../logger';
+import * as logger from '../../../packages/core/src/logger';
 import {
     prepareIsolatedConfigPath,
     cleanupIsolatedConfigPath,

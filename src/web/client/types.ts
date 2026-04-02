@@ -17,7 +17,7 @@ export type {
     CellMapping,
     NotebookSemanticConflict,
     ResolutionChoice,
-} from '../../types';
+} from '../../../packages/core/src/types';
 import type { AutoResolveResult } from '../webTypes';
 export type { AutoResolveResult } from '../webTypes';
 
@@ -29,9 +29,9 @@ export type { AutoResolveResult } from '../webTypes';
 export type MergeRow = 
     | {
         type: 'identical' | 'conflict';
-        baseCell?: import('../../types').NotebookCell;
-        currentCell?: import('../../types').NotebookCell;
-        incomingCell?: import('../../types').NotebookCell;
+        baseCell?: import('../../../packages/core/src/types').NotebookCell;
+        currentCell?: import('../../../packages/core/src/types').NotebookCell;
+        incomingCell?: import('../../../packages/core/src/types').NotebookCell;
         baseCellIndex?: number;
         currentCellIndex?: number;
         incomingCellIndex?: number;
@@ -53,9 +53,9 @@ export type MergeRow =
     }
     | {
         type: 'identical' | 'conflict';
-        baseCell?: import('../../types').NotebookCell;
-        currentCell?: import('../../types').NotebookCell;
-        incomingCell?: import('../../types').NotebookCell;
+        baseCell?: import('../../../packages/core/src/types').NotebookCell;
+        currentCell?: import('../../../packages/core/src/types').NotebookCell;
+        incomingCell?: import('../../../packages/core/src/types').NotebookCell;
         baseCellIndex?: number;
         currentCellIndex?: number;
         incomingCellIndex?: number;
@@ -84,7 +84,7 @@ export interface UnifiedConflictData {
     /** Stable conflict instance key for client-side state reset behavior */
     conflictKey: string;
     type: 'semantic';
-    semanticConflict?: import('../../types').NotebookSemanticConflict;
+    semanticConflict?: import('../../../packages/core/src/types').NotebookSemanticConflict;
     autoResolveResult?: AutoResolveResult;
     hideNonConflictOutputs?: boolean;
     showCellHeaders?: boolean;
@@ -101,11 +101,11 @@ export interface UnifiedConflictData {
  */
 export interface ResolvedRow {
     /** Base cell (may be undefined if cell not present in base) */
-    baseCell?: import('../../types').NotebookCell;
+    baseCell?: import('../../../packages/core/src/types').NotebookCell;
     /** Current cell (may be undefined if cell not present in current) */
-    currentCell?: import('../../types').NotebookCell;
+    currentCell?: import('../../../packages/core/src/types').NotebookCell;
     /** Incoming cell (may be undefined if cell not present in incoming) */
-    incomingCell?: import('../../types').NotebookCell;
+    incomingCell?: import('../../../packages/core/src/types').NotebookCell;
     /** Original indices for reliable cell lookup */
     baseCellIndex?: number;
     currentCellIndex?: number;
@@ -113,7 +113,7 @@ export interface ResolvedRow {
     /** If this row had a conflict, this is the user's resolution */
     resolution?: {
         /** The branch choice that determines outputs, metadata, etc. */
-        choice: import('../../types').ResolutionChoice;
+        choice: import('../../../packages/core/src/types').ResolutionChoice;
         /** The resolved content from the text area (source of truth) */
         resolvedContent: string;
     };

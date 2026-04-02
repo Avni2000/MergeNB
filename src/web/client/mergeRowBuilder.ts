@@ -1,5 +1,5 @@
-import { sortByPosition } from '../../positionUtils';
-import { detectReordering } from '../../cellMatcher';
+import { sortByPosition } from '../../../packages/core/src/positionUtils';
+import { detectReordering } from '../../../packages/core/src/cellMatcher';
 import type {
     MergeRow as MergeRowType,
     NotebookSemanticConflict,
@@ -28,7 +28,7 @@ function sortMergeRowsByPosition(rows: MergeRowType[]): MergeRowType[] {
 
 export function buildMergeRowsFromSemantic(
     conflict: NotebookSemanticConflict,
-    currentNotebookOverride?: import('../../types').Notebook
+    currentNotebookOverride?: import('../../../packages/core/src/types').Notebook
 ): MergeRowType[] {
     const rows: MergeRowType[] = [];
     const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();

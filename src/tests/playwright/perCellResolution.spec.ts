@@ -8,7 +8,7 @@
  */
 
 import { test, expect } from './fixtures';
-import * as logger from '../../logger';
+import * as logger from '../../../packages/core/src/logger';
 import {
     validateNotebookStructure,
 } from '../testHelpers';

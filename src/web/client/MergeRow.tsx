@@ -13,7 +13,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent, mergeNBEditorStructure } from './CellContent';
-import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
+import { normalizeCellSource, selectNonConflictMergedCell } from '../../../packages/core/src/notebookUtils';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 
 /** Resolution state for a cell */

@@ -14,9 +14,9 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { chromium, type Browser, type Page } from 'playwright';
-import * as logger from '../logger';
+import * as logger from '../../packages/core/src/logger';
 import * as gitIntegration from '../gitIntegration';
-import { detectSemanticConflicts, applyAutoResolutions } from '../conflictDetector';
+import { detectSemanticConflicts, applyAutoResolutions } from '../../packages/core/src/conflictDetector';
 import { getSettings, configContext } from '../settings';
 import { getWebServer } from '../web/webServer';
 import {
@@ -25,8 +25,8 @@ import {
     type UnifiedConflict,
     type WebConflictData,
 } from '../web/webTypes';
-import { buildResolvedNotebookFromRows } from '../semanticResolution';
-import { serializeNotebook, renumberExecutionCounts } from '../notebookParser';
+import { buildResolvedNotebookFromRows } from '../../packages/core/src/semanticResolution';
+import { serializeNotebook, renumberExecutionCounts } from '../../packages/core/src/notebookParser';
 import {
     type ExpectedCell,
     type TestConfig,

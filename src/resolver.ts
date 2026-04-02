@@ -13,15 +13,15 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from './conflictDetector';
-import { parseNotebook, serializeNotebook, renumberExecutionCounts } from './notebookParser';
-import { buildResolvedNotebookFromRows, type PreferredSide } from './semanticResolution';
+import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from '../packages/core/src/conflictDetector';
+import { parseNotebook, serializeNotebook, renumberExecutionCounts } from '../packages/core/src/notebookParser';
+import { buildResolvedNotebookFromRows, type PreferredSide } from '../packages/core/src/semanticResolution';
 import { WebConflictPanel } from './web/WebConflictPanel';
 import { UnifiedConflict, UnifiedResolution } from './web/webTypes';
-import { NotebookSemanticConflict, Notebook } from './types';
+import { NotebookSemanticConflict, Notebook } from '../packages/core/src/types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
-import * as logger from './logger';
+import * as logger from '../packages/core/src/logger';
 
 
 

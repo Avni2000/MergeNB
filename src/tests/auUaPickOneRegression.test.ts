@@ -10,7 +10,7 @@ import {
 } from '../resolver';
 import { readTestConfig } from './testHarness';
 import { git, gitAllowFailure, hashBlob, assertNoUnmergedConflict } from './gitTestUtils';
-import * as logger from '../logger';
+import * as logger from '../../packages/core/src/logger';
 
 type AddOnlyStatus = 'AU' | 'UA';
 

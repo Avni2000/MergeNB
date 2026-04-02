@@ -10,19 +10,19 @@ import * as os from 'os';
 import * as path from 'path';
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import * as conflictDetector from '../conflictDetector';
+import * as conflictDetector from '../../packages/core/src/conflictDetector';
 import * as gitIntegration from '../gitIntegration';
-import { normalizeCellSource, selectNonConflictMergedCell } from '../notebookUtils';
-import { renumberExecutionCounts } from '../notebookParser';
-import { analyzeSemanticConflictsFromMappings } from '../conflictDetector';
-import { detectReordering } from '../cellMatcher';
+import { normalizeCellSource, selectNonConflictMergedCell } from '../../packages/core/src/notebookUtils';
+import { renumberExecutionCounts } from '../../packages/core/src/notebookParser';
+import { analyzeSemanticConflictsFromMappings } from '../../packages/core/src/conflictDetector';
+import { detectReordering } from '../../packages/core/src/cellMatcher';
 import { NotebookConflictResolver, onDidResolveConflictWithDetails, setResolverPromptTestHooks } from '../resolver';
 import { createResolverStore } from '../web/client/resolverStore';
 import { buildMergeRowsFromSemantic } from '../web/client/mergeRowBuilder';
 import { computeReorderedRowIndexSet } from '../web/client/reorderUtils';
 import { WebConflictPanel } from '../web/WebConflictPanel';
-import type { NotebookCell, Notebook, NotebookSemanticConflict } from '../types';
-import type { CellMapping } from '../types';
+import type { NotebookCell, Notebook, NotebookSemanticConflict } from '../../packages/core/src/types';
+import type { CellMapping } from '../../packages/core/src/types';
 
 export async function run(): Promise<void> {
     // ---------------------------------------------------------------------
