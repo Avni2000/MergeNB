@@ -29,17 +29,8 @@ try {
     // Running in headless mode (tests) - vscode not available
 }
 
-export interface MergeNBSettings {
-    autoResolveExecutionCount: boolean;
-    autoResolveKernelVersion: boolean;
-    stripOutputs: boolean;
-    autoResolveWhitespace: boolean;
-    hideNonConflictOutputs: boolean;
-    showCellHeaders: boolean;
-    enableUndoRedoHotkeys: boolean;
-    showBaseColumn: boolean;
-    theme: 'dark' | 'light';
-}
+export type { MergeNBSettings } from '../../packages/core/src/types';
+import type { MergeNBSettings } from '../../packages/core/src/types';
 
 /** Default settings used in headless mode */
 const DEFAULT_SETTINGS: MergeNBSettings = {

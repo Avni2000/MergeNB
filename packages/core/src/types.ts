@@ -182,3 +182,35 @@ export interface SemanticConflictResolution {
     /** The resolved content from the editable text area (source of truth) */
     resolvedContent?: string;
 }
+
+/**
+ * Extension settings consumed by core logic (auto-resolution, semantic resolution).
+ * The actual settings source (VS Code workspace config, JSON file, etc.) is defined
+ * by the host application; core only depends on this shape.
+ */
+export interface MergeNBSettings {
+    autoResolveExecutionCount: boolean;
+    autoResolveKernelVersion: boolean;
+    stripOutputs: boolean;
+    autoResolveWhitespace: boolean;
+    hideNonConflictOutputs: boolean;
+    showCellHeaders: boolean;
+    enableUndoRedoHotkeys: boolean;
+    showBaseColumn: boolean;
+    theme: 'dark' | 'light';
+}
+
+/**
+ * Abstraction over Git operations needed by the conflict detector.
+ * The host application provides the concrete implementation (e.g. shelling
+ * out to git, using a VS Code Git API, etc.).
+ */
+export interface GitOperations {
+    getThreeWayVersions(filePath: string): Promise<{
+        base: string | null;
+        current: string | null;
+        incoming: string | null;
+    } | null>;
+    getCurrentBranch(filePath: string): Promise<string | null>;
+    getMergeBranch(filePath: string): Promise<string | null>;
+}
