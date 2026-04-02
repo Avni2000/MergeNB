@@ -577,6 +577,12 @@ body {
     margin: 0;
 }
 
+/* Markdown cells in conflict mode: green border on the pre element (matches code cell pattern) */
+.markdown-cell.has-conflict .cell-content pre {
+    background: var(--cell-surface);
+    border-left: 3px solid var(--accent-green);
+}
+
 /* Placeholder for empty cells */
 .cell-placeholder {
     display: flex;
@@ -672,6 +678,11 @@ body {
 .markdown-content pre.has-syntax-highlight code {
     font-family: var(--font-code);
     font-weight: 400;
+}
+
+/* Markdown cells in conflict mode: no <code> wrapper, so style the <pre> directly with UI font */
+.markdown-cell .cell-source-static {
+    font-family: var(--font-ui);
 }
 
 /* Diff highlighting — applied as CodeMirror line decorations on .cm-line elements */
