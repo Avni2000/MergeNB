@@ -382,6 +382,7 @@ export function CellContentInner({
     const cellClasses = [
         'notebook-cell',
         `${cellType}-cell`,
+        `side-${side}`,
         isConflict && 'has-conflict'
     ].filter(Boolean).join(' ');
 
