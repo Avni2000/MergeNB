@@ -577,6 +577,12 @@ body {
     margin: 0;
 }
 
+/* Markdown cells in conflict mode: green border on the pre element (matches code cell pattern) */
+.markdown-cell.has-conflict .cell-content pre {
+    background: var(--cell-surface);
+    border-left: 3px solid var(--accent-green);
+}
+
 /* Placeholder for empty cells */
 .cell-placeholder {
     display: flex;
