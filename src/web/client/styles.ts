@@ -516,13 +516,7 @@ body {
 .markdown-content blockquote,
 .cell-content pre,
 .markdown-content pre,
-.markdown-content code,
-.cell-output-host,
-.cell-output-host .jp-RenderedText,
-.cell-output-host .jp-RenderedHTMLCommon,
-.cell-output-host .jp-RenderedImage,
-.cell-output-host .jp-RenderedSVG,
-.cell-output-host .jp-RenderedLatex {
+.markdown-content code {
     color: var(--text-primary);
 }
 
