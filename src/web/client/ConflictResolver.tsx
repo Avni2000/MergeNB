@@ -177,6 +177,7 @@ export function ConflictResolver({
         if (!enableUndoRedoHotkeys) return;
 
         const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented) return;
             if (isEditableTarget(event.target)) return;
 
             const isPrimaryModifier = isMac ? event.metaKey : event.ctrlKey;
@@ -643,6 +644,7 @@ export function ConflictResolver({
                                     showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
                                     showBaseColumn={showBaseColumn}
                                     showCellHeaders={showCellHeaders}
+                                    enableUndoRedoHotkeys={enableUndoRedoHotkeys}
                                     data-testid={conflictIdx >= 0 ? `conflict-row-${conflictIdx}` : `row-${i}`}
                                 />
                             </div>

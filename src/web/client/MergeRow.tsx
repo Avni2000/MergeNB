@@ -11,6 +11,8 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
+import { history, undo, redo } from '@codemirror/commands';
+import { keymap } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from './types';
 import { CellContent, mergeNBEditorStructure } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../notebookUtils';
@@ -40,6 +42,7 @@ interface MergeRowProps {
     showOutputs?: boolean;
     showBaseColumn?: boolean;
     showCellHeaders?: boolean;
+    enableUndoRedoHotkeys?: boolean;
     theme?: 'dark' | 'light';
     'data-testid'?: string;
 }
@@ -61,6 +64,7 @@ export function MergeRowInner({
     showOutputs = true,
     showBaseColumn = true,
     showCellHeaders = false,
+    enableUndoRedoHotkeys = true,
     theme = 'light',
     'data-testid': testId,
 }: MergeRowProps): React.ReactElement {
@@ -80,6 +84,17 @@ export function MergeRowInner({
     // change — not on every render because of new object/array references.
     const resolvedEditorTheme = useMemo(() => theme === 'dark' ? githubDark : githubLight, [theme]);
     
+    const historyExtensions = useMemo(() => {
+        const extensions: Extension[] = [history()];
+        if (enableUndoRedoHotkeys) {
+            extensions.push(keymap.of([
+                { key: 'Ctrl-z', mac: 'Cmd-z', run: undo },
+                { key: 'Ctrl-Shift-z', mac: 'Cmd-Shift-z', run: redo },
+            ]));
+        }
+        return extensions;
+    }, [enableUndoRedoHotkeys]);
+
     // Derive resolvedCellType from the user's selected branch choice, not a fixed fallback order.
     // This ensures the editor extensions and styling update when the user switches branches.
     const resolvedCellType = resolutionState
@@ -92,8 +107,12 @@ export function MergeRowInner({
         : (row.currentCell?.cell_type || row.incomingCell?.cell_type || row.baseCell?.cell_type || 'code');
     
     const editorExtensions = useMemo(
-        () => [...(resolvedCellType === 'markdown' ? [] : languageExtensions), mergeNBEditorStructure],
-        [languageExtensions, resolvedCellType, resolutionState?.choice]
+        () => [
+            ...(resolvedCellType === 'markdown' ? [] : languageExtensions),
+            ...historyExtensions,
+            mergeNBEditorStructure,
+        ],
+        [historyExtensions, languageExtensions, resolvedCellType]
     );
 
     // Get content for a given choice
@@ -439,7 +458,12 @@ export function MergeRowInner({
                         extensions={editorExtensions}
                         placeholder="Enter cell content..."
                         className="resolved-content-input"
-                        basicSetup={{ lineNumbers: false, foldGutter: false }}
+                        basicSetup={{
+                            lineNumbers: false,
+                            foldGutter: false,
+                            history: false,
+                            historyKeymap: false,
+                        }}
                         theme={resolvedEditorTheme}
                     />
                 </div>

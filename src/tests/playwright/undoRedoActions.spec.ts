@@ -112,7 +112,32 @@ test.describe('Undo/Redo Actions', () => {
             await firstRow.locator('.resolved-content-input').waitFor({ timeout: 5000 });
             logger.info('  ✓ Keyboard undo/redo toggled branch selection');
 
-            // Action 2: delete selection + header undo/redo
+            // Action 2: focused editor uses CodeMirror undo/redo
+            logger.info('\n=== Undo/Redo: Focused Editor ===');
+            const focusedEditor = firstRow.locator('.resolved-content-input');
+            await focusedEditor.waitFor({ timeout: 5000 });
+            const focusedOriginal = await getResolvedEditorValue(focusedEditor);
+            const focusedEdited = `${focusedOriginal}\n(editor edit)`;
+
+            await fillResolvedEditor(focusedEditor, focusedEdited);
+            await focusedEditor.locator('.cm-content').click();
+            await page.keyboard.press(`${primaryModifier}+Z`);
+
+            const afterFocusedUndo = await waitForResolvedEditorText(focusedEditor, focusedOriginal);
+            expect(afterFocusedUndo).toBe(focusedOriginal);
+            await expect(focusedEditor).toBeVisible();
+
+            await page.keyboard.press(`${primaryModifier}+Shift+Z`);
+            const afterFocusedRedo = await waitForResolvedEditorText(focusedEditor, focusedEdited);
+            expect(afterFocusedRedo).toBe(focusedEdited);
+            await expect(focusedEditor).toBeVisible();
+
+            await page.keyboard.press(`${primaryModifier}+Z`);
+            const afterFocusedReset = await waitForResolvedEditorText(focusedEditor, focusedOriginal);
+            expect(afterFocusedReset).toBe(focusedOriginal);
+            logger.info('  ✓ Focused editor hotkeys stayed within CodeMirror history');
+
+            // Action 3: delete selection + header undo/redo
             logger.info('\n=== Undo/Redo: Delete Selection (Header Buttons) ===');
             const deleteRow = conflictRows.nth(conflictCount > 1 ? 1 : 0);
             await deleteRow.scrollIntoViewIfNeeded();
@@ -126,7 +151,7 @@ test.describe('Undo/Redo Actions', () => {
             await deleteRow.locator('.resolved-deleted').waitFor({ timeout: 5000 });
             logger.info('  ✓ Header undo/redo toggled delete resolution');
 
-            // Action 3: edit content + undo/redo
+            // Action 4: edit content + undo/redo
             logger.info('\n=== Undo/Redo: Content Edit ===');
             await firstRow.scrollIntoViewIfNeeded();
             if (await firstRow.locator('.resolved-content-input').count() === 0) {
@@ -159,7 +184,7 @@ test.describe('Undo/Redo Actions', () => {
             expect(afterRedo).toBe(edited);
             logger.info('  ✓ Undo/redo restored edited content');
 
-            // Action 4: toggle checkboxes + undo/redo
+            // Action 5: toggle checkboxes + undo/redo
             logger.info('\n=== Undo/Redo: Toggle Options ===');
             const renumberCheckbox = page.locator('label:has-text("Renumber execution counts") input[type="checkbox"]');
             const markCheckbox = page.locator('label:has-text("Mark as resolved") input[type="checkbox"]');
@@ -187,7 +212,7 @@ test.describe('Undo/Redo Actions', () => {
             expect(await markCheckbox.isChecked()).toBe(toggledMark);
             logger.info('  ✓ Undo/redo restored checkbox states');
 
-            // Action 5: history timeline jump
+            // Action 6: history timeline jump
             logger.info('\n=== History Timeline Jump ===');
             await page.locator('[data-testid="history-toggle"]').click();
             const historyItems = page.locator('[data-testid="history-item"]');
