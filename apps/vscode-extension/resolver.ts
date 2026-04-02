@@ -13,15 +13,15 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from '../packages/core/src/conflictDetector';
-import { parseNotebook, serializeNotebook, renumberExecutionCounts } from '../packages/core/src/notebookParser';
-import { buildResolvedNotebookFromRows, type PreferredSide } from '../packages/core/src/semanticResolution';
+import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from '../../packages/core/src/conflictDetector';
+import { parseNotebook, serializeNotebook, renumberExecutionCounts } from '../../packages/core/src/notebookParser';
+import { buildResolvedNotebookFromRows, type PreferredSide } from '../../packages/core/src/semanticResolution';
 import { WebConflictPanel } from './web/WebConflictPanel';
-import { UnifiedConflict, UnifiedResolution } from '../packages/web/server/src/webTypes';
-import { NotebookSemanticConflict, Notebook } from '../packages/core/src/types';
+import { UnifiedConflict, UnifiedResolution } from '../../packages/web/server/src/webTypes';
+import { NotebookSemanticConflict, Notebook } from '../../packages/core/src/types';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
-import * as logger from '../packages/core/src/logger';
+import * as logger from '../../packages/core/src/logger';
 
 
 
@@ -38,7 +38,7 @@ export const onDidResolveConflict = new vscode.EventEmitter<vscode.Uri>();
 export interface ResolvedConflictDetails {
     uri: vscode.Uri;
     resolvedNotebook?: Notebook;
-    resolvedRows?: import('../packages/web/server/src/webTypes').ResolvedRow[];
+    resolvedRows?: import('../../packages/web/server/src/webTypes').ResolvedRow[];
     markAsResolved: boolean;
     renumberExecutionCounts: boolean;
     fileDeleted?: boolean;
@@ -217,7 +217,11 @@ export class NotebookConflictResolver {
      * Auto-resolves execution count and kernel version differences based on settings.
      */
     async resolveSemanticConflicts(uri: vscode.Uri): Promise<void> {
-        const semanticConflict = await detectSemanticConflicts(uri.fsPath);
+        const semanticConflict = await detectSemanticConflicts(uri.fsPath, {
+            getThreeWayVersions: gitIntegration.getThreeWayVersions,
+            getCurrentBranch: gitIntegration.getCurrentBranch,
+            getMergeBranch: gitIntegration.getMergeBranch,
+        });
 
         if (!semanticConflict) {
             vscode.window.showInformationMessage('No semantic conflicts detected.');
@@ -607,7 +611,7 @@ export class NotebookConflictResolver {
     private async applySemanticResolutionsFromRows(
         uri: vscode.Uri,
         semanticConflict: NotebookSemanticConflict,
-        resolvedRows: import('../packages/web/server/src/webTypes').ResolvedRow[],
+        resolvedRows: import('../../packages/web/server/src/webTypes').ResolvedRow[],
         markAsResolved: boolean,
         shouldRenumber: boolean,
         autoResolveResult?: AutoResolveResult,

@@ -12,11 +12,9 @@
  * outputs, kernel versions) based on user settings.
  */
 
-import { NotebookSemanticConflict, SemanticConflict, CellMapping, Notebook, NotebookCell, NotebookMetadata } from './types';
-import * as gitIntegration from '../../../src/gitIntegration';
+import { NotebookSemanticConflict, SemanticConflict, CellMapping, Notebook, NotebookCell, NotebookMetadata, MergeNBSettings, GitOperations } from './types';
 import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
-import { getSettings, MergeNBSettings } from '../../../src/settings';
 import * as logger from './logger';
 
 function stableStringify(value: unknown): string {
@@ -65,17 +63,15 @@ export interface AutoResolveResult {
  * Detect semantic conflicts (Git UU status)
  * Compares base/current/incoming versions from Git staging areas
  */
-export async function detectSemanticConflicts(filePath: string): Promise<NotebookSemanticConflict | null> {
+export async function detectSemanticConflicts(filePath: string, gitOps: GitOperations): Promise<NotebookSemanticConflict | null> {
     try {
-        // Get the three-way versions from Git
-        const versions = await gitIntegration.getThreeWayVersions(filePath);
+        const versions = await gitOps.getThreeWayVersions(filePath);
         if (!versions) {
-            return null; // Not an unmerged file
+            return null;
         }
 
         const { base, current, incoming } = versions;
 
-        // Parse each version as a notebook
         let baseNotebook: Notebook | undefined;
         let currentNotebook: Notebook | undefined;
         let incomingNotebook: Notebook | undefined;
@@ -98,22 +94,16 @@ export async function detectSemanticConflicts(filePath: string): Promise<Noteboo
             logger.warn('Failed to parse incoming notebook:', error);
         }
 
-
-        // If we couldn't parse at least current and incoming, can't detect semantic conflicts
         if (!currentNotebook && !incomingNotebook) {
             return null;
         }
 
-        // Match cells across versions
         const cellMappings = matchCells(baseNotebook, currentNotebook, incomingNotebook);
-
-        // Analyze mappings to find semantic conflicts
         const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
 
-        // Get branch information
         const [currentBranch, incomingBranch] = await Promise.all([
-            gitIntegration.getCurrentBranch(filePath),
-            gitIntegration.getMergeBranch(filePath)
+            gitOps.getCurrentBranch(filePath),
+            gitOps.getMergeBranch(filePath)
         ]);
 
         return {
@@ -386,9 +376,9 @@ function compareCells(
  */
 export function applyAutoResolutions(
     semanticConflict: NotebookSemanticConflict,
-    settings?: MergeNBSettings
+    settings: MergeNBSettings
 ): AutoResolveResult {
-    const effectiveSettings = settings || getSettings();
+    const effectiveSettings = settings;
     const remainingConflicts: SemanticConflict[] = [];
     const autoResolvedDescriptions: string[] = [];
     let autoResolvedCount = 0;
