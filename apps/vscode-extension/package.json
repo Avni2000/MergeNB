@@ -1,0 +1,6 @@
+{
+  "name": "@mergenb/vscode-extension",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./extension.ts"
+}

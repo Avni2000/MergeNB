@@ -2,5 +2,6 @@
   "name": "@mergenb/web-client",
   "version": "0.0.0",
   "private": true,
-  "type": "commonjs"
+  "main": "./src/index.tsx",
+  "types": "./src/index.tsx"
 }
