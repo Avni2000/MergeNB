@@ -416,6 +416,7 @@ export function CellContentInner({
                         diffMode={diffMode}
                         langExtensions={cellType === 'markdown' ? EMPTY_EXTENSIONS : languageExtensions}
                         theme={theme}
+                        isMarkdown={cellType === 'markdown'}
                     />
                 ) : cellType !== 'markdown' ? (
                     <StaticHighlightedCode
@@ -573,13 +574,14 @@ function StaticHighlightedCode({ source, langExtensions, theme }: {
     );
 }
 
-function StaticDiffContent({ source, compareSource, side, diffMode, langExtensions, theme }: {
+function StaticDiffContent({ source, compareSource, side, diffMode, langExtensions, theme, isMarkdown = false }: {
     source: string;
     compareSource: string;
     side: 'base' | 'current' | 'incoming';
     diffMode: 'base' | 'conflict';
     langExtensions: Extension[];
     theme: 'dark' | 'light';
+    isMarkdown?: boolean;
 }): React.ReactElement {
     const nodes = useMemo(() => {
         const tokens = getSyntaxTokens(source, langExtensions, theme);
@@ -587,9 +589,10 @@ function StaticDiffContent({ source, compareSource, side, diffMode, langExtensio
         return renderStaticToReact(buildStaticRender(source, tokens, lineClasses, inlineRanges));
     }, [source, compareSource, side, diffMode, langExtensions, theme]);
 
+    // Markdown cells don't need <code> wrapper - it's text content, not code
     return (
         <pre className="cell-source-static">
-            <code>{nodes}</code>
+            {isMarkdown ? nodes : <code>{nodes}</code>}
         </pre>
     );
 }

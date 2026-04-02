@@ -680,6 +680,11 @@ body {
     font-weight: 400;
 }
 
+/* Markdown cells in conflict mode: no <code> wrapper, so style the <pre> directly with UI font */
+.markdown-cell .cell-source-static {
+    font-family: var(--font-ui);
+}
+
 /* Diff highlighting — applied as CodeMirror line decorations on .cm-line elements */
 .diff-line.diff-line-conflict {
     background: var(--diff-remove);
