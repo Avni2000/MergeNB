@@ -17,13 +17,13 @@
 		"apps/**/*.ts",
 		"packages/**/*.ts",
 		"packages/**/*.tsx",
-		"src/**/*.ts"
+		"src/**/*.ts",
+		"test-fixtures/**/*.ts"
 	],
 	"exclude": [
 		"node_modules",
 		"out",
 		"dist",
-		"src/tests",
 		"playwright.config.ts"
 	]
 }

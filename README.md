@@ -149,7 +149,7 @@ npm run lint
 
 Test runner:
 
-See [Tests Overview](src/tests/README.md) for details on test structure and how to run them.
+See `apps/vscode-extension/tests/` for VSCode host tests, `packages/web/tests/` for Playwright specs, and `test-fixtures/shared/` for shared test infrastructure.
 
 ```bash
 npm run test # pick a test (or multiple) to run from an interactive menu. You can also run sandboxes from here. 
@@ -159,14 +159,14 @@ npm run test:list
 
 Manual testing:
 
-See the test directory for our fixtures, and src/tests for the test runners.
+See `test-fixtures/` for notebook fixtures and `apps/vscode-extension/tests/` for the test runners.
 
 ```bash 
 npm run test:manual
 # npm shorthand: --manual is consumed by npm, fixture values are forwarded
 npm run test --manual 02
 # equivalent explicit ID format 
-node out/tests/runIntegrationTest.js --manual manual_02
+node out/apps/vscode-extension/tests/runIntegrationTest.js --manual manual_02
 # optional: override deterministic sandbox path
 MERGENB_MANUAL_SANDBOX_DIR=/path/to/sandbox npm run test --manual 02
 ```

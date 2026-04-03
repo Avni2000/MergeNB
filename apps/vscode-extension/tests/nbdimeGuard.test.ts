@@ -10,7 +10,7 @@
 import * as vscode from 'vscode';
 import { execSync } from 'child_process';
 import * as gitIntegration from '../gitIntegration';
-import * as logger from '../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src/logger';
 
 type PromptCall = {
     message: string;

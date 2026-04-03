@@ -3,12 +3,12 @@
  * @description TUI entry point for MergeNB tests.
  *
  * Usage:
- *   node out/tests/runIntegrationTest.js                    # Interactive TUI
- *   node out/tests/runIntegrationTest.js --playwright       # Run all Playwright specs
- *   node out/tests/runIntegrationTest.js --playwright <spec># Run one spec (basename)
- *   node out/tests/runIntegrationTest.js --vscode           # Run VS Code regression tests
- *   node out/tests/runIntegrationTest.js --e2e              # Run E2E resolution tests (web server + WebSocket)
- *   node out/tests/runIntegrationTest.js --manual <fixture> # Open manual sandbox (02/03/04/09)
+ *   node out/apps/vscode-extension/tests/runIntegrationTest.js                    # Interactive TUI
+ *   node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright       # Run all Playwright specs
+ *   node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright <spec># Run one spec (basename)
+ *   node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode           # Run VS Code regression tests
+ *   node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e              # Run E2E resolution tests (web server + WebSocket)
+ *   node out/apps/vscode-extension/tests/runIntegrationTest.js --manual <fixture> # Open manual sandbox (02/03/04/09)
  *
  * npm scripts (see package.json):
  *   npm run test          # Interactive TUI picker
@@ -27,11 +27,11 @@ import {
     createMergeConflictRepo,
     writeTestConfig,
     cleanup,
-} from './repoSetup';
+} from '../../../test-fixtures/shared/repoSetup';
 import {
     prepareIsolatedConfigPath,
     cleanupIsolatedConfigPath,
-} from './testRunnerShared';
+} from '../../../test-fixtures/shared/testRunnerShared';
 
 // @clack/prompts is ESM-only, so we load it lazily via dynamic import.
 let _clack: any;
@@ -84,7 +84,7 @@ const MANUAL_SANDBOXES: ManualSandbox[] = [
 // ─── Playwright helpers ───────────────────────────────────────────────────────
 
 function discoverSpecFiles(): string[] {
-    const specDir = path.resolve(__dirname, 'playwright');
+    const specDir = path.resolve(__dirname, '../../../packages/web/tests');
     if (!fs.existsSync(specDir)) return [];
     return fs
         .readdirSync(specDir)
@@ -101,7 +101,7 @@ function runPlaywright(specFiles: string[] = []): Promise<boolean> {
         const args = ['playwright', 'test', ...specFiles];
         const proc = spawn('npx', args, {
             stdio: 'inherit',
-            cwd: path.resolve(__dirname, '../..'),
+            cwd: path.resolve(__dirname, '../../../..'),
         });
         proc.on('close', code => resolve(code === 0));
     });
@@ -126,8 +126,8 @@ async function runVSCodeTests(options: VSCodeTestOptions): Promise<boolean> {
     const { id, testFile, testConfigLabel } = options;
     const isCi = !!process.env.CI;
 
-    const projectRoot = path.resolve(__dirname, '../..');
-    const testDir = path.resolve(__dirname, '../../test');
+    const projectRoot = path.resolve(__dirname, '../../../..');
+    const testDir = path.resolve(__dirname, '../../../../test-fixtures');
     const configInfo = prepareIsolatedConfigPath(`vscode-${id}${isCi ? '-vsix' : ''}`);
     const vscodeVersion = process.env.VSCODE_VERSION?.trim();
 
@@ -250,7 +250,7 @@ function resolveManualWorkspacePath(): string {
 }
 
 function openManualSandbox(sandbox: ManualSandbox): void {
-    const testDir = path.resolve(__dirname, '../../test');
+    const testDir = path.resolve(__dirname, '../../../../test-fixtures');
     const baseFile = path.join(testDir, sandbox.base);
     const currentFile = path.join(testDir, sandbox.current);
     const incomingFile = path.join(testDir, sandbox.incoming);
@@ -265,7 +265,7 @@ function openManualSandbox(sandbox: ManualSandbox): void {
         targetDir: resolveManualWorkspacePath(),
     });
 
-    const extensionDevelopmentPath = path.resolve(__dirname, '../..');
+    const extensionDevelopmentPath = path.resolve(__dirname, '../../../..');
     const conflictNotebookPath = path.join(workspacePath, 'conflict.ipynb');
     const openArgs = [
         '--extensionDevelopmentPath', extensionDevelopmentPath,
@@ -356,7 +356,7 @@ async function runPlaywrightTUI(c: any): Promise<void> {
 
         if (c.isCancel(selected)) { c.cancel('Cancelled.'); process.exit(0); }
         specFiles = (selected as string[]).map(f =>
-            path.join('out/tests/playwright', f)
+            path.join('out/packages/web/tests', f)
         );
     }
 
@@ -430,7 +430,7 @@ async function main(): Promise<void> {
     if (cli.playwright) {
         const specFiles = cli.playwrightSpecs.map(s => {
             const name = s.endsWith('.spec.js') ? s : `${s}.spec.js`;
-            return path.join('out/tests/playwright', name);
+            return path.join('out/packages/web/tests', name);
         });
         const passed = await runPlaywright(specFiles.length > 0 ? specFiles : []);
         if (!passed) process.exit(1);

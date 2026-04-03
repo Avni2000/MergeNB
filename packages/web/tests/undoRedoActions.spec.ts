@@ -8,7 +8,7 @@
 
 import type { Locator } from 'playwright';
 import { test, expect } from './fixtures';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../core/src/logger';
 import {
     clickHistoryUndo,
     clickHistoryRedo,
@@ -16,7 +16,7 @@ import {
     getResolvedEditorValue,
     fillResolvedEditor,
     type MergeSide,
-} from '../integrationUtils';
+} from '../../../test-fixtures/shared/integrationUtils';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,

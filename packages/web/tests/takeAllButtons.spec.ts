@@ -8,11 +8,11 @@
 
 import { execFileSync } from 'child_process';
 import { test, expect } from './fixtures';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../core/src/logger';
 import {
     getCellSource,
     validateNotebookStructure,
-} from '../testHelpers';
+} from '../../../test-fixtures/shared/testHelpers';
 import {
     type MergeSide,
     verifyAllConflictsMatchSide,
@@ -25,7 +25,7 @@ import {
     clickHistoryUndo,
     clickHistoryRedo,
     getResolvedEditorValue,
-} from '../integrationUtils';
+} from '../../../test-fixtures/shared/integrationUtils';
 import {
     buildExpectedCellsFromNotebook,
     assertNotebookMatches,

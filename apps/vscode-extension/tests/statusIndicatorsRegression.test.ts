@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { readTestConfig } from './testHarness';
 import { git, gitAllowFailure, hasUnmergedConflict } from './gitTestUtils';
-import * as logger from '../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src/logger';
 
 interface StatusBarState {
     visible: boolean;

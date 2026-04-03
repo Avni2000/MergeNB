@@ -10,19 +10,19 @@ import * as os from 'os';
 import * as path from 'path';
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import * as conflictDetector from '../../packages/core/src/conflictDetector';
+import * as conflictDetector from '../../../packages/core/src/conflictDetector';
 import * as gitIntegration from '../gitIntegration';
-import { normalizeCellSource, selectNonConflictMergedCell } from '../../packages/core/src/notebookUtils';
-import { renumberExecutionCounts } from '../../packages/core/src/notebookParser';
-import { analyzeSemanticConflictsFromMappings } from '../../packages/core/src/conflictDetector';
-import { detectReordering } from '../../packages/core/src/cellMatcher';
+import { normalizeCellSource, selectNonConflictMergedCell } from '../../../packages/core/src/notebookUtils';
+import { renumberExecutionCounts } from '../../../packages/core/src/notebookParser';
+import { analyzeSemanticConflictsFromMappings } from '../../../packages/core/src/conflictDetector';
+import { detectReordering } from '../../../packages/core/src/cellMatcher';
 import { NotebookConflictResolver, onDidResolveConflictWithDetails, setResolverPromptTestHooks } from '../resolver';
-import { createResolverStore } from '../../packages/web/client/src/store/resolverStore';
-import { buildMergeRowsFromSemantic } from '../../packages/web/client/src/utils/mergeRowBuilder';
-import { computeReorderedRowIndexSet } from '../../packages/web/client/src/utils/reorderUtils';
+import { createResolverStore } from '../../../packages/web/client/src/store/resolverStore';
+import { buildMergeRowsFromSemantic } from '../../../packages/web/client/src/utils/mergeRowBuilder';
+import { computeReorderedRowIndexSet } from '../../../packages/web/client/src/utils/reorderUtils';
 import { WebConflictPanel } from '../web/WebConflictPanel';
-import type { NotebookCell, Notebook, NotebookSemanticConflict } from '../../packages/core/src/types';
-import type { CellMapping } from '../../packages/core/src/types';
+import type { NotebookCell, Notebook, NotebookSemanticConflict } from '../../../packages/core/src/types';
+import type { CellMapping } from '../../../packages/core/src/types';
 
 export async function run(): Promise<void> {
     // ---------------------------------------------------------------------

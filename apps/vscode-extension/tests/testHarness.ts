@@ -1,23 +1,23 @@
 /**
- * @file fixtures.ts
- * @description Playwright Test fixtures for MergeNB integration tests.
+ * @file testHarness.ts
+ * @description VS Code extension host lifecycle helpers for integration tests.
  *
- * Provides reusable fixtures for:
- * - Creating merge conflict repos from notebook triplets
- * - Setting up the conflict resolver UI session
- * - Applying resolutions and verifying notebooks
- *
- * These fixtures replace the manual setup/teardown patterns from the
- * old testHarness.ts `run()` export pattern.
+ * Runs inside the `@vscode/test-electron` extension host. Provides:
+ * - `readTestConfig`  — reads the JSON config written by the runner before launch
+ * - `setupConflictResolver` — opens the conflict file, starts the web server,
+ *   and connects a Playwright browser to the live session UI
+ * - `applyResolutionAndReadNotebook` — clicks Apply and reads the resolved notebook
+ * - `assertNotebookMatches` — compares the resolved notebook against expected cells
  */
 
-import { test as base, type Page, type Browser } from '@playwright/test';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
-import { chromium } from 'playwright';
-import { createMergeConflictRepo, cleanup as cleanupRepo } from '../repoSetup';
+import { chromium, type Browser, type Page } from 'playwright';
+import * as logger from '../../../packages/core/src/logger';
+import * as gitIntegration from '../gitIntegration';
 import { detectSemanticConflicts, applyAutoResolutions } from '../../../packages/core/src/conflictDetector';
-import { getSettings, configContext } from '../../settings';
+import { getSettings, configContext } from '../settings';
 import { getWebServer } from '../../../packages/web/server/src/webServer';
 import {
     toWebSemanticConflict,
@@ -27,28 +27,26 @@ import {
 } from '../../../packages/web/server/src/webTypes';
 import { buildResolvedNotebookFromRows } from '../../../packages/core/src/semanticResolution';
 import { serializeNotebook, renumberExecutionCounts } from '../../../packages/core/src/notebookParser';
-import * as gitIntegration from '../../gitIntegration';
 import {
     type ExpectedCell,
+    type TestConfig,
     getCellSource,
-} from '../testHelpers';
-import { ensureCheckboxChecked } from '../integrationUtils';
-import { randomUUID } from 'crypto';
-import * as logger from '../../../packages/core/src/logger';
-import {
-    prepareIsolatedConfigPath,
-    cleanupIsolatedConfigPath,
-} from '../testRunnerShared';
+    waitForServer,
+    waitForSessionUrl,
+    waitForFileWrite,
+} from '../../../test-fixtures/shared/testHelpers';
+import { ensureCheckboxChecked } from '../../../test-fixtures/shared/integrationUtils';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-export interface NotebookTriplet {
-    base: string;
-    current: string;
-    incoming: string;
+// Optional vscode import for headless test support.
+let vscode: typeof import('vscode') | undefined;
+try {
+    vscode = require('vscode');
+} catch {
+    // Running in headless mode (tests) - vscode not available
 }
 
 export interface ConflictSession {
+    config: TestConfig;
     workspacePath: string;
     conflictFile: string;
     serverPort: number;
@@ -56,6 +54,14 @@ export interface ConflictSession {
     sessionUrl: string;
     browser: Browser;
     page: Page;
+}
+
+export interface SetupOptions {
+    headless?: boolean;
+    serverTimeoutMs?: number;
+    sessionTimeoutMs?: number;
+    afterNavigateDelayMs?: number;
+    postHeaderDelayMs?: number;
 }
 
 export interface ApplyOptions {
@@ -72,68 +78,109 @@ export interface NotebookMatchOptions {
     logCounts?: boolean;
 }
 
-// ─── Helper Functions ───────────────────────────────────────────────────────
-
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function waitForFileWrite(filePath: string, timeoutMs = 10000, initialMtime = 0): Promise<boolean> {
-    const maxAttempts = Math.ceil(timeoutMs / 500);
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        await sleep(500);
-        try {
-            const stat = fs.statSync(filePath);
-            if (stat.mtimeMs > initialMtime) {
-                return true;
-            }
-        } catch { /* continue */ }
-    }
-    return false;
-}
-
-// ─── Core Fixture Functions ─────────────────────────────────────────────────
-
-/**
- * Create a merge conflict repository from a notebook triplet.
- * Returns the workspace path for use in tests.
- */
-export function createConflictRepo(notebooks: NotebookTriplet): string {
-    const testDir = path.resolve(__dirname, '../../../test');
-    const baseFile = path.resolve(testDir, notebooks.base);
-    const currentFile = path.resolve(testDir, notebooks.current);
-    const incomingFile = path.resolve(testDir, notebooks.incoming);
-
-    // Validate all files exist
-    for (const f of [baseFile, currentFile, incomingFile]) {
-        if (!fs.existsSync(f)) {
-            throw new Error(`Notebook not found: ${f}`);
-        }
-    }
-
-    return createMergeConflictRepo(baseFile, currentFile, incomingFile);
+/** Read the test config JSON written to disk by the runner before VS Code launched. */
+export function readTestConfig(): TestConfig {
+    const ctx = configContext.getStore();
+    const override = ctx?.testConfigPath ?? process.env.MERGENB_TEST_CONFIG_PATH;
+    const configPath = override && override.trim()
+        ? path.resolve(override.trim())
+        : path.join(os.tmpdir(), 'mergenb-test-config.json');
+    return JSON.parse(fs.readFileSync(configPath, 'utf8'));
 }
 
 /**
- * Set up the conflict resolver headlessly - creates a session, launches browser,
- * and navigates to the conflict UI.
+ * Open the conflict notebook, run `merge-nb.findConflicts`, wait for the web
+ * server, and connect a Playwright browser to the session UI.
+ *
+ * Returns a `ConflictSession` with the `page` ready for UI interactions.
+ * Closes the browser and rethrows if navigation or header verification fails.
  */
-export async function setupConflictResolverHeadless(
-    workspacePath: string,
-    options: { headless?: boolean; afterNavigateDelayMs?: number; postHeaderDelayMs?: number } = {}
+export async function setupConflictResolver(
+    config: TestConfig,
+    options: SetupOptions = {}
 ): Promise<ConflictSession> {
+    if (!vscode) {
+        return setupConflictResolverHeadless(config, options);
+    }
+
+    const workspacePath = config.workspacePath;
+    const conflictFile = path.join(workspacePath, 'conflict.ipynb');
+
+    const doc = await vscode.workspace.openTextDocument(conflictFile);
+    await vscode.window.showTextDocument(doc);
+    await sleep(1000);
+
+    logger.info('[TestHarness] Executing merge-nb.findConflicts command...');
+    await vscode.commands.executeCommand('merge-nb.findConflicts');
+    logger.info('[TestHarness] merge-nb.findConflicts command executed');
+
+    logger.info('[TestHarness] Waiting for server to start...');
+    const serverPort = await waitForServer(
+        () => Promise.resolve(vscode.commands.executeCommand<number>('merge-nb.getWebServerPort')),
+        options.serverTimeoutMs
+    );
+    logger.info(`[TestHarness] Server started on port ${serverPort}`);
+
+    const sessionUrl = await waitForSessionUrl(
+        () => Promise.resolve(vscode.commands.executeCommand<string>('merge-nb.getLatestWebSessionUrl')),
+        options.sessionTimeoutMs
+    );
+    const sessionId = new URL(sessionUrl).searchParams.get('session') || 'unknown';
+    logger.info(`Session created: ${sessionId}`);
+
+    const browser = await chromium.launch({ headless: options.headless ?? true });
+    try {
+        const page = await browser.newPage();
+
+        const testUrl = sessionUrl + '&noVirtualize=1';
+        await page.goto(testUrl);
+        await sleep(options.afterNavigateDelayMs ?? 3000);
+
+        await page.waitForSelector('.header-title', { timeout: 15000 });
+        const title = await page.locator('.header-title').textContent();
+        if (title?.trim() !== 'MergeNB') {
+            throw new Error(`Expected header 'MergeNB', got '${title}'`);
+        }
+
+        await sleep(options.postHeaderDelayMs ?? 1000);
+
+        return {
+            config,
+            workspacePath,
+            conflictFile,
+            serverPort,
+            sessionId,
+            sessionUrl,
+            browser,
+            page,
+        };
+    } catch (err) {
+        await browser.close();
+        throw err;
+    }
+}
+
+async function setupConflictResolverHeadless(
+    config: TestConfig,
+    options: SetupOptions = {}
+): Promise<ConflictSession> {
+    const workspacePath = config.workspacePath;
     const conflictFile = path.join(workspacePath, 'conflict.ipynb');
 
     const semanticConflict = await detectSemanticConflicts(conflictFile);
     if (!semanticConflict) {
-        throw new Error('No semantic conflicts detected.');
+        throw new Error('No semantic conflicts detected (headless mode).');
     }
 
     const settings = getSettings();
     const autoResolveResult = applyAutoResolutions(semanticConflict, settings);
 
     if (autoResolveResult.remainingConflicts.length === 0) {
-        throw new Error('No remaining conflicts after auto-resolve.');
+        throw new Error('No remaining conflicts after auto-resolve (headless mode).');
     }
 
     const filteredSemanticConflict = {
@@ -155,7 +202,7 @@ export async function setupConflictResolverHeadless(
 
     const server = getWebServer();
     server.setTestMode(true);
-    server.setExtensionUri({ fsPath: path.resolve(__dirname, '../../..') });
+    server.setExtensionUri({ fsPath: path.resolve(__dirname, '../../../..') });
 
     if (!server.isRunning()) {
         await server.start();
@@ -234,11 +281,14 @@ export async function setupConflictResolverHeadless(
     };
 
     const handleMessage = (message: unknown): void => {
+        // Validate message structure before casting to avoid undefined property access
         if (!message || typeof message !== 'object') {
+            logger.error('[TestHarness] Invalid message format (not an object):', message);
             return;
         }
         const msg = message as BrowserToExtensionMessage;
         if (typeof msg.command !== 'string') {
+            logger.error('[TestHarness] Invalid message format (no command property):', message);
             return;
         }
         switch (msg.command) {
@@ -249,12 +299,14 @@ export async function setupConflictResolverHeadless(
                 if ('resolvedRows' in msg) {
                     void handleResolution(msg as Extract<BrowserToExtensionMessage, { command: 'resolve' }>)
                         .catch(err => {
-                            logger.error('[Fixtures] Resolution handler failed:', err);
+                            logger.error('[TestHarness] Resolution handler failed:', err);
                             server.sendMessage(sessionId, {
                                 type: 'resolution-error',
                                 message: `Resolution handler error: ${err}`,
                             });
                         });
+                } else {
+                    logger.error('[TestHarness] Resolve message missing resolvedRows');
                 }
                 break;
             case 'cancel':
@@ -284,7 +336,7 @@ export async function setupConflictResolverHeadless(
             throw new Error(`Expected header 'MergeNB', got '${title}'`);
         }
 
-        // Wait for browser 'ready' message with timeout
+        // Wait for browser 'ready' message with timeout to prevent infinite hang
         const connectionTimeoutMs = 30000;
         await Promise.race([
             connectionPromise,
@@ -296,6 +348,7 @@ export async function setupConflictResolverHeadless(
         await sleep(options.postHeaderDelayMs ?? 1000);
 
         return {
+            config,
             workspacePath,
             conflictFile,
             serverPort: server.getPort(),
@@ -332,14 +385,10 @@ export async function applyResolutionAndReadNotebook(
         throw new Error('Apply Resolution button is disabled');
     }
 
-    const initialMtime = (() => {
-        try { return fs.statSync(conflictFile).mtimeMs; } catch { return 0; }
-    })();
-
     await applyButton.click();
     await sleep(options.postClickDelayMs ?? 3000);
 
-    const fileWritten = await waitForFileWrite(conflictFile, options.writeTimeoutMs, initialMtime);
+    const fileWritten = await waitForFileWrite(conflictFile, fs, options.writeTimeoutMs);
     if (!fileWritten) {
         logger.info('Warning: Could not confirm file write, proceeding anyway');
     }
@@ -349,7 +398,8 @@ export async function applyResolutionAndReadNotebook(
 }
 
 /**
- * Build an `ExpectedCell[]` directly from a notebook file.
+ * Build an `ExpectedCell[]` directly from a notebook file (used when you want
+ * to compare two resolved notebooks rather than UI state against disk state).
  */
 export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
     if (!notebook || !Array.isArray(notebook.cells)) {
@@ -371,16 +421,21 @@ export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
     });
 }
 
-/**
- * Read a notebook fixture from this repository's `test/` directory.
- */
+/** Read a notebook fixture from this repository's `test/` directory. */
 export function readNotebookFixtureFromRepo(fileName: string): any {
-    const fixturePath = path.resolve(__dirname, '../../../test', fileName);
+    const fixturePath = path.resolve(__dirname, '../../../../test-fixtures', fileName);
     return JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
 }
 
 /**
  * Assert that a resolved notebook on disk matches the expected cell list.
+ *
+ * Checks (in order): cell count, source, cell_type, metadata (if
+ * `compareMetadata`), outputs, and execution counts (if `compareExecutionCounts`).
+ * When `renumberEnabled` is true, execution counts are expected to increment
+ * from 1 for every code cell that has outputs.
+ *
+ * Throws a descriptive error on the first category of mismatch found.
  */
 export function assertNotebookMatches(
     expectedCells: ExpectedCell[],
@@ -449,6 +504,10 @@ export function assertNotebookMatches(
 
         if (expected.outputs !== undefined) {
             const actualOutputs = (actual as any).outputs || [];
+            // Strip execution_count from execute_result outputs before comparing —
+            // renumberExecutionCounts() updates that field on the disk copy, but the
+            // expected snapshot captured from the UI still carries the original value.
+            // Cell-level execution_count is already verified separately above.
             const stripExecCount = (outs: any[]) =>
                 outs.map(o => o.output_type === 'execute_result'
                     ? (({ execution_count: _ec, ...rest }) => rest)(o)
@@ -493,122 +552,3 @@ export function assertNotebookMatches(
         throw new Error(`${executionMismatches} cells have execution count mismatches`);
     }
 }
-
-// ─── Playwright Test Extension ──────────────────────────────────────────────
-
-export interface MergeNBFixtures {
-    /**
-     * Isolated MergeNB config file path (auto fixture).
-     * Matches `runIntegrationTest.ts` setting `MERGENB_CONFIG_PATH` per test so
-     * `writeSettingsFile` / `getSettings()` do not race on the global config file
-     * or pick up a user `ui.showBaseColumn: true` while a test expects `false`.
-     */
-    mergeNBIsolatedConfig: string;
-    /** Create a merge conflict repository from notebook files */
-    conflictRepo: (notebooks: NotebookTriplet) => string;
-    /** Set up the conflict resolver UI and return a session */
-    conflictSession: (
-        workspacePath: string,
-        options?: { headless?: boolean }
-    ) => Promise<ConflictSession>;
-    /** Apply resolution and read the resulting notebook */
-    applyAndReadNotebook: (
-        page: Page,
-        conflictFile: string,
-        options?: ApplyOptions
-    ) => Promise<any>;
-    /** Assert notebook matches expected cells */
-    assertMatches: (
-        expectedCells: ExpectedCell[],
-        resolvedNotebook: any,
-        options?: NotebookMatchOptions
-    ) => void;
-}
-
-/**
- * Extended Playwright test with MergeNB fixtures.
- * 
- * Usage:
- * ```ts
- * import { test, expect } from './fixtures';
- * 
- * test('my test', async ({ conflictRepo, conflictSession }) => {
- *     const workspacePath = conflictRepo({
- *         base: '04_base.ipynb',
- *         current: '04_current.ipynb',
- *         incoming: '04_incoming.ipynb',
- *     });
- *     const session = await conflictSession(workspacePath);
- *     // ... test code
- * });
- * ```
- */
-export const test = base.extend<MergeNBFixtures>({
-    mergeNBIsolatedConfig: [
-        async ({}, use) => {
-            const { configRoot, configPath } = prepareIsolatedConfigPath(`pw-${randomUUID()}`);
-            const previous = process.env.MERGENB_CONFIG_PATH;
-            process.env.MERGENB_CONFIG_PATH = configPath;
-            await use(configPath);
-            if (previous === undefined) {
-                delete process.env.MERGENB_CONFIG_PATH;
-            } else {
-                process.env.MERGENB_CONFIG_PATH = previous;
-            }
-            cleanupIsolatedConfigPath(configRoot);
-        },
-        { auto: true },
-    ],
-
-    conflictRepo: async ({}, use) => {
-        const createdRepos: string[] = [];
-
-        const createRepo = (notebooks: NotebookTriplet): string => {
-            const repo = createConflictRepo(notebooks);
-            createdRepos.push(repo);
-            return repo;
-        };
-
-        await use(createRepo);
-
-        // Cleanup all created repos after test
-        for (const repo of createdRepos) {
-            cleanupRepo(repo);
-        }
-    },
-
-    conflictSession: async ({}, use) => {
-        const sessions: ConflictSession[] = [];
-
-        const createSession = async (
-            workspacePath: string,
-            options?: { headless?: boolean }
-        ): Promise<ConflictSession> => {
-            const session = await setupConflictResolverHeadless(workspacePath, options);
-            sessions.push(session);
-            return session;
-        };
-
-        await use(createSession);
-
-        // Cleanup all sessions after test
-        for (const session of sessions) {
-            try {
-                await session.page.close();
-            } catch { /* ignore */ }
-            try {
-                await session.browser.close();
-            } catch { /* ignore */ }
-        }
-    },
-
-    applyAndReadNotebook: async ({}, use) => {
-        await use(applyResolutionAndReadNotebook);
-    },
-
-    assertMatches: async ({}, use) => {
-        await use(assertNotebookMatches);
-    },
-});
-
-export { expect } from '@playwright/test';

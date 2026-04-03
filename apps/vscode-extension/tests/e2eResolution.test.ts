@@ -10,11 +10,11 @@
  * matches what was displayed in the UI.
  */
 
-import * as logger from '../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src/logger';
 import * as gitIntegration from '../gitIntegration';
 import {
     validateNotebookStructure,
-} from './testHelpers';
+} from '../../../test-fixtures/shared/testHelpers';
 import {
     getColumnCellType,
     ensureCheckboxChecked,
@@ -25,7 +25,7 @@ import {
     getResolvedEditorValue,
     fillResolvedEditor,
     type ConflictChoice,
-} from './integrationUtils';
+} from '../../../test-fixtures/shared/integrationUtils';
 import {
     readTestConfig,
     setupConflictResolver,

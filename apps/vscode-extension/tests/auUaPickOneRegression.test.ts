@@ -4,16 +4,15 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import * as gitIntegration from '../gitIntegration';
 import {
-    DeleteVsModifyResolutionAction,
+    AddOnlyResolutionAction,
     NotebookConflictResolver,
     setResolverPromptTestHooks,
 } from '../resolver';
 import { readTestConfig } from './testHarness';
 import { git, gitAllowFailure, hashBlob, assertNoUnmergedConflict } from './gitTestUtils';
-import * as logger from '../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src/logger';
 
-type GitStage = '1' | '2' | '3';
-type DeleteConflictStatus = 'DU' | 'UD';
+type AddOnlyStatus = 'AU' | 'UA';
 
 function notebookContent(label: string): string {
     return `${JSON.stringify({
@@ -24,7 +23,7 @@ function notebookContent(label: string): string {
             {
                 cell_type: 'code',
                 metadata: {},
-                source: [`print(\"${label}\")\\n`],
+                source: [`print("${label}")\\n`],
                 execution_count: null,
                 outputs: [],
             },
@@ -34,31 +33,31 @@ function notebookContent(label: string): string {
 
 function setConflictStatus(
     cwd: string,
-    status: DeleteConflictStatus,
-    blobs: { base: string; current: string; incoming: string; }
+    status: AddOnlyStatus,
+    blobs: { current: string; incoming: string; }
 ): void {
     const repoPath = 'conflict.ipynb';
     gitAllowFailure(cwd, ['update-index', '--force-remove', '--', repoPath]);
 
     const lines: string[] = [];
-    if (status === 'DU') {
-        lines.push(`100644 ${blobs.base} 1\t${repoPath}`);
-        lines.push(`100644 ${blobs.incoming} 3\t${repoPath}`);
-    } else {
-        lines.push(`100644 ${blobs.base} 1\t${repoPath}`);
+    if (status === 'AU') {
+        // Added by Us: only stage 2 (current) present
         lines.push(`100644 ${blobs.current} 2\t${repoPath}`);
+    } else {
+        // Added by Them (UA): only stage 3 (incoming) present
+        lines.push(`100644 ${blobs.incoming} 3\t${repoPath}`);
     }
 
     git(cwd, ['update-index', '--index-info'], `${lines.join('\n')}\n`);
 }
 
-async function resolveDeleteConflict(
+async function resolveAddOnlyConflict(
     resolver: NotebookConflictResolver,
     uri: vscode.Uri,
-    action: DeleteVsModifyResolutionAction
+    action: AddOnlyResolutionAction
 ): Promise<void> {
     setResolverPromptTestHooks({
-        pickDeleteVsModifyAction: () => action,
+        pickAddOnlyAction: () => action,
         confirmAction: () => true,
     });
 
@@ -69,48 +68,47 @@ async function resolveDeleteConflict(
     }
 }
 
-async function assertKeepContentResult(
+async function assertApplyAndStageResult(
     cwd: string,
     resolver: NotebookConflictResolver,
     uri: vscode.Uri,
     expectedContent: string,
     context: string
 ): Promise<void> {
-    await resolveDeleteConflict(resolver, uri, 'keep-content');
+    await resolveAddOnlyConflict(resolver, uri, 'apply-and-stage');
 
-    assert.ok(fs.existsSync(uri.fsPath), `Expected file to exist after keep-content (${context})`);
+    assert.ok(fs.existsSync(uri.fsPath), `Expected file to exist after apply-and-stage (${context})`);
     const actual = fs.readFileSync(uri.fsPath, 'utf8');
-    assert.strictEqual(actual, expectedContent, `Unexpected file content after keep-content (${context})`);
+    assert.strictEqual(actual, expectedContent, `Unexpected file content after apply-and-stage (${context})`);
 
     assertNoUnmergedConflict(cwd, context);
-    const statusLine = git(cwd, ['status', '--porcelain', '--', 'conflict.ipynb']).trim();
-    assert.ok(statusLine.startsWith('M '), `Expected staged modification after keep-content (${context}), got: ${statusLine}`);
 
     await gitIntegration.refreshUnmergedFilesSnapshot(cwd);
     const unmergedStatus = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
-    assert.strictEqual(unmergedStatus, null, `Expected no unmerged status after keep-content (${context})`);
+    assert.strictEqual(unmergedStatus, null, `Expected no unmerged status after apply-and-stage (${context})`);
 }
 
-async function assertKeepDeleteResult(
+async function assertCancelResult(
     cwd: string,
     resolver: NotebookConflictResolver,
     uri: vscode.Uri,
+    status: AddOnlyStatus,
     context: string
 ): Promise<void> {
-    // Ensure there is an on-disk file for deletion path coverage.
-    fs.writeFileSync(uri.fsPath, '{"placeholder": true}\n', 'utf8');
+    setResolverPromptTestHooks({
+        pickAddOnlyAction: () => 'cancel',
+    });
 
-    await resolveDeleteConflict(resolver, uri, 'keep-delete');
+    try {
+        await resolver.resolveConflicts(uri);
+    } finally {
+        setResolverPromptTestHooks(undefined);
+    }
 
-    assert.ok(!fs.existsSync(uri.fsPath), `Expected file to be deleted after keep-delete (${context})`);
-    assertNoUnmergedConflict(cwd, context);
-
-    const statusLine = git(cwd, ['status', '--porcelain', '--', 'conflict.ipynb']).trim();
-    assert.ok(statusLine.startsWith('D '), `Expected staged deletion after keep-delete (${context}), got: ${statusLine}`);
-
+    // After cancel, the conflict should still be present
     await gitIntegration.refreshUnmergedFilesSnapshot(cwd);
     const unmergedStatus = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
-    assert.strictEqual(unmergedStatus, null, `Expected no unmerged status after keep-delete (${context})`);
+    assert.strictEqual(unmergedStatus, status, `Expected ${status} status to persist after cancel (${context})`);
 }
 
 export async function run(): Promise<void> {
@@ -123,30 +121,32 @@ export async function run(): Promise<void> {
     const extensionUri = vscode.workspace.workspaceFolders?.[0]?.uri ?? fallbackUri;
     const resolver = new NotebookConflictResolver(extensionUri);
 
-    const baseContent = notebookContent('base-side');
     const currentContent = notebookContent('current-side');
     const incomingContent = notebookContent('incoming-side');
     const blobs = {
-        base: hashBlob(workspacePath, baseContent),
         current: hashBlob(workspacePath, currentContent),
         incoming: hashBlob(workspacePath, incomingContent),
     };
 
-    setConflictStatus(workspacePath, 'DU', blobs);
+    // AU: apply-and-stage → writes current content
+    setConflictStatus(workspacePath, 'AU', blobs);
     await gitIntegration.refreshUnmergedFilesSnapshot(workspacePath);
-    await assertKeepContentResult(workspacePath, resolver, conflictUri, incomingContent, 'DU keep-content');
+    await assertApplyAndStageResult(workspacePath, resolver, conflictUri, currentContent, 'AU apply-and-stage');
 
-    setConflictStatus(workspacePath, 'DU', blobs);
+    // AU: cancel → conflict persists
+    setConflictStatus(workspacePath, 'AU', blobs);
     await gitIntegration.refreshUnmergedFilesSnapshot(workspacePath);
-    await assertKeepDeleteResult(workspacePath, resolver, conflictUri, 'DU keep-delete');
+    await assertCancelResult(workspacePath, resolver, conflictUri, 'AU', 'AU cancel');
 
-    setConflictStatus(workspacePath, 'UD', blobs);
+    // UA: apply-and-stage → writes incoming content
+    setConflictStatus(workspacePath, 'UA', blobs);
     await gitIntegration.refreshUnmergedFilesSnapshot(workspacePath);
-    await assertKeepContentResult(workspacePath, resolver, conflictUri, currentContent, 'UD keep-content');
+    await assertApplyAndStageResult(workspacePath, resolver, conflictUri, incomingContent, 'UA apply-and-stage');
 
-    setConflictStatus(workspacePath, 'UD', blobs);
+    // UA: cancel → conflict persists
+    setConflictStatus(workspacePath, 'UA', blobs);
     await gitIntegration.refreshUnmergedFilesSnapshot(workspacePath);
-    await assertKeepDeleteResult(workspacePath, resolver, conflictUri, 'UD keep-delete');
+    await assertCancelResult(workspacePath, resolver, conflictUri, 'UA', 'UA cancel');
 
-    logger.info('DU/UD pick-one regression test passed.');
+    logger.info('AU/UA pick-one regression test passed.');
 }

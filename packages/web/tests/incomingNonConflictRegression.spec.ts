@@ -10,13 +10,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { test, expect } from './fixtures';
 import { applyResolutionAndReadNotebook } from './fixtures';
-import { getCellSource, validateNotebookStructure } from '../testHelpers';
-import * as logger from '../../../packages/core/src/logger';
+import { getCellSource, validateNotebookStructure } from '../../../test-fixtures/shared/testHelpers';
+import * as logger from '../../core/src/logger';
 
 // ─── Helper Functions ───────────────────────────────────────────────────────
 
 function readFixtureNotebook(fileName: string): any {
-    const fixturePath = path.resolve(__dirname, '../../../test', fileName);
+    const fixturePath = path.resolve(__dirname, '../../../../test-fixtures', fileName);
     if (!fs.existsSync(fixturePath)) {
         throw new Error(`Fixture not found: ${fixturePath}`);
     }

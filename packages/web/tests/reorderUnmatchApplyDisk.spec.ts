@@ -5,19 +5,19 @@
 
 import type { Page } from 'playwright';
 import { test, expect } from './fixtures';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../core/src/logger';
 import {
     verifyAllConflictsMatchSide,
     waitForAllConflictsResolved,
     waitForResolvedCount,
-} from '../integrationUtils';
+} from '../../../test-fixtures/shared/integrationUtils';
 import {
     applyResolutionAndReadNotebook,
     assertNotebookMatches,
     buildExpectedCellsFromNotebook,
     readNotebookFixtureFromRepo,
 } from './fixtures';
-import { validateNotebookStructure } from '../testHelpers';
+import { validateNotebookStructure } from '../../../test-fixtures/shared/testHelpers';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,

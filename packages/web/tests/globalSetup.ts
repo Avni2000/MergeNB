@@ -6,9 +6,9 @@
  * as a shared resource that all parallel workers can connect to.
  */
 
-import { getWebServer } from '../../../packages/web/server/src/webServer';
+import { getWebServer } from '../server/src/webServer';
 import * as path from 'path';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../core/src/logger';
 
 async function globalSetup(): Promise<void> {
     logger.info('[GlobalSetup] Starting MergeNB web server...');
@@ -17,7 +17,7 @@ async function globalSetup(): Promise<void> {
 
     // Set test mode and extension URI for headless operation
     server.setTestMode(true);
-    server.setExtensionUri({ fsPath: path.resolve(__dirname, '../../..') });
+    server.setExtensionUri({ fsPath: path.resolve(__dirname, '../../../..') });
 
     if (!server.isRunning()) {
         await server.start();

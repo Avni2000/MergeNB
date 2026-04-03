@@ -8,10 +8,10 @@
  */
 
 import { test, expect } from './fixtures';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../core/src/logger';
 import {
     validateNotebookStructure,
-} from '../testHelpers';
+} from '../../../test-fixtures/shared/testHelpers';
 import {
     getColumnCellType,
     ensureCheckboxChecked,
@@ -22,7 +22,7 @@ import {
     getResolvedEditorValue,
     fillResolvedEditor,
     type ConflictChoice,
-} from '../integrationUtils';
+} from '../../../test-fixtures/shared/integrationUtils';
 import {
     applyResolutionAndReadNotebook,
     assertNotebookMatches,

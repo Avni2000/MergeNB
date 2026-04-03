@@ -7,8 +7,8 @@
 
 import type { Page } from 'playwright';
 import { test, expect } from './fixtures';
-import { waitForResolvedCount } from '../integrationUtils';
-import * as logger from '../../../packages/core/src/logger';
+import { waitForResolvedCount } from '../../../test-fixtures/shared/integrationUtils';
+import * as logger from '../../core/src/logger';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,

@@ -8,16 +8,16 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { runTests } from '@vscode/test-electron';
-import { createMergeConflictRepo, cleanup } from './repoSetup';
-import * as logger from '../../packages/core/src/logger';
+import { createMergeConflictRepo, cleanup } from '../../../test-fixtures/shared/repoSetup';
+import * as logger from '../../../packages/core/src/logger';
 
 async function main(): Promise<void> {
     if (process.env.MERGENB_NBDIME_GUARD_CI !== 'true') {
         throw new Error('runNbdimeGuardTest is CI-only. Set MERGENB_NBDIME_GUARD_CI=true in CI.');
     }
 
-    const extensionDevelopmentPath = path.resolve(__dirname, '../..');
-    const testDir = path.resolve(__dirname, '../../test');
+    const extensionDevelopmentPath = path.resolve(__dirname, '../../../..');
+    const testDir = path.resolve(__dirname, '../../../../test-fixtures');
     const extensionTestsPath = path.resolve(__dirname, './nbdimeGuard.test.js');
     const vscodeVersion = process.env.VSCODE_VERSION?.trim();
 

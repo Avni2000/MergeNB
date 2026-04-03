@@ -8,7 +8,7 @@
 
 import { test, expect } from './fixtures';
 import type { Locator, Page } from 'playwright';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../core/src/logger';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,

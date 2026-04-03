@@ -13,7 +13,7 @@ import * as path from 'path';
 
 export default defineConfig({
     // Run tests from the compiled output directory
-    testDir: './out/tests/playwright',
+    testDir: './out/packages/web/tests',
 
     // Match test files with .spec.js extension (compiled from .spec.ts)
     testMatch: '**/*.spec.js',
@@ -36,8 +36,8 @@ export default defineConfig({
         : [['list'], ['html', { open: 'on-failure' }]],
 
     // Global setup and teardown for web server lifecycle
-    globalSetup: path.resolve(__dirname, 'out/tests/playwright/globalSetup.js'),
-    globalTeardown: path.resolve(__dirname, 'out/tests/playwright/globalTeardown.js'),
+    globalSetup: path.resolve(__dirname, 'out/packages/web/tests/globalSetup.js'),
+    globalTeardown: path.resolve(__dirname, 'out/packages/web/tests/globalTeardown.js'),
 
     // Shared settings for all projects
     use: {
@@ -69,7 +69,7 @@ export default defineConfig({
     projects: [
         {
             name: 'integration',
-            testDir: './out/tests/playwright',
+            testDir: './out/packages/web/tests',
         },
     ],
 

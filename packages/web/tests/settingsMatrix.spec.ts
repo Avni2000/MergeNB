@@ -14,22 +14,22 @@ import type { Locator, Page } from 'playwright';
 import {
     applyAutoResolutions,
     analyzeSemanticConflictsFromMappings,
-} from '../../../packages/core/src/conflictDetector';
-import type { MergeNBSettings } from '../../settings';
+} from '../../core/src/conflictDetector';
+import type { MergeNBSettings } from '../../../apps/vscode-extension/settings';
 import type {
     Notebook,
     NotebookCell,
     NotebookSemanticConflict,
     CellMapping,
-} from '../../../packages/core/src/types';
-import * as logger from '../../../packages/core/src/logger';
+} from '../../core/src/types';
+import * as logger from '../../core/src/logger';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,
     writeSettingsFile,
     type SettingsState,
     type Theme,
-} from '../settingsFile';
+} from '../../../apps/vscode-extension/tests/settingsFile';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
