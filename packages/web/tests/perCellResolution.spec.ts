@@ -31,7 +31,7 @@ import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,
     writeSettingsFile,
-} from '../settingsFile';
+} from '../../../apps/vscode-extension/tests/settingsFile';
 
 test.describe('Per-Cell Resolution', () => {
     test('Check we correctly write to disk from text areas (02 notebooks)', async ({ conflictRepo, conflictSession }) => {

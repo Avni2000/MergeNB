@@ -10,7 +10,7 @@ import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,
     writeSettingsFile,
-} from '../settingsFile';
+} from '../../../apps/vscode-extension/tests/settingsFile';
 
 test.describe('Syntax Highlighting', () => {
     test('Resolved editor shows .cm-editor and .tok-keyword spans for Python code', async ({ conflictRepo, conflictSession }) => {

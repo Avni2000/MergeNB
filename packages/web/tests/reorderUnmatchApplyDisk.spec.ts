@@ -22,7 +22,7 @@ import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,
     writeSettingsFile,
-} from '../settingsFile';
+} from '../../../apps/vscode-extension/tests/settingsFile';
 
 // ─── Helper Functions ───────────────────────────────────────────────────────
 

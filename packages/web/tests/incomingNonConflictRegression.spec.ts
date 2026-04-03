@@ -16,7 +16,7 @@ import * as logger from '../../core/src/logger';
 // ─── Helper Functions ───────────────────────────────────────────────────────
 
 function readFixtureNotebook(fileName: string): any {
-    const fixturePath = path.resolve(__dirname, '../../../../test-fixtures', fileName);
+    const fixturePath = path.resolve(__dirname, '../../../test-fixtures', fileName);
     if (!fs.existsSync(fixturePath)) {
         throw new Error(`Fixture not found: ${fixturePath}`);
     }
