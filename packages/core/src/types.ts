@@ -184,6 +184,30 @@ export interface SemanticConflictResolution {
 }
 
 /**
+ * Resolved row from the UI - represents the final state after user edits.
+ * This is the source of truth for reconstructing the notebook.
+ */
+export interface ResolvedRow {
+    /** Base cell (may be undefined if cell not present in base) */
+    baseCell?: NotebookCell;
+    /** Current cell (may be undefined if cell not present in current) */
+    currentCell?: NotebookCell;
+    /** Incoming cell (may be undefined if cell not present in incoming) */
+    incomingCell?: NotebookCell;
+    /** Original indices for reliable cell lookup */
+    baseCellIndex?: number;
+    currentCellIndex?: number;
+    incomingCellIndex?: number;
+    /** If this row had a conflict, this is the user's resolution */
+    resolution?: {
+        /** The branch choice that determines outputs, metadata, etc. */
+        choice: ResolutionChoice;
+        /** The resolved content from the text area (source of truth) */
+        resolvedContent: string;
+    };
+}
+
+/**
  * Extension settings consumed by core logic (auto-resolution, semantic resolution).
  * The actual settings source (VS Code workspace config, JSON file, etc.) is defined
  * by the host application; core only depends on this shape.

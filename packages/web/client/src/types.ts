@@ -4,6 +4,9 @@
  * Exports core types and defines client-specific interfaces.
  */
 
+import type { NotebookCell, NotebookSemanticConflict, ResolvedRow } from '../../../core/src/types';
+import type { AutoResolveResult } from '../../server/src/webTypes';
+
 // Export core types needed by the client
 export type {
     NotebookCell,
@@ -17,64 +20,52 @@ export type {
     CellMapping,
     NotebookSemanticConflict,
     ResolutionChoice,
+    ResolvedRow,
 } from '../../../core/src/types';
-import type { AutoResolveResult } from '../../server/src/webTypes';
 export type { AutoResolveResult } from '../../server/src/webTypes';
 
+// Boilerplate so we don't have to copy-paste
+type MergeRowBase = {
+    type: 'identical' | 'conflict';
+    baseCell?: NotebookCell;
+    currentCell?: NotebookCell;
+    incomingCell?: NotebookCell;
+    baseCellIndex?: number;
+    currentCellIndex?: number;
+    incomingCellIndex?: number;
+    conflictIndex?: number;
+    conflictType?: string;
+    isUnmatched?: boolean;
+    unmatchedSides?: ('base' | 'current' | 'incoming')[];
+    anchorPosition?: number;
+    /** Whether this row participated in a reorder conflict in the original merge state. */
+    isReordered?: boolean;
+    /** Whether this row is in edit mode */
+    isEditing?: boolean;
+};
+
 /**
- * Represents a row in the 3-way merge view
+ * Represents a row in the 3-way merge view.
  * Uses a discriminated union to enforce that when isUserUnmatched is true,
  * unmatchGroupId and originalMatchedRow must be present.
  */
-export type MergeRow = 
-    | {
-        type: 'identical' | 'conflict';
-        baseCell?: import('../../../core/src/types').NotebookCell;
-        currentCell?: import('../../../core/src/types').NotebookCell;
-        incomingCell?: import('../../../core/src/types').NotebookCell;
-        baseCellIndex?: number;
-        currentCellIndex?: number;
-        incomingCellIndex?: number;
-        conflictIndex?: number;
-        conflictType?: string;
-        isUnmatched?: boolean;
-        unmatchedSides?: ('base' | 'current' | 'incoming')[];
-        anchorPosition?: number;
-        /** Whether this row participated in a reorder conflict in the original merge state. */
-        isReordered?: boolean;
-        /** Whether this row is in edit mode */
-        isEditing?: boolean;
+export type MergeRow =
+    | (MergeRowBase & {
         /** User has not unmatched this row. */
         isUserUnmatched?: false | undefined;
         /** No group ID when not user-unmatched. */
         unmatchGroupId?: undefined;
         /** No original matched row when not user-unmatched. */
         originalMatchedRow?: undefined;
-    }
-    | {
-        type: 'identical' | 'conflict';
-        baseCell?: import('../../../core/src/types').NotebookCell;
-        currentCell?: import('../../../core/src/types').NotebookCell;
-        incomingCell?: import('../../../core/src/types').NotebookCell;
-        baseCellIndex?: number;
-        currentCellIndex?: number;
-        incomingCellIndex?: number;
-        conflictIndex?: number;
-        conflictType?: string;
-        isUnmatched?: boolean;
-        unmatchedSides?: ('base' | 'current' | 'incoming')[];
-        anchorPosition?: number;
-        /** Whether this row participated in a reorder conflict in the original merge state. */
-        isReordered?: boolean;
-        /** Whether this row is in edit mode */
-        isEditing?: boolean;
+    })
+    | (MergeRowBase & {
         /** This row was manually unmatched by the user. */
         isUserUnmatched: true;
         /** Unique group ID linking split rows for rematch. */
         unmatchGroupId: string;
         /** The original matched row before unmatch, used for rematch reconstruction. */
         originalMatchedRow: MergeRow;
-    };
+    });
 
 /**
  * Unified conflict data sent from extension to browser
@@ -84,7 +75,7 @@ export interface UnifiedConflictData {
     /** Stable conflict instance key for client-side state reset behavior */
     conflictKey: string;
     type: 'semantic';
-    semanticConflict?: import('../../../core/src/types').NotebookSemanticConflict;
+    semanticConflict?: NotebookSemanticConflict;
     autoResolveResult?: AutoResolveResult;
     hideNonConflictOutputs?: boolean;
     showCellHeaders?: boolean;
@@ -93,30 +84,6 @@ export interface UnifiedConflictData {
     enableUndoRedoHotkeys?: boolean;
     showBaseColumn?: boolean;
     theme?: 'dark' | 'light';
-}
-
-/**
- * Resolved row from the UI - represents the final state after user edits.
- * This is the source of truth for reconstructing the notebook.
- */
-export interface ResolvedRow {
-    /** Base cell (may be undefined if cell not present in base) */
-    baseCell?: import('../../../core/src/types').NotebookCell;
-    /** Current cell (may be undefined if cell not present in current) */
-    currentCell?: import('../../../core/src/types').NotebookCell;
-    /** Incoming cell (may be undefined if cell not present in incoming) */
-    incomingCell?: import('../../../core/src/types').NotebookCell;
-    /** Original indices for reliable cell lookup */
-    baseCellIndex?: number;
-    currentCellIndex?: number;
-    incomingCellIndex?: number;
-    /** If this row had a conflict, this is the user's resolution */
-    resolution?: {
-        /** The branch choice that determines outputs, metadata, etc. */
-        choice: import('../../../core/src/types').ResolutionChoice;
-        /** The resolved content from the text area (source of truth) */
-        resolvedContent: string;
-    };
 }
 
 /**

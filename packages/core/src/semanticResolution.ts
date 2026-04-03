@@ -3,8 +3,7 @@
  * @description Pure helpers for resolving semantic conflicts without VS Code.
  */
 
-import type { Notebook, NotebookCell, NotebookSemanticConflict, MergeNBSettings } from './types';
-import type { ResolvedRow } from '../../web/server/src/webTypes';
+import type { Notebook, NotebookCell, NotebookSemanticConflict, MergeNBSettings, ResolvedRow } from './types';
 import type { AutoResolveResult } from './conflictDetector';
 import { selectNonConflictMergedCell, stableStringify, sourceToCellFormat } from './notebookUtils';
 import { renumberExecutionCounts } from './notebookParser';

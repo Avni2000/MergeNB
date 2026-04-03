@@ -12,11 +12,12 @@ import type {
     Notebook,
     CellMapping,
     NotebookSemanticConflict,
-    ResolutionChoice
+    ResolvedRow
 } from '../../../core/src/types';
 import type { AutoResolveResult } from '../../../core/src/conflictDetector';
 
 export type { AutoResolveResult } from '../../../core/src/conflictDetector';
+export type { ResolvedRow } from '../../../core/src/types';
 
 /**
  * Unified conflict data structure.
@@ -37,30 +38,6 @@ export interface UnifiedConflict {
     showBaseColumn?: boolean;
     /** UI theme ('dark' | 'light') */
     theme?: 'dark' | 'light';
-}
-
-/**
- * Resolved row from the UI - represents the final state after user edits.
- * This is the source of truth for reconstructing the notebook.
- */
-export interface ResolvedRow {
-    /** Base cell (may be undefined if cell not present in base) */
-    baseCell?: NotebookCell;
-    /** Current cell (may be undefined if cell not present in current) */
-    currentCell?: NotebookCell;
-    /** Incoming cell (may be undefined if cell not present in incoming) */
-    incomingCell?: NotebookCell;
-    /** Original indices for reliable cell lookup */
-    baseCellIndex?: number;
-    currentCellIndex?: number;
-    incomingCellIndex?: number;
-    /** If this row had a conflict, this is the user's resolution */
-    resolution?: {
-        /** The branch choice that determines outputs, metadata, etc. */
-        choice: ResolutionChoice;
-        /** The resolved content from the text area (source of truth) */
-        resolvedContent: string;
-    };
 }
 
 /**
@@ -141,27 +118,6 @@ export interface WebSemanticConflictItem {
     currentContent?: NotebookCell;
     incomingContent?: NotebookCell;
     description?: string;
-}
-
-/**
- * Merge row structure for the 3-way view.
- */
-export interface WebMergeRow {
-    type: 'identical' | 'conflict';
-    baseCell?: NotebookCell;
-    currentCell?: NotebookCell;
-    incomingCell?: NotebookCell;
-    baseCellIndex?: number;
-    currentCellIndex?: number;
-    incomingCellIndex?: number;
-    conflictIndex?: number;
-    conflictType?: string;
-    isUnmatched?: boolean;
-    unmatchedSides?: ('base' | 'current' | 'incoming')[];
-    anchorPosition?: number;
-    isReordered?: boolean;
-    isUserUnmatched?: boolean;
-    unmatchGroupId?: string;
 }
 
 /**
