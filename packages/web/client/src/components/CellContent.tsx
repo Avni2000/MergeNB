@@ -333,7 +333,6 @@ interface CellContentProps {
     cell: NotebookCell | undefined;
     cellIndex?: number;
     side: 'base' | 'current' | 'incoming';
-    notebookPath?: string;
     isConflict?: boolean;
     compareCell?: NotebookCell;
     diffMode?: 'base' | 'conflict';
@@ -347,7 +346,6 @@ function CellContentInner({
     cell,
     cellIndex,
     side,
-    notebookPath,
     isConflict = false,
     compareCell,
     diffMode = 'base',
@@ -357,8 +355,8 @@ function CellContentInner({
     theme = 'light',
 }: CellContentProps): React.ReactElement {
     const renderMimeRegistry = useMemo(
-        () => getRenderMimeRegistry(notebookPath),
-        [notebookPath]
+        () => getRenderMimeRegistry(),
+        []
     );
     const encodedCell = useMemo(
         () => (cell ? encodeURIComponent(JSON.stringify(cell)) : ''),
@@ -380,7 +378,6 @@ function CellContentInner({
     const cellClasses = [
         'notebook-cell',
         `${cellType}-cell`,
-        `side-${side}`,
         isConflict && 'has-conflict'
     ].filter(Boolean).join(' ');
 
@@ -388,7 +385,6 @@ function CellContentInner({
         <div
             className={cellClasses}
             data-cell={encodedCell}
-            data-cell-type={cellType}
         >
             {showCellHeaders && (
                 <div className="cell-header" data-testid="cell-header">
@@ -773,9 +769,9 @@ function getCurrentSessionCredentials(): { sessionId: string; token: string } {
     };
 }
 
-function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
+function getRenderMimeRegistry(): RenderMimeRegistry {
     const { sessionId, token } = getCurrentSessionCredentials();
-    const cacheKey = `${sessionId}::${token}::${notebookPath ?? ''}`;
+    const cacheKey = `${sessionId}::${token}`;
     const cached = renderMimeRegistryCache.get(cacheKey);
     if (cached) {
         renderMimeRegistryCache.delete(cacheKey);

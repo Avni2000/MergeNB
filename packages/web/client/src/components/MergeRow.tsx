@@ -15,20 +15,11 @@ import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
 import { CellContent, mergeNBEditorStructure } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
-
-/** Resolution state for a cell */
-interface ResolutionState {
-    choice: ResolutionChoice;
-    /** The content as it was when the branch was selected */
-    originalContent: string;
-    /** The current content in the text area (may be edited) */
-    resolvedContent: string;
-}
+import type { ResolutionState } from '../store/resolverStore';
 
 interface MergeRowProps {
     row: MergeRowType;
     rowIndex: number;
-    notebookPath?: string;
     languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
@@ -47,7 +38,6 @@ const EMPTY_EXTENSIONS: Extension[] = [];
 function MergeRowInner({
     row,
     rowIndex,
-    notebookPath,
     languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
     onSelectChoice,
@@ -198,7 +188,6 @@ function MergeRowInner({
                             cell={cell}
                             cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
                             side="current"
-                            notebookPath={notebookPath}
                             isConflict={false}
                             languageExtensions={languageExtensions}
                             theme={theme}
@@ -320,7 +309,6 @@ function MergeRowInner({
                                 cell={row.baseCell}
                                 cellIndex={row.baseCellIndex}
                                 side="base"
-                                notebookPath={notebookPath}
                                 isConflict={true}
                                 compareCell={row.currentCell || row.incomingCell}
                                 languageExtensions={languageExtensions}
@@ -341,7 +329,6 @@ function MergeRowInner({
                             cell={row.currentCell}
                             cellIndex={row.currentCellIndex}
                             side="current"
-                            notebookPath={notebookPath}
                             isConflict={true}
                             compareCell={row.incomingCell || row.baseCell}
                             diffMode="conflict"
@@ -362,7 +349,6 @@ function MergeRowInner({
                             cell={row.incomingCell}
                             cellIndex={row.incomingCellIndex}
                             side="incoming"
-                            notebookPath={notebookPath}
                             isConflict={true}
                             compareCell={row.currentCell || row.baseCell}
                             diffMode="conflict"

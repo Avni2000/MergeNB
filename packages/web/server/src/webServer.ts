@@ -652,7 +652,6 @@ export class ConflictResolverWebServer {
             pending.resolve(ws);
         }
 
-        // Get session data
         // Handle incoming messages
         ws.on('message', (data: WebSocket.Data) => {
             try {

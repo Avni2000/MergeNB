@@ -1167,14 +1167,6 @@ body {
     border-radius: 4px;
 }
 
-/* Unmatched indicator in column label */
-.merge-row.unmatched-row .column-label::after {
-    content: ' (unmatched)';
-    font-size: 10px;
-    opacity: 0.7;
-    margin-left: 4px;
-}
-
 /* When a row is both conflict and unmatched, keep conflict styling */
 .merge-row.conflict-row.unmatched-row {
     background: transparent;

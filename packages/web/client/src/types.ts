@@ -78,25 +78,20 @@ export interface UnifiedConflictData {
 }
 
 /**
- * Message sent back to extension with resolution
- */
-interface ResolutionMessage {
-    command: 'resolve';
-    type: 'semantic';
-    /** The complete resolved row structure from the UI (source of truth) */
-    resolvedRows: ResolvedRow[];
-    semanticChoice?: 'base' | 'current' | 'incoming';
-    markAsResolved: boolean;
-    renumberExecutionCounts: boolean;
-}
-
-/**
  * WebSocket message types
  */
 export type WSMessage =
     | { type: 'conflict-data'; data: UnifiedConflictData }
     | { type: 'resolution-success'; message: string }
     | { type: 'resolution-error'; message: string }
-    | ResolutionMessage
+    | {
+        command: 'resolve';
+        type: 'semantic';
+        /** The complete resolved row structure from the UI (source of truth) */
+        resolvedRows: ResolvedRow[];
+        semanticChoice?: 'base' | 'current' | 'incoming';
+        markAsResolved: boolean;
+        renumberExecutionCounts: boolean;
+    }
     | { command: 'cancel' }
     | { command: 'ready' };

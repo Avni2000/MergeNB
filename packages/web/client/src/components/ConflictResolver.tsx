@@ -614,7 +614,6 @@ export function ConflictResolver({
                         return (
                             <div
                                 key={virtualRow.key}
-                                data-index={virtualRow.index}
                                 ref={measureRef}
                                 className="virtual-row"
                                 style={{
@@ -628,7 +627,6 @@ export function ConflictResolver({
                                 <MergeRow
                                     row={row}
                                     rowIndex={i}
-                                    notebookPath={conflict.filePath}
                                     languageExtensions={languageExtensions}
                                     theme={conflict.theme ?? 'light'}
                                     resolutionState={resolutionState}
