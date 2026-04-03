@@ -187,7 +187,6 @@ async function runVSCodeTests(options: VSCodeTestOptions): Promise<boolean> {
         MERGENB_CONFIG_PATH: configInfo.configPath,
         MERGENB_TEST_CONFIG_PATH: configInfo.testConfigPath,
     };
-    delete testEnv.ELECTRON_RUN_AS_NODE;
 
     let workspacePath: string | undefined;
     try {

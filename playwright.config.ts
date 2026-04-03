@@ -12,11 +12,11 @@ import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
 
 export default defineConfig({
-    // Run tests from the compiled output directory
-    testDir: './out/packages/web/tests',
+    // Run tests directly from TypeScript source
+    testDir: './packages/web/tests',
 
-    // Match test files with .spec.js extension (compiled from .spec.ts)
-    testMatch: '**/*.spec.js',
+    // Match TypeScript test files
+    testMatch: '**/*.spec.ts',
 
     // Run tests in parallel across multiple workers
     fullyParallel: true,
@@ -36,8 +36,8 @@ export default defineConfig({
         : [['list'], ['html', { open: 'on-failure' }]],
 
     // Global setup and teardown for web server lifecycle
-    globalSetup: path.resolve(__dirname, 'out/packages/web/tests/globalSetup.js'),
-    globalTeardown: path.resolve(__dirname, 'out/packages/web/tests/globalTeardown.js'),
+    globalSetup: path.resolve(__dirname, 'packages/web/tests/globalSetup.ts'),
+    globalTeardown: path.resolve(__dirname, 'packages/web/tests/globalTeardown.ts'),
 
     // Shared settings for all projects
     use: {
@@ -69,7 +69,7 @@ export default defineConfig({
     projects: [
         {
             name: 'integration',
-            testDir: './out/packages/web/tests',
+            testDir: './packages/web/tests',
         },
     ],
 
