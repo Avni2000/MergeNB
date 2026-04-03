@@ -700,14 +700,6 @@ function getCachedUnmergedFilesForRoot(gitRoot: string): GitFileStatus[] | null 
     return cached.files;
 }
 
-function getSnapshotUnmergedFilesForRoot(gitRoot: string): GitFileStatus[] | null {
-    const cacheKey = getGitRootCacheKey(gitRoot);
-    if (!unmergedFilesSnapshotByRoot.has(cacheKey)) {
-        return null;
-    }
-    return unmergedFilesSnapshotByRoot.get(cacheKey) ?? [];
-}
-
 function setSnapshotUnmergedFilesForRoot(gitRoot: string, files: GitFileStatus[]): void {
     const cacheKey = getGitRootCacheKey(gitRoot);
     unmergedFilesSnapshotByRoot.set(cacheKey, files);
@@ -1432,13 +1424,6 @@ export async function stageFile(filePath: string): Promise<boolean> {
         invalidateUnmergedCachesForRoot(cliContext.gitRoot);
     }
     return stagedViaCli;
-}
-
-/**
- * Check if a file is a semantic conflict (unmerged status).
- */
-export async function isSemanticConflict(filePath: string, content: string): Promise<boolean> {
-    return isUnmergedFile(filePath);
 }
 
 /**

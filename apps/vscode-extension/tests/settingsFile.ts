@@ -7,7 +7,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigFilePath } from '../settings';
 
-export type Theme = 'dark' | 'light';
+type Theme = 'dark' | 'light';
 type SettingKey =
     | 'autoResolve.executionCount'
     | 'autoResolve.kernelVersion'

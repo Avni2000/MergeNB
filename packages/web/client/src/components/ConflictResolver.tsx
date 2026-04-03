@@ -64,7 +64,6 @@ export function ConflictResolver({
     const rows = useStore(resolverStore, state => state.rows);
     const markAsResolved = useStore(resolverStore, state => state.markAsResolved);
     const renumberExecutionCounts = useStore(resolverStore, state => state.renumberExecutionCounts);
-    const takeAllChoice = useStore(resolverStore, state => state.takeAllChoice);
     const history = useStore(resolverStore, state => state.history);
 
     const handleSelectChoice = useStore(resolverStore, state => state.selectChoice);

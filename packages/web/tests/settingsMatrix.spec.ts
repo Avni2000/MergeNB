@@ -26,7 +26,6 @@ import {
     restoreSettingsFileSnapshot,
     writeSettingsFile,
     type SettingsState,
-    type Theme,
 } from '../../../apps/vscode-extension/tests/settingsFile';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

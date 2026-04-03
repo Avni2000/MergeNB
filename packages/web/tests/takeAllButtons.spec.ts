@@ -31,7 +31,7 @@ import {
     assertNotebookMatches,
     applyResolutionAndReadNotebook,
 } from './fixtures';
-import type { Page, Locator } from 'playwright';
+import type { Page } from 'playwright';
 
 // ─── Test Variants ──────────────────────────────────────────────────────────
 

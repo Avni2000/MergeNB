@@ -406,36 +406,6 @@ export async function applyResolutionAndReadNotebook(
 }
 
 /**
- * Build an `ExpectedCell[]` directly from a notebook file (used when you want
- * to compare two resolved notebooks rather than UI state against disk state).
- */
-function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
-    if (!notebook || !Array.isArray(notebook.cells)) {
-        return [];
-    }
-    return notebook.cells.map((cell: any, index: number) => {
-        const cellType = cell?.cell_type || 'code';
-        const hasOutputs = cellType === 'code' &&
-            Array.isArray(cell.outputs) &&
-            cell.outputs.length > 0;
-        return {
-            rowIndex: index,
-            source: getCellSource(cell),
-            cellType,
-            metadata: cell?.metadata || {},
-            hasOutputs,
-            execution_count: cellType === 'code' ? (cell.execution_count ?? null) : undefined,
-        };
-    });
-}
-
-/** Read a notebook fixture from this repository's `test/` directory. */
-function readNotebookFixtureFromRepo(fileName: string): any {
-    const fixturePath = path.resolve(__dirname, '../../../../test-fixtures', fileName);
-    return JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
-}
-
-/**
  * Assert that a resolved notebook on disk matches the expected cell list.
  *
  * Checks (in order): cell count, source, cell_type, metadata (if

@@ -387,7 +387,7 @@ export class ConflictResolverWebServer {
             
             if (session && sessionToken && sessionToken === session.sessionToken) {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(this.getHtmlShell(sessionId || 'default', session.theme));
+                res.end(this.getHtmlShell(session.theme));
             } else {
                 res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
                 res.end(`<!DOCTYPE html>
@@ -577,7 +577,7 @@ export class ConflictResolverWebServer {
     /**
      * Generate minimal HTML shell that loads the React app.
      */
-    private getHtmlShell(sessionId: string, theme: 'dark' | 'light' = 'light'): string {
+    private getHtmlShell(theme: 'dark' | 'light' = 'light'): string {
         const isDark = theme === 'dark';
         const loadingBg = isDark ? '#1D1915' : '#EAE2D5';
         const loadingText = isDark ? '#EFE7DB' : '#1A202C';

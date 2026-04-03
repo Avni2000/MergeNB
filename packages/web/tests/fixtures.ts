@@ -23,7 +23,7 @@ import {
     serializeNotebook,
     renumberExecutionCounts,
 } from '../../core/src';
-import { getSettings, configContext } from '../../../apps/vscode-extension/settings';
+import { getSettings } from '../../../apps/vscode-extension/settings';
 import { getWebServer } from '../server/src';
 import {
     toWebSemanticConflict,

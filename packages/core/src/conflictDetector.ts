@@ -12,7 +12,7 @@
  * outputs, kernel versions) based on user settings.
  */
 
-import { NotebookSemanticConflict, SemanticConflict, CellMapping, Notebook, NotebookCell, NotebookMetadata, MergeNBSettings, GitOperations } from './types';
+import { NotebookSemanticConflict, SemanticConflict, CellMapping, Notebook, NotebookCell, MergeNBSettings, GitOperations } from './types';
 import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
 import * as logger from './logger';

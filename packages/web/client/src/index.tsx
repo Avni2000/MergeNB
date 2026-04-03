@@ -3,7 +3,6 @@
  * @description Entry point for the React-based conflict resolver web client.
  */
 
-import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './components/App';
 import { injectStyles } from './styles';
