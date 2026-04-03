@@ -44,7 +44,7 @@ export const onDidResolveConflict = new vscode.EventEmitter<vscode.Uri>();
  * Detailed event fired when a notebook conflict is successfully resolved.
  * Useful for tests to verify what was written to disk.
  */
-// ts-prune-ignore-next
+
 export interface ResolvedConflictDetails {
     uri: vscode.Uri;
     resolvedNotebook?: Notebook;

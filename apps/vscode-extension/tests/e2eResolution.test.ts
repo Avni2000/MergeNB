@@ -39,7 +39,7 @@ import {
 } from './settingsFile';
 import { git, gitAllowFailure, hasUnmergedConflict } from './gitTestUtils';
 
-// ts-prune-ignore-next
+
 export async function run(): Promise<void> {
     logger.info('Starting MergeNB E2E Resolution Test...');
     logger.info('This test verifies the full web server + WebSocket workflow.');

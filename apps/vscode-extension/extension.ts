@@ -241,7 +241,7 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 	registerWithApi(api);
 }
 
-// ts-prune-ignore-next
+
 export function activate(context: vscode.ExtensionContext) {
 	logger.debug('MergeNB extension is now active');
 	const isTestMode = process.env.MERGENB_TEST_MODE === 'true';
@@ -486,7 +486,7 @@ export function activate(context: vscode.ExtensionContext) {
 	
 }
 
-// ts-prune-ignore-next
+
 export function deactivate() {
 	// Stop the web server if it's running
 	const webServer = getWebServer();

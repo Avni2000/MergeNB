@@ -19,5 +19,5 @@ async function globalTeardown(): Promise<void> {
     logger.info('[GlobalTeardown] Web server stopped');
 }
 
-// ts-prune-ignore-next
+
 export default globalTeardown;

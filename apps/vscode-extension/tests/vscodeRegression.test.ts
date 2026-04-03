@@ -20,7 +20,7 @@ import { run as runDuUdPickOne } from './duUdPickOneRegression.test';
 import { run as runAuUaPickOne } from './auUaPickOneRegression.test';
 import { run as runLogicRegression } from './logicRegression.test';
 
-// ts-prune-ignore-next
+
 export async function run(): Promise<void> {
     await runStatusIndicators();
     await runUnmergedStatusMatrix();

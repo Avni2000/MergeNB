@@ -101,7 +101,7 @@ function configureIncompatibleNotebookSettings(workspacePath: string): void {
     git(workspacePath, 'config', '--global', 'jupyter.merge.driver', 'enabled');
 }
 
-// ts-prune-ignore-next
+
 export async function run(): Promise<void> {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     assert(workspacePath, 'Expected a workspace folder for nbdime guard test');

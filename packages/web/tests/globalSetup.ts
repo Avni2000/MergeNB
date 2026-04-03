@@ -30,5 +30,5 @@ async function globalSetup(): Promise<void> {
     process.env.MERGENB_TEST_SERVER_PORT = String(port);
 }
 
-// ts-prune-ignore-next
+
 export default globalSetup;
