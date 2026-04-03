@@ -34,6 +34,28 @@ This extension provides a rich UI for notebook-aware conflict resolution. Instea
 - `web/webServer.ts` - HTTP/WebSocket server for browser-based UI
 - `web/client/` - React-based conflict resolution UI
 
+## Test Structure
+
+Tests are distributed across the monorepo:
+
+- `test-fixtures/` - Notebook fixture files (`.ipynb` triplets for base/current/incoming)
+- `test-fixtures/shared/` - Shared test infrastructure used by both VSCode and Playwright tests:
+  - `repoSetup.ts` - Creates temporary git repos with merge conflicts from fixture triplets
+  - `testHelpers.ts` - Shared types (`ExpectedCell`, `TestConfig`), server health-check utils
+  - `testRunnerShared.ts` - Isolated config path helpers for test runners
+  - `integrationUtils.ts` - Playwright `Page`/`Locator` helpers for driving the conflict UI
+- `apps/vscode-extension/tests/` - VSCode extension host tests (`@vscode/test-electron`):
+  - `runIntegrationTest.ts` - Master TUI/CLI runner (entry point for `npm run test`)
+  - `runNbdimeGuardTest.ts` - CI-only nbdime guard runner
+  - `testHarness.ts` - Extension host lifecycle and headless conflict resolver setup
+  - `gitTestUtils.ts` - Git CLI helpers for regression tests
+  - `settingsFile.ts` - Settings file read/write helpers
+  - `vscodeRegression.test.ts`, `e2eResolution.test.ts`, etc. - Test suites
+- `packages/web/tests/` - Playwright browser tests:
+  - `fixtures.ts` - Playwright Test fixtures (conflict repo setup, session management)
+  - `globalSetup.ts` / `globalTeardown.ts` - Shared web server lifecycle
+  - `*.spec.ts` - Test specs
+
 ## Commands
 
 Single unified command:
@@ -41,28 +63,29 @@ Single unified command:
 
 ## Testing
 
-Integration tests use `@vscode/test-electron` to launch VS Code with merge-conflict repos. Tests are organized into groups in `src/tests/registry.ts`.
+Integration tests use `@vscode/test-electron` to launch VS Code with merge-conflict repos.
 
 ```bash
 npm run test              # Interactive TUI picker to select tests
 npm run test:all          # Run all tests at once
-npm run test:list         # List all available test groups and tests
-node out/tests/runIntegrationTest.js --all              # Direct: run all (skip build)
-node out/tests/runIntegrationTest.js --group takeAll    # Direct: run one group
-node out/tests/runIntegrationTest.js --test takeAll_base    # Direct: run single test
-node out/tests/runIntegrationTest.js --list             # Direct: list all tests
+npm run test:pw           # Run Playwright specs directly
+npm run test:vscode       # Run VS Code regression tests
+npm run test:e2e          # Run E2E resolution tests
+node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode     # Direct: run VS Code tests (skip build)
+node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e        # Direct: run E2E tests
+node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright # Direct: run Playwright specs
 ```
 
 ### Key Test Files:
 
-- `src/tests/registry.ts` - Test groups and definitions (add new tests here)
-- `src/tests/repoSetup.ts` - Git merge-conflict repo creation
-- `src/tests/runIntegrationTest.ts` - CLI + TUI runner
-- `src/tests/testHarness.ts` - VS Code extension host setup, browser automation
-- `src/tests/integrationUtils.ts` - Playwright helpers for conflict UI interaction
+- `test-fixtures/shared/repoSetup.ts` - Git merge-conflict repo creation
+- `test-fixtures/shared/integrationUtils.ts` - Playwright helpers for conflict UI interaction
+- `apps/vscode-extension/tests/runIntegrationTest.ts` - CLI + TUI runner
+- `apps/vscode-extension/tests/testHarness.ts` - VS Code extension host setup, browser automation
+- `packages/web/tests/fixtures.ts` - Playwright Test fixtures
 
 ### Notebook Fixtures Available:
 
-- `test/02_*.ipynb`
-- `test/03_*.ipynb`
-- `test/04_*.ipynb`
+- `test-fixtures/02_*.ipynb`
+- `test-fixtures/03_*.ipynb`
+- `test-fixtures/04_*.ipynb`

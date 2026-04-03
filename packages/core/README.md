@@ -1,0 +1,1 @@
+These are core algorithms and utilities that, ideally, work in any environment. Logic for 3-way merge, cell matching, conflict detection. No VSCode/browser dependencies.

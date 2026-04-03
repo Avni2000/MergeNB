@@ -1,0 +1,112 @@
+/**
+ * @file types.ts
+ * @description Shared types for the web client conflict resolver.
+ * Exports core types and defines client-specific interfaces.
+ */
+
+import type { NotebookCell, NotebookSemanticConflict, ResolvedRow } from '../../../core/src/types';
+import type { AutoResolveResult } from '../../server/src/webTypes';
+
+// Export core types needed by the client
+export type {
+    NotebookCell,
+    CellOutput,
+    Notebook,
+    NotebookMetadata,
+    CellConflict,
+    NotebookConflict,
+    SemanticConflict,
+    SemanticConflictType,
+    CellMapping,
+    NotebookSemanticConflict,
+    ResolutionChoice,
+    ResolvedRow,
+} from '../../../core/src/types';
+export type { AutoResolveResult } from '../../server/src/webTypes';
+
+// Boilerplate so we don't have to copy-paste
+type MergeRowBase = {
+    type: 'identical' | 'conflict';
+    baseCell?: NotebookCell;
+    currentCell?: NotebookCell;
+    incomingCell?: NotebookCell;
+    baseCellIndex?: number;
+    currentCellIndex?: number;
+    incomingCellIndex?: number;
+    conflictIndex?: number;
+    conflictType?: string;
+    isUnmatched?: boolean;
+    unmatchedSides?: ('base' | 'current' | 'incoming')[];
+    anchorPosition?: number;
+    /** Whether this row participated in a reorder conflict in the original merge state. */
+    isReordered?: boolean;
+    /** Whether this row is in edit mode */
+    isEditing?: boolean;
+};
+
+/**
+ * Represents a row in the 3-way merge view.
+ * Uses a discriminated union to enforce that when isUserUnmatched is true,
+ * unmatchGroupId and originalMatchedRow must be present.
+ */
+export type MergeRow =
+    | (MergeRowBase & {
+        /** User has not unmatched this row. */
+        isUserUnmatched?: false | undefined;
+        /** No group ID when not user-unmatched. */
+        unmatchGroupId?: undefined;
+        /** No original matched row when not user-unmatched. */
+        originalMatchedRow?: undefined;
+    })
+    | (MergeRowBase & {
+        /** This row was manually unmatched by the user. */
+        isUserUnmatched: true;
+        /** Unique group ID linking split rows for rematch. */
+        unmatchGroupId: string;
+        /** The original matched row before unmatch, used for rematch reconstruction. */
+        originalMatchedRow: MergeRow;
+    });
+
+/**
+ * Unified conflict data sent from extension to browser
+ */
+export interface UnifiedConflictData {
+    filePath: string;
+    /** Stable conflict instance key for client-side state reset behavior */
+    conflictKey: string;
+    type: 'semantic';
+    semanticConflict?: NotebookSemanticConflict;
+    autoResolveResult?: AutoResolveResult;
+    hideNonConflictOutputs?: boolean;
+    showCellHeaders?: boolean;
+    currentBranch?: string;
+    incomingBranch?: string;
+    enableUndoRedoHotkeys?: boolean;
+    showBaseColumn?: boolean;
+    theme?: 'dark' | 'light';
+}
+
+/**
+ * Message sent back to extension with resolution
+ */
+export interface ResolutionMessage {
+    command: 'resolve';
+    type: 'semantic';
+    /** The complete resolved row structure from the UI (source of truth) */
+    resolvedRows: ResolvedRow[];
+    semanticChoice?: 'base' | 'current' | 'incoming';
+    markAsResolved: boolean;
+    renumberExecutionCounts: boolean;
+}
+
+/**
+ * WebSocket message types
+ */
+export type WSMessage =
+    | { type: 'connected'; sessionId: string }
+    | { type: 'conflict-data'; data: UnifiedConflictData }
+    | { type: 'resolution-success'; message: string }
+    | { type: 'resolution-error'; message: string }
+    | ResolutionMessage
+    | { command: 'cancel' }
+    | { command: 'ready' };
