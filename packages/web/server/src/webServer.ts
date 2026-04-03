@@ -32,7 +32,6 @@ try {
 /** URI-like interface for test compatibility */
 interface UriLike {
     fsPath: string;
-    toString?: () => string;
 }
 
 export interface WebServerOptions {
@@ -40,20 +39,17 @@ export interface WebServerOptions {
     host?: string;
 }
 
-export interface PendingConnection {
-    sessionId: string;
+interface PendingConnection {
     resolve: (ws: WebSocket) => void;
     reject: (error: Error) => void;
     timeout: NodeJS.Timeout;
 }
 
 /** Session data stored for each active conflict resolution */
-export interface SessionData {
-    htmlContent: string;
+interface SessionData {
     sessionToken: string;
     theme: 'dark' | 'light';
     notebookFilePath?: string;
-    conflictData?: unknown;
     onMessage: (message: unknown) => void;
 }
 
@@ -63,7 +59,7 @@ export interface SessionData {
  * Usage:
  * 1. Get instance: `getWebServer()`
  * 2. Start server: `await server.start()`
- * 3. Open session: `await server.openSession(sessionId, html, conflictData, onMessage)`
+ * 3. Open session: `await server.openSession(sessionId, onMessage)`
  * 4. Browser connects and receives conflict data via WebSocket
  * 5. Resolution messages come back through onMessage callback
  */
@@ -244,13 +240,11 @@ export class ConflictResolverWebServer {
      * Returns the session URL and a promise that resolves when the browser connects via WebSocket.
      *
      * @param sessionId - Unique identifier for this session
-     * @param htmlContent - The HTML content to serve for this session
      * @param onMessage - Callback for handling messages from the browser
      * @returns Object with sessionUrl and connectionPromise
      */
     public async openSession(
         sessionId: string,
-        htmlContent: string,
         onMessage: (message: unknown) => void,
         theme: 'dark' | 'light' = 'light',
         notebookFilePath?: string
@@ -259,7 +253,6 @@ export class ConflictResolverWebServer {
 
         // Store session data
         this.sessions.set(sessionId, {
-            htmlContent,
             sessionToken,
             theme,
             notebookFilePath,
@@ -275,7 +268,6 @@ export class ConflictResolverWebServer {
             }, 30000); // 30 second timeout
 
             this.pendingConnections.set(sessionId, {
-                sessionId,
                 resolve,
                 reject,
                 timeout

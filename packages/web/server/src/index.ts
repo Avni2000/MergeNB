@@ -14,6 +14,6 @@
 // ts-prune-ignore-next
 export { ConflictResolverWebServer, getWebServer } from './webServer';
 // ts-prune-ignore-next
-export type { WebServerOptions, SessionData, PendingConnection } from './webServer';
+export type { WebServerOptions } from './webServer';
 // ts-prune-ignore-next
 export * from './webTypes';

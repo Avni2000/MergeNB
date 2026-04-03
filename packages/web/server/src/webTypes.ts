@@ -91,7 +91,6 @@ export interface WebConflictData {
  * Semantic conflict structure.
  */
 export interface WebSemanticConflict {
-    filePath: string;
     semanticConflicts: WebSemanticConflictItem[];
     cellMappings: CellMapping[];
 
@@ -100,9 +99,6 @@ export interface WebSemanticConflict {
     current?: Notebook;
     incoming?: Notebook;
 
-    // Branch information
-    currentBranch?: string;
-    incomingBranch?: string;
 }
 
 /**
@@ -116,7 +112,6 @@ export interface WebSemanticConflictItem {
     baseContent?: NotebookCell;
     currentContent?: NotebookCell;
     incomingContent?: NotebookCell;
-    description?: string;
 }
 
 /**
@@ -140,7 +135,6 @@ export type BrowserToExtensionMessage =
  */
 export function toWebSemanticConflict(conflict: NotebookSemanticConflict): WebSemanticConflict {
     return {
-        filePath: conflict.filePath,
         semanticConflicts: conflict.semanticConflicts.map(c => ({
             type: c.type,
             baseCellIndex: c.baseCellIndex,
@@ -148,14 +142,11 @@ export function toWebSemanticConflict(conflict: NotebookSemanticConflict): WebSe
             incomingCellIndex: c.incomingCellIndex,
             baseContent: c.baseContent,
             currentContent: c.currentContent,
-            incomingContent: c.incomingContent,
-            description: c.description
+            incomingContent: c.incomingContent
         })),
         cellMappings: conflict.cellMappings,
         base: conflict.base,
         current: conflict.current,
-        incoming: conflict.incoming,
-        currentBranch: conflict.currentBranch,
-        incomingBranch: conflict.incomingBranch
+        incoming: conflict.incoming
     };
 }

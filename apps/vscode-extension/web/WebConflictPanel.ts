@@ -30,7 +30,6 @@ export class WebConflictPanel {
     private _conflict: UnifiedConflict | undefined;
     private _onResolutionComplete: ((resolution: UnifiedResolution) => Promise<void>) | undefined;
     private _sessionId: string | undefined;
-    private _conflictVersion: number = 1;
     private _isDisposed: boolean = false;
 
     public static async createOrShow(
@@ -76,12 +75,11 @@ export class WebConflictPanel {
         // Generate session ID
         this._sessionId = server.generateSessionId();
 
-        // Open session in browser (we pass a placeholder for htmlContent since we use React now)
+        // Open session in browser.
         // Do not await the WebSocket connection here to avoid deadlocking tests
         // that need to open the session after the command returns.
         void server.openSession(
             this._sessionId,
-            '', // No HTML content needed - server generates shell
             (message: unknown) => this._handleMessage(message),
             this._conflict?.theme ?? 'light',
             this._conflict?.filePath
@@ -104,7 +102,7 @@ export class WebConflictPanel {
         if (!this._sessionId || !this._conflict) return;
 
         const server = getWebServer();
-        const conflictKey = `${this._sessionId}:v${this._conflictVersion}`;
+        const conflictKey = this._sessionId;
 
         // Build the data payload for the React app
         const data: WebConflictData = {
@@ -156,7 +154,6 @@ export class WebConflictPanel {
     }
 
     private async _handleResolution(message: {
-        type?: string;
         resolvedRows?: ResolvedRow[];
         semanticChoice?: string;
         markAsResolved?: boolean;

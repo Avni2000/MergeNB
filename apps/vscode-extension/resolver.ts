@@ -74,14 +74,7 @@ interface DeleteVsModifyPromptContext {
     keepContentSide: 'current' | 'incoming';
 }
 
-interface RenumberPromptContext {
-    filePath: string;
-}
-
 interface ResolverConfirmationContext {
-    status: gitIntegration.GitUnmergedStatus;
-    filePath: string;
-    actionId: string;
     actionLabel: string;
     message: string;
 }
@@ -93,9 +86,7 @@ interface ResolverPromptTestHooks {
     pickDeleteVsModifyAction?: (
         context: DeleteVsModifyPromptContext
     ) => Promise<DeleteVsModifyResolutionAction | undefined> | DeleteVsModifyResolutionAction | undefined;
-    pickRenumberExecutionCounts?: (
-        context: RenumberPromptContext
-    ) => Promise<boolean | undefined> | boolean | undefined;
+    pickRenumberExecutionCounts?: () => Promise<boolean | undefined> | boolean | undefined;
     confirmAction?: (
         context: ResolverConfirmationContext
     ) => Promise<boolean> | boolean;
@@ -219,9 +210,7 @@ export class NotebookConflictResolver {
         // unmerged notebooks whose branches already agree semantically
         // (for example, both sides made the same reorder).
         if (autoResolveResult.remainingConflicts.length === 0) {
-            const shouldRenumber = await this.pickRenumberExecutionCounts({
-                filePath: uri.fsPath
-            });
+            const shouldRenumber = await this.pickRenumberExecutionCounts();
 
             let finalNotebook = autoResolveResult.resolvedNotebook;
             if (shouldRenumber) {
@@ -335,9 +324,9 @@ export class NotebookConflictResolver {
         return undefined;
     }
 
-    private async pickRenumberExecutionCounts(context: RenumberPromptContext): Promise<boolean> {
+    private async pickRenumberExecutionCounts(): Promise<boolean> {
         if (resolverPromptTestHooks?.pickRenumberExecutionCounts) {
-            return (await resolverPromptTestHooks.pickRenumberExecutionCounts(context)) === true;
+            return (await resolverPromptTestHooks.pickRenumberExecutionCounts()) === true;
         }
 
         const picked = await vscode.window.showQuickPick(
@@ -421,9 +410,6 @@ export class NotebookConflictResolver {
 
         const actionLabel = `Apply ${availableSide} version`;
         const confirmed = await this.confirmResolutionAction({
-            status,
-            filePath: uri.fsPath,
-            actionId: 'add-only-apply-stage',
             actionLabel,
             message: `${actionLabel} and stage ${path.basename(uri.fsPath)}?`
         });
@@ -477,9 +463,6 @@ export class NotebookConflictResolver {
             ? `Keep ${keepContentSide} content`
             : 'Keep deletion';
         const confirmed = await this.confirmResolutionAction({
-            status,
-            filePath: uri.fsPath,
-            actionId: action,
             actionLabel,
             message: `${actionLabel} for ${path.basename(uri.fsPath)} and stage the result?`
         });
@@ -550,9 +533,7 @@ export class NotebookConflictResolver {
             if (autoResolveResult) {
                 let resolvedNotebook = autoResolveResult.resolvedNotebook;
 
-                const shouldRenumber = await this.pickRenumberExecutionCounts({
-                    filePath: uri.fsPath
-                });
+                const shouldRenumber = await this.pickRenumberExecutionCounts();
 
                 if (shouldRenumber) {
                     resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
