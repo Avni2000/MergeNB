@@ -148,7 +148,6 @@ test.describe('Settings Matrix - Backend Logic', () => {
             baseIndex: 0,
             currentIndex: 0,
             incomingIndex: 0,
-            matchConfidence: 1,
             baseCell: base,
             currentCell: current,
             incomingCell: incoming,
@@ -220,7 +219,6 @@ test.describe('Settings Matrix - Backend Logic', () => {
             semanticConflicts: [],
             cellMappings: [{
                 baseIndex: 0, currentIndex: 0, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: baseNb.cells[0],
                 currentCell: currentNb.cells[0],
                 incomingCell: incomingNb.cells[0],
@@ -268,11 +266,9 @@ test.describe('Settings Matrix - Backend Logic', () => {
                 baseContent: base,
                 currentContent: current,
                 incomingContent: incoming,
-                description: 'outputs differ',
             }],
             cellMappings: [{
                 baseIndex: 0, currentIndex: 0, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: base, currentCell: current, incomingCell: incoming,
             }],
             current: makeNotebook([current]),
@@ -313,11 +309,9 @@ test.describe('Settings Matrix - Backend Logic', () => {
                 baseContent: base,
                 currentContent: current,
                 incomingContent: incoming,
-                description: 'source differs',
             }],
             cellMappings: [{
                 baseIndex: 0, currentIndex: 0, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: base, currentCell: current, incomingCell: incoming,
             }],
             current: makeNotebook([current]),
@@ -354,7 +348,6 @@ test.describe('Settings Matrix - Backend Logic', () => {
             }],
             cellMappings: [{
                 baseIndex: 0, currentIndex: 0, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: base, currentCell: current, incomingCell: incoming,
             }],
             current: makeNotebook([current]),
@@ -401,7 +394,6 @@ test.describe('Settings Matrix - Backend Logic', () => {
             }],
             cellMappings: [{
                 baseIndex: 0, currentIndex: 0, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: base, currentCell: current, incomingCell: incoming,
             }],
             current: makeNotebook([current]),
@@ -447,7 +439,6 @@ test.describe('Settings Matrix - Backend Logic', () => {
             semanticConflicts: [],
             cellMappings: [{
                 baseIndex: 0, currentIndex: 0, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: baseNb.cells[0],
                 currentCell: currentNb.cells[0],
                 incomingCell: incomingNb.cells[0],
@@ -487,7 +478,6 @@ test.describe('Settings Matrix - Backend Logic', () => {
             semanticConflicts: [],
             cellMappings: [{
                 baseIndex: 0, currentIndex: 0, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: baseNb.cells[0],
                 currentCell: currentNb.cells[0],
                 incomingCell: incomingNb.cells[0],
@@ -528,7 +518,6 @@ test.describe('Settings Matrix - Backend Logic', () => {
             semanticConflicts: [],
             cellMappings: [{
                 baseIndex: 0, currentIndex: 0, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: baseNb.cells[0],
                 currentCell: currentNb.cells[0],
                 incomingCell: incomingNb.cells[0],
@@ -571,7 +560,6 @@ test.describe('Settings Matrix - Backend Logic', () => {
             semanticConflicts: [],
             cellMappings: [{
                 baseIndex: 0, currentIndex: 0, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: baseNb.cells[0],
                 currentCell: currentNb.cells[0],
                 incomingCell: incomingNb.cells[0],
@@ -629,11 +617,9 @@ test.describe('Settings Matrix - Backend Logic', () => {
                 baseContent: base,
                 currentContent: current,
                 incomingContent: incoming,
-                description: 'source differs',
             }],
             cellMappings: [{
                 baseIndex: 0, currentIndex: 0, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: base, currentCell: current, incomingCell: incoming,
             }],
             current: makeNotebook([current]),

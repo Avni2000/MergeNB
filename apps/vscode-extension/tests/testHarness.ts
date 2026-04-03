@@ -311,7 +311,6 @@ async function setupConflictResolverHeadless(
 
     const { sessionUrl, connectionPromise } = await server.openSession(
         sessionId,
-        '',
         handleMessage,
         unifiedConflict.theme ?? 'light',
         unifiedConflict.filePath
