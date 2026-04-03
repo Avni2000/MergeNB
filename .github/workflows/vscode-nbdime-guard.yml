@@ -49,4 +49,4 @@ jobs:
           npm run compile-tests
 
       - name: Run VS Code nbdime guard test
-        run: xvfb-run -a node out/tests/runNbdimeGuardTest.js
+        run: xvfb-run -a node out/apps/vscode-extension/tests/runNbdimeGuardTest.js
