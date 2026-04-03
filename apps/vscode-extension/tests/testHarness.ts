@@ -171,7 +171,11 @@ async function setupConflictResolverHeadless(
     const workspacePath = config.workspacePath;
     const conflictFile = path.join(workspacePath, 'conflict.ipynb');
 
-    const semanticConflict = await detectSemanticConflicts(conflictFile);
+    const semanticConflict = await detectSemanticConflicts(conflictFile, {
+        getThreeWayVersions: gitIntegration.getThreeWayVersions,
+        getCurrentBranch: gitIntegration.getCurrentBranch,
+        getMergeBranch: gitIntegration.getMergeBranch,
+    });
     if (!semanticConflict) {
         throw new Error('No semantic conflicts detected (headless mode).');
     }

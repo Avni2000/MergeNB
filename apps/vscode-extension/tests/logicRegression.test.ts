@@ -651,7 +651,11 @@ export async function run(): Promise<void> {
             pickRenumberExecutionCounts: () => false,
         });
 
-        const detectedSharedReorder = await conflictDetector.detectSemanticConflicts(normalizedConflictPath);
+        const detectedSharedReorder = await conflictDetector.detectSemanticConflicts(normalizedConflictPath, {
+            getThreeWayVersions: gitIntegration.getThreeWayVersions,
+            getCurrentBranch: gitIntegration.getCurrentBranch,
+            getMergeBranch: gitIntegration.getMergeBranch,
+        });
         assert.ok(detectedSharedReorder, 'Expected real detector to return a semantic conflict payload');
         assert.strictEqual(
             detectedSharedReorder!.semanticConflicts.length,
@@ -692,7 +696,7 @@ export async function run(): Promise<void> {
         assert.ok(resolvedDetails.resolvedNotebook, 'Expected shared reorder path to emit a resolved notebook');
 
         const expectedSources = sharedReorderCurrent.cells.map(cell => normalizeCellSource(cell.source));
-        const emittedSources = resolvedDetails.resolvedNotebook!.cells.map(cell => normalizeCellSource(cell.source));
+        const emittedSources = resolvedDetails.resolvedNotebook!.cells.map((cell: NotebookCell) => normalizeCellSource(cell.source));
         assert.deepStrictEqual(
             emittedSources,
             expectedSources,

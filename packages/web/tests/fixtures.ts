@@ -99,7 +99,7 @@ async function waitForFileWrite(filePath: string, timeoutMs = 10000, initialMtim
  * Returns the workspace path for use in tests.
  */
 export function createConflictRepo(notebooks: NotebookTriplet): string {
-    const testDir = path.resolve(__dirname, '../../../../test-fixtures');
+    const testDir = path.resolve(__dirname, '../../../test-fixtures');
     const baseFile = path.resolve(testDir, notebooks.base);
     const currentFile = path.resolve(testDir, notebooks.current);
     const incomingFile = path.resolve(testDir, notebooks.incoming);
@@ -124,7 +124,11 @@ export async function setupConflictResolverHeadless(
 ): Promise<ConflictSession> {
     const conflictFile = path.join(workspacePath, 'conflict.ipynb');
 
-    const semanticConflict = await detectSemanticConflicts(conflictFile);
+    const semanticConflict = await detectSemanticConflicts(conflictFile, {
+        getThreeWayVersions: gitIntegration.getThreeWayVersions,
+        getCurrentBranch: gitIntegration.getCurrentBranch,
+        getMergeBranch: gitIntegration.getMergeBranch,
+    });
     if (!semanticConflict) {
         throw new Error('No semantic conflicts detected.');
     }
@@ -155,7 +159,7 @@ export async function setupConflictResolverHeadless(
 
     const server = getWebServer();
     server.setTestMode(true);
-    server.setExtensionUri({ fsPath: path.resolve(__dirname, '../../../..') });
+    server.setExtensionUri({ fsPath: path.resolve(__dirname, '../../..') });
 
     if (!server.isRunning()) {
         await server.start();
@@ -375,7 +379,7 @@ export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
  * Read a notebook fixture from this repository's `test/` directory.
  */
 export function readNotebookFixtureFromRepo(fileName: string): any {
-    const fixturePath = path.resolve(__dirname, '../../../../test-fixtures', fileName);
+    const fixturePath = path.resolve(__dirname, '../../../test-fixtures', fileName);
     return JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
 }
 
