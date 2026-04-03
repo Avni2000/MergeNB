@@ -34,7 +34,7 @@ interface UriLike {
     fsPath: string;
 }
 
-export interface WebServerOptions {
+interface WebServerOptions {
     port?: number;
     host?: string;
 }
@@ -63,7 +63,7 @@ interface SessionData {
  * 4. Browser connects and receives conflict data via WebSocket
  * 5. Resolution messages come back through onMessage callback
  */
-export class ConflictResolverWebServer {
+class ConflictResolverWebServer {
     private static instance: ConflictResolverWebServer | undefined;
     
     private httpServer: http.Server | undefined;

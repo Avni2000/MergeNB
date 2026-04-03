@@ -50,20 +50,20 @@ interface IncompatibleGitConfigIssue {
     value: string;
 }
 
-export interface EnsureSupportedMergeToolIssue {
+interface EnsureSupportedMergeToolIssue {
     scope: 'local' | 'global';
     key: string;
     value: string;
 }
 
-export interface EnsureSupportedMergeToolPromptContext {
+interface EnsureSupportedMergeToolPromptContext {
     gitRoot: string;
     issues: EnsureSupportedMergeToolIssue[];
     message: string;
     actions: string[];
 }
 
-export interface EnsureSupportedMergeToolTestHooks {
+interface EnsureSupportedMergeToolTestHooks {
     selectAction?: (
         context: EnsureSupportedMergeToolPromptContext
     ) => Promise<string | undefined> | string | undefined;
@@ -72,7 +72,7 @@ export interface EnsureSupportedMergeToolTestHooks {
     onTerminalCommands?: (commands: string[]) => void;
 }
 
-export interface EnsureSupportedMergeToolOptions {
+interface EnsureSupportedMergeToolOptions {
     suppressIfAlreadyShown?: boolean;
     testHooks?: EnsureSupportedMergeToolTestHooks;
 }
@@ -89,7 +89,7 @@ export class UnsupportedMergeToolError extends Error {
     }
 }
 
-export class AggregateUnsupportedMergeToolError extends Error {
+class AggregateUnsupportedMergeToolError extends Error {
     constructor(public readonly errors: UnsupportedMergeToolError[]) {
         const roots = errors.map((error) => path.basename(error.gitRoot)).join(', ');
         super(`[MergeNB] Incompatible Git notebook config detected in multiple repositories: ${roots}`);
@@ -580,7 +580,7 @@ function isPathWithinRoot(filePath: string, rootPath: string): boolean {
 
 export type GitUnmergedStatus = 'UU' | 'AA' | 'DD' | 'AU' | 'UA' | 'DU' | 'UD';
 
-export interface GitFileStatus {
+interface GitFileStatus {
     path: string;
     repoPath?: string;
     status: GitUnmergedStatus;
@@ -1198,17 +1198,6 @@ async function stageFileWithGitCli(gitRoot: string, pathCandidates: string[]): P
 }
 
 /**
- * Get the Git repository root for a given file path.
- */
-export async function getGitRoot(filePath: string): Promise<string | null> {
-    const repository = await getRepositoryForPath(filePath);
-    if (repository) {
-        return repository.rootUri.fsPath;
-    }
-    return resolveGitRootForPath(filePath);
-}
-
-/**
  * Get a file's explicit Git unmerged status code.
  */
 export async function getUnmergedFileStatus(filePath: string): Promise<GitUnmergedStatus | null> {
@@ -1292,21 +1281,6 @@ export async function getUnmergedFiles(workspaceFolderOrPath?: any): Promise<Git
         }
     }
     return unmergedFiles;
-}
-
-/**
- * Get the base version of a file from Git staging area (stage :1:).
- */
-export async function getBaseVersion(filePath: string): Promise<string | null> {
-    const context = await resolveGitFileContext(filePath);
-    if (context) {
-        const apiVersion = await getVersionForStage(context, '1');
-        if (apiVersion !== null) {
-            return apiVersion;
-        }
-    }
-    const cliContext = await resolveCliFileContext(filePath);
-    return cliContext ? getVersionForStageCli(cliContext, '1') : null;
 }
 
 /**

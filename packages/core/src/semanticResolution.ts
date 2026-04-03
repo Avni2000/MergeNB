@@ -11,7 +11,7 @@ import * as logger from './logger';
 
 export type PreferredSide = 'base' | 'current' | 'incoming';
 
-export interface BuildResolvedNotebookOptions {
+interface BuildResolvedNotebookOptions {
     semanticConflict: NotebookSemanticConflict;
     resolvedRows: ResolvedRow[];
     autoResolveResult?: AutoResolveResult;

@@ -177,7 +177,6 @@
     "@jupyterlab/rendermime": "^4.5.6",
     "@tanstack/react-virtual": "^3.13.23",
     "@uiw/codemirror-theme-github": "^4.25.9",
-    "@uiw/codemirror-themes": "^4.25.7",
     "@uiw/react-codemirror": "^4.25.9",
     "@vscode/markdown-it-katex": "^1.1.2",
     "dompurify": "^3.3.3",
