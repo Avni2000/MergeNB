@@ -11,7 +11,7 @@
  */
 import * as vscode from 'vscode';
 import * as logger from '../../../packages/core/src';
-import { getWebServer, UnifiedConflict, UnifiedResolution, ResolvedRow, type WebConflictData } from '../../../packages/web/server/src';
+import { getWebServer, UnifiedConflict, UnifiedResolution, ResolvedRow, type WebConflictData, toWebSemanticConflict } from '../../../packages/web/server/src';
 
 /**
  * Web-based panel for resolving notebook conflicts in the browser.
@@ -109,7 +109,9 @@ export class WebConflictPanel {
             filePath: this._conflict.filePath,
             conflictKey,
             type: this._conflict.type,
-            semanticConflict: this._conflict.semanticConflict,
+            semanticConflict: this._conflict.semanticConflict
+                ? toWebSemanticConflict(this._conflict.semanticConflict)
+                : undefined,
             autoResolveResult: this._conflict.autoResolveResult,
             hideNonConflictOutputs: this._conflict.hideNonConflictOutputs,
             showCellHeaders: this._conflict.showCellHeaders,
