@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "apps/vscode-extension/extension.ts",
+    "packages/web/client/src/index.tsx",
+    "apps/vscode-extension/tests/runIntegrationTest.ts",
+    "apps/vscode-extension/tests/runNbdimeGuardTest.ts",
+    "apps/vscode-extension/tests/*.test.ts"
+  ],
+  "project": [
+    "apps/**/*.{ts,tsx}",
+    "packages/**/*.{ts,tsx}",
+    "test-fixtures/**/*.{ts,tsx}"
+  ],
+  "playwright": {},
+  "ignoreDependencies": [
+    "playwright",
+    "katex",
+    "@codemirror/view",
+    "@codemirror/state",
+    "style-mod",
+    "@lumino/widgets",
+    "@lezer/highlight"
+  ]
+}
