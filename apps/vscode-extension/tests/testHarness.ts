@@ -25,10 +25,9 @@ import {
 import { getSettings, configContext } from '../settings';
 import { getWebServer } from '../../../packages/web/server/src';
 import {
-    toWebSemanticConflict,
+    toWebConflictData,
     type BrowserToExtensionMessage,
     type UnifiedConflict,
-    type WebConflictData,
 } from '../../../packages/web/server/src';
 import {
     type ExpectedCell,
@@ -218,22 +217,7 @@ async function setupConflictResolverHeadless(
     const sessionId = server.generateSessionId();
     const conflictVersion = 1;
     const sendConflictData = (): void => {
-        const data: WebConflictData = {
-            filePath: unifiedConflict.filePath,
-            conflictKey: `${sessionId}:v${conflictVersion}`,
-            type: 'semantic',
-            semanticConflict: unifiedConflict.semanticConflict
-                ? toWebSemanticConflict(unifiedConflict.semanticConflict)
-                : undefined,
-            autoResolveResult: unifiedConflict.autoResolveResult,
-            hideNonConflictOutputs: unifiedConflict.hideNonConflictOutputs,
-            showCellHeaders: unifiedConflict.showCellHeaders,
-            enableUndoRedoHotkeys: unifiedConflict.enableUndoRedoHotkeys,
-            showBaseColumn: unifiedConflict.showBaseColumn,
-            theme: unifiedConflict.theme,
-            currentBranch: unifiedConflict.semanticConflict?.currentBranch,
-            incomingBranch: unifiedConflict.semanticConflict?.incomingBranch,
-        };
+        const data = toWebConflictData(unifiedConflict, `${sessionId}:v${conflictVersion}`);
         server.sendConflictData(sessionId, data);
     };
 

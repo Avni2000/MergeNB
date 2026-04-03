@@ -1028,7 +1028,6 @@ body {
 
 .resolved-cell.markdown-cell .resolved-content-input .cm-content {
     font-family: var(--font-ui) !important;
-    border-left-color: var(--accent-green);
 }
 
 .resolved-cell.code-cell .resolved-content-input.cm-editor {

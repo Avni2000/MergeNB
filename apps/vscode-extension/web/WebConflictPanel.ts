@@ -11,7 +11,7 @@
  */
 import * as vscode from 'vscode';
 import * as logger from '../../../packages/core/src';
-import { getWebServer, UnifiedConflict, UnifiedResolution, ResolvedRow, type WebConflictData, toWebSemanticConflict } from '../../../packages/web/server/src';
+import { getWebServer, UnifiedConflict, UnifiedResolution, ResolvedRow, toWebConflictData } from '../../../packages/web/server/src';
 
 /**
  * Web-based panel for resolving notebook conflicts in the browser.
@@ -105,22 +105,7 @@ export class WebConflictPanel {
         const conflictKey = this._sessionId;
 
         // Build the data payload for the React app
-        const data: WebConflictData = {
-            filePath: this._conflict.filePath,
-            conflictKey,
-            type: this._conflict.type,
-            semanticConflict: this._conflict.semanticConflict
-                ? toWebSemanticConflict(this._conflict.semanticConflict)
-                : undefined,
-            autoResolveResult: this._conflict.autoResolveResult,
-            hideNonConflictOutputs: this._conflict.hideNonConflictOutputs,
-            showCellHeaders: this._conflict.showCellHeaders,
-            enableUndoRedoHotkeys: this._conflict.enableUndoRedoHotkeys,
-            showBaseColumn: this._conflict.showBaseColumn,
-            theme: this._conflict.theme,
-            currentBranch: this._conflict.semanticConflict?.currentBranch,
-            incomingBranch: this._conflict.semanticConflict?.incomingBranch,
-        };
+        const data = toWebConflictData(this._conflict, conflictKey);
 
         logger.debug(`[WebConflictPanel] Sending conflict data with showBaseColumn=${this._conflict.showBaseColumn}`);
         server.sendConflictData(this._sessionId, data);

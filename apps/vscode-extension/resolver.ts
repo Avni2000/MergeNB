@@ -217,12 +217,12 @@ export class NotebookConflictResolver {
                 finalNotebook = renumberExecutionCounts(finalNotebook);
             }
 
-            await this.saveResolvedNotebook(uri, finalNotebook);
+            await this.saveResolvedNotebook(uri, finalNotebook, true);
             onDidResolveConflictWithDetails.fire({
                 uri,
                 resolvedNotebook: finalNotebook,
                 resolvedRows: [],
-                markAsResolved: false,
+                markAsResolved: true,
                 renumberExecutionCounts: shouldRenumber
             });
             const resolvedCount = semanticConflict.semanticConflicts.length;
@@ -528,7 +528,7 @@ export class NotebookConflictResolver {
 
         const resolvedRows = resolution.resolvedRows;
 
-        if (!resolvedRows || resolvedRows.length === 0) {
+        if (resolvedRows == null) {
             // No resolutions provided
             if (autoResolveResult) {
                 let resolvedNotebook = autoResolveResult.resolvedNotebook;

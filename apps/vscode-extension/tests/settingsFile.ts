@@ -6,8 +6,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getConfigFilePath } from '../settings';
+import type { MergeNBSettings } from '../settings';
 
-type Theme = 'dark' | 'light';
+type Theme = MergeNBSettings['theme'];
 type SettingKey =
     | 'autoResolve.executionCount'
     | 'autoResolve.kernelVersion'

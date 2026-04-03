@@ -4,8 +4,8 @@
  * Exports core types and defines client-specific interfaces.
  */
 
-import type { NotebookCell, NotebookSemanticConflict, ResolvedRow } from '../../../core/src';
-import type { AutoResolveResult } from '../../server/src';
+import type { NotebookCell, NotebookSemanticConflict } from '../../../core/src';
+import type { AutoResolveResult, BrowserToExtensionMessage } from '../../server/src';
 
 // Export core types needed by the client
 export type {
@@ -84,14 +84,4 @@ export type WSMessage =
     | { type: 'conflict-data'; data: UnifiedConflictData }
     | { type: 'resolution-success'; message: string }
     | { type: 'resolution-error'; message: string }
-    | {
-        command: 'resolve';
-        type: 'semantic';
-        /** The complete resolved row structure from the UI (source of truth) */
-        resolvedRows: ResolvedRow[];
-        semanticChoice?: 'base' | 'current' | 'incoming';
-        markAsResolved: boolean;
-        renumberExecutionCounts: boolean;
-    }
-    | { command: 'cancel' }
-    | { command: 'ready' };
+    | BrowserToExtensionMessage;

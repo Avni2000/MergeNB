@@ -131,6 +131,29 @@ export type BrowserToExtensionMessage =
     | { command: 'ready' };
 
 /**
+ * Build the complete WebConflictData payload from a UnifiedConflict.
+ * Use this as the single construction point to keep browser payloads in sync.
+ */
+export function toWebConflictData(conflict: UnifiedConflict, conflictKey: string): WebConflictData {
+    return {
+        filePath: conflict.filePath,
+        conflictKey,
+        type: conflict.type,
+        semanticConflict: conflict.semanticConflict
+            ? toWebSemanticConflict(conflict.semanticConflict)
+            : undefined,
+        autoResolveResult: conflict.autoResolveResult,
+        hideNonConflictOutputs: conflict.hideNonConflictOutputs,
+        showCellHeaders: conflict.showCellHeaders,
+        enableUndoRedoHotkeys: conflict.enableUndoRedoHotkeys,
+        showBaseColumn: conflict.showBaseColumn,
+        theme: conflict.theme,
+        currentBranch: conflict.semanticConflict?.currentBranch,
+        incomingBranch: conflict.semanticConflict?.incomingBranch,
+    };
+}
+
+/**
  * Convert NotebookSemanticConflict to WebSemanticConflict.
  */
 export function toWebSemanticConflict(conflict: NotebookSemanticConflict): WebSemanticConflict {
