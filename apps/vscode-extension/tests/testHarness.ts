@@ -21,7 +21,6 @@ import {
     applyAutoResolutions,
     buildResolvedNotebookFromRows,
     serializeNotebook,
-    renumberExecutionCounts,
 } from '../../../packages/core/src';
 import { getSettings, configContext } from '../settings';
 import { getWebServer } from '../../../packages/web/server/src';
@@ -222,7 +221,6 @@ async function setupConflictResolverHeadless(
         const data: WebConflictData = {
             filePath: unifiedConflict.filePath,
             conflictKey: `${sessionId}:v${conflictVersion}`,
-            fileName: path.basename(unifiedConflict.filePath) || 'notebook.ipynb',
             type: 'semantic',
             semanticConflict: unifiedConflict.semanticConflict
                 ? toWebSemanticConflict(unifiedConflict.semanticConflict)
@@ -245,26 +243,14 @@ async function setupConflictResolverHeadless(
         try {
             const markAsResolved = message.markAsResolved ?? false;
             const shouldRenumber = message.renumberExecutionCounts ?? false;
-            let resolvedNotebook;
-
-            if (message.resolvedRows === null) {
-                if (!autoResolveResult) {
-                    throw new Error('No resolved rows provided.');
-                }
-                resolvedNotebook = autoResolveResult.resolvedNotebook;
-                if (shouldRenumber) {
-                    resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
-                }
-            } else {
-                resolvedNotebook = buildResolvedNotebookFromRows({
-                    semanticConflict: filteredSemanticConflict,
-                    resolvedRows: message.resolvedRows,
-                    autoResolveResult,
-                    settings,
-                    shouldRenumber,
-                    preferredSideHint: message.semanticChoice,
-                });
-            }
+            const resolvedNotebook = buildResolvedNotebookFromRows({
+                semanticConflict: filteredSemanticConflict,
+                resolvedRows: message.resolvedRows,
+                autoResolveResult,
+                settings,
+                shouldRenumber,
+                preferredSideHint: message.semanticChoice,
+            });
 
             fs.writeFileSync(conflictFile, serializeNotebook(resolvedNotebook), 'utf8');
             if (markAsResolved) {

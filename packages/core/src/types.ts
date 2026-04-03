@@ -4,9 +4,8 @@
  * 
  * Contains:
  * - Jupyter notebook structure types (nbformat v4): Notebook, NotebookCell, CellOutput
- * - Conflict marker types: ConflictMarker, CellConflict, NotebookConflict
  * - Semantic conflict types: SemanticConflict, SemanticConflictType, CellMapping
- * - Resolution types: ResolutionChoice, ConflictResolution, SemanticConflictResolution
+ * - Resolution types used by the semantic resolver UI
  */
 
 export interface NotebookCell {
@@ -50,72 +49,9 @@ export interface Notebook {
 }
 
 /**
- * Conflict-related types
- */
-
-export interface ConflictMarker {
-    start: number;  // Line index of <<<<<<<
-    middle: number; // Line index of =======
-    end: number;    // Line index of >>>>>>>
-    currentBranch?: string;
-    incomingBranch?: string;
-}
-
-export interface CellConflict {
-    cellIndex: number;
-    field: 'source' | 'outputs' | 'metadata' | 'execution_count';
-    currentContent: string;
-    incomingContent: string;
-    marker: ConflictMarker;
-    /** Cell type for display purposes */
-    cellType?: 'code' | 'markdown' | 'raw';
-    /** Index of the current cell (for cell-level conflicts) */
-    currentCellIndex?: number;
-    /** Index of the incoming cell (for cell-level conflicts) */
-    incomingCellIndex?: number;
-}
-
-export interface NotebookConflict {
-    filePath: string;
-    rawContent: string;
-    conflicts: CellConflict[];
-    // If conflict is in top-level metadata
-    metadataConflicts: Array<{
-        field: string;
-        currentContent: string;
-        incomingContent: string;
-        marker: ConflictMarker;
-    }>;
-    
-    // Full notebook versions from Git staging areas (for showing non-conflicted context)
-    base?: Notebook;
-    current?: Notebook;
-    incoming?: Notebook;
-    
-    // Cell mappings between versions (like semantic conflicts)
-    cellMappings?: CellMapping[];
-    
-    // Branch information
-    currentBranch?: string;
-    incomingBranch?: string;
-}
-
-/**
- * Resolution choices for conflict resolution.
- * - base: Use the base version (pre-merge common ancestor)
- * - current: Use the current branch version
- * - incoming: Use the incoming branch version  
- * - both: Include both current and incoming content
- * - delete: Remove the cell entirely
+ * Resolution choices for semantic conflict resolution.
  */
 export type ResolutionChoice = 'base' | 'current' | 'incoming' | 'delete';
-
-export interface ConflictResolution {
-    conflict: CellConflict;
-    choice: ResolutionChoice;
-    /** The resolved content from the editable text area (source of truth) */
-    resolvedContent?: string;
-}
 
 /**
  * Semantic conflict types (Git unmerged status)
@@ -174,13 +110,6 @@ export interface NotebookSemanticConflict {
     // Branch information
     currentBranch?: string;
     incomingBranch?: string;
-}
-
-export interface SemanticConflictResolution {
-    conflict: SemanticConflict;
-    choice: 'base' | 'current' | 'incoming' | 'delete';
-    /** The resolved content from the editable text area (source of truth) */
-    resolvedContent?: string;
 }
 
 /**

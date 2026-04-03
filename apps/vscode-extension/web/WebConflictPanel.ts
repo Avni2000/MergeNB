@@ -9,7 +9,6 @@
  * 
  * The actual UI is rendered by the React app in src/web/client/.
  */
-import path from 'path';
 import * as vscode from 'vscode';
 import * as logger from '../../../packages/core/src';
 import { getWebServer, UnifiedConflict, UnifiedResolution, ResolvedRow, type WebConflictData } from '../../../packages/web/server/src';
@@ -60,18 +59,6 @@ export class WebConflictPanel {
         this._onResolutionComplete = onResolutionComplete;
     }
 
-    public setConflict(
-        conflict: UnifiedConflict,
-        onResolutionComplete: (resolution: UnifiedResolution) => Promise<void>
-    ): void {
-        this._conflict = conflict;
-        this._onResolutionComplete = onResolutionComplete;
-        this._conflictVersion += 1;
-        if (this._sessionId) {
-            this._sendConflictData();
-        }
-    }
-
     private async _openInBrowser(): Promise<void> {
         logger.debug('[WebConflictPanel] Opening conflict resolver in browser...');
         const server = getWebServer();
@@ -118,13 +105,11 @@ export class WebConflictPanel {
 
         const server = getWebServer();
         const conflictKey = `${this._sessionId}:v${this._conflictVersion}`;
-        const fileName = path.basename(this._conflict.filePath) || 'notebook.ipynb';
 
         // Build the data payload for the React app
         const data: WebConflictData = {
             filePath: this._conflict.filePath,
             conflictKey,
-            fileName,
             type: this._conflict.type,
             semanticConflict: this._conflict.semanticConflict,
             autoResolveResult: this._conflict.autoResolveResult,

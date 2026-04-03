@@ -112,7 +112,6 @@ export function setResolverPromptTestHooks(hooks?: ResolverPromptTestHooks): voi
  */
 export interface ConflictedNotebook {
     uri: vscode.Uri;
-    hasSemanticConflicts: boolean;
     unmergedStatus: gitIntegration.GitUnmergedStatus;
 }
 
@@ -121,37 +120,6 @@ export interface ConflictedNotebook {
  */
 export class NotebookConflictResolver {
     constructor(private readonly extensionUri: vscode.Uri) { }
-
-    /**
-     * Check if a file has semantic conflicts (status supports cell-level UI).
-     */
-    async hasSemanticConflicts(uri: vscode.Uri): Promise<boolean> {
-        try {
-            const status = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
-            return status === 'UU' || status === 'AA' || status === 'AU' || status === 'UA';
-        } catch {
-            return false;
-        }
-    }
-
-    /**
-     * Check if a file has any unmerged Git status.
-     */
-    async hasAnyConflicts(uri: vscode.Uri): Promise<ConflictedNotebook | null> {
-        try {
-            const status = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
-            if (status) {
-                return {
-                    uri,
-                    hasSemanticConflicts: status === 'UU' || status === 'AA' || status === 'AU' || status === 'UA',
-                    unmergedStatus: status
-                };
-            }
-            return null;
-        } catch {
-            return null;
-        }
-    }
 
     /**
      * Find all notebook files with conflicts (Git unmerged status) in the workspace.
@@ -183,7 +151,6 @@ export class NotebookConflictResolver {
 
             withConflicts.push({
                 uri,
-                hasSemanticConflicts: file.status === 'UU' || file.status === 'AA' || file.status === 'AU' || file.status === 'UA',
                 unmergedStatus: file.status
             });
         }

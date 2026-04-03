@@ -33,8 +33,6 @@ type MergeRowBase = {
     anchorPosition?: number;
     /** Whether this row participated in a reorder conflict in the original merge state. */
     isReordered?: boolean;
-    /** Whether this row is in edit mode */
-    isEditing?: boolean;
 };
 
 /**
@@ -96,7 +94,6 @@ interface ResolutionMessage {
  * WebSocket message types
  */
 export type WSMessage =
-    | { type: 'connected'; sessionId: string }
     | { type: 'conflict-data'; data: UnifiedConflictData }
     | { type: 'resolution-success'; message: string }
     | { type: 'resolution-error'; message: string }

@@ -109,48 +109,6 @@ export function sourceToCellFormat(source: string): string[] {
 }
 
 /**
- * Get a display-friendly preview of a cell's content.
- */
-export function getCellPreview(cell: NotebookCell, maxLength: number = 100): string {
-    const source = normalizeCellSource(cell.source);
-    const firstLine = source.split('\n')[0] || '';
-    if (firstLine.length > maxLength) {
-        return firstLine.substring(0, maxLength) + '...';
-    }
-    return firstLine;
-}
-
-/**
- * Check if a cell is a code cell.
- */
-export function isCodeCell(cell: NotebookCell): boolean {
-    return cell.cell_type === 'code';
-}
-
-/**
- * Check if a cell is a markdown cell.
- */
-export function isMarkdownCell(cell: NotebookCell): boolean {
-    return cell.cell_type === 'markdown';
-}
-
-/**
- * Get the cell type as a display string.
- */
-export function getCellTypeDisplay(cell: NotebookCell): string {
-    switch (cell.cell_type) {
-        case 'code':
-            return 'Code';
-        case 'markdown':
-            return 'Markdown';
-        case 'raw':
-            return 'Raw';
-        default:
-            return cell.cell_type;
-    }
-}
-
-/**
  * Escape HTML special characters for safe display.
  */
 export function escapeHtml(text: string): string {

@@ -65,7 +65,6 @@ export interface WebConflictData {
     filePath: string;
     /** Stable conflict instance key for client-side state reset behavior */
     conflictKey: string;
-    fileName: string;
     type: 'semantic';
 
     // For semantic conflicts
@@ -119,15 +118,6 @@ export interface WebSemanticConflictItem {
     incomingContent?: NotebookCell;
     description?: string;
 }
-
-/**
- * Messages sent from the extension to the browser.
- */
-export type ExtensionToBrowserMessage =
-    | { type: 'connected'; sessionId: string }
-    | { type: 'conflict-data'; data: WebConflictData }
-    | { type: 'error'; message: string }
-    | { type: 'close' };
 
 /**
  * Messages sent from the browser to the extension.

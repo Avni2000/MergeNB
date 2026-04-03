@@ -9,7 +9,6 @@ import * as logger from '../../../../core/src';
 
 interface UseWebSocketResult {
     connected: boolean;
-    sessionId: string | null;
     conflictData: UnifiedConflictData | null;
     sendMessage: (message: object) => void;
     resolutionStatus: 'pending' | 'success' | 'error' | null;
@@ -18,7 +17,6 @@ interface UseWebSocketResult {
 
 export function useWebSocket(): UseWebSocketResult {
     const [connected, setConnected] = useState(false);
-    const [sessionId, setSessionId] = useState<string | null>(null);
     const [conflictData, setConflictData] = useState<UnifiedConflictData | null>(null);
     const [resolutionStatus, setResolutionStatus] = useState<'pending' | 'success' | 'error' | null>(null);
     const [resolutionMessage, setResolutionMessage] = useState<string | null>(null);
@@ -49,9 +47,7 @@ export function useWebSocket(): UseWebSocketResult {
                 logger.debug('[MergeNB] Received:', msg);
 
                 if ('type' in msg) {
-                    if (msg.type === 'connected') {
-                        setSessionId(msg.sessionId);
-                    } else if (msg.type === 'conflict-data') {
+                    if (msg.type === 'conflict-data') {
                         setConflictData(msg.data);
                     } else if (msg.type === 'resolution-success') {
                         setResolutionStatus('success');
@@ -92,5 +88,5 @@ export function useWebSocket(): UseWebSocketResult {
         }
     }, []);
 
-    return { connected, sessionId, conflictData, sendMessage, resolutionStatus, resolutionMessage };
+    return { connected, conflictData, sendMessage, resolutionStatus, resolutionMessage };
 }

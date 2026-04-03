@@ -684,11 +684,6 @@ export class ConflictResolverWebServer {
             logger.error(`[MergeNB Web] WebSocket error for session ${sessionId}:`, error);
         });
 
-        // Send ready message to browser
-        ws.send(JSON.stringify({
-            type: 'connected',
-            sessionId: sessionId
-        }));
     }
 
     private generateSecret(): string {
