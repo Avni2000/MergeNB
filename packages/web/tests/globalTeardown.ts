@@ -5,8 +5,8 @@
  * This runs once after all test workers complete.
  */
 
-import { getWebServer } from '../server/src/webServer';
-import * as logger from '../../core/src/logger';
+import { getWebServer } from '../server/src';
+import * as logger from '../../core/src';
 
 async function globalTeardown(): Promise<void> {
     logger.info('[GlobalTeardown] Stopping MergeNB web server...');
@@ -19,4 +19,5 @@ async function globalTeardown(): Promise<void> {
     logger.info('[GlobalTeardown] Web server stopped');
 }
 
+// ts-prune-ignore-next
 export default globalTeardown;

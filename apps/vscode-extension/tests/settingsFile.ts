@@ -8,7 +8,7 @@ import * as path from 'path';
 import { getConfigFilePath } from '../settings';
 
 export type Theme = 'dark' | 'light';
-export type SettingKey =
+type SettingKey =
     | 'autoResolve.executionCount'
     | 'autoResolve.kernelVersion'
     | 'autoResolve.stripOutputs'
@@ -21,7 +21,7 @@ export type SettingKey =
 
 export type SettingsState = Partial<Record<SettingKey, boolean | Theme>>;
 
-export interface SettingsFileSnapshot {
+interface SettingsFileSnapshot {
     exists: boolean;
     contents: string | null;
 }

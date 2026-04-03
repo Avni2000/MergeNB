@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-export function toSafePathSegment(value: string): string {
+function toSafePathSegment(value: string): string {
     const cleaned = value
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')

@@ -11,7 +11,7 @@ import * as path from 'path';
 import { test, expect } from './fixtures';
 import { applyResolutionAndReadNotebook } from './fixtures';
 import { getCellSource, validateNotebookStructure } from '../../../test-fixtures/shared/testHelpers';
-import * as logger from '../../core/src/logger';
+import * as logger from '../../core/src';
 
 // ─── Helper Functions ───────────────────────────────────────────────────────
 

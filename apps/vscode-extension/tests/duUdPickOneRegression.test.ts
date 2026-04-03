@@ -10,7 +10,7 @@ import {
 } from '../resolver';
 import { readTestConfig } from './testHarness';
 import { git, gitAllowFailure, hashBlob, assertNoUnmergedConflict } from './gitTestUtils';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src';
 
 type GitStage = '1' | '2' | '3';
 type DeleteConflictStatus = 'DU' | 'UD';

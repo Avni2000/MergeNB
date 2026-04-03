@@ -14,19 +14,23 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { chromium, type Browser, type Page } from 'playwright';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src';
 import * as gitIntegration from '../gitIntegration';
-import { detectSemanticConflicts, applyAutoResolutions } from '../../../packages/core/src/conflictDetector';
+import {
+    detectSemanticConflicts,
+    applyAutoResolutions,
+    buildResolvedNotebookFromRows,
+    serializeNotebook,
+    renumberExecutionCounts,
+} from '../../../packages/core/src';
 import { getSettings, configContext } from '../settings';
-import { getWebServer } from '../../../packages/web/server/src/webServer';
+import { getWebServer } from '../../../packages/web/server/src';
 import {
     toWebSemanticConflict,
     type BrowserToExtensionMessage,
     type UnifiedConflict,
     type WebConflictData,
-} from '../../../packages/web/server/src/webTypes';
-import { buildResolvedNotebookFromRows } from '../../../packages/core/src/semanticResolution';
-import { serializeNotebook, renumberExecutionCounts } from '../../../packages/core/src/notebookParser';
+} from '../../../packages/web/server/src';
 import {
     type ExpectedCell,
     type TestConfig,
@@ -45,7 +49,7 @@ try {
     // Running in headless mode (tests) - vscode not available
 }
 
-export interface ConflictSession {
+interface ConflictSession {
     config: TestConfig;
     workspacePath: string;
     conflictFile: string;
@@ -56,7 +60,7 @@ export interface ConflictSession {
     page: Page;
 }
 
-export interface SetupOptions {
+interface SetupOptions {
     headless?: boolean;
     serverTimeoutMs?: number;
     sessionTimeoutMs?: number;
@@ -64,13 +68,13 @@ export interface SetupOptions {
     postHeaderDelayMs?: number;
 }
 
-export interface ApplyOptions {
+interface ApplyOptions {
     markResolved?: boolean;
     postClickDelayMs?: number;
     writeTimeoutMs?: number;
 }
 
-export interface NotebookMatchOptions {
+interface NotebookMatchOptions {
     expectedLabel?: string;
     compareMetadata?: boolean;
     compareExecutionCounts?: boolean;
@@ -405,7 +409,7 @@ export async function applyResolutionAndReadNotebook(
  * Build an `ExpectedCell[]` directly from a notebook file (used when you want
  * to compare two resolved notebooks rather than UI state against disk state).
  */
-export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
+function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
     if (!notebook || !Array.isArray(notebook.cells)) {
         return [];
     }
@@ -426,7 +430,7 @@ export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
 }
 
 /** Read a notebook fixture from this repository's `test/` directory. */
-export function readNotebookFixtureFromRepo(fileName: string): any {
+function readNotebookFixtureFromRepo(fileName: string): any {
     const fixturePath = path.resolve(__dirname, '../../../../test-fixtures', fileName);
     return JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
 }

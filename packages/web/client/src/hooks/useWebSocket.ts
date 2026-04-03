@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { UnifiedConflictData, WSMessage } from '../types';
-import * as logger from '../../../../core/src/logger';
+import * as logger from '../../../../core/src';
 
 interface UseWebSocketResult {
     connected: boolean;

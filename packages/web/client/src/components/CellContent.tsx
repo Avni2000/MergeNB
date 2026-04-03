@@ -15,9 +15,9 @@ import { IRenderMime, OutputModel, RenderMimeRegistry, standardRendererFactories
 import { Widget } from '@lumino/widgets';
 import DOMPurify from 'dompurify';
 import type { NotebookCell, CellOutput } from '../types';
-import { normalizeCellSource } from '../../../../core/src/notebookUtils';
+import { normalizeCellSource } from '../../../../core/src';
 import { diff as computeDiff } from '@codemirror/merge';
-import * as logger from '../../../../core/src/logger';
+import * as logger from '../../../../core/src';
 import type { Highlighter } from '@lezer/highlight';
 import { highlightCode } from '@lezer/highlight';
 import { renderMarkdown } from '../utils/markdown';
@@ -344,7 +344,7 @@ interface CellContentProps {
     theme?: 'dark' | 'light';
 }
 const EMPTY_EXTENSIONS: Extension[] = [];
-export function CellContentInner({
+function CellContentInner({
     cell,
     cellIndex,
     side,

@@ -13,15 +13,24 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from '../../packages/core/src/conflictDetector';
-import { parseNotebook, serializeNotebook, renumberExecutionCounts } from '../../packages/core/src/notebookParser';
-import { buildResolvedNotebookFromRows, type PreferredSide } from '../../packages/core/src/semanticResolution';
+import {
+    detectSemanticConflicts,
+    applyAutoResolutions,
+    parseNotebook,
+    serializeNotebook,
+    renumberExecutionCounts,
+    buildResolvedNotebookFromRows,
+    type AutoResolveResult,
+    type PreferredSide,
+    type NotebookSemanticConflict,
+    type Notebook,
+    type ResolvedRow,
+} from '../../packages/core/src';
 import { WebConflictPanel } from './web/WebConflictPanel';
-import { UnifiedConflict, UnifiedResolution } from '../../packages/web/server/src/webTypes';
-import { NotebookSemanticConflict, Notebook, type ResolvedRow } from '../../packages/core/src/types';
+import { UnifiedConflict, UnifiedResolution } from '../../packages/web/server/src';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
-import * as logger from '../../packages/core/src/logger';
+import * as logger from '../../packages/core/src';
 
 
 
@@ -35,6 +44,7 @@ export const onDidResolveConflict = new vscode.EventEmitter<vscode.Uri>();
  * Detailed event fired when a notebook conflict is successfully resolved.
  * Useful for tests to verify what was written to disk.
  */
+// ts-prune-ignore-next
 export interface ResolvedConflictDetails {
     uri: vscode.Uri;
     resolvedNotebook?: Notebook;
@@ -52,23 +62,23 @@ export const onDidResolveConflictWithDetails = new vscode.EventEmitter<ResolvedC
 export type AddOnlyResolutionAction = 'apply-and-stage' | 'open-semantic' | 'cancel';
 export type DeleteVsModifyResolutionAction = 'keep-content' | 'keep-delete' | 'cancel';
 
-export interface AddOnlyPromptContext {
+interface AddOnlyPromptContext {
     status: 'AU' | 'UA';
     filePath: string;
     availableSide: 'current' | 'incoming';
 }
 
-export interface DeleteVsModifyPromptContext {
+interface DeleteVsModifyPromptContext {
     status: 'DU' | 'UD';
     filePath: string;
     keepContentSide: 'current' | 'incoming';
 }
 
-export interface RenumberPromptContext {
+interface RenumberPromptContext {
     filePath: string;
 }
 
-export interface ResolverConfirmationContext {
+interface ResolverConfirmationContext {
     status: gitIntegration.GitUnmergedStatus;
     filePath: string;
     actionId: string;
@@ -76,7 +86,7 @@ export interface ResolverConfirmationContext {
     message: string;
 }
 
-export interface ResolverPromptTestHooks {
+interface ResolverPromptTestHooks {
     pickAddOnlyAction?: (
         context: AddOnlyPromptContext
     ) => Promise<AddOnlyResolutionAction | undefined> | AddOnlyResolutionAction | undefined;

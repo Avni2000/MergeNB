@@ -38,7 +38,3 @@ export function computeReorderedRowIndexSet(rows: MergeRowType[]): Set<number> {
 
     return reordered;
 }
-
-export function isRowReorderedAtIndex(rows: MergeRowType[], rowIndex: number): boolean {
-    return computeReorderedRowIndexSet(rows).has(rowIndex);
-}

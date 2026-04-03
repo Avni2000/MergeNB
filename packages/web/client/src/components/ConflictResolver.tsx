@@ -8,7 +8,7 @@ import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/rea
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
-import { normalizeCellSource } from '../../../../core/src/notebookUtils';
+import { normalizeCellSource } from '../../../../core/src';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
@@ -21,7 +21,7 @@ import {
     type TakeAllChoice,
 } from '../store/resolverStore';
 import { buildMergeRowsFromSemantic } from '../utils/mergeRowBuilder';
-import * as logger from '../../../../core/src/logger';
+import * as logger from '../../../../core/src';
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;

@@ -10,15 +10,7 @@
  */
 
 import * as http from 'http';
-import * as logger from '../../packages/core/src/logger';
-
-/** Shape returned by the /health endpoint */
-export interface HealthResponse {
-    status: string;
-    port: number;
-    activeSessions: number;
-    activeConnections: number;
-}
+import * as logger from '../../packages/core/src';
 
 /** A cell we expect to find on disk after resolution */
 export interface ExpectedCell {
@@ -41,7 +33,7 @@ export interface TestConfig {
 }
 
 /** Check if the web server is up */
-export function checkHealth(port: number): Promise<boolean> {
+function checkHealth(port: number): Promise<boolean> {
     return new Promise((resolve) => {
         const url = `http://127.0.0.1:${port}/health`;
         const req = http.get(url, { timeout: 500 }, (res) => {
@@ -61,29 +53,6 @@ export function checkHealth(port: number): Promise<boolean> {
             req.destroy();
             resolve(false);
         });
-    });
-}
-
-/** Get detailed health info from the web server */
-export function getHealthInfo(port: number): Promise<HealthResponse | null> {
-    return new Promise((resolve) => {
-        const req = http.get(`http://127.0.0.1:${port}/health`, { timeout: 1000 }, (res) => {
-            if (res.statusCode !== 200) {
-                resolve(null);
-                return;
-            }
-            let data = '';
-            res.on('data', (chunk: string) => data += chunk);
-            res.on('end', () => {
-                try {
-                    resolve(JSON.parse(data));
-                } catch {
-                    resolve(null);
-                }
-            });
-        });
-        req.on('error', () => resolve(null));
-        req.on('timeout', () => { req.destroy(); resolve(null); });
     });
 }
 

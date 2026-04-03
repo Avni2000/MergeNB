@@ -6,9 +6,9 @@
  * as a shared resource that all parallel workers can connect to.
  */
 
-import { getWebServer } from '../server/src/webServer';
+import { getWebServer } from '../server/src';
 import * as path from 'path';
-import * as logger from '../../core/src/logger';
+import * as logger from '../../core/src';
 
 async function globalSetup(): Promise<void> {
     logger.info('[GlobalSetup] Starting MergeNB web server...');
@@ -30,4 +30,5 @@ async function globalSetup(): Promise<void> {
     process.env.MERGENB_TEST_SERVER_PORT = String(port);
 }
 
+// ts-prune-ignore-next
 export default globalSetup;

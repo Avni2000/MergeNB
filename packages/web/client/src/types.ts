@@ -4,25 +4,18 @@
  * Exports core types and defines client-specific interfaces.
  */
 
-import type { NotebookCell, NotebookSemanticConflict, ResolvedRow } from '../../../core/src/types';
-import type { AutoResolveResult } from '../../server/src/webTypes';
+import type { NotebookCell, NotebookSemanticConflict, ResolvedRow } from '../../../core/src';
+import type { AutoResolveResult } from '../../server/src';
 
 // Export core types needed by the client
 export type {
     NotebookCell,
     CellOutput,
-    Notebook,
-    NotebookMetadata,
-    CellConflict,
-    NotebookConflict,
     SemanticConflict,
-    SemanticConflictType,
-    CellMapping,
     NotebookSemanticConflict,
     ResolutionChoice,
     ResolvedRow,
-} from '../../../core/src/types';
-export type { AutoResolveResult } from '../../server/src/webTypes';
+} from '../../../core/src';
 
 // Boilerplate so we don't have to copy-paste
 type MergeRowBase = {
@@ -89,7 +82,7 @@ export interface UnifiedConflictData {
 /**
  * Message sent back to extension with resolution
  */
-export interface ResolutionMessage {
+interface ResolutionMessage {
     command: 'resolve';
     type: 'semantic';
     /** The complete resolved row structure from the UI (source of truth) */

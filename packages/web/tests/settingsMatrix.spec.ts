@@ -14,15 +14,13 @@ import type { Locator, Page } from 'playwright';
 import {
     applyAutoResolutions,
     analyzeSemanticConflictsFromMappings,
-} from '../../core/src/conflictDetector';
+    type Notebook,
+    type NotebookCell,
+    type NotebookSemanticConflict,
+    type CellMapping,
+} from '../../core/src';
 import type { MergeNBSettings } from '../../../apps/vscode-extension/settings';
-import type {
-    Notebook,
-    NotebookCell,
-    NotebookSemanticConflict,
-    CellMapping,
-} from '../../core/src/types';
-import * as logger from '../../core/src/logger';
+import * as logger from '../../core/src';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,

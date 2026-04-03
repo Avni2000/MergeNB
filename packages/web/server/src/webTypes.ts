@@ -13,11 +13,11 @@ import type {
     CellMapping,
     NotebookSemanticConflict,
     ResolvedRow
-} from '../../../core/src/types';
-import type { AutoResolveResult } from '../../../core/src/conflictDetector';
+} from '../../../core/src';
+import type { AutoResolveResult } from '../../../core/src';
 
-export type { AutoResolveResult } from '../../../core/src/conflictDetector';
-export type { ResolvedRow } from '../../../core/src/types';
+export type { AutoResolveResult } from '../../../core/src';
+export type { ResolvedRow } from '../../../core/src';
 
 /**
  * Unified conflict data structure.

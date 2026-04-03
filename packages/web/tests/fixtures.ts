@@ -16,17 +16,21 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { chromium } from 'playwright';
 import { createMergeConflictRepo, cleanup as cleanupRepo } from '../../../test-fixtures/shared/repoSetup';
-import { detectSemanticConflicts, applyAutoResolutions } from '../../core/src/conflictDetector';
+import {
+    detectSemanticConflicts,
+    applyAutoResolutions,
+    buildResolvedNotebookFromRows,
+    serializeNotebook,
+    renumberExecutionCounts,
+} from '../../core/src';
 import { getSettings, configContext } from '../../../apps/vscode-extension/settings';
-import { getWebServer } from '../server/src/webServer';
+import { getWebServer } from '../server/src';
 import {
     toWebSemanticConflict,
     type BrowserToExtensionMessage,
     type UnifiedConflict,
     type WebConflictData,
-} from '../server/src/webTypes';
-import { buildResolvedNotebookFromRows } from '../../core/src/semanticResolution';
-import { serializeNotebook, renumberExecutionCounts } from '../../core/src/notebookParser';
+} from '../server/src';
 import * as gitIntegration from '../../../apps/vscode-extension/gitIntegration';
 import {
     type ExpectedCell,
@@ -34,7 +38,7 @@ import {
 } from '../../../test-fixtures/shared/testHelpers';
 import { ensureCheckboxChecked } from '../../../test-fixtures/shared/integrationUtils';
 import { randomUUID } from 'crypto';
-import * as logger from '../../core/src/logger';
+import * as logger from '../../core/src';
 import {
     prepareIsolatedConfigPath,
     cleanupIsolatedConfigPath,
@@ -42,13 +46,13 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export interface NotebookTriplet {
+interface NotebookTriplet {
     base: string;
     current: string;
     incoming: string;
 }
 
-export interface ConflictSession {
+interface ConflictSession {
     workspacePath: string;
     conflictFile: string;
     serverPort: number;
@@ -58,13 +62,13 @@ export interface ConflictSession {
     page: Page;
 }
 
-export interface ApplyOptions {
+interface ApplyOptions {
     markResolved?: boolean;
     postClickDelayMs?: number;
     writeTimeoutMs?: number;
 }
 
-export interface NotebookMatchOptions {
+interface NotebookMatchOptions {
     expectedLabel?: string;
     compareMetadata?: boolean;
     compareExecutionCounts?: boolean;
@@ -98,7 +102,7 @@ async function waitForFileWrite(filePath: string, timeoutMs = 10000, initialMtim
  * Create a merge conflict repository from a notebook triplet.
  * Returns the workspace path for use in tests.
  */
-export function createConflictRepo(notebooks: NotebookTriplet): string {
+function createConflictRepo(notebooks: NotebookTriplet): string {
     const testDir = path.resolve(__dirname, '../../../test-fixtures');
     const baseFile = path.resolve(testDir, notebooks.base);
     const currentFile = path.resolve(testDir, notebooks.current);
@@ -118,7 +122,7 @@ export function createConflictRepo(notebooks: NotebookTriplet): string {
  * Set up the conflict resolver headlessly - creates a session, launches browser,
  * and navigates to the conflict UI.
  */
-export async function setupConflictResolverHeadless(
+async function setupConflictResolverHeadless(
     workspacePath: string,
     options: { headless?: boolean; afterNavigateDelayMs?: number; postHeaderDelayMs?: number } = {}
 ): Promise<ConflictSession> {
@@ -500,7 +504,7 @@ export function assertNotebookMatches(
 
 // ─── Playwright Test Extension ──────────────────────────────────────────────
 
-export interface MergeNBFixtures {
+interface MergeNBFixtures {
     /**
      * Isolated MergeNB config file path (auto fixture).
      * Matches `runIntegrationTest.ts` setting `MERGENB_CONFIG_PATH` per test so

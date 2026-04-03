@@ -10,7 +10,7 @@
 import * as vscode from 'vscode';
 import { execSync } from 'child_process';
 import * as gitIntegration from '../gitIntegration';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src';
 
 type PromptCall = {
     message: string;
@@ -101,6 +101,7 @@ function configureIncompatibleNotebookSettings(workspacePath: string): void {
     git(workspacePath, 'config', '--global', 'jupyter.merge.driver', 'enabled');
 }
 
+// ts-prune-ignore-next
 export async function run(): Promise<void> {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     assert(workspacePath, 'Expected a workspace folder for nbdime guard test');

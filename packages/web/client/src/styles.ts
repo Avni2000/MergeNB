@@ -3,7 +3,7 @@
  * @description Shared styles for the conflict resolver UI.
  */
 
-export function getStyles(theme: 'dark' | 'light' = 'light'): string {
+function getStyles(theme: 'dark' | 'light' = 'light'): string {
     const isDark = theme === 'dark';
 
     // Checkered background gradients
@@ -1518,8 +1518,3 @@ export function injectStyles(theme: 'dark' | 'light' = 'light'): void {
         document.head.appendChild(style);
     }
 }
-
-// Keep backward compatibility
-// Do not generate a default light stylesheet at module import time —
-// this prevents a light-theme flash on first render when the app wants dark.
-export const styles = '';
