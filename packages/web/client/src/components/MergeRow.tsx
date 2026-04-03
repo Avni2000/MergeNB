@@ -28,8 +28,6 @@ interface ResolutionState {
 interface MergeRowProps {
     row: MergeRowType;
     rowIndex: number;
-    isReordered?: boolean;
-    conflictIndex: number;
     notebookPath?: string;
     languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
@@ -49,8 +47,6 @@ const EMPTY_EXTENSIONS: Extension[] = [];
 function MergeRowInner({
     row,
     rowIndex,
-    isReordered = false,
-    conflictIndex,
     notebookPath,
     languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
@@ -65,6 +61,8 @@ function MergeRowInner({
     'data-testid': testId,
 }: MergeRowProps): React.ReactElement {
     const isConflict = row.type === 'conflict';
+    const isReordered = row.isReordered ?? false;
+    const conflictIndex = row.conflictIndex ?? -1;
 
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
@@ -93,7 +91,7 @@ function MergeRowInner({
     
     const editorExtensions = useMemo(
         () => [...(resolvedCellType === 'markdown' ? [] : languageExtensions), mergeNBEditorStructure],
-        [languageExtensions, resolvedCellType, resolutionState?.choice]
+        [languageExtensions, resolvedCellType]
     );
 
     // Get content for a given choice
@@ -233,9 +231,6 @@ function MergeRowInner({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
-    const showBaseColumnForRow = showBaseColumn;
-    // Always use conflict diffing mode for consistent red highlighting of divergence
-    const diffMode = 'conflict';
     return (
         <div className={rowClasses} data-testid={testId}>
             {/* Top action bar - always present for conflicts */}
@@ -317,8 +312,8 @@ function MergeRowInner({
             )}
 
             {/* Three-way diff view */}
-            <div className={`cell-columns${showBaseColumnForRow ? '' : ' two-column'}`}>
-                {showBaseColumnForRow && (
+            <div className={`cell-columns${showBaseColumn ? '' : ' two-column'}`}>
+                {showBaseColumn && (
                     <div className="cell-column base-column">
                         {row.baseCell ? (
                             <CellContent
@@ -349,8 +344,7 @@ function MergeRowInner({
                             notebookPath={notebookPath}
                             isConflict={true}
                             compareCell={row.incomingCell || row.baseCell}
-                            baseCell={row.baseCell}
-                            diffMode={diffMode}
+                            diffMode="conflict"
                             languageExtensions={languageExtensions}
                             theme={theme}
                             showOutputs={showOutputs}
@@ -371,8 +365,7 @@ function MergeRowInner({
                             notebookPath={notebookPath}
                             isConflict={true}
                             compareCell={row.currentCell || row.baseCell}
-                            baseCell={row.baseCell}
-                            diffMode={diffMode}
+                            diffMode="conflict"
                             languageExtensions={languageExtensions}
                             theme={theme}
                             showOutputs={showOutputs}
@@ -387,8 +380,8 @@ function MergeRowInner({
             </div>
 
             {/* Resolution bar - select which branch to use as base */}
-            <div className={`resolution-bar cell-columns${showBaseColumnForRow && !row.isUserUnmatched ? '' : ' two-column'}`}>
-                {showBaseColumnForRow && !row.isUserUnmatched && (
+            <div className={`resolution-bar cell-columns${showBaseColumn && !row.isUserUnmatched ? '' : ' two-column'}`}>
+                {showBaseColumn && !row.isUserUnmatched && (
                     <div className="cell-column base-column">
                         {hasBase && (
                             <button

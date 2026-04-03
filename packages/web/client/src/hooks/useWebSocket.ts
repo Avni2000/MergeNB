@@ -11,14 +11,14 @@ interface UseWebSocketResult {
     connected: boolean;
     conflictData: UnifiedConflictData | null;
     sendMessage: (message: object) => void;
-    resolutionStatus: 'pending' | 'success' | 'error' | null;
+    resolutionStatus: 'success' | 'error' | null;
     resolutionMessage: string | null;
 }
 
 export function useWebSocket(): UseWebSocketResult {
     const [connected, setConnected] = useState(false);
     const [conflictData, setConflictData] = useState<UnifiedConflictData | null>(null);
-    const [resolutionStatus, setResolutionStatus] = useState<'pending' | 'success' | 'error' | null>(null);
+    const [resolutionStatus, setResolutionStatus] = useState<'success' | 'error' | null>(null);
     const [resolutionMessage, setResolutionMessage] = useState<string | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
@@ -79,10 +79,6 @@ export function useWebSocket(): UseWebSocketResult {
     const sendMessage = useCallback((message: object & { command?: string }) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify(message));
-            // Only set pending status for resolve commands
-            if (message.command === 'resolve') {
-                setResolutionStatus('pending');
-            }
         } else {
             logger.warn('[MergeNB] Cannot send - WebSocket not connected');
         }

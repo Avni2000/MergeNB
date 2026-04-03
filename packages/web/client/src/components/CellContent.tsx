@@ -336,7 +336,6 @@ interface CellContentProps {
     notebookPath?: string;
     isConflict?: boolean;
     compareCell?: NotebookCell;
-    baseCell?: NotebookCell;
     diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
     showCellHeaders?: boolean;
@@ -351,7 +350,6 @@ function CellContentInner({
     notebookPath,
     isConflict = false,
     compareCell,
-    baseCell,
     diffMode = 'base',
     showOutputs = true,
     showCellHeaders = false,
@@ -409,10 +407,10 @@ function CellContentInner({
                         source={source}
                         theme={theme}
                     />
-                ) : isConflict && (compareCell || baseCell) ? (
+                ) : isConflict && compareCell ? (
                     <StaticDiffContent
                         source={source}
-                        compareSource={normalizeCellSource((compareCell ?? baseCell)!.source)}
+                        compareSource={normalizeCellSource(compareCell.source)}
                         side={side}
                         diffMode={diffMode}
                         langExtensions={cellType === 'markdown' ? EMPTY_EXTENSIONS : languageExtensions}

@@ -40,17 +40,16 @@ export function ConflictResolver({
     onCancel,
 }: ConflictResolverProps): React.ReactElement {
     const initialRows = useMemo(() => (
-        conflict.type === 'semantic' && conflict.semanticConflict
+        conflict.semanticConflict
             ? buildMergeRowsFromSemantic(conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook)
             : []
-    ), [conflict.type, conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook]);
+    ), [conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook]);
 
     // Recreate resolver state only when the conflict instance key changes.
     // This avoids resets caused by object identity churn on re-sent payloads.
-    const resolverStoreKey = conflict.conflictKey;
     const resolverStore = useMemo(
         () => createResolverStore(initialRows),
-        [resolverStoreKey]
+        [conflict.conflictKey]
     );
     const [historyOpen, setHistoryOpen] = useState(false);
     const [autoResolveBannerOpen, setAutoResolveBannerOpen] = useState(false);
@@ -629,8 +628,6 @@ export function ConflictResolver({
                                 <MergeRow
                                     row={row}
                                     rowIndex={i}
-                                    isReordered={row.isReordered}
-                                    conflictIndex={conflictIdx}
                                     notebookPath={conflict.filePath}
                                     languageExtensions={languageExtensions}
                                     theme={conflict.theme ?? 'light'}
@@ -717,7 +714,3 @@ function getCellForSide(
     if (side === 'current') return row.currentCell;
     return row.incomingCell;
 }
-
-/**
- * Build merge rows from semantic conflict data.
- */

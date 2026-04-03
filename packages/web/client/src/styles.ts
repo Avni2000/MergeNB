@@ -535,35 +535,6 @@ body {
     border-left: 3px solid var(--accent-blue);
 }
 
-/* CodeMirror read-only code cell display */
-.cell-source-cm.cm-editor {
-    border-radius: 4px;
-    outline: none !important;
-    cursor: default;
-    background: var(--cell-surface);
-}
-
-.cell-source-cm .cm-scroller {
-    overflow: auto;
-}
-
-.cell-source-cm .cm-content {
-    padding: 12px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    border-left: 3px solid var(--accent-blue);
-}
-
-.cell-source-cm .cm-line {
-    padding: 0;
-}
-
-/* Replicate the left-border accent that <pre> had for code cells */
-.code-cell .cell-content .cell-source-cm.cm-editor {
-    background: var(--bg-primary);
-    /* Border now on .cm-content for better visibility */
-}
-
 .markdown-cell:not(.has-conflict) .cell-content {
     padding: 12px;
     background: var(--cell-surface);
@@ -583,34 +554,9 @@ body {
     border-left: 3px solid var(--accent-green);
 }
 
-/* Placeholder for empty cells */
-.cell-placeholder {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 60px;
-    color: var(--text-primary);
-    font-style: italic;
-    font-size: 12px;
-    background: var(--cell-placeholder-bg);
-    border-radius: 4px;
-    border: 1px dashed var(--border-color);
-}
-
 .cell-placeholder.cell-deleted {
     border-color: #a86b6b;
     color: #d2a6a6;
-}
-
-.metadata-cell pre {
-    margin: 0;
-    padding: 12px;
-    background: var(--cell-surface);
-    border-radius: 4px;
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-    border-left: 3px solid var(--base-border);
 }
 
 /* Resolution bar */
@@ -651,12 +597,6 @@ body {
 .btn-resolve.btn-incoming {
     background: var(--incoming-bg);
     border-color: var(--incoming-border);
-    color: var(--text-primary);
-}
-
-.btn-resolve.btn-both {
-    background: var(--bg-tertiary);
-    border-color: var(--border-color);
     color: var(--text-primary);
 }
 
@@ -808,8 +748,7 @@ body {
 }
 
 /* Loading/Error states */
-.loading-container,
-.error-container {
+.loading-container {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -829,14 +768,6 @@ body {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
-}
-
-.error-container {
-    color: #f48771;
-}
-
-.error-container h2 {
-    font-size: 18px;
 }
 
 .success-icon {
@@ -1036,29 +967,6 @@ body {
     text-align: center;
 }
 
-/* Custom editor for custom content */
-.custom-editor {
-    grid-column: 1 / -1;
-    padding: 16px;
-    background: var(--bg-secondary);
-    border-radius: 6px;
-    margin-bottom: 12px;
-}
-
-.custom-content-input {
-    width: 100%;
-    min-height: 200px;
-    padding: 12px;
-    background: var(--cell-surface);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    font-family: var(--font-code);
-    font-weight: 400;
-    font-size: 13px;
-    resize: vertical;
-}
-
 /* Resolved cell styling - green highlighting to mark as resolved */
 .resolved-cell {
     margin: 12px 24px;
@@ -1118,8 +1026,7 @@ body {
     border-left: 3px solid var(--accent-green);
 }
 
-.resolved-cell.markdown-cell .resolved-content-input .cm-content,
-.markdown-cell .cell-source-cm .cm-content {
+.resolved-cell.markdown-cell .resolved-content-input .cm-content {
     font-family: var(--font-ui) !important;
     border-left-color: var(--accent-green);
 }
@@ -1237,27 +1144,6 @@ body {
     background: #e67867;
 }
 
-.editor-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 12px;
-}
-
-.btn-save {
-    padding: 8px 16px;
-    background: var(--accent-blue);
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-}
-
-.btn-save:hover {
-    background: #0062a3;
-}
-
 .btn-cancel {
     padding: 8px 16px;
     background: var(--bg-tertiary);
@@ -1300,13 +1186,14 @@ body {
 
 /* Cell placeholder (for deleted/not present cells) */
 .cell-placeholder {
-    min-height: 60px;
     display: flex;
     flex: 1;
     align-items: center;
     justify-content: center;
+    min-height: 60px;
     color: var(--text-secondary);
     font-style: italic;
+    font-size: 12px;
     border: 2px dashed var(--border-color);
     border-radius: 4px;
     background: var(--cell-placeholder-bg);
@@ -1462,18 +1349,6 @@ body {
 .merge-row.user-unmatched-row {
     background: transparent;
     border-radius: 4px;
-}
-
-/* Rematch indicator bar */
-.rematch-indicator-bar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 12px;
-    background: var(--bg-tertiary);
-    border-bottom: 1px solid var(--border-color);
-    font-size: 12px;
-    user-select: none;
 }
 
 .rematch-label {
