@@ -549,20 +549,6 @@ function matchCellsGlobal(baseCells: NotebookCell[], otherCells: NotebookCell[])
     return matches;
 }
 
-function computeMatchConfidence(
-    leftCells: NotebookCell[],
-    leftIdx: number | undefined,
-    rightCells: NotebookCell[],
-    rightIdx: number | undefined
-): number {
-    if (leftIdx === undefined || rightIdx === undefined) return 0;
-    return scoreCellPair(leftCells, leftIdx, rightCells, rightIdx);
-}
-
-// ============================================================================
-// Public API
-// ============================================================================
-
 export function matchCells(
     base: Notebook | null | undefined,
     current: Notebook | null | undefined,
@@ -588,7 +574,6 @@ export function matchCells(
                 mappings.push({
                     currentIndex: currentIdx,
                     incomingIndex: incomingIdx,
-                    matchConfidence: computeMatchConfidence(currentCells, currentIdx, incomingCells, incomingIdx),
                     currentCell: currentCells[currentIdx],
                     incomingCell: incomingCells[incomingIdx]
                 });
@@ -598,7 +583,6 @@ export function matchCells(
 
             mappings.push({
                 currentIndex: currentIdx,
-                matchConfidence: 1,
                 currentCell: currentCells[currentIdx]
             });
         }
@@ -607,7 +591,6 @@ export function matchCells(
             if (usedIncoming.has(incomingIdx)) continue;
             mappings.push({
                 incomingIndex: incomingIdx,
-                matchConfidence: 1,
                 incomingCell: incomingCells[incomingIdx]
             });
         }
@@ -628,10 +611,6 @@ export function matchCells(
             baseIndex: baseIdx,
             currentIndex: currentIdx,
             incomingIndex: incomingIdx,
-            matchConfidence: Math.max(
-                computeMatchConfidence(baseCells, baseIdx, currentCells, currentIdx),
-                computeMatchConfidence(baseCells, baseIdx, incomingCells, incomingIdx)
-            ),
             baseCell: baseCells[baseIdx],
             currentCell: currentIdx !== undefined ? currentCells[currentIdx] : undefined,
             incomingCell: incomingIdx !== undefined ? incomingCells[incomingIdx] : undefined
@@ -667,7 +646,6 @@ export function matchCells(
         if (localIncomingIdx === undefined) {
             mappings.push({
                 currentIndex: globalCurrentIdx,
-                matchConfidence: 1,
                 currentCell: currentCells[globalCurrentIdx]
             });
             continue;
@@ -677,7 +655,6 @@ export function matchCells(
         mappings.push({
             currentIndex: globalCurrentIdx,
             incomingIndex: globalIncomingIdx,
-            matchConfidence: computeMatchConfidence(currentCells, globalCurrentIdx, incomingCells, globalIncomingIdx),
             currentCell: currentCells[globalCurrentIdx],
             incomingCell: incomingCells[globalIncomingIdx]
         });
@@ -689,7 +666,6 @@ export function matchCells(
         const globalIncomingIdx = unmatchedIncomingIndices[localIncomingIdx];
         mappings.push({
             incomingIndex: globalIncomingIdx,
-            matchConfidence: 1,
             incomingCell: incomingCells[globalIncomingIdx]
         });
     }

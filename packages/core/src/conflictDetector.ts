@@ -15,26 +15,8 @@
 import { NotebookSemanticConflict, SemanticConflict, CellMapping, Notebook, NotebookCell, MergeNBSettings, GitOperations } from './types';
 import { matchCells, detectReordering } from './cellMatcher';
 import { parseNotebook } from './notebookParser';
+import { stableStringify } from './notebookUtils';
 import * as logger from './logger';
-
-function stableStringify(value: unknown): string {
-    if (value === undefined) return 'undefined';
-    if (value === null) return 'null';
-    const t = typeof value;
-    if (t === 'string' || t === 'number' || t === 'boolean') return JSON.stringify(value);
-
-    if (Array.isArray(value)) {
-        return '[' + value.map(stableStringify).join(',') + ']';
-    }
-
-    if (t === 'object') {
-        const obj = value as Record<string, unknown>;
-        const keys = Object.keys(obj).sort();
-        return '{' + keys.map(k => JSON.stringify(k) + ':' + stableStringify(obj[k])).join(',') + '}';
-    }
-
-    return JSON.stringify(String(value));
-}
 
 function isWhitespaceOnlyDifference(left: string, right: string): boolean {
     if (left === right) return false;
@@ -136,8 +118,7 @@ export function analyzeSemanticConflictsFromMappings(
     // Check for cell reordering
     if (detectReordering(mappings)) {
         conflicts.push({
-            type: 'cell-reordered',
-            description: 'Cells have been reordered between versions'
+            type: 'cell-reordered'
         });
     }
 
@@ -149,8 +130,7 @@ export function analyzeSemanticConflictsFromMappings(
             conflicts.push({
                 type: 'cell-added',
                 currentCellIndex: currentIndex,
-                currentContent: currentCell,
-                description: 'Cell added in current branch'
+                currentContent: currentCell
             });
             continue;
         }
@@ -160,8 +140,7 @@ export function analyzeSemanticConflictsFromMappings(
             conflicts.push({
                 type: 'cell-added',
                 incomingCellIndex: incomingIndex,
-                incomingContent: incomingCell,
-                description: 'Cell added in incoming branch'
+                incomingContent: incomingCell
             });
             continue;
         }
@@ -177,8 +156,7 @@ export function analyzeSemanticConflictsFromMappings(
                     currentCellIndex: currentIndex,
                     incomingCellIndex: incomingIndex,
                     currentContent: currentCell,
-                    incomingContent: incomingCell,
-                    description: 'Different cells added in same position'
+                    incomingContent: incomingCell
                 });
                 continue;
             }
@@ -194,8 +172,7 @@ export function analyzeSemanticConflictsFromMappings(
                     currentCellIndex: currentIndex,
                     incomingCellIndex: incomingIndex,
                     currentContent: currentCell,
-                    incomingContent: incomingCell,
-                    description: 'Added cell metadata differs between branches'
+                    incomingContent: incomingCell
                 });
             }
 
@@ -208,8 +185,7 @@ export function analyzeSemanticConflictsFromMappings(
                         currentCellIndex: currentIndex,
                         incomingCellIndex: incomingIndex,
                         currentContent: currentCell,
-                        incomingContent: incomingCell,
-                        description: `Execution count differs: current=${currentExecCount}, incoming=${incomingExecCount}`
+                        incomingContent: incomingCell
                     });
                 }
 
@@ -221,8 +197,7 @@ export function analyzeSemanticConflictsFromMappings(
                         currentCellIndex: currentIndex,
                         incomingCellIndex: incomingIndex,
                         currentContent: currentCell,
-                        incomingContent: incomingCell,
-                        description: 'Added cell outputs differ between branches'
+                        incomingContent: incomingCell
                     });
                 }
             }
@@ -236,8 +211,7 @@ export function analyzeSemanticConflictsFromMappings(
                 baseCellIndex: baseIndex,
                 incomingCellIndex: incomingIndex,
                 baseContent: baseCell,
-                incomingContent: incomingCell,
-                description: 'Cell deleted in current branch'
+                incomingContent: incomingCell
             });
             continue;
         }
@@ -249,8 +223,7 @@ export function analyzeSemanticConflictsFromMappings(
                 baseCellIndex: baseIndex,
                 currentCellIndex: currentIndex,
                 baseContent: baseCell,
-                currentContent: currentCell,
-                description: 'Cell deleted in incoming branch'
+                currentContent: currentCell
             });
             continue;
         }
@@ -301,8 +274,7 @@ function compareCells(
             incomingCellIndex: incomingIndex,
             baseContent: baseCell,
             currentContent: currentCell,
-            incomingContent: incomingCell,
-            description: 'Cell source modified in both branches differently'
+            incomingContent: incomingCell
         });
     }
 
@@ -322,8 +294,7 @@ function compareCells(
                 incomingCellIndex: incomingIndex,
                 baseContent: baseCell,
                 currentContent: currentCell,
-                incomingContent: incomingCell,
-                description: `Execution count differs: current=${currentExecCount}, incoming=${incomingExecCount}`
+                incomingContent: incomingCell
             });
         }
 
@@ -340,8 +311,7 @@ function compareCells(
                 incomingCellIndex: incomingIndex,
                 baseContent: baseCell,
                 currentContent: currentCell,
-                incomingContent: incomingCell,
-                description: 'Cell outputs differ between branches'
+                incomingContent: incomingCell
             });
         }
     }
@@ -362,8 +332,7 @@ function compareCells(
             incomingCellIndex: incomingIndex,
             baseContent: baseCell,
             currentContent: currentCell,
-            incomingContent: incomingCell,
-            description: 'Cell metadata modified in both branches differently'
+            incomingContent: incomingCell
         });
     }
 

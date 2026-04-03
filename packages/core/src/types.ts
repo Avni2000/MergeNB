@@ -79,15 +79,12 @@ export interface SemanticConflict {
     currentContent?: NotebookCell;
     incomingContent?: NotebookCell;
     
-    // Additional context
-    description?: string;
 }
 
 export interface CellMapping {
     baseIndex?: number;
     currentIndex?: number;
     incomingIndex?: number;
-    matchConfidence: number; // 0-1, how confident we are in this mapping
     baseCell?: NotebookCell;
     currentCell?: NotebookCell;
     incomingCell?: NotebookCell;
