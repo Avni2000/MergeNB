@@ -527,28 +527,3 @@ export function applyAutoResolutions(
         kernelAutoResolved
     };
 }
-
-/**
- * Check if a notebook has kernel version differences between current and incoming
- */
-export function hasKernelVersionConflict(
-    current?: Notebook,
-    incoming?: Notebook,
-    base?: Notebook
-): boolean {
-    if (!current || !incoming) return false;
-
-    const currentKernel = current.metadata?.kernelspec;
-    const incomingKernel = incoming.metadata?.kernelspec;
-    const baseKernel = base?.metadata?.kernelspec;
-
-
-    const currentStr = stableStringify(currentKernel ?? null);
-    const incomingStr = stableStringify(incomingKernel ?? null);
-    const baseStr = stableStringify(baseKernel ?? null);
-
-    // Only consider it a conflict if current and incoming kernelspecs differ, and both differ from base
-     
-    return currentStr !== incomingStr && 
-    (currentStr !== baseStr && incomingStr !== baseStr); // both differ from base
-}
