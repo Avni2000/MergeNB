@@ -614,6 +614,9 @@ export function ConflictResolver({
                         return (
                             <div
                                 key={virtualRow.key}
+                                // tanstack uses this attribute to associate DOM measurements
+                                //  with the correct virtualized item
+                                data-index={virtualRow.index}
                                 ref={measureRef}
                                 className="virtual-row"
                                 style={{
