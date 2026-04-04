@@ -23,9 +23,10 @@ function PlaygroundInner(): ReactNode {
             const cellMappings = matchCells(base, current, incoming);
             const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
 
-            injectStyles('light');
+            injectStyles('dark', '.mergenb-playground-root');
 
             setContent(
+                <div className="mergenb-playground-root">
                 <ConflictResolver
                     conflict={{
                         filePath: 'demo.ipynb',
@@ -48,6 +49,7 @@ function PlaygroundInner(): ReactNode {
                     onResolve={() => {}}
                     onCancel={() => {}}
                 />
+                </div>
             );
         })();
     }, []);
