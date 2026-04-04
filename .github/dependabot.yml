@@ -17,16 +17,40 @@ updates:
     groups:
       dev-dependencies:
         patterns:
+          - "@clack/prompts"
+          - "@playwright/test"
           - "@types/*"
           - "@typescript-eslint/*"
+          - "@vscode/test-electron"
+          - "@vscode/vsce"
+          - "esbuild"
           - "eslint*"
+          - "npm-run-all"
+          - "picocolors"
+          - "react"
+          - "react-dom"
           - "typescript"
+          - "typescript-eslint"
+          - "knip"
         update-types:
           - "minor"
           - "patch"
       production-dependencies:
         patterns:
-          - "*"
+          - "@codemirror/language"
+          - "@codemirror/language-data"
+          - "@codemirror/merge"
+          - "@jupyterlab/rendermime"
+          - "@tanstack/react-virtual"
+          - "@uiw/codemirror-theme-github"
+          - "@uiw/react-codemirror"
+          - "@vscode/markdown-it-katex"
+          - "dompurify"
+          - "immer"
+          - "katex"
+          - "markdown-it"
+          - "ws"
+          - "zustand"
         exclude-patterns:
           - "@types/*"
           - "@typescript-eslint/*"
