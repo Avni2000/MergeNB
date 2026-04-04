@@ -1,14 +1,13 @@
 import { enableMapSet } from 'immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { immer } from 'zustand/middleware/immer';
-import { normalizeCellSource } from '../../../../core/src/notebookUtils';
-import { sortByPosition } from '../../../../core/src/positionUtils';
+import { normalizeCellSource, sortByPosition } from '../../../../core/src';
 import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from '../types';
 
 enableMapSet();
 
-export const INITIAL_MARK_AS_RESOLVED = true;
-export const INITIAL_RENUMBER_EXECUTION_COUNTS = true;
+const INITIAL_MARK_AS_RESOLVED = true;
+const INITIAL_RENUMBER_EXECUTION_COUNTS = true;
 
 export interface ResolutionState {
     choice: ResolutionChoice;
@@ -31,12 +30,12 @@ interface HistoryEntry {
     snapshot: ResolverSnapshot;
 }
 
-export interface HistoryState {
+interface HistoryState {
     entries: HistoryEntry[];
     index: number;
 }
 
-export interface ResolverStoreState {
+interface ResolverStoreState {
     choices: Map<number, ResolutionState>;
     rows: MergeRowType[];
     markAsResolved: boolean;
@@ -55,7 +54,7 @@ export interface ResolverStoreState {
     redo: () => void;
 }
 
-export type ResolverStore = StoreApi<ResolverStoreState>;
+type ResolverStore = StoreApi<ResolverStoreState>;
 
 function cloneChoices(source: Map<number, ResolutionState>): Map<number, ResolutionState> {
     return new Map(Array.from(source.entries()).map(([key, value]) => [key, { ...value }]));

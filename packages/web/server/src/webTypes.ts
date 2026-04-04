@@ -13,11 +13,11 @@ import type {
     CellMapping,
     NotebookSemanticConflict,
     ResolvedRow
-} from '../../../core/src/types';
-import type { AutoResolveResult } from '../../../core/src/conflictDetector';
+} from '../../../core/src';
+import type { AutoResolveResult } from '../../../core/src';
 
-export type { AutoResolveResult } from '../../../core/src/conflictDetector';
-export type { ResolvedRow } from '../../../core/src/types';
+export type { AutoResolveResult } from '../../../core/src';
+export type { ResolvedRow } from '../../../core/src';
 
 /**
  * Unified conflict data structure.
@@ -65,7 +65,6 @@ export interface WebConflictData {
     filePath: string;
     /** Stable conflict instance key for client-side state reset behavior */
     conflictKey: string;
-    fileName: string;
     type: 'semantic';
 
     // For semantic conflicts
@@ -92,7 +91,6 @@ export interface WebConflictData {
  * Semantic conflict structure.
  */
 export interface WebSemanticConflict {
-    filePath: string;
     semanticConflicts: WebSemanticConflictItem[];
     cellMappings: CellMapping[];
 
@@ -101,9 +99,6 @@ export interface WebSemanticConflict {
     current?: Notebook;
     incoming?: Notebook;
 
-    // Branch information
-    currentBranch?: string;
-    incomingBranch?: string;
 }
 
 /**
@@ -117,17 +112,7 @@ export interface WebSemanticConflictItem {
     baseContent?: NotebookCell;
     currentContent?: NotebookCell;
     incomingContent?: NotebookCell;
-    description?: string;
 }
-
-/**
- * Messages sent from the extension to the browser.
- */
-export type ExtensionToBrowserMessage =
-    | { type: 'connected'; sessionId: string }
-    | { type: 'conflict-data'; data: WebConflictData }
-    | { type: 'error'; message: string }
-    | { type: 'close' };
 
 /**
  * Messages sent from the browser to the extension.
@@ -146,11 +131,33 @@ export type BrowserToExtensionMessage =
     | { command: 'ready' };
 
 /**
+ * Build the complete WebConflictData payload from a UnifiedConflict.
+ * Use this as the single construction point to keep browser payloads in sync.
+ */
+export function toWebConflictData(conflict: UnifiedConflict, conflictKey: string): WebConflictData {
+    return {
+        filePath: conflict.filePath,
+        conflictKey,
+        type: conflict.type,
+        semanticConflict: conflict.semanticConflict
+            ? toWebSemanticConflict(conflict.semanticConflict)
+            : undefined,
+        autoResolveResult: conflict.autoResolveResult,
+        hideNonConflictOutputs: conflict.hideNonConflictOutputs,
+        showCellHeaders: conflict.showCellHeaders,
+        enableUndoRedoHotkeys: conflict.enableUndoRedoHotkeys,
+        showBaseColumn: conflict.showBaseColumn,
+        theme: conflict.theme,
+        currentBranch: conflict.semanticConflict?.currentBranch,
+        incomingBranch: conflict.semanticConflict?.incomingBranch,
+    };
+}
+
+/**
  * Convert NotebookSemanticConflict to WebSemanticConflict.
  */
 export function toWebSemanticConflict(conflict: NotebookSemanticConflict): WebSemanticConflict {
     return {
-        filePath: conflict.filePath,
         semanticConflicts: conflict.semanticConflicts.map(c => ({
             type: c.type,
             baseCellIndex: c.baseCellIndex,
@@ -158,14 +165,11 @@ export function toWebSemanticConflict(conflict: NotebookSemanticConflict): WebSe
             incomingCellIndex: c.incomingCellIndex,
             baseContent: c.baseContent,
             currentContent: c.currentContent,
-            incomingContent: c.incomingContent,
-            description: c.description
+            incomingContent: c.incomingContent
         })),
         cellMappings: conflict.cellMappings,
         base: conflict.base,
         current: conflict.current,
-        incoming: conflict.incoming,
-        currentBranch: conflict.currentBranch,
-        incomingBranch: conflict.incomingBranch
+        incoming: conflict.incoming
     };
 }

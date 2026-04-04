@@ -10,7 +10,7 @@
  * - Generating cell content previews for UI display
  */
 
-import { Notebook, NotebookCell } from './types';
+import { Notebook } from './types';
 
 /**
  * Parse a Jupyter notebook from JSON string.
@@ -66,5 +66,4 @@ export function renumberExecutionCounts(notebook: Notebook): Notebook {
 
     return { ...notebook, cells };
 }
-
 

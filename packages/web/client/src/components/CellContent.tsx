@@ -15,9 +15,9 @@ import { IRenderMime, OutputModel, RenderMimeRegistry, standardRendererFactories
 import { Widget } from '@lumino/widgets';
 import DOMPurify from 'dompurify';
 import type { NotebookCell, CellOutput } from '../types';
-import { normalizeCellSource } from '../../../../core/src/notebookUtils';
+import { normalizeCellSource } from '../../../../core/src';
 import { diff as computeDiff } from '@codemirror/merge';
-import * as logger from '../../../../core/src/logger';
+import * as logger from '../../../../core/src';
 import type { Highlighter } from '@lezer/highlight';
 import { highlightCode } from '@lezer/highlight';
 import { renderMarkdown } from '../utils/markdown';
@@ -333,10 +333,8 @@ interface CellContentProps {
     cell: NotebookCell | undefined;
     cellIndex?: number;
     side: 'base' | 'current' | 'incoming';
-    notebookPath?: string;
     isConflict?: boolean;
     compareCell?: NotebookCell;
-    baseCell?: NotebookCell;
     diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
     showCellHeaders?: boolean;
@@ -344,14 +342,12 @@ interface CellContentProps {
     theme?: 'dark' | 'light';
 }
 const EMPTY_EXTENSIONS: Extension[] = [];
-export function CellContentInner({
+function CellContentInner({
     cell,
     cellIndex,
     side,
-    notebookPath,
     isConflict = false,
     compareCell,
-    baseCell,
     diffMode = 'base',
     showOutputs = true,
     showCellHeaders = false,
@@ -359,8 +355,8 @@ export function CellContentInner({
     theme = 'light',
 }: CellContentProps): React.ReactElement {
     const renderMimeRegistry = useMemo(
-        () => getRenderMimeRegistry(notebookPath),
-        [notebookPath]
+        () => getRenderMimeRegistry(),
+        []
     );
     const encodedCell = useMemo(
         () => (cell ? encodeURIComponent(JSON.stringify(cell)) : ''),
@@ -382,7 +378,6 @@ export function CellContentInner({
     const cellClasses = [
         'notebook-cell',
         `${cellType}-cell`,
-        `side-${side}`,
         isConflict && 'has-conflict'
     ].filter(Boolean).join(' ');
 
@@ -390,7 +385,6 @@ export function CellContentInner({
         <div
             className={cellClasses}
             data-cell={encodedCell}
-            data-cell-type={cellType}
         >
             {showCellHeaders && (
                 <div className="cell-header" data-testid="cell-header">
@@ -409,10 +403,10 @@ export function CellContentInner({
                         source={source}
                         theme={theme}
                     />
-                ) : isConflict && (compareCell || baseCell) ? (
+                ) : isConflict && compareCell ? (
                     <StaticDiffContent
                         source={source}
-                        compareSource={normalizeCellSource((compareCell ?? baseCell)!.source)}
+                        compareSource={normalizeCellSource(compareCell.source)}
                         side={side}
                         diffMode={diffMode}
                         langExtensions={cellType === 'markdown' ? EMPTY_EXTENSIONS : languageExtensions}
@@ -775,9 +769,9 @@ function getCurrentSessionCredentials(): { sessionId: string; token: string } {
     };
 }
 
-function getRenderMimeRegistry(notebookPath?: string): RenderMimeRegistry {
+function getRenderMimeRegistry(): RenderMimeRegistry {
     const { sessionId, token } = getCurrentSessionCredentials();
-    const cacheKey = `${sessionId}::${token}::${notebookPath ?? ''}`;
+    const cacheKey = `${sessionId}::${token}`;
     const cached = renderMimeRegistryCache.get(cacheKey);
     if (cached) {
         renderMimeRegistryCache.delete(cacheKey);

@@ -10,7 +10,7 @@
 import * as vscode from 'vscode';
 import { execSync } from 'child_process';
 import * as gitIntegration from '../gitIntegration';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src';
 
 type PromptCall = {
     message: string;
@@ -100,6 +100,7 @@ function configureIncompatibleNotebookSettings(workspacePath: string): void {
     git(workspacePath, 'config', '--global', 'difftool.nbdime.prompt', 'false');
     git(workspacePath, 'config', '--global', 'jupyter.merge.driver', 'enabled');
 }
+
 
 export async function run(): Promise<void> {
     const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;

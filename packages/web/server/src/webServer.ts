@@ -18,7 +18,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { randomBytes, randomUUID } from 'crypto';
 import WebSocket, { WebSocketServer } from 'ws';
-import * as logger from '../../../core/src/logger';
+import * as logger from '../../../core/src';
 import type { WebConflictData } from './webTypes';
 
 // VSCode is optional - only needed for openExternal
@@ -32,28 +32,24 @@ try {
 /** URI-like interface for test compatibility */
 interface UriLike {
     fsPath: string;
-    toString?: () => string;
 }
 
-export interface WebServerOptions {
+interface WebServerOptions {
     port?: number;
     host?: string;
 }
 
-export interface PendingConnection {
-    sessionId: string;
+interface PendingConnection {
     resolve: (ws: WebSocket) => void;
     reject: (error: Error) => void;
     timeout: NodeJS.Timeout;
 }
 
 /** Session data stored for each active conflict resolution */
-export interface SessionData {
-    htmlContent: string;
+interface SessionData {
     sessionToken: string;
     theme: 'dark' | 'light';
     notebookFilePath?: string;
-    conflictData?: unknown;
     onMessage: (message: unknown) => void;
 }
 
@@ -63,11 +59,11 @@ export interface SessionData {
  * Usage:
  * 1. Get instance: `getWebServer()`
  * 2. Start server: `await server.start()`
- * 3. Open session: `await server.openSession(sessionId, html, conflictData, onMessage)`
+ * 3. Open session: `await server.openSession(sessionId, onMessage)`
  * 4. Browser connects and receives conflict data via WebSocket
  * 5. Resolution messages come back through onMessage callback
  */
-export class ConflictResolverWebServer {
+class ConflictResolverWebServer {
     private static instance: ConflictResolverWebServer | undefined;
     
     private httpServer: http.Server | undefined;
@@ -244,13 +240,11 @@ export class ConflictResolverWebServer {
      * Returns the session URL and a promise that resolves when the browser connects via WebSocket.
      *
      * @param sessionId - Unique identifier for this session
-     * @param htmlContent - The HTML content to serve for this session
      * @param onMessage - Callback for handling messages from the browser
      * @returns Object with sessionUrl and connectionPromise
      */
     public async openSession(
         sessionId: string,
-        htmlContent: string,
         onMessage: (message: unknown) => void,
         theme: 'dark' | 'light' = 'light',
         notebookFilePath?: string
@@ -259,7 +253,6 @@ export class ConflictResolverWebServer {
 
         // Store session data
         this.sessions.set(sessionId, {
-            htmlContent,
             sessionToken,
             theme,
             notebookFilePath,
@@ -275,7 +268,6 @@ export class ConflictResolverWebServer {
             }, 30000); // 30 second timeout
 
             this.pendingConnections.set(sessionId, {
-                sessionId,
                 resolve,
                 reject,
                 timeout
@@ -387,7 +379,7 @@ export class ConflictResolverWebServer {
             
             if (session && sessionToken && sessionToken === session.sessionToken) {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(this.getHtmlShell(sessionId || 'default', session.theme));
+                res.end(this.getHtmlShell(session.theme));
             } else {
                 res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
                 res.end(`<!DOCTYPE html>
@@ -577,7 +569,7 @@ export class ConflictResolverWebServer {
     /**
      * Generate minimal HTML shell that loads the React app.
      */
-    private getHtmlShell(sessionId: string, theme: 'dark' | 'light' = 'light'): string {
+    private getHtmlShell(theme: 'dark' | 'light' = 'light'): string {
         const isDark = theme === 'dark';
         const loadingBg = isDark ? '#1D1915' : '#EAE2D5';
         const loadingText = isDark ? '#EFE7DB' : '#1A202C';
@@ -660,7 +652,6 @@ export class ConflictResolverWebServer {
             pending.resolve(ws);
         }
 
-        // Get session data
         // Handle incoming messages
         ws.on('message', (data: WebSocket.Data) => {
             try {
@@ -684,11 +675,6 @@ export class ConflictResolverWebServer {
             logger.error(`[MergeNB Web] WebSocket error for session ${sessionId}:`, error);
         });
 
-        // Send ready message to browser
-        ws.send(JSON.stringify({
-            type: 'connected',
-            sessionId: sessionId
-        }));
     }
 
     private generateSecret(): string {

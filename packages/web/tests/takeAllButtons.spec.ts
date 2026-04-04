@@ -8,7 +8,7 @@
 
 import { execFileSync } from 'child_process';
 import { test, expect } from './fixtures';
-import * as logger from '../../core/src/logger';
+import * as logger from '../../core/src';
 import {
     getCellSource,
     validateNotebookStructure,
@@ -31,7 +31,7 @@ import {
     assertNotebookMatches,
     applyResolutionAndReadNotebook,
 } from './fixtures';
-import type { Page, Locator } from 'playwright';
+import type { Page } from 'playwright';
 
 // ─── Test Variants ──────────────────────────────────────────────────────────
 

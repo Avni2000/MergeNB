@@ -4,25 +4,18 @@
  * Exports core types and defines client-specific interfaces.
  */
 
-import type { NotebookCell, NotebookSemanticConflict, ResolvedRow } from '../../../core/src/types';
-import type { AutoResolveResult } from '../../server/src/webTypes';
+import type { NotebookCell, NotebookSemanticConflict } from '../../../core/src';
+import type { AutoResolveResult, BrowserToExtensionMessage } from '../../server/src';
 
 // Export core types needed by the client
 export type {
     NotebookCell,
     CellOutput,
-    Notebook,
-    NotebookMetadata,
-    CellConflict,
-    NotebookConflict,
     SemanticConflict,
-    SemanticConflictType,
-    CellMapping,
     NotebookSemanticConflict,
     ResolutionChoice,
     ResolvedRow,
-} from '../../../core/src/types';
-export type { AutoResolveResult } from '../../server/src/webTypes';
+} from '../../../core/src';
 
 // Boilerplate so we don't have to copy-paste
 type MergeRowBase = {
@@ -40,8 +33,6 @@ type MergeRowBase = {
     anchorPosition?: number;
     /** Whether this row participated in a reorder conflict in the original merge state. */
     isReordered?: boolean;
-    /** Whether this row is in edit mode */
-    isEditing?: boolean;
 };
 
 /**
@@ -87,26 +78,10 @@ export interface UnifiedConflictData {
 }
 
 /**
- * Message sent back to extension with resolution
- */
-export interface ResolutionMessage {
-    command: 'resolve';
-    type: 'semantic';
-    /** The complete resolved row structure from the UI (source of truth) */
-    resolvedRows: ResolvedRow[];
-    semanticChoice?: 'base' | 'current' | 'incoming';
-    markAsResolved: boolean;
-    renumberExecutionCounts: boolean;
-}
-
-/**
  * WebSocket message types
  */
 export type WSMessage =
-    | { type: 'connected'; sessionId: string }
     | { type: 'conflict-data'; data: UnifiedConflictData }
     | { type: 'resolution-success'; message: string }
     | { type: 'resolution-error'; message: string }
-    | ResolutionMessage
-    | { command: 'cancel' }
-    | { command: 'ready' };
+    | BrowserToExtensionMessage;

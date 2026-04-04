@@ -9,11 +9,9 @@
  * 
  * The actual UI is rendered by the React app in src/web/client/.
  */
-import path from 'path';
 import * as vscode from 'vscode';
-import * as logger from '../../../packages/core/src/logger';
-import { getWebServer } from '../../../packages/web/server/src/webServer';
-import { UnifiedConflict, UnifiedResolution, ResolvedRow, type WebConflictData } from '../../../packages/web/server/src/webTypes';
+import * as logger from '../../../packages/core/src';
+import { getWebServer, UnifiedConflict, UnifiedResolution, ResolvedRow, toWebConflictData } from '../../../packages/web/server/src';
 
 /**
  * Web-based panel for resolving notebook conflicts in the browser.
@@ -32,7 +30,6 @@ export class WebConflictPanel {
     private _conflict: UnifiedConflict | undefined;
     private _onResolutionComplete: ((resolution: UnifiedResolution) => Promise<void>) | undefined;
     private _sessionId: string | undefined;
-    private _conflictVersion: number = 1;
     private _isDisposed: boolean = false;
 
     public static async createOrShow(
@@ -61,18 +58,6 @@ export class WebConflictPanel {
         this._onResolutionComplete = onResolutionComplete;
     }
 
-    public setConflict(
-        conflict: UnifiedConflict,
-        onResolutionComplete: (resolution: UnifiedResolution) => Promise<void>
-    ): void {
-        this._conflict = conflict;
-        this._onResolutionComplete = onResolutionComplete;
-        this._conflictVersion += 1;
-        if (this._sessionId) {
-            this._sendConflictData();
-        }
-    }
-
     private async _openInBrowser(): Promise<void> {
         logger.debug('[WebConflictPanel] Opening conflict resolver in browser...');
         const server = getWebServer();
@@ -90,12 +75,11 @@ export class WebConflictPanel {
         // Generate session ID
         this._sessionId = server.generateSessionId();
 
-        // Open session in browser (we pass a placeholder for htmlContent since we use React now)
+        // Open session in browser.
         // Do not await the WebSocket connection here to avoid deadlocking tests
         // that need to open the session after the command returns.
         void server.openSession(
             this._sessionId,
-            '', // No HTML content needed - server generates shell
             (message: unknown) => this._handleMessage(message),
             this._conflict?.theme ?? 'light',
             this._conflict?.filePath
@@ -118,25 +102,10 @@ export class WebConflictPanel {
         if (!this._sessionId || !this._conflict) return;
 
         const server = getWebServer();
-        const conflictKey = `${this._sessionId}:v${this._conflictVersion}`;
-        const fileName = path.basename(this._conflict.filePath) || 'notebook.ipynb';
+        const conflictKey = this._sessionId;
 
         // Build the data payload for the React app
-        const data: WebConflictData = {
-            filePath: this._conflict.filePath,
-            conflictKey,
-            fileName,
-            type: this._conflict.type,
-            semanticConflict: this._conflict.semanticConflict,
-            autoResolveResult: this._conflict.autoResolveResult,
-            hideNonConflictOutputs: this._conflict.hideNonConflictOutputs,
-            showCellHeaders: this._conflict.showCellHeaders,
-            enableUndoRedoHotkeys: this._conflict.enableUndoRedoHotkeys,
-            showBaseColumn: this._conflict.showBaseColumn,
-            theme: this._conflict.theme,
-            currentBranch: this._conflict.semanticConflict?.currentBranch,
-            incomingBranch: this._conflict.semanticConflict?.incomingBranch,
-        };
+        const data = toWebConflictData(this._conflict, conflictKey);
 
         logger.debug(`[WebConflictPanel] Sending conflict data with showBaseColumn=${this._conflict.showBaseColumn}`);
         server.sendConflictData(this._sessionId, data);
@@ -172,7 +141,6 @@ export class WebConflictPanel {
     }
 
     private async _handleResolution(message: {
-        type?: string;
         resolvedRows?: ResolvedRow[];
         semanticChoice?: string;
         markAsResolved?: boolean;

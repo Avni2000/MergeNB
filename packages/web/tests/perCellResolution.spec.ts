@@ -8,7 +8,7 @@
  */
 
 import { test, expect } from './fixtures';
-import * as logger from '../../core/src/logger';
+import * as logger from '../../core/src';
 import {
     validateNotebookStructure,
 } from '../../../test-fixtures/shared/testHelpers';
@@ -221,7 +221,7 @@ test.describe('Per-Cell Resolution', () => {
             // Capture expected cells from UI BEFORE clicking apply
             logger.info('\n=== Capturing expected cells from UI ===');
             const expectedCells = await collectExpectedCellsFromUI(page, {
-                resolveConflictChoice: async (row, conflictIndex, rowIndex) => {
+                resolveConflictChoice: async (_row, conflictIndex, rowIndex) => {
                     const resInfo = resolutionChoices.get(conflictIndex);
                     if (!resInfo) {
                         throw new Error(`Missing resolution info for conflict row ${rowIndex}`);

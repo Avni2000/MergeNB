@@ -5,7 +5,7 @@
 
 import type { Page } from 'playwright';
 import { test, expect } from './fixtures';
-import * as logger from '../../core/src/logger';
+import * as logger from '../../core/src';
 import {
     clickHistoryUndo,
     clickHistoryRedo,

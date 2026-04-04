@@ -16,12 +16,12 @@ import { type ExpectedCell, getCellSource, parseCellFromAttribute } from './test
 export type MergeSide = 'base' | 'current' | 'incoming';
 export type ConflictChoice = MergeSide | 'delete';
 
-export interface ConflictChoiceInfo {
+interface ConflictChoiceInfo {
     choice: ConflictChoice;
     chosenCellType?: string;
 }
 
-export type ConflictChoiceResolver = (
+type ConflictChoiceResolver = (
     row: Locator,
     conflictIndex: number,
     rowIndex: number,

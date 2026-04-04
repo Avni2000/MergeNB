@@ -6,10 +6,7 @@
  * Used by both the extension (cellMatcher) and web client (ConflictResolver).
  */
 
-/**
- * Position fields for cell/row comparison.
- */
-export interface PositionFields {
+interface PositionFields {
     anchor?: number;
     incoming?: number;
     current?: number;
@@ -24,7 +21,7 @@ export interface PositionFields {
  * 1. Primary sort by anchor position (anchor = base ?? current ?? incoming ?? 0)
  * 2. Tie-breaker: compare indices from all versions to preserve insertion order
  */
-export function compareByPosition(a: PositionFields, b: PositionFields): number {
+function compareByPosition(a: PositionFields, b: PositionFields): number {
     const posA = a.anchor ?? 0;
     const posB = b.anchor ?? 0;
 

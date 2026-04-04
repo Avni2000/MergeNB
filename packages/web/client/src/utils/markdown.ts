@@ -7,8 +7,8 @@ import MarkdownIt from 'markdown-it';
 // @ts-ignore - markdown-it-katex has no types
 import katex from '@vscode/markdown-it-katex';
 import DOMPurify from 'dompurify';
-import { escapeHtml } from '../../../../core/src/notebookUtils';
-import * as logger from '../../../../core/src/logger';
+import { escapeHtml } from '../../../../core/src';
+import * as logger from '../../../../core/src';
 
 // Initialize markdown-it with KaTeX plugin
 const md = MarkdownIt({

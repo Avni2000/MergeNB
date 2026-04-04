@@ -14,19 +14,21 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { chromium, type Browser, type Page } from 'playwright';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src';
 import * as gitIntegration from '../gitIntegration';
-import { detectSemanticConflicts, applyAutoResolutions } from '../../../packages/core/src/conflictDetector';
-import { getSettings, configContext } from '../settings';
-import { getWebServer } from '../../../packages/web/server/src/webServer';
 import {
-    toWebSemanticConflict,
+    detectSemanticConflicts,
+    applyAutoResolutions,
+    buildResolvedNotebookFromRows,
+    serializeNotebook,
+} from '../../../packages/core/src';
+import { getSettings, configContext } from '../settings';
+import { getWebServer } from '../../../packages/web/server/src';
+import {
+    toWebConflictData,
     type BrowserToExtensionMessage,
     type UnifiedConflict,
-    type WebConflictData,
-} from '../../../packages/web/server/src/webTypes';
-import { buildResolvedNotebookFromRows } from '../../../packages/core/src/semanticResolution';
-import { serializeNotebook, renumberExecutionCounts } from '../../../packages/core/src/notebookParser';
+} from '../../../packages/web/server/src';
 import {
     type ExpectedCell,
     type TestConfig,
@@ -45,7 +47,7 @@ try {
     // Running in headless mode (tests) - vscode not available
 }
 
-export interface ConflictSession {
+interface ConflictSession {
     config: TestConfig;
     workspacePath: string;
     conflictFile: string;
@@ -56,7 +58,7 @@ export interface ConflictSession {
     page: Page;
 }
 
-export interface SetupOptions {
+interface SetupOptions {
     headless?: boolean;
     serverTimeoutMs?: number;
     sessionTimeoutMs?: number;
@@ -64,13 +66,13 @@ export interface SetupOptions {
     postHeaderDelayMs?: number;
 }
 
-export interface ApplyOptions {
+interface ApplyOptions {
     markResolved?: boolean;
     postClickDelayMs?: number;
     writeTimeoutMs?: number;
 }
 
-export interface NotebookMatchOptions {
+interface NotebookMatchOptions {
     expectedLabel?: string;
     compareMetadata?: boolean;
     compareExecutionCounts?: boolean;
@@ -215,23 +217,7 @@ async function setupConflictResolverHeadless(
     const sessionId = server.generateSessionId();
     const conflictVersion = 1;
     const sendConflictData = (): void => {
-        const data: WebConflictData = {
-            filePath: unifiedConflict.filePath,
-            conflictKey: `${sessionId}:v${conflictVersion}`,
-            fileName: path.basename(unifiedConflict.filePath) || 'notebook.ipynb',
-            type: 'semantic',
-            semanticConflict: unifiedConflict.semanticConflict
-                ? toWebSemanticConflict(unifiedConflict.semanticConflict)
-                : undefined,
-            autoResolveResult: unifiedConflict.autoResolveResult,
-            hideNonConflictOutputs: unifiedConflict.hideNonConflictOutputs,
-            showCellHeaders: unifiedConflict.showCellHeaders,
-            enableUndoRedoHotkeys: unifiedConflict.enableUndoRedoHotkeys,
-            showBaseColumn: unifiedConflict.showBaseColumn,
-            theme: unifiedConflict.theme,
-            currentBranch: unifiedConflict.semanticConflict?.currentBranch,
-            incomingBranch: unifiedConflict.semanticConflict?.incomingBranch,
-        };
+        const data = toWebConflictData(unifiedConflict, `${sessionId}:v${conflictVersion}`);
         server.sendConflictData(sessionId, data);
     };
 
@@ -241,26 +227,14 @@ async function setupConflictResolverHeadless(
         try {
             const markAsResolved = message.markAsResolved ?? false;
             const shouldRenumber = message.renumberExecutionCounts ?? false;
-            let resolvedNotebook;
-
-            if (message.resolvedRows === null) {
-                if (!autoResolveResult) {
-                    throw new Error('No resolved rows provided.');
-                }
-                resolvedNotebook = autoResolveResult.resolvedNotebook;
-                if (shouldRenumber) {
-                    resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
-                }
-            } else {
-                resolvedNotebook = buildResolvedNotebookFromRows({
-                    semanticConflict: filteredSemanticConflict,
-                    resolvedRows: message.resolvedRows,
-                    autoResolveResult,
-                    settings,
-                    shouldRenumber,
-                    preferredSideHint: message.semanticChoice,
-                });
-            }
+            const resolvedNotebook = buildResolvedNotebookFromRows({
+                semanticConflict: filteredSemanticConflict,
+                resolvedRows: message.resolvedRows,
+                autoResolveResult,
+                settings,
+                shouldRenumber,
+                preferredSideHint: message.semanticChoice,
+            });
 
             fs.writeFileSync(conflictFile, serializeNotebook(resolvedNotebook), 'utf8');
             if (markAsResolved) {
@@ -321,7 +295,6 @@ async function setupConflictResolverHeadless(
 
     const { sessionUrl, connectionPromise } = await server.openSession(
         sessionId,
-        '',
         handleMessage,
         unifiedConflict.theme ?? 'light',
         unifiedConflict.filePath
@@ -399,36 +372,6 @@ export async function applyResolutionAndReadNotebook(
 
     const notebookContent = fs.readFileSync(conflictFile, 'utf8');
     return JSON.parse(notebookContent);
-}
-
-/**
- * Build an `ExpectedCell[]` directly from a notebook file (used when you want
- * to compare two resolved notebooks rather than UI state against disk state).
- */
-export function buildExpectedCellsFromNotebook(notebook: any): ExpectedCell[] {
-    if (!notebook || !Array.isArray(notebook.cells)) {
-        return [];
-    }
-    return notebook.cells.map((cell: any, index: number) => {
-        const cellType = cell?.cell_type || 'code';
-        const hasOutputs = cellType === 'code' &&
-            Array.isArray(cell.outputs) &&
-            cell.outputs.length > 0;
-        return {
-            rowIndex: index,
-            source: getCellSource(cell),
-            cellType,
-            metadata: cell?.metadata || {},
-            hasOutputs,
-            execution_count: cellType === 'code' ? (cell.execution_count ?? null) : undefined,
-        };
-    });
-}
-
-/** Read a notebook fixture from this repository's `test/` directory. */
-export function readNotebookFixtureFromRepo(fileName: string): any {
-    const fixturePath = path.resolve(__dirname, '../../../../test-fixtures', fileName);
-    return JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
 }
 
 /**

@@ -18,7 +18,7 @@ import { NotebookConflictResolver, ConflictedNotebook, onDidResolveConflict, onD
 import * as gitIntegration from './gitIntegration';
 import { getWebServer } from '../../packages/web/server/src';
 import type { API as GitAPI, GitExtension, Repository } from './typings/git';
-import * as logger from '../../packages/core/src/logger';
+import * as logger from '../../packages/core/src';
 
 let resolver: NotebookConflictResolver;
 let statusBarItem: vscode.StatusBarItem;
@@ -240,6 +240,7 @@ function registerGitStateWatchers(context: vscode.ExtensionContext): void {
 
 	registerWithApi(api);
 }
+
 
 export function activate(context: vscode.ExtensionContext) {
 	logger.debug('MergeNB extension is now active');
@@ -484,6 +485,7 @@ export function activate(context: vscode.ExtensionContext) {
 	}
 	
 }
+
 
 export function deactivate() {
 	// Stop the web server if it's running

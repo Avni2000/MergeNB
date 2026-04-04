@@ -10,7 +10,7 @@
  * matches what was displayed in the UI.
  */
 
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src';
 import * as gitIntegration from '../gitIntegration';
 import {
     validateNotebookStructure,
@@ -38,6 +38,7 @@ import {
     writeSettingsFile,
 } from './settingsFile';
 import { git, gitAllowFailure, hasUnmergedConflict } from './gitTestUtils';
+
 
 export async function run(): Promise<void> {
     logger.info('Starting MergeNB E2E Resolution Test...');

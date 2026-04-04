@@ -10,19 +10,24 @@ import * as os from 'os';
 import * as path from 'path';
 import * as assert from 'assert';
 import * as vscode from 'vscode';
-import * as conflictDetector from '../../../packages/core/src/conflictDetector';
+import * as conflictDetector from '../../../packages/core/src';
 import * as gitIntegration from '../gitIntegration';
-import { normalizeCellSource, selectNonConflictMergedCell } from '../../../packages/core/src/notebookUtils';
-import { renumberExecutionCounts } from '../../../packages/core/src/notebookParser';
-import { analyzeSemanticConflictsFromMappings } from '../../../packages/core/src/conflictDetector';
-import { detectReordering } from '../../../packages/core/src/cellMatcher';
+import {
+    normalizeCellSource,
+    selectNonConflictMergedCell,
+    renumberExecutionCounts,
+    analyzeSemanticConflictsFromMappings,
+    detectReordering,
+    type NotebookCell,
+    type Notebook,
+    type NotebookSemanticConflict,
+    type CellMapping,
+} from '../../../packages/core/src';
 import { NotebookConflictResolver, onDidResolveConflictWithDetails, setResolverPromptTestHooks } from '../resolver';
 import { createResolverStore } from '../../../packages/web/client/src/store/resolverStore';
 import { buildMergeRowsFromSemantic } from '../../../packages/web/client/src/utils/mergeRowBuilder';
 import { computeReorderedRowIndexSet } from '../../../packages/web/client/src/utils/reorderUtils';
 import { WebConflictPanel } from '../web/WebConflictPanel';
-import type { NotebookCell, Notebook, NotebookSemanticConflict } from '../../../packages/core/src/types';
-import type { CellMapping } from '../../../packages/core/src/types';
 
 export async function run(): Promise<void> {
     // ---------------------------------------------------------------------
@@ -66,7 +71,6 @@ export async function run(): Promise<void> {
         {
             currentIndex: 0,
             incomingIndex: 0,
-            matchConfidence: 1,
             currentCell: addedCurrent,
             incomingCell: addedIncoming,
         },
@@ -109,7 +113,6 @@ export async function run(): Promise<void> {
             baseIndex: 0,
             currentIndex: 0,
             incomingIndex: 0,
-            matchConfidence: 1,
             baseCell: inputBase,
             currentCell: inputCurrent,
             incomingCell: inputIncoming,
@@ -200,7 +203,6 @@ export async function run(): Promise<void> {
             baseIndex: 0,
             currentIndex: 0,
             incomingIndex: 0,
-            matchConfidence: 1,
             baseCell: multiBase,
             currentCell: multiCurrent,
             incomingCell: multiIncoming,
@@ -293,7 +295,6 @@ export async function run(): Promise<void> {
         semanticConflicts: [
             {
                 type: 'cell-reordered',
-                description: 'Cells have been reordered between versions',
             },
         ],
         cellMappings: [
@@ -301,7 +302,6 @@ export async function run(): Promise<void> {
                 baseIndex: 0,
                 currentIndex: 0,
                 incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: reorderBase.cells[0],
                 currentCell: reorderCurrent.cells[0],
                 incomingCell: reorderIncoming.cells[0],
@@ -310,7 +310,6 @@ export async function run(): Promise<void> {
                 baseIndex: 1,
                 currentIndex: 2,
                 incomingIndex: 1,
-                matchConfidence: 1,
                 baseCell: reorderBase.cells[1],
                 currentCell: reorderCurrent.cells[2],
                 incomingCell: reorderIncoming.cells[1],
@@ -319,7 +318,6 @@ export async function run(): Promise<void> {
                 baseIndex: 2,
                 currentIndex: 1,
                 incomingIndex: 3,
-                matchConfidence: 1,
                 baseCell: reorderBase.cells[2],
                 currentCell: reorderCurrent.cells[1],
                 incomingCell: reorderIncoming.cells[3],
@@ -328,7 +326,6 @@ export async function run(): Promise<void> {
                 baseIndex: 3,
                 currentIndex: 3,
                 incomingIndex: 2,
-                matchConfidence: 1,
                 baseCell: reorderBase.cells[3],
                 currentCell: reorderCurrent.cells[3],
                 incomingCell: reorderIncoming.cells[2],
@@ -380,7 +377,6 @@ export async function run(): Promise<void> {
             baseIndex: 0,
             currentIndex: 1,
             incomingIndex: 1,
-            matchConfidence: 1,
             baseCell: sameReorderBaseA,
             currentCell: sameReorderBaseA,
             incomingCell: sameReorderBaseA,
@@ -389,7 +385,6 @@ export async function run(): Promise<void> {
             baseIndex: 1,
             currentIndex: 0,
             incomingIndex: 0,
-            matchConfidence: 1,
             baseCell: sameReorderBaseB,
             currentCell: sameReorderBaseB,
             incomingCell: sameReorderBaseB,
@@ -808,14 +803,12 @@ export async function run(): Promise<void> {
         cellMappings: [
             {
                 baseIndex: 0, currentIndex: 1, incomingIndex: 0,
-                matchConfidence: 1,
                 baseCell: reorderNoSemanticBase.cells[0],
                 currentCell: reorderNoSemanticCurrent.cells[1],
                 incomingCell: reorderNoSemanticIncoming.cells[0],
             },
             {
                 baseIndex: 1, currentIndex: 0, incomingIndex: 1,
-                matchConfidence: 1,
                 baseCell: reorderNoSemanticBase.cells[1],
                 currentCell: reorderNoSemanticCurrent.cells[0],
                 incomingCell: reorderNoSemanticIncoming.cells[1],
@@ -848,9 +841,9 @@ export async function run(): Promise<void> {
         {
             label: 'straightforward reorder (current swaps A↔B, incoming keeps base order)',
             mappings: [
-                { baseIndex: 0, currentIndex: 1, incomingIndex: 0, matchConfidence: 1,
+                { baseIndex: 0, currentIndex: 1, incomingIndex: 0,
                   baseCell: makeMarkdownCell('agr-a'), currentCell: makeMarkdownCell('agr-a'), incomingCell: makeMarkdownCell('agr-a') },
-                { baseIndex: 1, currentIndex: 0, incomingIndex: 1, matchConfidence: 1,
+                { baseIndex: 1, currentIndex: 0, incomingIndex: 1,
                   baseCell: makeMarkdownCell('agr-b'), currentCell: makeMarkdownCell('agr-b'), incomingCell: makeMarkdownCell('agr-b') },
             ],
             expectsReorder: true,
@@ -858,9 +851,9 @@ export async function run(): Promise<void> {
         {
             label: 'shared reorder (both branches swap A↔B identically)',
             mappings: [
-                { baseIndex: 0, currentIndex: 1, incomingIndex: 1, matchConfidence: 1,
+                { baseIndex: 0, currentIndex: 1, incomingIndex: 1,
                   baseCell: makeMarkdownCell('agr-a'), currentCell: makeMarkdownCell('agr-a'), incomingCell: makeMarkdownCell('agr-a') },
-                { baseIndex: 1, currentIndex: 0, incomingIndex: 0, matchConfidence: 1,
+                { baseIndex: 1, currentIndex: 0, incomingIndex: 0,
                   baseCell: makeMarkdownCell('agr-b'), currentCell: makeMarkdownCell('agr-b'), incomingCell: makeMarkdownCell('agr-b') },
             ],
             expectsReorder: false,
@@ -868,9 +861,9 @@ export async function run(): Promise<void> {
         {
             label: 'pure index drift (no relative order change)',
             mappings: [
-                { baseIndex: 0, currentIndex: 1, incomingIndex: 0, matchConfidence: 1,
+                { baseIndex: 0, currentIndex: 1, incomingIndex: 0,
                   baseCell: makeMarkdownCell('agr-a'), currentCell: makeMarkdownCell('agr-a'), incomingCell: makeMarkdownCell('agr-a') },
-                { baseIndex: 1, currentIndex: 2, incomingIndex: 1, matchConfidence: 1,
+                { baseIndex: 1, currentIndex: 2, incomingIndex: 1,
                   baseCell: makeMarkdownCell('agr-b'), currentCell: makeMarkdownCell('agr-b'), incomingCell: makeMarkdownCell('agr-b') },
             ],
             expectsReorder: false,

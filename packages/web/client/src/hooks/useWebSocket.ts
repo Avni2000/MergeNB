@@ -5,22 +5,20 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { UnifiedConflictData, WSMessage } from '../types';
-import * as logger from '../../../../core/src/logger';
+import * as logger from '../../../../core/src';
 
 interface UseWebSocketResult {
     connected: boolean;
-    sessionId: string | null;
     conflictData: UnifiedConflictData | null;
     sendMessage: (message: object) => void;
-    resolutionStatus: 'pending' | 'success' | 'error' | null;
+    resolutionStatus: 'success' | 'error' | null;
     resolutionMessage: string | null;
 }
 
 export function useWebSocket(): UseWebSocketResult {
     const [connected, setConnected] = useState(false);
-    const [sessionId, setSessionId] = useState<string | null>(null);
     const [conflictData, setConflictData] = useState<UnifiedConflictData | null>(null);
-    const [resolutionStatus, setResolutionStatus] = useState<'pending' | 'success' | 'error' | null>(null);
+    const [resolutionStatus, setResolutionStatus] = useState<'success' | 'error' | null>(null);
     const [resolutionMessage, setResolutionMessage] = useState<string | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
 
@@ -49,9 +47,7 @@ export function useWebSocket(): UseWebSocketResult {
                 logger.debug('[MergeNB] Received:', msg);
 
                 if ('type' in msg) {
-                    if (msg.type === 'connected') {
-                        setSessionId(msg.sessionId);
-                    } else if (msg.type === 'conflict-data') {
+                    if (msg.type === 'conflict-data') {
                         setConflictData(msg.data);
                     } else if (msg.type === 'resolution-success') {
                         setResolutionStatus('success');
@@ -83,14 +79,10 @@ export function useWebSocket(): UseWebSocketResult {
     const sendMessage = useCallback((message: object & { command?: string }) => {
         if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify(message));
-            // Only set pending status for resolve commands
-            if (message.command === 'resolve') {
-                setResolutionStatus('pending');
-            }
         } else {
             logger.warn('[MergeNB] Cannot send - WebSocket not connected');
         }
     }, []);
 
-    return { connected, sessionId, conflictData, sendMessage, resolutionStatus, resolutionMessage };
+    return { connected, conflictData, sendMessage, resolutionStatus, resolutionMessage };
 }

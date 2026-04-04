@@ -13,15 +13,24 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { detectSemanticConflicts, applyAutoResolutions, AutoResolveResult } from '../../packages/core/src/conflictDetector';
-import { parseNotebook, serializeNotebook, renumberExecutionCounts } from '../../packages/core/src/notebookParser';
-import { buildResolvedNotebookFromRows, type PreferredSide } from '../../packages/core/src/semanticResolution';
+import {
+    detectSemanticConflicts,
+    applyAutoResolutions,
+    parseNotebook,
+    serializeNotebook,
+    renumberExecutionCounts,
+    buildResolvedNotebookFromRows,
+    type AutoResolveResult,
+    type PreferredSide,
+    type NotebookSemanticConflict,
+    type Notebook,
+    type ResolvedRow,
+} from '../../packages/core/src';
 import { WebConflictPanel } from './web/WebConflictPanel';
-import { UnifiedConflict, UnifiedResolution } from '../../packages/web/server/src/webTypes';
-import { NotebookSemanticConflict, Notebook, type ResolvedRow } from '../../packages/core/src/types';
+import { UnifiedConflict, UnifiedResolution } from '../../packages/web/server/src';
 import * as gitIntegration from './gitIntegration';
 import { getSettings } from './settings';
-import * as logger from '../../packages/core/src/logger';
+import * as logger from '../../packages/core/src';
 
 
 
@@ -35,6 +44,7 @@ export const onDidResolveConflict = new vscode.EventEmitter<vscode.Uri>();
  * Detailed event fired when a notebook conflict is successfully resolved.
  * Useful for tests to verify what was written to disk.
  */
+
 export interface ResolvedConflictDetails {
     uri: vscode.Uri;
     resolvedNotebook?: Notebook;
@@ -52,40 +62,31 @@ export const onDidResolveConflictWithDetails = new vscode.EventEmitter<ResolvedC
 export type AddOnlyResolutionAction = 'apply-and-stage' | 'open-semantic' | 'cancel';
 export type DeleteVsModifyResolutionAction = 'keep-content' | 'keep-delete' | 'cancel';
 
-export interface AddOnlyPromptContext {
+interface AddOnlyPromptContext {
     status: 'AU' | 'UA';
     filePath: string;
     availableSide: 'current' | 'incoming';
 }
 
-export interface DeleteVsModifyPromptContext {
+interface DeleteVsModifyPromptContext {
     status: 'DU' | 'UD';
     filePath: string;
     keepContentSide: 'current' | 'incoming';
 }
 
-export interface RenumberPromptContext {
-    filePath: string;
-}
-
-export interface ResolverConfirmationContext {
-    status: gitIntegration.GitUnmergedStatus;
-    filePath: string;
-    actionId: string;
+interface ResolverConfirmationContext {
     actionLabel: string;
     message: string;
 }
 
-export interface ResolverPromptTestHooks {
+interface ResolverPromptTestHooks {
     pickAddOnlyAction?: (
         context: AddOnlyPromptContext
     ) => Promise<AddOnlyResolutionAction | undefined> | AddOnlyResolutionAction | undefined;
     pickDeleteVsModifyAction?: (
         context: DeleteVsModifyPromptContext
     ) => Promise<DeleteVsModifyResolutionAction | undefined> | DeleteVsModifyResolutionAction | undefined;
-    pickRenumberExecutionCounts?: (
-        context: RenumberPromptContext
-    ) => Promise<boolean | undefined> | boolean | undefined;
+    pickRenumberExecutionCounts?: () => Promise<boolean | undefined> | boolean | undefined;
     confirmAction?: (
         context: ResolverConfirmationContext
     ) => Promise<boolean> | boolean;
@@ -102,7 +103,6 @@ export function setResolverPromptTestHooks(hooks?: ResolverPromptTestHooks): voi
  */
 export interface ConflictedNotebook {
     uri: vscode.Uri;
-    hasSemanticConflicts: boolean;
     unmergedStatus: gitIntegration.GitUnmergedStatus;
 }
 
@@ -111,37 +111,6 @@ export interface ConflictedNotebook {
  */
 export class NotebookConflictResolver {
     constructor(private readonly extensionUri: vscode.Uri) { }
-
-    /**
-     * Check if a file has semantic conflicts (status supports cell-level UI).
-     */
-    async hasSemanticConflicts(uri: vscode.Uri): Promise<boolean> {
-        try {
-            const status = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
-            return status === 'UU' || status === 'AA' || status === 'AU' || status === 'UA';
-        } catch {
-            return false;
-        }
-    }
-
-    /**
-     * Check if a file has any unmerged Git status.
-     */
-    async hasAnyConflicts(uri: vscode.Uri): Promise<ConflictedNotebook | null> {
-        try {
-            const status = await gitIntegration.getUnmergedFileStatus(uri.fsPath);
-            if (status) {
-                return {
-                    uri,
-                    hasSemanticConflicts: status === 'UU' || status === 'AA' || status === 'AU' || status === 'UA',
-                    unmergedStatus: status
-                };
-            }
-            return null;
-        } catch {
-            return null;
-        }
-    }
 
     /**
      * Find all notebook files with conflicts (Git unmerged status) in the workspace.
@@ -173,7 +142,6 @@ export class NotebookConflictResolver {
 
             withConflicts.push({
                 uri,
-                hasSemanticConflicts: file.status === 'UU' || file.status === 'AA' || file.status === 'AU' || file.status === 'UA',
                 unmergedStatus: file.status
             });
         }
@@ -242,21 +210,19 @@ export class NotebookConflictResolver {
         // unmerged notebooks whose branches already agree semantically
         // (for example, both sides made the same reorder).
         if (autoResolveResult.remainingConflicts.length === 0) {
-            const shouldRenumber = await this.pickRenumberExecutionCounts({
-                filePath: uri.fsPath
-            });
+            const shouldRenumber = await this.pickRenumberExecutionCounts();
 
             let finalNotebook = autoResolveResult.resolvedNotebook;
             if (shouldRenumber) {
                 finalNotebook = renumberExecutionCounts(finalNotebook);
             }
 
-            await this.saveResolvedNotebook(uri, finalNotebook);
+            await this.saveResolvedNotebook(uri, finalNotebook, true);
             onDidResolveConflictWithDetails.fire({
                 uri,
                 resolvedNotebook: finalNotebook,
                 resolvedRows: [],
-                markAsResolved: false,
+                markAsResolved: true,
                 renumberExecutionCounts: shouldRenumber
             });
             const resolvedCount = semanticConflict.semanticConflicts.length;
@@ -358,9 +324,9 @@ export class NotebookConflictResolver {
         return undefined;
     }
 
-    private async pickRenumberExecutionCounts(context: RenumberPromptContext): Promise<boolean> {
+    private async pickRenumberExecutionCounts(): Promise<boolean> {
         if (resolverPromptTestHooks?.pickRenumberExecutionCounts) {
-            return (await resolverPromptTestHooks.pickRenumberExecutionCounts(context)) === true;
+            return (await resolverPromptTestHooks.pickRenumberExecutionCounts()) === true;
         }
 
         const picked = await vscode.window.showQuickPick(
@@ -444,9 +410,6 @@ export class NotebookConflictResolver {
 
         const actionLabel = `Apply ${availableSide} version`;
         const confirmed = await this.confirmResolutionAction({
-            status,
-            filePath: uri.fsPath,
-            actionId: 'add-only-apply-stage',
             actionLabel,
             message: `${actionLabel} and stage ${path.basename(uri.fsPath)}?`
         });
@@ -500,9 +463,6 @@ export class NotebookConflictResolver {
             ? `Keep ${keepContentSide} content`
             : 'Keep deletion';
         const confirmed = await this.confirmResolutionAction({
-            status,
-            filePath: uri.fsPath,
-            actionId: action,
             actionLabel,
             message: `${actionLabel} for ${path.basename(uri.fsPath)} and stage the result?`
         });
@@ -568,14 +528,12 @@ export class NotebookConflictResolver {
 
         const resolvedRows = resolution.resolvedRows;
 
-        if (!resolvedRows || resolvedRows.length === 0) {
+        if (resolvedRows == null) {
             // No resolutions provided
             if (autoResolveResult) {
                 let resolvedNotebook = autoResolveResult.resolvedNotebook;
 
-                const shouldRenumber = await this.pickRenumberExecutionCounts({
-                    filePath: uri.fsPath
-                });
+                const shouldRenumber = await this.pickRenumberExecutionCounts();
 
                 if (shouldRenumber) {
                     resolvedNotebook = renumberExecutionCounts(resolvedNotebook);

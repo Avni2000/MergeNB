@@ -16,17 +16,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { chromium } from 'playwright';
 import { createMergeConflictRepo, cleanup as cleanupRepo } from '../../../test-fixtures/shared/repoSetup';
-import { detectSemanticConflicts, applyAutoResolutions } from '../../core/src/conflictDetector';
-import { getSettings, configContext } from '../../../apps/vscode-extension/settings';
-import { getWebServer } from '../server/src/webServer';
 import {
-    toWebSemanticConflict,
+    detectSemanticConflicts,
+    applyAutoResolutions,
+    buildResolvedNotebookFromRows,
+    serializeNotebook,
+} from '../../core/src';
+import { getSettings } from '../../../apps/vscode-extension/settings';
+import { getWebServer } from '../server/src';
+import {
+    toWebConflictData,
     type BrowserToExtensionMessage,
     type UnifiedConflict,
-    type WebConflictData,
-} from '../server/src/webTypes';
-import { buildResolvedNotebookFromRows } from '../../core/src/semanticResolution';
-import { serializeNotebook, renumberExecutionCounts } from '../../core/src/notebookParser';
+} from '../server/src';
 import * as gitIntegration from '../../../apps/vscode-extension/gitIntegration';
 import {
     type ExpectedCell,
@@ -34,7 +36,7 @@ import {
 } from '../../../test-fixtures/shared/testHelpers';
 import { ensureCheckboxChecked } from '../../../test-fixtures/shared/integrationUtils';
 import { randomUUID } from 'crypto';
-import * as logger from '../../core/src/logger';
+import * as logger from '../../core/src';
 import {
     prepareIsolatedConfigPath,
     cleanupIsolatedConfigPath,
@@ -42,13 +44,13 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export interface NotebookTriplet {
+interface NotebookTriplet {
     base: string;
     current: string;
     incoming: string;
 }
 
-export interface ConflictSession {
+interface ConflictSession {
     workspacePath: string;
     conflictFile: string;
     serverPort: number;
@@ -58,13 +60,13 @@ export interface ConflictSession {
     page: Page;
 }
 
-export interface ApplyOptions {
+interface ApplyOptions {
     markResolved?: boolean;
     postClickDelayMs?: number;
     writeTimeoutMs?: number;
 }
 
-export interface NotebookMatchOptions {
+interface NotebookMatchOptions {
     expectedLabel?: string;
     compareMetadata?: boolean;
     compareExecutionCounts?: boolean;
@@ -98,7 +100,7 @@ async function waitForFileWrite(filePath: string, timeoutMs = 10000, initialMtim
  * Create a merge conflict repository from a notebook triplet.
  * Returns the workspace path for use in tests.
  */
-export function createConflictRepo(notebooks: NotebookTriplet): string {
+function createConflictRepo(notebooks: NotebookTriplet): string {
     const testDir = path.resolve(__dirname, '../../../test-fixtures');
     const baseFile = path.resolve(testDir, notebooks.base);
     const currentFile = path.resolve(testDir, notebooks.current);
@@ -118,7 +120,7 @@ export function createConflictRepo(notebooks: NotebookTriplet): string {
  * Set up the conflict resolver headlessly - creates a session, launches browser,
  * and navigates to the conflict UI.
  */
-export async function setupConflictResolverHeadless(
+async function setupConflictResolverHeadless(
     workspacePath: string,
     options: { headless?: boolean; afterNavigateDelayMs?: number; postHeaderDelayMs?: number } = {}
 ): Promise<ConflictSession> {
@@ -168,23 +170,7 @@ export async function setupConflictResolverHeadless(
     const sessionId = server.generateSessionId();
     const conflictVersion = 1;
     const sendConflictData = (): void => {
-        const data: WebConflictData = {
-            filePath: unifiedConflict.filePath,
-            conflictKey: `${sessionId}:v${conflictVersion}`,
-            fileName: path.basename(unifiedConflict.filePath) || 'notebook.ipynb',
-            type: 'semantic',
-            semanticConflict: unifiedConflict.semanticConflict
-                ? toWebSemanticConflict(unifiedConflict.semanticConflict)
-                : undefined,
-            autoResolveResult: unifiedConflict.autoResolveResult,
-            hideNonConflictOutputs: unifiedConflict.hideNonConflictOutputs,
-            showCellHeaders: unifiedConflict.showCellHeaders,
-            enableUndoRedoHotkeys: unifiedConflict.enableUndoRedoHotkeys,
-            showBaseColumn: unifiedConflict.showBaseColumn,
-            theme: unifiedConflict.theme,
-            currentBranch: unifiedConflict.semanticConflict?.currentBranch,
-            incomingBranch: unifiedConflict.semanticConflict?.incomingBranch,
-        };
+        const data = toWebConflictData(unifiedConflict, `${sessionId}:v${conflictVersion}`);
         server.sendConflictData(sessionId, data);
     };
 
@@ -194,26 +180,14 @@ export async function setupConflictResolverHeadless(
         try {
             const markAsResolved = message.markAsResolved ?? false;
             const shouldRenumber = message.renumberExecutionCounts ?? false;
-            let resolvedNotebook;
-
-            if (message.resolvedRows === null) {
-                if (!autoResolveResult) {
-                    throw new Error('No resolved rows provided.');
-                }
-                resolvedNotebook = autoResolveResult.resolvedNotebook;
-                if (shouldRenumber) {
-                    resolvedNotebook = renumberExecutionCounts(resolvedNotebook);
-                }
-            } else {
-                resolvedNotebook = buildResolvedNotebookFromRows({
-                    semanticConflict: filteredSemanticConflict,
-                    resolvedRows: message.resolvedRows,
-                    autoResolveResult,
-                    settings,
-                    shouldRenumber,
-                    preferredSideHint: message.semanticChoice,
-                });
-            }
+            const resolvedNotebook = buildResolvedNotebookFromRows({
+                semanticConflict: filteredSemanticConflict,
+                resolvedRows: message.resolvedRows,
+                autoResolveResult,
+                settings,
+                shouldRenumber,
+                preferredSideHint: message.semanticChoice,
+            });
 
             fs.writeFileSync(conflictFile, serializeNotebook(resolvedNotebook), 'utf8');
             if (markAsResolved) {
@@ -269,7 +243,6 @@ export async function setupConflictResolverHeadless(
 
     const { sessionUrl, connectionPromise } = await server.openSession(
         sessionId,
-        '',
         handleMessage,
         unifiedConflict.theme ?? 'light',
         unifiedConflict.filePath
@@ -500,7 +473,7 @@ export function assertNotebookMatches(
 
 // ─── Playwright Test Extension ──────────────────────────────────────────────
 
-export interface MergeNBFixtures {
+interface MergeNBFixtures {
     /**
      * Isolated MergeNB config file path (auto fixture).
      * Matches `runIntegrationTest.ts` setting `MERGENB_CONFIG_PATH` per test so

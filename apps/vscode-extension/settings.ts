@@ -29,8 +29,8 @@ try {
     // Running in headless mode (tests) - vscode not available
 }
 
-export type { MergeNBSettings } from '../../packages/core/src/types';
-import type { MergeNBSettings } from '../../packages/core/src/types';
+export type { MergeNBSettings } from '../../packages/core/src';
+import type { MergeNBSettings } from '../../packages/core/src';
 
 /** Default settings used in headless mode */
 const DEFAULT_SETTINGS: MergeNBSettings = {
@@ -48,7 +48,7 @@ const DEFAULT_SETTINGS: MergeNBSettings = {
 const CONFIG_ENV_VAR = 'MERGENB_CONFIG_PATH';
 
 /** Async-context-scoped config paths — allows parallel headless tests in one process. */
-export interface ConfigContext {
+interface ConfigContext {
     configPath?: string;
     testConfigPath?: string;
 }

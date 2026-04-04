@@ -8,7 +8,7 @@ import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/rea
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
-import { normalizeCellSource } from '../../../../core/src/notebookUtils';
+import { normalizeCellSource } from '../../../../core/src';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
@@ -21,7 +21,7 @@ import {
     type TakeAllChoice,
 } from '../store/resolverStore';
 import { buildMergeRowsFromSemantic } from '../utils/mergeRowBuilder';
-import * as logger from '../../../../core/src/logger';
+import * as logger from '../../../../core/src';
 
 interface ConflictResolverProps {
     conflict: UnifiedConflictData;
@@ -40,17 +40,16 @@ export function ConflictResolver({
     onCancel,
 }: ConflictResolverProps): React.ReactElement {
     const initialRows = useMemo(() => (
-        conflict.type === 'semantic' && conflict.semanticConflict
+        conflict.semanticConflict
             ? buildMergeRowsFromSemantic(conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook)
             : []
-    ), [conflict.type, conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook]);
+    ), [conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook]);
 
     // Recreate resolver state only when the conflict instance key changes.
     // This avoids resets caused by object identity churn on re-sent payloads.
-    const resolverStoreKey = conflict.conflictKey;
     const resolverStore = useMemo(
         () => createResolverStore(initialRows),
-        [resolverStoreKey]
+        [conflict.conflictKey]
     );
     const [historyOpen, setHistoryOpen] = useState(false);
     const [autoResolveBannerOpen, setAutoResolveBannerOpen] = useState(false);
@@ -64,7 +63,6 @@ export function ConflictResolver({
     const rows = useStore(resolverStore, state => state.rows);
     const markAsResolved = useStore(resolverStore, state => state.markAsResolved);
     const renumberExecutionCounts = useStore(resolverStore, state => state.renumberExecutionCounts);
-    const takeAllChoice = useStore(resolverStore, state => state.takeAllChoice);
     const history = useStore(resolverStore, state => state.history);
 
     const handleSelectChoice = useStore(resolverStore, state => state.selectChoice);
@@ -616,6 +614,8 @@ export function ConflictResolver({
                         return (
                             <div
                                 key={virtualRow.key}
+                                // tanstack uses this attribute to associate DOM measurements
+                                //  with the correct virtualized item
                                 data-index={virtualRow.index}
                                 ref={measureRef}
                                 className="virtual-row"
@@ -630,9 +630,6 @@ export function ConflictResolver({
                                 <MergeRow
                                     row={row}
                                     rowIndex={i}
-                                    isReordered={row.isReordered}
-                                    conflictIndex={conflictIdx}
-                                    notebookPath={conflict.filePath}
                                     languageExtensions={languageExtensions}
                                     theme={conflict.theme ?? 'light'}
                                     resolutionState={resolutionState}
@@ -718,7 +715,3 @@ function getCellForSide(
     if (side === 'current') return row.currentCell;
     return row.incomingCell;
 }
-
-/**
- * Build merge rows from semantic conflict data.
- */

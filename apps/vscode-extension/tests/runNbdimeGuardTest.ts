@@ -9,7 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { runTests } from '@vscode/test-electron';
 import { createMergeConflictRepo, cleanup } from '../../../test-fixtures/shared/repoSetup';
-import * as logger from '../../../packages/core/src/logger';
+import * as logger from '../../../packages/core/src';
 
 async function main(): Promise<void> {
     if (process.env.MERGENB_NBDIME_GUARD_CI !== 'true') {
