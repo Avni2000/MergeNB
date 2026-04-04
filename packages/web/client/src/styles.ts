@@ -3,7 +3,7 @@
  * @description Shared styles for the conflict resolver UI.
  */
 
-function getStyles(theme: 'dark' | 'light' = 'light'): string {
+function getStyles(theme: 'dark' | 'light' = 'light', scope?: string): string {
     const isDark = theme === 'dark';
 
     // Checkered background gradients
@@ -85,11 +85,22 @@ function getStyles(theme: 'dark' | 'light' = 'light'): string {
 
     const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
 
+    const rootSel = scope ?? ':root';
+    const bodySel = scope ?? 'body';
+    const universalSel = scope ? `${scope} *` : '*';
+    const htmlBodyBlock = scope ? '' : `
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+}`;
+
     return `
         /* Load Inter, Playfair Display, and JetBrains Mono from Google Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@1,500&display=swap');
 
-:root {
+${rootSel} {
     --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     
     /* Code Font: Inherit VS Code's Editor font, fall back to standard monospace */
@@ -126,18 +137,13 @@ function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --logo-blend-mode: ${colors.logoBlendMode};
 }
 
-html, body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    overflow: hidden;
-}
+${htmlBodyBlock}
 
-* {
+${universalSel} {
     box-sizing: border-box;
 }
 
-body {
+${bodySel} {
     margin: 0;
     padding: 0;
     font-family: var(--font-ui);
@@ -1499,17 +1505,18 @@ body {
 `;
 }
 
-export function injectStyles(theme: 'dark' | 'light' = 'light'): void {
+export function injectStyles(theme: 'dark' | 'light' = 'light', scope?: string): void {
     if (typeof document !== 'undefined') {
-        const existing = document.getElementById('mergenb-styles');
+        const id = scope ? 'mergenb-styles-scoped' : 'mergenb-styles';
+        const existing = document.getElementById(id);
         if (existing) {
-            existing.textContent = getStyles(theme);
+            existing.textContent = getStyles(theme, scope);
             return;
         }
 
         const style = document.createElement('style');
-        style.id = 'mergenb-styles';
-        style.textContent = getStyles(theme);
+        style.id = id;
+        style.textContent = getStyles(theme, scope);
         document.head.appendChild(style);
     }
 }
