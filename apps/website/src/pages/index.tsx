@@ -23,6 +23,12 @@ function HomepageHeader() {
             to="/docs/intro">
             Docusaurus Tutorial - 5min ⏱️
           </Link>
+          <Link
+            className="button button--primary button--lg"
+            to="/playground"
+            style={{marginLeft: '1rem'}}>
+            MergeNB Playground
+          </Link>
         </div>
       </div>
     </header>

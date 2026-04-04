@@ -4,5 +4,6 @@
   "compilerOptions": {
     "baseUrl": "."
   },
+  "include": ["**/*", "../../packages/**/*", "../../test-fixtures/*.ipynb"],
   "exclude": [".docusaurus", "build"]
 }

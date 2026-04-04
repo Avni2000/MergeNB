@@ -37,6 +37,21 @@ const config: Config = {
     locales: ['en'],
   },
 
+  plugins: [
+    function ipynbLoader() {
+      return {
+        name: 'ipynb-loader',
+        configureWebpack() {
+          return {
+            module: {
+              rules: [{test: /\.ipynb$/, type: 'json'}],
+            },
+          };
+        },
+      };
+    },
+  ],
+
   presets: [
     [
       'classic',
