@@ -8,38 +8,29 @@ updates:
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 10
+    cooldown:
+      default-days: 21
     commit-message:
-      prefix: "[chore]"
+      prefix: "chore"
       include: "scope"
     pull-request-branch-name:
       separator: "/"
     # Group minor and patch updates together
     groups:
       dev-dependencies:
-        patterns:
-          - "@types/*"
-          - "@typescript-eslint/*"
-          - "eslint*"
-          - "typescript"
-        update-types:
-          - "minor"
-          - "patch"
-      production-dependencies:
+        dependency-type: "development"
         patterns:
           - "*"
-        exclude-patterns:
-          - "@types/*"
-          - "@typescript-eslint/*"
-          - "eslint*"
-          - "typescript"
-        update-types:
-          - "minor"
-          - "patch"
-
+      production-dependencies:
+        dependency-type: "production"
+        patterns:
+          - "*"
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 21
     commit-message:
-      prefix: "[CI]"
+      prefix: "ci"
