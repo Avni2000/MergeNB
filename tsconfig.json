@@ -25,6 +25,7 @@
 		"node_modules",
 		"out",
 		"dist",
-		"playwright.config.ts"
+		"playwright.config.ts",
+		"apps/website"
 	]
 }
