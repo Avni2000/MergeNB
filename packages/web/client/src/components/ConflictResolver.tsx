@@ -8,13 +8,14 @@ import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/rea
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
-import { normalizeCellSource } from '../../../../core/src';
+import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
     NotebookCell,
 } from '../types';
 import { MergeRow } from './MergeRow';
+import { CellContent } from './CellContent';
 import {
     createResolverStore,
     type ResolutionState,
@@ -32,6 +33,10 @@ interface ConflictResolverProps {
         semanticChoice?: 'base' | 'current' | 'incoming'
     ) => void;
     onCancel: () => void;
+}
+
+function selectPreviewCell(row: MergeRowType): NotebookCell | undefined {
+    return row.currentCell ?? row.incomingCell ?? row.baseCell;
 }
 
 export function ConflictResolver({
@@ -53,6 +58,7 @@ export function ConflictResolver({
     );
     const [historyOpen, setHistoryOpen] = useState(false);
     const [autoResolveBannerOpen, setAutoResolveBannerOpen] = useState(false);
+    const [previewOpen, setPreviewOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
     const isDraggingRef = useRef(false);
@@ -546,8 +552,12 @@ export function ConflictResolver({
                             />
                             Mark as resolved (stage in Git)
                         </label>
-                        <button className="btn btn-secondary" onClick={onCancel}>
-                            Cancel
+                        <button
+                            className={`btn btn-secondary${previewOpen ? ' btn-preview-active' : ''}`}
+                            onClick={() => setPreviewOpen(p => !p)}
+                            title="Preview the resolved notebook as a single column"
+                        >
+                            {previewOpen ? 'Back to Merge' : 'Preview'}
                         </button>
                         <button
                             className="btn btn-primary"
@@ -558,95 +568,164 @@ export function ConflictResolver({
                         </button>
                     </div>
                 </div>
-                <div className={`column-labels${showBaseColumn ? '' : ' two-column'}`}>
-                    {showBaseColumn && (
-                        <div className="column-label base">
-                            Base
-                        </div>
-                    )}
-                    <div className="column-label current">
-                        Current {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
-                    </div>
-                    <div className="column-label incoming">
-                        Incoming {conflict.incomingBranch ? `(${conflict.incomingBranch})` : ''}
-                    </div>
-                </div>
-            </header>
-
-            <main className="main-content" ref={mainContentRef}>
-                {conflict.autoResolveResult && conflict.autoResolveResult.autoResolvedCount > 0 && (
-                    <div className="auto-resolve-banner">
-                        <button
-                            className="auto-resolve-summary"
-                            onClick={() => setAutoResolveBannerOpen(o => !o)}
-                            aria-expanded={autoResolveBannerOpen}
-                        >
-                            <span className="icon">✓</span>
-                            <span className="text">
-                                Auto-resolved {conflict.autoResolveResult.autoResolvedCount} conflict{conflict.autoResolveResult.autoResolvedCount !== 1 ? 's' : ''}
-                            </span>
-                            <span className="chevron">{autoResolveBannerOpen ? '▲' : '▼'}</span>
-                        </button>
-                        {autoResolveBannerOpen && conflict.autoResolveResult.autoResolvedDescriptions.length > 0 && (
-                            <ul className="auto-resolve-list">
-                                {conflict.autoResolveResult.autoResolvedDescriptions.map((desc, i) => (
-                                    <li key={i}>{desc}</li>
-                                ))}
-                            </ul>
+                {!previewOpen && (
+                    <div className={`column-labels${showBaseColumn ? '' : ' two-column'}`}>
+                        {showBaseColumn && (
+                            <div className="column-label base">
+                                Base
+                            </div>
                         )}
+                        <div className="column-label current">
+                            Current {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
+                        </div>
+                        <div className="column-label incoming">
+                            Incoming {conflict.incomingBranch ? `(${conflict.incomingBranch})` : ''}
+                        </div>
                     </div>
                 )}
+            </header>
 
-                <div
-                    style={{
-                        height: totalSize,
-                        position: 'relative',
-                    }}
-                >
-                    {virtualRows.map((virtualRow) => {
-                        const i = virtualRow.index;
-                        const row = rows[i];
-                        const conflictIdx = row?.conflictIndex ?? -1;
-                        const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+            {previewOpen ? (
+                <main className="main-content preview-content" ref={mainContentRef}>
+                    <div className="preview-column">
+                        {rows.map((row, i) => {
+                            const conflictIdx = row.conflictIndex ?? -1;
+                            const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+                            const isConflict = row.type === 'conflict';
+                            const isResolved = isConflict && !!resolutionState;
+                            const isUnresolved = isConflict && !resolutionState;
 
-                        if (!row) return null;
+                            if (isResolved && resolutionState!.choice === 'delete') {
+                                return null;
+                            }
 
-                        return (
-                            <div
-                                key={virtualRow.key}
-                                // tanstack uses this attribute to associate DOM measurements
-                                //  with the correct virtualized item
-                                data-index={virtualRow.index}
-                                ref={measureRef}
-                                className="virtual-row"
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    transform: `translateY(${virtualRow.start}px)`,
-                                }}
+                            const previewCell = isResolved
+                                ? undefined
+                                : isConflict
+                                    ? selectPreviewCell(row)
+                                    : selectNonConflictMergedCell(row.baseCell, row.currentCell, row.incomingCell);
+
+                            const previewSource = isResolved
+                                ? resolutionState!.resolvedContent
+                                : previewCell
+                                    ? normalizeCellSource(previewCell.source)
+                                    : '';
+
+                            const cellType = isResolved
+                                ? (resolutionState!.choice === 'current' ? row.currentCell?.cell_type
+                                    : resolutionState!.choice === 'incoming' ? row.incomingCell?.cell_type
+                                    : resolutionState!.choice === 'base' ? row.baseCell?.cell_type
+                                    : 'code')
+                                : (previewCell?.cell_type ?? 'code');
+
+                            if (isUnresolved) {
+                                return (
+                                    <div key={i} className="preview-cell preview-cell-unresolved">
+                                        <div className="preview-unresolved-placeholder">
+                                            Unresolved conflict
+                                        </div>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <div
+                                    key={i}
+                                    className="preview-cell"
+                                >
+                                    <CellContent
+                                        cell={isResolved
+                                            ? { ...selectPreviewCell(row)!, source: previewSource, cell_type: cellType } as NotebookCell
+                                            : previewCell}
+                                        cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
+                                        side="current"
+                                        isConflict={false}
+                                        languageExtensions={languageExtensions}
+                                        theme={conflict.theme ?? 'light'}
+                                        showOutputs={true}
+                                        showCellHeaders={showCellHeaders}
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </main>
+            ) : (
+                <main className="main-content" ref={mainContentRef}>
+                    {conflict.autoResolveResult && conflict.autoResolveResult.autoResolvedCount > 0 && (
+                        <div className="auto-resolve-banner">
+                            <button
+                                className="auto-resolve-summary"
+                                onClick={() => setAutoResolveBannerOpen(o => !o)}
+                                aria-expanded={autoResolveBannerOpen}
                             >
-                                <MergeRow
-                                    row={row}
-                                    rowIndex={i}
-                                    languageExtensions={languageExtensions}
-                                    theme={conflict.theme ?? 'light'}
-                                    resolutionState={resolutionState}
-                                    onSelectChoice={handleSelectChoice}
-                                    onCommitContent={handleCommitContent}
-                                    onUnmatchRow={handleUnmatchRow}
-                                    onRematchRows={handleRematchRows}
-                                    showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
-                                    showBaseColumn={showBaseColumn}
-                                    showCellHeaders={showCellHeaders}
-                                    data-testid={conflictIdx >= 0 ? `conflict-row-${conflictIdx}` : `row-${i}`}
-                                />
-                            </div>
-                        );
-                    })}
-                </div>
-            </main>
+                                <span className="icon">✓</span>
+                                <span className="text">
+                                    Auto-resolved {conflict.autoResolveResult.autoResolvedCount} conflict{conflict.autoResolveResult.autoResolvedCount !== 1 ? 's' : ''}
+                                </span>
+                                <span className="chevron">{autoResolveBannerOpen ? '▲' : '▼'}</span>
+                            </button>
+                            {autoResolveBannerOpen && conflict.autoResolveResult.autoResolvedDescriptions.length > 0 && (
+                                <ul className="auto-resolve-list">
+                                    {conflict.autoResolveResult.autoResolvedDescriptions.map((desc, i) => (
+                                        <li key={i}>{desc}</li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    )}
+
+                    <div
+                        style={{
+                            height: totalSize,
+                            position: 'relative',
+                        }}
+                    >
+                        {virtualRows.map((virtualRow) => {
+                            const i = virtualRow.index;
+                            const row = rows[i];
+                            const conflictIdx = row?.conflictIndex ?? -1;
+                            const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+
+                            if (!row) return null;
+
+                            return (
+                                <div
+                                    key={virtualRow.key}
+                                    // tanstack uses this attribute to associate DOM measurements
+                                    //  with the correct virtualized item
+                                    data-index={virtualRow.index}
+                                    ref={measureRef}
+                                    className="virtual-row"
+                                    style={{
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        width: '100%',
+                                        transform: `translateY(${virtualRow.start}px)`,
+                                    }}
+                                >
+                                    <MergeRow
+                                        row={row}
+                                        rowIndex={i}
+                                        languageExtensions={languageExtensions}
+                                        theme={conflict.theme ?? 'light'}
+                                        resolutionState={resolutionState}
+                                        onSelectChoice={handleSelectChoice}
+                                        onCommitContent={handleCommitContent}
+                                        onUnmatchRow={handleUnmatchRow}
+                                        onRematchRows={handleRematchRows}
+                                        showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
+                                        showBaseColumn={showBaseColumn}
+                                        showCellHeaders={showCellHeaders}
+                                        data-testid={conflictIdx >= 0 ? `conflict-row-${conflictIdx}` : `row-${i}`}
+                                    />
+                                </div>
+                            );
+                        })}
+                    </div>
+                </main>
+            )}
         </div>
     );
 }
