@@ -5,6 +5,8 @@ import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import Layout from '@theme/Layout';
 import HomepageFeatures from '@site/src/components/HomepageFeatures';
 import Heading from '@theme/Heading';
+import README from '@site/../../README.md';
+import MDXContent from '@theme/MDXContent';
 
 import styles from './index.module.css';
 
@@ -18,11 +20,6 @@ function HomepageHeader() {
         </Heading>
         <p className="hero__subtitle">{siteConfig.tagline}</p>
         <div className={styles.buttons}>
-          <Link
-            className="button button--secondary button--lg"
-            to="/docs/intro">
-            Docusaurus Tutorial - 5min ⏱️
-          </Link>
           <Link
             className="button button--primary button--lg"
             to="/playground"
@@ -43,7 +40,11 @@ export default function Home(): ReactNode {
       description="Description will go into a meta tag in <head />">
       <HomepageHeader />
       <main>
-        <HomepageFeatures />
+        <div className="container margin-vert--xl">
+          <MDXContent>
+            <README />
+          </MDXContent>
+        </div>
       </main>
     </Layout>
   );

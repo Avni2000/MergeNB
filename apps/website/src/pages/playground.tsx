@@ -41,11 +41,7 @@ function PlaygroundInner(): ReactNode {
                             incoming,
                             currentBranch: 'current',
                             incomingBranch: 'incoming',
-                        },
-                        showCellHeaders: true,
-                        showBaseColumn: true,
-                        enableUndoRedoHotkeys: true,
-                    }}
+                    }}}
                     onResolve={() => {}}
                     onCancel={() => {}}
                 />
