@@ -177,4 +177,4 @@ Issues and PRs are absolutely welcome.
 
 ## License
 
-GPLv3.0 - See [LICENSE](LICENSE).
+GPLv3.0 - See [LICENSE](https://github.com/Avni2000/MergeNB/blob/main/LICENSE).
