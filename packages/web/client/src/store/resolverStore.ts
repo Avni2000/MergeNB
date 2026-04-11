@@ -45,6 +45,7 @@ interface ResolverStoreState {
     selectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     commitContent: (index: number, resolvedContent: string) => void;
     acceptAll: (choice: TakeAllChoice) => void;
+    clearChoice: (conflictIndex: number) => void;
     setRenumberExecutionCounts: (checked: boolean) => void;
     setMarkAsResolved: (checked: boolean) => void;
     jumpToHistory: (targetIndex: number) => void;
@@ -208,6 +209,12 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 if (!didChange) return;
                 state.takeAllChoice = choice;
                 recordHistory(state, `Accept all ${choice}`, { takeAllChoice: choice });
+            }),
+            clearChoice: (conflictIndex: number) => set(state => {
+                if (!state.choices.has(conflictIndex)) return;
+                state.choices.delete(conflictIndex);
+                state.takeAllChoice = undefined;
+                recordHistory(state, `Clear row ${conflictIndex + 1}`, { takeAllChoice: undefined });
             }),
             setRenumberExecutionCounts: (checked: boolean) => set(state => {
                 if (checked === state.renumberExecutionCounts) return;

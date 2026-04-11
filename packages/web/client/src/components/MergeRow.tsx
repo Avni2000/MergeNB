@@ -24,6 +24,7 @@ interface MergeRowProps {
     resolutionState?: ResolutionState;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onCommitContent: (index: number, resolvedContent: string) => void;
+    onClearChoice?: (conflictIndex: number) => void;
     onUnmatchRow?: (rowIndex: number) => void;
     onRematchRows?: (unmatchGroupId: string) => void;
     showOutputs?: boolean;
@@ -42,6 +43,7 @@ function MergeRowInner({
     resolutionState,
     onSelectChoice,
     onCommitContent,
+    onClearChoice,
     onUnmatchRow,
     onRematchRows,
     showOutputs = true,
@@ -182,19 +184,17 @@ function MergeRowInner({
                         )}
                     </div>
                 )}
-                <div className="cell-columns">
-                    <div className="cell-column" style={{ gridColumn: '1 / -1' }}>
-                        <CellContent
-                            cell={cell}
-                            cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
-                            side="current"
-                            isConflict={false}
-                            languageExtensions={languageExtensions}
-                            theme={theme}
-                            showOutputs={showOutputs}
-                            showCellHeaders={showCellHeaders}
-                        />
-                    </div>
+                <div className="readable-row-wrapper">
+                    <CellContent
+                        cell={cell}
+                        cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
+                        side="current"
+                        isConflict={false}
+                        languageExtensions={languageExtensions}
+                        theme={theme}
+                        showOutputs={showOutputs}
+                        showCellHeaders={showCellHeaders}
+                    />
                 </div>
             </div>
         );
@@ -220,6 +220,67 @@ function MergeRowInner({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
+
+    // If resolved, show single-column collapsed view with undo button
+    if (resolutionState && conflictIndex >= 0) {
+        if (resolutionState.choice === 'delete') {
+            return (
+                <div className={rowClasses} data-testid={testId}>
+                    <div className="resolved-row-wrapper">
+                        <div className="resolved-row-header">
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => onClearChoice?.(conflictIndex)}
+                                title="Undo resolution and show the conflict again"
+                            >
+                                Undo resolution
+                            </button>
+                        </div>
+                        <div className="resolved-cell resolved-deleted">
+                            <span>This cell will be deleted.</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Resolved but not deleted - show the resolved editor with undo button
+        return (
+            <div className={rowClasses} data-testid={testId}>
+                <div className="resolved-row-wrapper">
+                    <div className="resolved-row-header">
+                        <button
+                            className="btn btn-secondary"
+                            onClick={() => onClearChoice?.(conflictIndex)}
+                            title="Undo resolution and show the conflict again"
+                        >
+                            Undo resolution
+                        </button>
+                    </div>
+                    <div className={`resolved-cell ${resolvedCellType}-cell`}>
+                        <div className="resolved-header">
+                            <span className="resolved-label">✓ Resolved</span>
+                            <span className="resolved-base">
+                                Based on: <strong>{resolutionState.choice}</strong>
+                                {isContentModified && <span className="modified-badge">(edited)</span>}
+                            </span>
+                        </div>
+                        <CodeMirror
+                            value={draftResolvedContent}
+                            onChange={handleContentChange}
+                            onBlur={handleBlur}
+                            extensions={editorExtensions}
+                            placeholder="Enter cell content..."
+                            className="resolved-content-input"
+                            basicSetup={{ lineNumbers: false, foldGutter: false }}
+                            theme={resolvedEditorTheme}
+                        />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className={rowClasses} data-testid={testId}>
             {/* Top action bar - always present for conflicts */}
@@ -401,38 +462,6 @@ function MergeRowInner({
                 </div>
             </div>
 
-            {/* Resolved content editor - appears after selecting a branch */}
-            {resolutionState && resolutionState.choice !== 'delete' && (
-                <div className={`resolved-cell ${resolvedCellType}-cell`}>
-                    <div className="resolved-header">
-                        <span className="resolved-label">✓ Resolved</span>
-                        <span className="resolved-base">
-                            Based on: <strong>{resolutionState.choice}</strong>
-                            {isContentModified && <span className="modified-badge">(edited)</span>}
-                        </span>
-                    </div>
-                    <CodeMirror
-                        value={draftResolvedContent}
-                        onChange={handleContentChange}
-                        onBlur={handleBlur}
-                        extensions={editorExtensions}
-                        placeholder="Enter cell content..."
-                        className="resolved-content-input"
-                        basicSetup={{ lineNumbers: false, foldGutter: false }}
-                        theme={resolvedEditorTheme}
-                    />
-                </div>
-            )}
-
-            {/* Show delete confirmation */}
-            {resolutionState && resolutionState.choice === 'delete' && (
-                <div className="resolved-cell resolved-deleted">
-                    <div className="resolved-header">
-                        <span className="resolved-label">✓ Resolved</span>
-                        <span className="resolved-base">Cell will be deleted</span>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
