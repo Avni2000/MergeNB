@@ -1,16 +1,30 @@
-test/**
-src/tests/**
-src/**
+# Source files - only dist/ is needed
+apps/**
+packages/**
 out/**
+
+# Test files and fixtures
+test-fixtures/**
+apps/vscode-extension/tests/**
+playwright-report/**
+playwright-test-results/**
+
+# Build/dev files
 .github/**
 .vscode/**
-readme-assets/**
-node_modules/**
+.claude/**
 esbuild.js
 eslint.config.mjs
 tsconfig.json
 playwright.config.ts
+knip.json
+
+# Config files
 .gitignore
 .vscodeignore
 output.txt
 AGENTS.md
+readme-assets/**
+
+# Dependencies (vsce excludes by default, but explicit for clarity)
+node_modules/**
