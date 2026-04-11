@@ -8,14 +8,13 @@ import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/rea
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
-import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
+import { normalizeCellSource } from '../../../../core/src';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
     NotebookCell,
 } from '../types';
 import { MergeRow } from './MergeRow';
-import { CellContent } from './CellContent';
 import {
     createResolverStore,
     type ResolutionState,
@@ -33,10 +32,6 @@ interface ConflictResolverProps {
         semanticChoice?: 'base' | 'current' | 'incoming'
     ) => void;
     onCancel: () => void;
-}
-
-function selectPreviewCell(row: MergeRowType): NotebookCell | undefined {
-    return row.currentCell ?? row.incomingCell ?? row.baseCell;
 }
 
 export function ConflictResolver({
@@ -58,7 +53,6 @@ export function ConflictResolver({
     );
     const [historyOpen, setHistoryOpen] = useState(false);
     const [autoResolveBannerOpen, setAutoResolveBannerOpen] = useState(false);
-    const [previewOpen, setPreviewOpen] = useState(false);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
     const isDraggingRef = useRef(false);
@@ -81,6 +75,7 @@ export function ConflictResolver({
     const handleRematchRows = useStore(resolverStore, state => state.rematchRows);
     const handleUndo = useStore(resolverStore, state => state.undo);
     const handleRedo = useStore(resolverStore, state => state.redo);
+    const handleClearChoice = useStore(resolverStore, state => state.clearChoice);
 
     useEffect(() => {
         setHistoryOpen(false);
@@ -553,13 +548,6 @@ export function ConflictResolver({
                             Mark as resolved (stage in Git)
                         </label>
                         <button
-                            className={`btn btn-secondary${previewOpen ? ' btn-preview-active' : ''}`}
-                            onClick={() => setPreviewOpen(p => !p)}
-                            title="Preview the resolved notebook as a single column"
-                        >
-                            {previewOpen ? 'Back to Merge' : 'Preview'}
-                        </button>
-                        <button
                             className="btn btn-primary"
                             onClick={handleResolve}
                             disabled={!allResolved}
@@ -568,90 +556,22 @@ export function ConflictResolver({
                         </button>
                     </div>
                 </div>
-                {!previewOpen && (
-                    <div className={`column-labels${showBaseColumn ? '' : ' two-column'}`}>
-                        {showBaseColumn && (
-                            <div className="column-label base">
-                                Base
-                            </div>
-                        )}
-                        <div className="column-label current">
-                            Current {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
+                <div className={`column-labels${showBaseColumn ? '' : ' two-column'}`}>
+                    {showBaseColumn && (
+                        <div className="column-label base">
+                            Base
                         </div>
-                        <div className="column-label incoming">
-                            Incoming {conflict.incomingBranch ? `(${conflict.incomingBranch})` : ''}
-                        </div>
+                    )}
+                    <div className="column-label current">
+                        Current {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
                     </div>
-                )}
+                    <div className="column-label incoming">
+                        Incoming {conflict.incomingBranch ? `(${conflict.incomingBranch})` : ''}
+                    </div>
+                </div>
             </header>
 
-            {previewOpen ? (
-                <main className="main-content preview-content" ref={mainContentRef}>
-                    <div className="preview-column">
-                        {rows.map((row, i) => {
-                            const conflictIdx = row.conflictIndex ?? -1;
-                            const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
-                            const isConflict = row.type === 'conflict';
-                            const isResolved = isConflict && !!resolutionState;
-                            const isUnresolved = isConflict && !resolutionState;
-
-                            if (isResolved && resolutionState!.choice === 'delete') {
-                                return null;
-                            }
-
-                            const previewCell = isResolved
-                                ? undefined
-                                : isConflict
-                                    ? selectPreviewCell(row)
-                                    : selectNonConflictMergedCell(row.baseCell, row.currentCell, row.incomingCell);
-
-                            const previewSource = isResolved
-                                ? resolutionState!.resolvedContent
-                                : previewCell
-                                    ? normalizeCellSource(previewCell.source)
-                                    : '';
-
-                            const cellType = isResolved
-                                ? (resolutionState!.choice === 'current' ? row.currentCell?.cell_type
-                                    : resolutionState!.choice === 'incoming' ? row.incomingCell?.cell_type
-                                    : resolutionState!.choice === 'base' ? row.baseCell?.cell_type
-                                    : 'code')
-                                : (previewCell?.cell_type ?? 'code');
-
-                            if (isUnresolved) {
-                                return (
-                                    <div key={i} className="preview-cell preview-cell-unresolved">
-                                        <div className="preview-unresolved-placeholder">
-                                            Unresolved conflict
-                                        </div>
-                                    </div>
-                                );
-                            }
-
-                            return (
-                                <div
-                                    key={i}
-                                    className="preview-cell"
-                                >
-                                    <CellContent
-                                        cell={isResolved
-                                            ? { ...selectPreviewCell(row)!, source: previewSource, cell_type: cellType } as NotebookCell
-                                            : previewCell}
-                                        cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
-                                        side="current"
-                                        isConflict={false}
-                                        languageExtensions={languageExtensions}
-                                        theme={conflict.theme ?? 'light'}
-                                        showOutputs={true}
-                                        showCellHeaders={showCellHeaders}
-                                    />
-                                </div>
-                            );
-                        })}
-                    </div>
-                </main>
-            ) : (
-                <main className="main-content" ref={mainContentRef}>
+            <main className="main-content" ref={mainContentRef}>
                     {conflict.autoResolveResult && conflict.autoResolveResult.autoResolvedCount > 0 && (
                         <div className="auto-resolve-banner">
                             <button
@@ -713,6 +633,7 @@ export function ConflictResolver({
                                         resolutionState={resolutionState}
                                         onSelectChoice={handleSelectChoice}
                                         onCommitContent={handleCommitContent}
+                                        onClearChoice={handleClearChoice}
                                         onUnmatchRow={handleUnmatchRow}
                                         onRematchRows={handleRematchRows}
                                         showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
@@ -725,7 +646,6 @@ export function ConflictResolver({
                         })}
                     </div>
                 </main>
-            )}
         </div>
     );
 }
