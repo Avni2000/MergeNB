@@ -1,3 +1,10 @@
+# note on secrets: RELEASE_PAT has perms to:
+#  - Read access to metadata
+#  - Read and Write access to code, issues, and pull requests 
+# Note that it EXPIRES on 04-11-27.
+
+# It is used instead of GITHUB_TOKEN, because GITHUB_TOKEN cannot trigger other workflows, 
+# and we want the release PR to trigger the tests and auto-merge only after checks are green.
 name: Release
 
 on:
@@ -27,6 +34,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -66,7 +74,7 @@ jobs:
 
       - name: Generate changelog
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           PREV_TAG="${{ steps.prev.outputs.tag }}"
           NEW_VERSION="${{ steps.version.outputs.version }}"
@@ -129,7 +137,7 @@ jobs:
           
       - name: Create Pull Request
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH="release/v${VERSION}"
@@ -142,7 +150,7 @@ jobs:
 
       - name: Enable auto-merge (checks already green)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH="release/v${VERSION}"
@@ -150,7 +158,7 @@ jobs:
 
       - name: Wait for PR to merge
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           BRANCH="release/v${VERSION}"
@@ -168,7 +176,7 @@ jobs:
 
       - name: Create GitHub Release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           gh release create "${VERSION}" \
