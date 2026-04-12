@@ -10,6 +10,7 @@
  */
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
@@ -40,6 +41,13 @@ interface MergeRowProps {
 }
 
 const EMPTY_EXTENSIONS: Extension[] = [];
+
+function renderViewportModal(modal: React.ReactElement): React.ReactElement {
+    if (typeof document === 'undefined') {
+        return modal;
+    }
+    return createPortal(modal, document.body);
+}
 
 function MergeRowInner({
     row,
@@ -166,6 +174,38 @@ function MergeRowInner({
         onStopEditing(conflictIndex);
         setShowEditWarning(false);
     };
+
+    const editWarningModal = showEditWarning
+        ? renderViewportModal(
+            <div className="warning-modal-overlay" data-testid="edit-warning-modal">
+                <div className="warning-modal">
+                    <div className="warning-icon">⚠️</div>
+                    <h3>Save edits before leaving?</h3>
+                    <p>
+                        This cell is still in edit mode. Click Save edits to keep your changes,
+                        or keep editing and finish when you are ready.
+                    </p>
+                    <div className="warning-actions">
+                        <button
+                            className="btn-cancel"
+                            onClick={() => setShowEditWarning(false)}
+                            data-editing-allow="true"
+                        >
+                            Keep editing
+                        </button>
+                        <button
+                            className="btn-confirm"
+                            onClick={handleSaveEdits}
+                            data-editing-allow="true"
+                            data-testid="edit-warning-save"
+                        >
+                            Save edits
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )
+        : null;
 
     const base = row.baseCellIndex;
     const currentDelta = (isReordered && base !== undefined && row.currentCellIndex !== undefined)
@@ -334,6 +374,11 @@ function MergeRowInner({
                                         basicSetup={{ lineNumbers: false, foldGutter: false }}
                                         theme={resolvedEditorTheme}
                                         autoFocus={true}
+                                        onBlur={(event) => {
+                                            const relatedTarget = event.relatedTarget as HTMLElement | null;
+                                            if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
+                                            setShowEditWarning(true);
+                                        }}
                                     />
                                 </div>
                             ) : (
@@ -344,6 +389,8 @@ function MergeRowInner({
                         </div>
                     </div>
                 </div>
+
+                {editWarningModal}
             </div>
         );
     }
@@ -428,35 +475,7 @@ function MergeRowInner({
                 </div>
             )}
 
-            {showEditWarning && (
-                <div className="warning-modal-overlay" data-testid="edit-warning-modal">
-                    <div className="warning-modal">
-                        <div className="warning-icon">⚠️</div>
-                        <h3>Save edits before leaving?</h3>
-                        <p>
-                            This cell is still in edit mode. Click Save edits to keep your changes,
-                            or keep editing and finish when you are ready.
-                        </p>
-                        <div className="warning-actions">
-                            <button
-                                className="btn-cancel"
-                                onClick={() => setShowEditWarning(false)}
-                                data-editing-allow="true"
-                            >
-                                Keep editing
-                            </button>
-                            <button
-                                className="btn-confirm"
-                                onClick={handleSaveEdits}
-                                data-editing-allow="true"
-                                data-testid="edit-warning-save"
-                            >
-                                Save edits
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {editWarningModal}
 
             {/* Three-way diff view */}
             <div className={`cell-columns${showBaseColumn ? '' : ' two-column'}`}>
