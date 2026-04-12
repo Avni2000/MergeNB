@@ -967,10 +967,11 @@ body {
     text-align: center;
 }
 
-/* Resolved cell styling - green highlighting to mark as resolved */
+/* Resolved cell styling - green highlighting to mark as resolved.
+   Horizontal inset comes from resolved-row-wrapper's padding, not from margin here.
+   Width: 100% respects parent wrapper's max-width constraint for readable line length. */
 .resolved-cell {
-    margin: 12px 24px;
-    width: calc(100% - 48px);
+    width: 100%;
     box-sizing: border-box;
     padding: 12px;
     background: var(--cell-surface);
@@ -1014,15 +1015,16 @@ body {
     font-size: 11px;
 }
 
-/* CodeMirror resolved editor — className="resolved-content-input" targets .cm-editor */
-.resolved-content-input.cm-editor {
+/* CodeMirror resolved editor — className="resolved-content-input" goes to the cm-theme
+   wrapper div, NOT cm-editor. Use descendant selectors (space) not compound selectors. */
+.resolved-content-input .cm-editor {
     width: 100%;
     border: 1px solid rgba(78, 201, 176, 0.4);
     border-radius: 4px;
     outline: none !important;
 }
 
-.resolved-cell.markdown-cell .resolved-content-input.cm-editor {
+.resolved-cell.markdown-cell .resolved-content-input .cm-editor {
     border-left: 3px solid var(--accent-green);
 }
 
@@ -1030,12 +1032,12 @@ body {
     font-family: var(--font-ui) !important;
 }
 
-.resolved-cell.code-cell .resolved-content-input.cm-editor {
+.resolved-cell.code-cell .resolved-content-input .cm-editor {
     background: var(--bg-primary);
     border-left: 3px solid var(--accent-blue);
 }
 
-.resolved-content-input.cm-editor.cm-focused {
+.resolved-content-input .cm-editor.cm-focused {
     border-color: var(--accent-green);
     box-shadow: 0 0 0 2px rgba(78, 201, 176, 0.2);
     outline: none !important;
@@ -1043,7 +1045,8 @@ body {
 
 .resolved-content-input .cm-scroller {
     min-height: 100px;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .resolved-content-input .cm-content {
@@ -1052,6 +1055,29 @@ body {
 
 .resolved-content-input .cm-line {
     padding: 0;
+}
+
+/* Static (non-contenteditable) display for resolved cells — allows cross-cell drag-selection */
+.resolved-content-static {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-family: var(--font-code);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-primary);
+}
+
+.resolved-cell.code-cell .resolved-content-static {
+    background: var(--bg-primary);
+    border-left: 3px solid var(--accent-blue);
+}
+
+.resolved-cell.markdown-cell .resolved-content-static {
+    font-family: var(--font-ui);
+    border-left: 3px solid var(--accent-green);
 }
 
 /* Resolved deleted cell */
@@ -1064,10 +1090,11 @@ body {
     color: #f48771;
 }
 
-/* Resolved row styling */
-.merge-row.resolved-row {
-    border-color: var(--accent-green);
-    background: rgba(78, 201, 176, 0.03);
+/* Resolved conflict rows should collapse to readable unified width, so remove
+   full-width conflict chrome from the outer merge row. */
+.merge-row.conflict-row.resolved-row {
+    border: none;
+    background: transparent;
 }
 
 /* Warning modal for branch change */
@@ -1378,9 +1405,11 @@ body {
 
 /* Readable-width wrapper for resolved conflict rows */
 .resolved-row-wrapper {
+    /* Keep this in lockstep with .readable-row-wrapper so resolved rows align
+       exactly with unified single-column rows. */
     max-width: 900px;
     margin: 0 auto;
-    padding: 0 24px 16px;
+    padding: 12px 24px 16px;
     box-sizing: border-box;
 }
 
