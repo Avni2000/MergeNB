@@ -53,6 +53,7 @@ export function ConflictResolver({
     );
     const [historyOpen, setHistoryOpen] = useState(false);
     const [autoResolveBannerOpen, setAutoResolveBannerOpen] = useState(false);
+    const [editWarningRequest, setEditWarningRequest] = useState<{ conflictIndex: number; nonce: number } | null>(null);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
     const isDraggingRef = useRef(false);
@@ -60,26 +61,53 @@ export function ConflictResolver({
     const pendingMeasureNodesRef = useRef<Set<HTMLElement>>(new Set());
 
     const choices = useStore(resolverStore, state => state.choices);
+    const editingConflicts = useStore(resolverStore, state => state.editingConflicts);
     const rows = useStore(resolverStore, state => state.rows);
     const markAsResolved = useStore(resolverStore, state => state.markAsResolved);
     const renumberExecutionCounts = useStore(resolverStore, state => state.renumberExecutionCounts);
     const history = useStore(resolverStore, state => state.history);
 
     const handleSelectChoice = useStore(resolverStore, state => state.selectChoice);
+    const handleStartEditing = useStore(resolverStore, state => state.startEditing);
+    const handleStopEditing = useStore(resolverStore, state => state.stopEditing);
     const handleCommitContent = useStore(resolverStore, state => state.commitContent);
-    const handleAcceptAll = useStore(resolverStore, state => state.acceptAll);
-    const handleToggleRenumberExecutionCounts = useStore(resolverStore, state => state.setRenumberExecutionCounts);
-    const handleToggleMarkAsResolved = useStore(resolverStore, state => state.setMarkAsResolved);
-    const handleJumpToHistory = useStore(resolverStore, state => state.jumpToHistory);
-    const handleUnmatchRow = useStore(resolverStore, state => state.unmatchRow);
-    const handleRematchRows = useStore(resolverStore, state => state.rematchRows);
-    const handleUndo = useStore(resolverStore, state => state.undo);
-    const handleRedo = useStore(resolverStore, state => state.redo);
+    const acceptAll = useStore(resolverStore, state => state.acceptAll);
+    const setRenumberExecutionCounts = useStore(resolverStore, state => state.setRenumberExecutionCounts);
+    const setMarkAsResolved = useStore(resolverStore, state => state.setMarkAsResolved);
+    const jumpToHistory = useStore(resolverStore, state => state.jumpToHistory);
+    const unmatchRow = useStore(resolverStore, state => state.unmatchRow);
+    const rematchRows = useStore(resolverStore, state => state.rematchRows);
+    const undo = useStore(resolverStore, state => state.undo);
+    const redo = useStore(resolverStore, state => state.redo);
     const handleClearChoice = useStore(resolverStore, state => state.clearChoice);
 
     useEffect(() => {
         setHistoryOpen(false);
     }, [resolverStore]);
+
+    const activeEditingConflictIndex = useMemo(() => {
+        const editingIterator = editingConflicts.values();
+        const firstEditing = editingIterator.next();
+        return firstEditing.done ? null : firstEditing.value;
+    }, [editingConflicts]);
+
+    const promptToSaveEdits = useCallback((conflictIndex?: number | null) => {
+        const targetConflictIndex = conflictIndex ?? activeEditingConflictIndex;
+        if (targetConflictIndex === null || targetConflictIndex === undefined) return false;
+        setEditWarningRequest(prev => ({
+            conflictIndex: targetConflictIndex,
+            nonce: targetConflictIndex === prev?.conflictIndex ? prev.nonce + 1 : 1,
+        }));
+        return true;
+    }, [activeEditingConflictIndex]);
+
+    const guardWhileEditing = useCallback((action: () => void) => {
+        if (activeEditingConflictIndex !== null) {
+            promptToSaveEdits(activeEditingConflictIndex);
+            return;
+        }
+        action();
+    }, [activeEditingConflictIndex, promptToSaveEdits]);
 
     const isEditableTarget = useCallback((target: EventTarget | null): boolean => {
         if (!target || !(target as HTMLElement).closest) return false;
@@ -184,15 +212,27 @@ export function ConflictResolver({
 
             event.preventDefault();
             if (event.shiftKey) {
-                handleRedo();
+                redo();
             } else {
-                handleUndo();
+                undo();
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [enableUndoRedoHotkeys, handleRedo, handleUndo, isMac, isEditableTarget]);
+    }, [enableUndoRedoHotkeys, redo, undo, isMac, isEditableTarget]);
+
+    const handleMouseDownCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+        if (activeEditingConflictIndex === null) return;
+        const target = event.target as HTMLElement | null;
+        if (!target) return;
+        if (target.closest('.warning-modal, .warning-modal-overlay, [data-editing-allow="true"]')) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        promptToSaveEdits(activeEditingConflictIndex);
+    }, [activeEditingConflictIndex, promptToSaveEdits]);
 
     useEffect(() => {
         const el = mainContentRef.current;
@@ -277,6 +317,10 @@ export function ConflictResolver({
     }, []);
 
     const handleResolve = () => {
+        if (activeEditingConflictIndex !== null) {
+            promptToSaveEdits(activeEditingConflictIndex);
+            return;
+        }
         const {
             rows: liveRows,
             choices: liveChoices,
@@ -385,7 +429,7 @@ export function ConflictResolver({
     const totalSize = rowVirtualizer.getTotalSize();
 
     return (
-        <div className="app-container jp-Notebook">
+        <div className="app-container jp-Notebook" onMouseDownCapture={handleMouseDownCapture}>
             <header className="header">
                 <div className="header-toolbar">
                     <div className="header-left">
@@ -404,28 +448,28 @@ export function ConflictResolver({
                             {resolvedCount} / {totalConflicts} resolved
                         </span>
                         <div className="header-group">
-                            <button
-                                className="btn btn-secondary"
-                                onClick={handleUndo}
-                                disabled={!canUndo}
-                                data-testid="history-undo"
-                                title={`Undo (${undoShortcutLabel})`}
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => guardWhileEditing(undo)}
+                                    disabled={!canUndo}
+                                    data-testid="history-undo"
+                                    title={`Undo (${undoShortcutLabel})`}
                             >
                                 Undo
                             </button>
-                            <button
-                                className="btn btn-secondary"
-                                onClick={handleRedo}
-                                disabled={!canRedo}
-                                data-testid="history-redo"
-                                title={`Redo (${redoShortcutLabel})`}
+                                <button
+                                    className="btn btn-secondary"
+                                    onClick={() => guardWhileEditing(redo)}
+                                    disabled={!canRedo}
+                                    data-testid="history-redo"
+                                    title={`Redo (${redoShortcutLabel})`}
                             >
                                 Redo
                             </button>
                             <div className="history-menu" ref={historyMenuRef}>
                                 <button
                                     className="btn btn-secondary history-toggle"
-                                    onClick={() => setHistoryOpen(prev => !prev)}
+                                    onClick={() => guardWhileEditing(() => setHistoryOpen(prev => !prev))}
                                     aria-expanded={historyOpen}
                                     data-testid="history-toggle"
                                 >
@@ -441,7 +485,7 @@ export function ConflictResolver({
                                         <div className="history-actions">
                                             <button
                                                 className="btn btn-secondary"
-                                                onClick={handleUndo}
+                                                onClick={() => guardWhileEditing(undo)}
                                                 disabled={!canUndo}
                                                 data-testid="history-panel-undo"
                                             >
@@ -449,7 +493,7 @@ export function ConflictResolver({
                                             </button>
                                             <button
                                                 className="btn btn-secondary"
-                                                onClick={handleRedo}
+                                                onClick={() => guardWhileEditing(redo)}
                                                 disabled={!canRedo}
                                                 data-testid="history-panel-redo"
                                             >
@@ -466,15 +510,17 @@ export function ConflictResolver({
                                                 role="button"
                                                 tabIndex={0}
                                                 aria-current={index === history.index ? 'true' : undefined}
-                                                onClick={() => {
-                                                    handleJumpToHistory(index);
+                                                onClick={() => guardWhileEditing(() => {
+                                                    jumpToHistory(index);
                                                     setHistoryOpen(false);
-                                                }}
+                                                })}
                                                 onKeyDown={(event) => {
                                                     if (event.key === 'Enter' || event.key === ' ') {
                                                         event.preventDefault();
-                                                        handleJumpToHistory(index);
-                                                        setHistoryOpen(false);
+                                                        guardWhileEditing(() => {
+                                                            jumpToHistory(index);
+                                                            setHistoryOpen(false);
+                                                        });
                                                     }
                                                 }}
                                             >
@@ -497,7 +543,7 @@ export function ConflictResolver({
                                         padding: '4px 8px'
                                     }}
                                     title="Accept all base (original) changes"
-                                    onClick={() => handleAcceptAll('base')}
+                                    onClick={() => guardWhileEditing(() => acceptAll('base'))}
                                 >
                                     All Base
                                 </button>
@@ -512,7 +558,7 @@ export function ConflictResolver({
                                     padding: '4px 8px'
                                 }}
                                 title="Accept all current (local) changes"
-                                onClick={() => handleAcceptAll('current')}
+                                onClick={() => guardWhileEditing(() => acceptAll('current'))}
                             >
                                 All Current
                             </button>
@@ -526,7 +572,7 @@ export function ConflictResolver({
                                     padding: '4px 8px'
                                 }}
                                 title="Accept all incoming (remote) changes"
-                                onClick={() => handleAcceptAll('incoming')}
+                                onClick={() => guardWhileEditing(() => acceptAll('incoming'))}
                             >
                                 All Incoming
                             </button>
@@ -535,7 +581,13 @@ export function ConflictResolver({
                             <input
                                 type="checkbox"
                                 checked={renumberExecutionCounts}
-                                onChange={e => handleToggleRenumberExecutionCounts(e.target.checked)}
+                                onChange={e => {
+                                    if (activeEditingConflictIndex !== null) {
+                                        promptToSaveEdits(activeEditingConflictIndex);
+                                        return;
+                                    }
+                                    setRenumberExecutionCounts(e.target.checked);
+                                }}
                             />
                             Renumber execution counts
                         </label>
@@ -543,7 +595,13 @@ export function ConflictResolver({
                             <input
                                 type="checkbox"
                                 checked={markAsResolved}
-                                onChange={e => handleToggleMarkAsResolved(e.target.checked)}
+                                onChange={e => {
+                                    if (activeEditingConflictIndex !== null) {
+                                        promptToSaveEdits(activeEditingConflictIndex);
+                                        return;
+                                    }
+                                    setMarkAsResolved(e.target.checked);
+                                }}
                             />
                             Mark as resolved (stage in Git)
                         </label>
@@ -631,11 +689,17 @@ export function ConflictResolver({
                                         languageExtensions={languageExtensions}
                                         theme={conflict.theme ?? 'light'}
                                         resolutionState={resolutionState}
+                                        isEditing={conflictIdx >= 0 && editingConflicts.has(conflictIdx)}
+                                        editWarningNonce={conflictIdx >= 0 && editWarningRequest?.conflictIndex === conflictIdx
+                                            ? editWarningRequest.nonce
+                                            : 0}
                                         onSelectChoice={handleSelectChoice}
                                         onCommitContent={handleCommitContent}
+                                        onStartEditing={handleStartEditing}
+                                        onStopEditing={handleStopEditing}
                                         onClearChoice={handleClearChoice}
-                                        onUnmatchRow={handleUnmatchRow}
-                                        onRematchRows={handleRematchRows}
+                                        onUnmatchRow={(targetRowIndex) => guardWhileEditing(() => unmatchRow(targetRowIndex))}
+                                        onRematchRows={(groupId) => guardWhileEditing(() => rematchRows(groupId))}
                                         showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
                                         showBaseColumn={showBaseColumn}
                                         showCellHeaders={showCellHeaders}

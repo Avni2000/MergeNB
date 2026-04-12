@@ -5,8 +5,8 @@
  * UI flow:
  * 1. User selects a branch (base/current/incoming) 
  * 2. A resolved text area appears with green highlighting, pre-filled with that branch's content
- * 3. User can edit the content freely
- * 4. If user changes the selected branch after editing, show a warning
+ * 3. User can enter an explicit edit mode and save changes when ready
+ * 4. Leaving edit mode requires an explicit save to keep local/global history coherent
  */
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
@@ -23,8 +23,12 @@ interface MergeRowProps {
     rowIndex: number;
     languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
+    isEditing?: boolean;
+    editWarningNonce?: number;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onCommitContent: (index: number, resolvedContent: string) => void;
+    onStartEditing: (index: number) => void;
+    onStopEditing: (index: number) => void;
     onClearChoice?: (conflictIndex: number) => void;
     onUnmatchRow?: (rowIndex: number) => void;
     onRematchRows?: (unmatchGroupId: string) => void;
@@ -42,8 +46,12 @@ function MergeRowInner({
     rowIndex,
     languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
+    isEditing = false,
+    editWarningNonce = 0,
     onSelectChoice,
     onCommitContent,
+    onStartEditing,
+    onStopEditing,
     onClearChoice,
     onUnmatchRow,
     onRematchRows,
@@ -60,18 +68,27 @@ function MergeRowInner({
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
     const [showWarning, setShowWarning] = useState(false);
+    const [showEditWarning, setShowEditWarning] = useState(false);
     const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
-    const [isEditing, setIsEditing] = useState(false);
     const draftResolvedContentRef = useRef(draftResolvedContent);
 
     useEffect(() => {
         setDraftResolvedContent(resolutionState?.resolvedContent ?? '');
-        setIsEditing(false);
     }, [resolutionState?.choice, resolutionState?.resolvedContent, conflictIndex]);
 
     useEffect(() => {
         draftResolvedContentRef.current = draftResolvedContent;
     }, [draftResolvedContent]);
+
+    useEffect(() => {
+        if (!isEditing) {
+            setShowEditWarning(false);
+            return;
+        }
+        if (editWarningNonce > 0) {
+            setShowEditWarning(true);
+        }
+    }, [editWarningNonce, isEditing]);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (which triggers StateEffect.reconfigure) only fires when these values actually
@@ -143,12 +160,12 @@ function MergeRowInner({
         setDraftResolvedContent(value);
     };
 
-    // Commit content to history on blur
-    const handleBlur = () => {
+    const handleSaveEdits = () => {
         if (!resolutionState) return;
         onCommitContent(conflictIndex, draftResolvedContentRef.current);
+        onStopEditing(conflictIndex);
+        setShowEditWarning(false);
     };
-
 
     const base = row.baseCellIndex;
     const currentDelta = (isReordered && base !== undefined && row.currentCellIndex !== undefined)
@@ -264,9 +281,11 @@ function MergeRowInner({
             );
         }
 
-        // Resolved but not deleted — CodeMirror stays editable={false} until the user
-        // clicks the Edit button. This keeps contenteditable off the DOM so cross-cell
-        // drag-selection works freely. Edit button → setIsEditing(true) → useEffect focuses.
+        const staticClasses = [
+            `resolved-content-static ${resolvedCellType}-content`,
+            draftResolvedContent.endsWith('\n') && 'trailing-newline',
+        ].filter(Boolean).join(' ');
+
         return (
             <div className={rowClasses} data-testid={testId}>
                 <div className="resolved-row-wrapper">
@@ -281,14 +300,20 @@ function MergeRowInner({
                                     </span>
                                 </div>
                                 <div className="resolved-header-actions" data-testid="resolved-action-bar">
-                                    {!isEditing && (
-                                        <button
-                                            className="btn btn-secondary"
-                                            onClick={() => setIsEditing(true)}
-                                        >
-                                            Edit
-                                        </button>
-                                    )}
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={() => {
+                                            if (isEditing) {
+                                                handleSaveEdits();
+                                                return;
+                                            }
+                                            onStartEditing(conflictIndex);
+                                        }}
+                                        data-editing-allow={isEditing ? 'true' : undefined}
+                                        data-testid={isEditing ? 'save-edits-button' : 'edit-button'}
+                                    >
+                                        {isEditing ? 'Save edits' : 'Edit'}
+                                    </button>
                                     <button
                                         className="btn btn-secondary"
                                         onClick={() => onClearChoice?.(conflictIndex)}
@@ -299,19 +324,20 @@ function MergeRowInner({
                                 </div>
                             </div>
                             {isEditing ? (
-                                <CodeMirror
-                                    value={draftResolvedContent}
-                                    onChange={handleContentChange}
-                                    onBlur={() => { handleBlur(); setIsEditing(false); }}
-                                    extensions={editorExtensions}
-                                    placeholder="Enter cell content..."
-                                    className="resolved-content-input"
-                                    basicSetup={{ lineNumbers: false, foldGutter: false }}
-                                    theme={resolvedEditorTheme}
-                                    autoFocus={true}
-                                />
+                                <div data-editing-allow="true">
+                                    <CodeMirror
+                                        value={draftResolvedContent}
+                                        onChange={handleContentChange}
+                                        extensions={editorExtensions}
+                                        placeholder="Enter cell content..."
+                                        className="resolved-content-input"
+                                        basicSetup={{ lineNumbers: false, foldGutter: false }}
+                                        theme={resolvedEditorTheme}
+                                        autoFocus={true}
+                                    />
+                                </div>
                             ) : (
-                                <pre className={`resolved-content-static ${resolvedCellType}-content`}>
+                                <pre className={staticClasses}>
                                     {draftResolvedContent}
                                 </pre>
                             )}
@@ -396,6 +422,36 @@ function MergeRowInner({
                             </button>
                             <button className="btn-confirm" onClick={confirmBranchChange}>
                                 Overwrite with {pendingChoice}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showEditWarning && (
+                <div className="warning-modal-overlay" data-testid="edit-warning-modal">
+                    <div className="warning-modal">
+                        <div className="warning-icon">⚠️</div>
+                        <h3>Save edits before leaving?</h3>
+                        <p>
+                            This cell is still in edit mode. Click Save edits to keep your changes,
+                            or keep editing and finish when you are ready.
+                        </p>
+                        <div className="warning-actions">
+                            <button
+                                className="btn-cancel"
+                                onClick={() => setShowEditWarning(false)}
+                                data-editing-allow="true"
+                            >
+                                Keep editing
+                            </button>
+                            <button
+                                className="btn-confirm"
+                                onClick={handleSaveEdits}
+                                data-editing-allow="true"
+                                data-testid="edit-warning-save"
+                            >
+                                Save edits
                             </button>
                         </div>
                     </div>
