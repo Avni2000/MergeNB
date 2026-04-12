@@ -246,6 +246,9 @@ test.describe('Edit Warning on Blur', () => {
             const editor = await enterResolvedEditMode(firstConflict);
             await fillResolvedEditor(editor, 'edited resolved content');
 
+            await firstConflict.locator('[data-testid="save-edits-button"]').click();
+            await firstConflict.locator('.resolved-content-static').waitFor({ timeout: 5000 });
+
             await firstConflict.locator('button:has-text("Undo resolution")').click();
 
             const warningModal = page.locator('.warning-modal');
@@ -255,7 +258,7 @@ test.describe('Edit Warning on Blur', () => {
 
             await warningModal.locator('button:has-text("Keep my edits")').click();
             await expect(warningModal).not.toBeVisible();
-            await expect(firstConflict.locator('.resolved-content-input')).toBeVisible();
+            await expect(firstConflict.locator('.resolved-content-static')).toBeVisible();
 
             await firstConflict.locator('button:has-text("Undo resolution")').click();
             await warningModal.locator('button:has-text("Undo resolution")').click();
