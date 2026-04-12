@@ -73,6 +73,7 @@ function MergeRowInner({
 
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [showUndoWarning, setShowUndoWarning] = useState(false);
+    const [justSaved, setJustSaved] = useState(false);
     const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
     const draftResolvedContentRef = useRef(draftResolvedContent);
     const suppressBlurEditGuardRef = useRef(false);
@@ -156,6 +157,10 @@ function MergeRowInner({
         suppressBlurEditGuardRef.current = true;
         onCommitContent(conflictIndex, draftResolvedContentRef.current);
         onStopEditing(conflictIndex);
+        
+        // Trigger save animation
+        setJustSaved(true);
+        setTimeout(() => setJustSaved(false), 1000);
     };
 
     const undoWarningModal = showUndoWarning
@@ -294,7 +299,7 @@ function MergeRowInner({
         return (
             <div className={rowClasses} data-testid={testId}>
                 <div className="resolved-row-wrapper">
-                    <div className="resolved-row-chrome">
+                    <div className={`resolved-row-chrome${justSaved ? ' just-saved' : ''}`}>
                         <div className={`resolved-cell ${resolvedCellType}-cell`}>
                             <div className="resolved-header">
                                 <div className="resolved-header-lead">
@@ -306,7 +311,7 @@ function MergeRowInner({
                                 </div>
                                 <div className="resolved-header-actions" data-testid="resolved-action-bar">
                                     <button
-                                        className="btn btn-secondary"
+                                        className={`btn ${isEditing ? 'btn-resolved-save' : 'btn-resolved-edit'}`}
                                         onClick={() => {
                                             if (isEditing) {
                                                 handleSaveEdits();
@@ -320,7 +325,7 @@ function MergeRowInner({
                                         {isEditing ? 'Save edits' : 'Edit'}
                                     </button>
                                     <button
-                                        className="btn btn-secondary"
+                                        className="btn btn-resolved-undo"
                                         onClick={handleUndoResolution}
                                         title="Undo resolution and show the conflict again"
                                     >
@@ -348,6 +353,8 @@ function MergeRowInner({
                                             if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
                                             onCommitContent(conflictIndex, draftResolvedContentRef.current);
                                             onStopEditing(conflictIndex);
+                                            setJustSaved(true);
+                                            setTimeout(() => setJustSaved(false), 1000);
                                         }}
                                     />
                                 </div>
