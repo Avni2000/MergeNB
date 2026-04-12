@@ -1,14 +1,14 @@
 /**
  * @file editWarningOnBlur.spec.ts
- * @description Verifies the edit-warning modal appears when the user clicks
- * outside a resolved cell that is in edit mode.
+ * @description Verifies resolved-cell edits autosave on blur and that warnings
+ * only appear for destructive actions that would discard edited content.
  *
  * Flow under test:
  * 1. Resolve a conflict (e.g. "Use Current")
  * 2. Enter edit mode on the resolved cell
  * 3. Click somewhere outside the editor (blur)
- * 4. Expect the "Save edits before leaving?" warning modal to appear
- * 5. Dismiss via "Keep editing" or "Save edits"
+ * 4. Expect the draft to autosave and edit mode to exit
+ * 5. Expect warnings only when a destructive action discards edited content
  */
 
 import { test, expect } from './fixtures';
@@ -23,7 +23,7 @@ import {
 } from '../../../apps/vscode-extension/tests/settingsFile';
 
 test.describe('Edit Warning on Blur', () => {
-    test('shows warning modal when clicking outside a resolved cell in edit mode', async ({ conflictRepo, conflictSession }, testInfo) => {
+    test('clicking outside autosaves the draft and exits edit mode', async ({ conflictRepo, conflictSession }) => {
         const settingsSnapshot = readSettingsFileSnapshot();
 
         try {
@@ -56,46 +56,27 @@ test.describe('Edit Warning on Blur', () => {
             await firstConflict.locator('.resolved-cell').waitFor({ timeout: 5000 });
 
             // Enter edit mode
-            await enterResolvedEditMode(firstConflict);
+            const editor = await enterResolvedEditMode(firstConflict);
+            await fillResolvedEditor(editor, 'autosaved blur edit');
 
             // Verify the editor is visible
-            const editor = firstConflict.locator('.resolved-content-input');
             await expect(editor).toBeVisible();
 
             // Click outside the editor — on the header, which is well outside the resolved cell
             await page.locator('.header-title').click();
 
-            // The edit warning modal should appear
-            const warningModal = page.locator('[data-testid="edit-warning-modal"]');
-            await expect(warningModal).toBeVisible({ timeout: 3000 });
-
-            const viewport = page.viewportSize();
-            const overlayBounds = await warningModal.boundingBox();
-            expect(viewport).not.toBeNull();
-            expect(overlayBounds).not.toBeNull();
-            expect(overlayBounds!.x).toBeLessThanOrEqual(1);
-            expect(overlayBounds!.y).toBeLessThanOrEqual(1);
-            expect(overlayBounds!.width).toBeGreaterThanOrEqual((viewport?.width ?? 0) - 2);
-            expect(overlayBounds!.height).toBeGreaterThanOrEqual((viewport?.height ?? 0) - 2);
-
-            // Verify modal content
-            await expect(warningModal.locator('h3')).toHaveText('Save edits before leaving?');
-
-            // Dismiss by clicking "Keep editing"
-            await warningModal.locator('button:has-text("Keep editing")').click();
-
-            // Modal should close
-            await expect(warningModal).not.toBeVisible();
-
-            // Editor should still be visible (still in edit mode)
-            await expect(editor).toBeVisible();
+            // Blur should autosave and return to the static resolved view without a modal.
+            await expect(firstConflict.locator('[data-testid="edit-warning-modal"]')).toHaveCount(0);
+            const staticPre = firstConflict.locator('.resolved-content-static');
+            await staticPre.waitFor({ timeout: 5000 });
+            await expect(staticPre).toContainText('autosaved blur edit');
 
         } finally {
             restoreSettingsFileSnapshot(settingsSnapshot);
         }
     });
 
-    test('save edits button in warning modal saves and exits edit mode', async ({ conflictRepo, conflictSession }) => {
+    test('clicking another row action autosaves the first editor and opens the next one', async ({ conflictRepo, conflictSession }) => {
         const settingsSnapshot = readSettingsFileSnapshot();
 
         try {
@@ -114,39 +95,37 @@ test.describe('Edit Warning on Blur', () => {
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
-            // Resolve the first conflict
             const conflictRows = page.locator('.merge-row.conflict-row');
             const firstConflict = conflictRows.first();
-            await firstConflict.scrollIntoViewIfNeeded();
+            const secondConflict = conflictRows.nth(1);
 
-            const resolveBtn = firstConflict.locator('.btn-resolve.btn-current, .btn-resolve.btn-incoming, .btn-resolve.btn-base').first();
-            await resolveBtn.waitFor({ timeout: 10000 });
-            await resolveBtn.click();
-            await firstConflict.locator('.resolved-cell').waitFor({ timeout: 5000 });
+            await conflictRows.first().waitFor({ timeout: 10000 });
+            expect(await conflictRows.count()).toBeGreaterThan(1);
 
-            // Enter edit mode
-            await enterResolvedEditMode(firstConflict);
+            for (const row of [firstConflict, secondConflict]) {
+                await row.scrollIntoViewIfNeeded();
+                const resolveBtn = row.locator('.btn-resolve.btn-current, .btn-resolve.btn-incoming, .btn-resolve.btn-base').first();
+                await resolveBtn.waitFor({ timeout: 10000 });
+                await resolveBtn.click();
+                await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
+            }
 
-            // Click outside the editor
-            await page.locator('.header-title').click();
+            const editor = await enterResolvedEditMode(firstConflict);
+            await fillResolvedEditor(editor, 'autosaved before switching rows');
 
-            // Warning modal should appear
-            const warningModal = page.locator('[data-testid="edit-warning-modal"]');
-            await expect(warningModal).toBeVisible({ timeout: 3000 });
+            const secondEditButton = secondConflict.locator('[data-testid="edit-button"]');
+            await secondEditButton.click();
 
-            // Click "Save edits" in the warning modal
-            await warningModal.locator('[data-testid="edit-warning-save"]').click();
-
-            // Modal should close and editor should be replaced by static content
-            await expect(warningModal).not.toBeVisible();
-            await firstConflict.locator('.resolved-content-static').waitFor({ timeout: 5000 });
+            await expect(firstConflict.locator('.resolved-content-static')).toContainText('autosaved before switching rows');
+            await expect(firstConflict.locator('.resolved-content-input')).toHaveCount(0);
+            await expect(secondConflict.locator('.resolved-content-input')).toBeVisible({ timeout: 5000 });
 
         } finally {
             restoreSettingsFileSnapshot(settingsSnapshot);
         }
     });
 
-    test('editing one resolved cell disables other row actions until save', async ({ conflictRepo, conflictSession }) => {
+    test('blur no longer disables other row actions behind a modal', async ({ conflictRepo, conflictSession }) => {
         const settingsSnapshot = readSettingsFileSnapshot();
 
         try {
@@ -183,31 +162,22 @@ test.describe('Edit Warning on Blur', () => {
             const firstEditor = await enterResolvedEditMode(firstConflict);
             await expect(firstEditor).toBeVisible();
 
-            const firstSaveButton = firstConflict.locator('[data-testid="save-edits-button"]');
+            await fillResolvedEditor(firstEditor, 'autosave and continue');
+
             const firstUndoButton = firstConflict.locator('button:has-text("Undo resolution")');
             const secondEditButton = secondConflict.locator('[data-testid="edit-button"]');
             const secondUndoButton = secondConflict.locator('button:has-text("Undo resolution")');
 
-            await expect(firstSaveButton).toBeEnabled();
-            await expect(firstUndoButton).toBeDisabled();
-            await expect(secondEditButton).toBeDisabled();
-            await expect(secondUndoButton).toBeDisabled();
+            await expect(firstUndoButton).toBeEnabled();
+            await expect(secondEditButton).toBeEnabled();
+            await expect(secondUndoButton).toBeEnabled();
 
             await page.locator('.header-title').click();
 
-            const warningModal = page.locator('[data-testid="edit-warning-modal"]');
-            await expect(warningModal).toBeVisible({ timeout: 3000 });
-            await expect(firstConflict.locator('.resolved-content-input')).toBeVisible();
+            await expect(page.locator('[data-testid="edit-warning-modal"]')).toHaveCount(0);
+            await expect(firstConflict.locator('.resolved-content-static')).toContainText('autosave and continue');
             await expect(secondConflict.locator('.resolved-content-input')).toHaveCount(0);
             await expect(page.locator('[data-testid="undo-warning-modal"]')).toHaveCount(0);
-
-            await warningModal.locator('[data-testid="edit-warning-save"]').click();
-
-            await expect(warningModal).not.toBeVisible();
-            await firstConflict.locator('.resolved-content-static').waitFor({ timeout: 5000 });
-
-            await expect(secondEditButton).toBeEnabled();
-            await expect(secondUndoButton).toBeEnabled();
 
             await secondEditButton.click();
             await expect(secondConflict.locator('.resolved-content-input')).toBeVisible({ timeout: 5000 });
@@ -245,9 +215,6 @@ test.describe('Edit Warning on Blur', () => {
 
             const editor = await enterResolvedEditMode(firstConflict);
             await fillResolvedEditor(editor, 'edited resolved content');
-
-            await firstConflict.locator('[data-testid="save-edits-button"]').click();
-            await firstConflict.locator('.resolved-content-static').waitFor({ timeout: 5000 });
 
             await firstConflict.locator('button:has-text("Undo resolution")').click();
 
