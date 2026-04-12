@@ -222,18 +222,6 @@ export function ConflictResolver({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [enableUndoRedoHotkeys, redo, undo, isMac, isEditableTarget]);
 
-    const handleMouseDownCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-        if (activeEditingConflictIndex === null) return;
-        const target = event.target as HTMLElement | null;
-        if (!target) return;
-        if (target.closest('.warning-modal, .warning-modal-overlay, [data-editing-allow="true"]')) {
-            return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        promptToSaveEdits(activeEditingConflictIndex);
-    }, [activeEditingConflictIndex, promptToSaveEdits]);
-
     useEffect(() => {
         const el = mainContentRef.current;
         let prevScrollTop = el?.scrollTop ?? 0;
@@ -429,7 +417,7 @@ export function ConflictResolver({
     const totalSize = rowVirtualizer.getTotalSize();
 
     return (
-        <div className="app-container jp-Notebook" onMouseDownCapture={handleMouseDownCapture}>
+        <div className="app-container jp-Notebook">
             <header className="header">
                 <div className="header-toolbar">
                     <div className="header-left">
