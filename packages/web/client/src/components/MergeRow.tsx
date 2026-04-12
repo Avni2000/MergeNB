@@ -18,6 +18,7 @@ import { CellContent, mergeNBEditorStructure } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import type { ResolutionState } from '../store/resolverStore';
+import { useFocusTargetAfterGuardDismissal } from '../hooks/useFocusTargetAfterGuardDismissal';
 
 interface MergeRowProps {
     row: MergeRowType;
@@ -80,6 +81,8 @@ function MergeRowInner({
     const [showEditWarning, setShowEditWarning] = useState(false);
     const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
     const draftResolvedContentRef = useRef(draftResolvedContent);
+    const { onEditorReady: onResolvedEditorReady, prepareFocusReturn: prepareResolvedEditorFocus } =
+        useFocusTargetAfterGuardDismissal(showEditWarning);
 
     useEffect(() => {
         setDraftResolvedContent(resolutionState?.resolvedContent ?? '');
@@ -182,7 +185,10 @@ function MergeRowInner({
                     <div className="warning-actions">
                         <button
                             className="btn-cancel"
-                            onClick={() => setShowEditWarning(false)}
+                            onClick={() => {
+                                prepareResolvedEditorFocus();
+                                setShowEditWarning(false);
+                            }}
                             data-editing-allow="true"
                         >
                             Keep editing
@@ -385,6 +391,7 @@ function MergeRowInner({
                                     <CodeMirror
                                         value={draftResolvedContent}
                                         onChange={handleContentChange}
+                                        onCreateEditor={onResolvedEditorReady}
                                         extensions={editorExtensions}
                                         placeholder="Enter cell content..."
                                         className="resolved-content-input"
