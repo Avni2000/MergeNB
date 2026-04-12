@@ -1097,12 +1097,11 @@ body {
     padding: 0;
 }
 
-/* Static (non-contenteditable) display for resolved cells — allows cross-cell drag-selection */
+/* Static read-only display for resolved cells (editing via Edit button only). */
 .resolved-content-static {
     margin: 0;
     padding: 10px 12px;
     border-radius: 4px;
-    cursor: text;
     font-family: var(--font-code);
     font-size: 13px;
     line-height: 1.5;
