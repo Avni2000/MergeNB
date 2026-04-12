@@ -37,12 +37,15 @@ interface HistoryState {
 
 interface ResolverStoreState {
     choices: Map<number, ResolutionState>;
+    editingConflicts: Set<number>;
     rows: MergeRowType[];
     markAsResolved: boolean;
     renumberExecutionCounts: boolean;
     takeAllChoice?: TakeAllChoice;
     history: HistoryState;
     selectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
+    startEditing: (index: number) => void;
+    stopEditing: (index: number) => void;
     commitContent: (index: number, resolvedContent: string) => void;
     acceptAll: (choice: TakeAllChoice) => void;
     clearChoice: (conflictIndex: number) => void;
@@ -149,6 +152,7 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
     return createStore<ResolverStoreState>()(
         immer((set) => ({
             choices: new Map(),
+            editingConflicts: new Set(),
             rows: cloneRows(initialRows),
             markAsResolved: INITIAL_MARK_AS_RESOLVED,
             renumberExecutionCounts: INITIAL_RENUMBER_EXECUTION_COUNTS,
@@ -160,30 +164,28 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                     originalContent: resolvedContent,
                     resolvedContent,
                 });
+                state.editingConflicts.delete(index);
                 state.takeAllChoice = undefined;
                 recordHistory(state, `Resolve conflict ${index + 1} (${choice})`, { takeAllChoice: undefined });
+            }),
+            startEditing: (index: number) => set(state => {
+                if (!state.choices.has(index)) return;
+                state.editingConflicts.add(index);
+            }),
+            stopEditing: (index: number) => set(state => {
+                state.editingConflicts.delete(index);
             }),
             commitContent: (index: number, resolvedContent: string) => set(state => {
                 const current = state.choices.get(index);
                 if (!current) return;
 
-                if (current.resolvedContent !== resolvedContent) {
-                    state.choices.set(index, { ...current, resolvedContent });
-                    state.takeAllChoice = undefined;
-                }
-
-                const lastSnapshot = state.history.entries[state.history.index]?.snapshot;
-                const lastChoice = lastSnapshot?.choices.get(index);
-                const nextChoice = state.choices.get(index);
-                if (
-                    lastChoice &&
-                    nextChoice &&
-                    lastChoice.resolvedContent === nextChoice.resolvedContent &&
-                    lastChoice.choice === nextChoice.choice
-                ) {
+                if (current.resolvedContent === resolvedContent) {
                     return;
                 }
-                recordHistory(state, `Edit conflict ${index + 1}`, { takeAllChoice: undefined });
+
+                state.choices.set(index, { ...current, resolvedContent });
+                state.takeAllChoice = undefined;
+                recordHistory(state, `Text edited on cell ${index + 1}`, { takeAllChoice: undefined });
             }),
             acceptAll: (choice: TakeAllChoice) => set(state => {
                 const conflictRows = state.rows.filter(row => row.type === 'conflict');
@@ -207,12 +209,14 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 });
 
                 if (!didChange) return;
+                state.editingConflicts.clear();
                 state.takeAllChoice = choice;
                 recordHistory(state, `Accept all ${choice}`, { takeAllChoice: choice });
             }),
             clearChoice: (conflictIndex: number) => set(state => {
                 if (!state.choices.has(conflictIndex)) return;
                 state.choices.delete(conflictIndex);
+                state.editingConflicts.delete(conflictIndex);
                 state.takeAllChoice = undefined;
                 recordHistory(state, `Clear row ${conflictIndex + 1}`, { takeAllChoice: undefined });
             }),
@@ -231,6 +235,7 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 if (targetIndex < 0 || targetIndex >= state.history.entries.length) return;
                 const targetSnapshot = state.history.entries[targetIndex].snapshot;
                 applySnapshot(state, targetSnapshot);
+                state.editingConflicts.clear();
                 state.history.index = targetIndex;
             }),
             unmatchRow: (rowIndex: number) => set(state => {
@@ -284,6 +289,7 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 // Remove choice for the original row
                 if (row.conflictIndex !== undefined) {
                     state.choices.delete(row.conflictIndex);
+                    state.editingConflicts.delete(row.conflictIndex);
                 }
 
                 // Replace the original row and re-sort globally so split rows
@@ -331,6 +337,7 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                     ...state.rows.filter((_, index) => !groupRowIndexSet.has(index)),
                     restoredRow,
                 ]);
+                state.editingConflicts.clear();
 
                 state.takeAllChoice = undefined;
                 recordHistory(state, `Rematch row group`);
@@ -340,6 +347,7 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 const nextIndex = state.history.index - 1;
                 const targetSnapshot = state.history.entries[nextIndex].snapshot;
                 applySnapshot(state, targetSnapshot);
+                state.editingConflicts.clear();
                 state.history.index = nextIndex;
             }),
             redo: () => set(state => {
@@ -347,6 +355,7 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                 const nextIndex = state.history.index + 1;
                 const targetSnapshot = state.history.entries[nextIndex].snapshot;
                 applySnapshot(state, targetSnapshot);
+                state.editingConflicts.clear();
                 state.history.index = nextIndex;
             }),
         }))
