@@ -341,11 +341,6 @@ function MergeRowInner({
             );
         }
 
-        const staticClasses = [
-            `resolved-content-static ${resolvedCellType}-content`,
-            draftResolvedContent.endsWith('\n') && 'trailing-newline',
-        ].filter(Boolean).join(' ');
-
         return (
             <div className={rowClasses} data-testid={testId}>
                 <div className="resolved-row-wrapper">
@@ -404,7 +399,7 @@ function MergeRowInner({
                                     />
                                 </div>
                             ) : (
-                                <pre className={staticClasses}>
+                                <pre className="resolved-content-static">
                                     {draftResolvedContent}
                                 </pre>
                             )}

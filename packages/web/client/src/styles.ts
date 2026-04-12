@@ -1084,7 +1084,6 @@ body {
 }
 
 .resolved-content-input .cm-scroller {
-    min-height: 100px;
     overflow-y: auto;
     overflow-x: hidden;
 }
@@ -1097,7 +1096,8 @@ body {
     padding: 0;
 }
 
-/* Static read-only display for resolved cells (editing via Edit button only). */
+/* Static read-only display for resolved cells (editing via Edit button only).
+   Use pre-wrap like .cell-content pre / StaticDiffContent so line breaks match CodeMirror. */
 .resolved-content-static {
     margin: 0;
     padding: 10px 12px;
@@ -1105,14 +1105,9 @@ body {
     font-family: var(--font-code);
     font-size: 13px;
     line-height: 1.5;
-    white-space: break-spaces;
+    white-space: pre-wrap;
     word-break: break-word;
     color: var(--text-primary);
-}
-
-/* Keep terminal blank lines visible when content ends with one or more '\n'. */
-.resolved-content-static.trailing-newline::after {
-    content: '\\200B';
 }
 
 .resolved-cell.code-cell .resolved-content-static {
