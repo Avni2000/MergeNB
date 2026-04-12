@@ -14,6 +14,7 @@
 import { test, expect } from './fixtures';
 import {
     enterResolvedEditMode,
+    fillResolvedEditor,
 } from '../../../test-fixtures/shared/integrationUtils';
 import {
     readSettingsFileSnapshot,
@@ -140,6 +141,55 @@ test.describe('Edit Warning on Blur', () => {
             await expect(warningModal).not.toBeVisible();
             await firstConflict.locator('.resolved-content-static').waitFor({ timeout: 5000 });
 
+        } finally {
+            restoreSettingsFileSnapshot(settingsSnapshot);
+        }
+    });
+
+    test('undo resolution warns before discarding edited resolved content', async ({ conflictRepo, conflictSession }) => {
+        const settingsSnapshot = readSettingsFileSnapshot();
+
+        try {
+            writeSettingsFile({
+                'autoResolve.executionCount': false,
+                'autoResolve.stripOutputs': false,
+                'autoResolve.whitespace': false,
+            });
+
+            const workspacePath = conflictRepo({
+                base: '02_base.ipynb',
+                current: '02_current.ipynb',
+                incoming: '02_incoming.ipynb',
+            });
+
+            const session = await conflictSession(workspacePath);
+            const { page } = session;
+
+            const firstConflict = page.locator('.merge-row.conflict-row').first();
+            await firstConflict.scrollIntoViewIfNeeded();
+
+            const resolveBtn = firstConflict.locator('.btn-resolve.btn-current, .btn-resolve.btn-incoming, .btn-resolve.btn-base').first();
+            await resolveBtn.waitFor({ timeout: 10000 });
+            await resolveBtn.click();
+            await firstConflict.locator('.resolved-cell').waitFor({ timeout: 5000 });
+
+            const editor = await enterResolvedEditMode(firstConflict);
+            await fillResolvedEditor(editor, 'edited resolved content');
+
+            await firstConflict.locator('button:has-text("Undo resolution")').click();
+
+            const warningModal = page.locator('.warning-modal');
+            await expect(warningModal).toBeVisible({ timeout: 3000 });
+            await expect(warningModal.locator('h3')).toHaveText('Discard edits and undo resolution?');
+            await expect(warningModal.locator('p')).toContainText('Undoing this resolution will discard those changes.');
+
+            await warningModal.locator('button:has-text("Keep my edits")').click();
+            await expect(warningModal).not.toBeVisible();
+            await expect(firstConflict.locator('.resolved-content-input')).toBeVisible();
+
+            await firstConflict.locator('button:has-text("Undo resolution")').click();
+            await warningModal.locator('button:has-text("Undo resolution")').click();
+            await firstConflict.locator('.resolved-cell').waitFor({ state: 'detached', timeout: 5000 });
         } finally {
             restoreSettingsFileSnapshot(settingsSnapshot);
         }
