@@ -973,26 +973,66 @@ ${bodySel} {
     text-align: center;
 }
 
-/* Resolved cell styling - green highlighting to mark as resolved.
-   Horizontal inset comes from resolved-row-wrapper's padding, not from margin here.
-   Width: 100% respects parent wrapper's max-width constraint for readable line length. */
+/* Outer border on .resolved-row-chrome — same role as conflict row chrome wrapping
+   the whole resolved block (header + body). */
+.resolved-row-chrome {
+    width: 100%;
+    box-sizing: border-box;
+    border: 2px solid var(--accent-green);
+    border-radius: 6px;
+    overflow: clip;
+    background: rgba(78, 201, 176, 0.06);
+}
+
+.resolved-row-chrome--delete {
+    border-color: #f48771;
+    background: rgba(244, 135, 113, 0.05);
+}
+
+/* Resolved cell body — border is on .resolved-row-chrome */
 .resolved-cell {
     width: 100%;
     box-sizing: border-box;
-    padding: 12px;
+    padding: 14px;
     background: var(--cell-surface);
-    border: 2px solid var(--accent-green);
-    border-radius: 6px;
+    border: none;
+    border-radius: 0;
 }
 
 .resolved-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: -14px -14px 10px;
+    padding: 8px 14px 10px;
     border-bottom: 1px solid rgba(78, 201, 176, 0.3);
+    background: var(--bg-tertiary);
     user-select: none;
+}
+
+.resolved-header-lead {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    min-width: 0;
+    flex: 1;
+}
+
+.resolved-header-actions {
+    flex-shrink: 0;
+}
+
+.resolved-cell.resolved-deleted .resolved-header {
+    border-bottom-color: rgba(244, 135, 113, 0.35);
+}
+
+.resolved-deleted-message {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-primary);
 }
 
 .resolved-label {
@@ -1095,7 +1135,6 @@ ${bodySel} {
 /* Resolved deleted cell */
 .resolved-cell.resolved-deleted {
     background: rgba(244, 135, 113, 0.1);
-    border-color: #f48771;
 }
 
 .resolved-deleted .resolved-label {
@@ -1415,22 +1454,13 @@ ${bodySel} {
     box-sizing: border-box;
 }
 
-/* Readable-width wrapper for resolved conflict rows */
+/* Resolved rows: same max-width and horizontal padding as .readable-row-wrapper
+   so the undo bar and resolved cell align with unified single-column rows. */
 .resolved-row-wrapper {
-    /* Keep this in lockstep with .readable-row-wrapper so resolved rows align
-       exactly with unified single-column rows. */
     max-width: 900px;
     margin: 0 auto;
     padding: 12px 24px 16px;
     box-sizing: border-box;
-}
-
-/* Header strip on top of resolved-row-wrapper (holds undo button) */
-.resolved-row-header {
-    display: flex;
-    justify-content: flex-end;
-    gap: 6px;
-    padding: 6px 0 8px;
 }
 `;
 }

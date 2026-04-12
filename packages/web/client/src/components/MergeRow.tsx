@@ -259,17 +259,27 @@ function MergeRowInner({
             return (
                 <div className={rowClasses} data-testid={testId}>
                     <div className="resolved-row-wrapper">
-                        <div className="resolved-row-header">
-                            <button
-                                className="btn btn-secondary"
-                                onClick={() => onClearChoice?.(conflictIndex)}
-                                title="Undo resolution and show the conflict again"
-                            >
-                                Undo resolution
-                            </button>
-                        </div>
-                        <div className="resolved-cell resolved-deleted">
-                            <span>This cell will be deleted.</span>
+                        <div className="resolved-row-chrome resolved-row-chrome--delete">
+                            <div className="resolved-cell resolved-deleted">
+                                <div className="resolved-header">
+                                    <div className="resolved-header-lead">
+                                        <span className="resolved-label">✓ Resolved</span>
+                                        <span className="resolved-base">
+                                            Based on: <strong>delete</strong>
+                                        </span>
+                                    </div>
+                                    <div className="resolved-header-actions" data-testid="resolved-action-bar">
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={() => onClearChoice?.(conflictIndex)}
+                                            title="Undo resolution and show the conflict again"
+                                        >
+                                            Undo resolution
+                                        </button>
+                                    </div>
+                                </div>
+                                <p className="resolved-deleted-message">This cell will be deleted.</p>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -282,45 +292,49 @@ function MergeRowInner({
         return (
             <div className={rowClasses} data-testid={testId}>
                 <div className="resolved-row-wrapper">
-                    <div className="resolved-row-header">
-                        <button
-                            className="btn btn-secondary"
-                            onClick={() => onClearChoice?.(conflictIndex)}
-                            title="Undo resolution and show the conflict again"
-                        >
-                            Undo resolution
-                        </button>
-                    </div>
-                    <div className={`resolved-cell ${resolvedCellType}-cell`}>
-                        <div className="resolved-header">
-                            <span className="resolved-label">✓ Resolved</span>
-                            <span className="resolved-base">
-                                Based on: <strong>{resolutionState.choice}</strong>
-                                {isContentModified && <span className="modified-badge">(edited)</span>}
-                            </span>
+                    <div className="resolved-row-chrome">
+                        <div className={`resolved-cell ${resolvedCellType}-cell`}>
+                            <div className="resolved-header">
+                                <div className="resolved-header-lead">
+                                    <span className="resolved-label">✓ Resolved</span>
+                                    <span className="resolved-base">
+                                        Based on: <strong>{resolutionState.choice}</strong>
+                                        {isContentModified && <span className="modified-badge">(edited)</span>}
+                                    </span>
+                                </div>
+                                <div className="resolved-header-actions" data-testid="resolved-action-bar">
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={() => onClearChoice?.(conflictIndex)}
+                                        title="Undo resolution and show the conflict again"
+                                    >
+                                        Undo resolution
+                                    </button>
+                                </div>
+                            </div>
+                            {isEditing ? (
+                                <CodeMirror
+                                    value={draftResolvedContent}
+                                    onChange={handleContentChange}
+                                    onBlur={() => { handleBlur(); setIsEditing(false); }}
+                                    onCreateEditor={handleResolvedEditorCreate}
+                                    extensions={editorExtensions}
+                                    placeholder="Enter cell content..."
+                                    className="resolved-content-input"
+                                    basicSetup={{ lineNumbers: false, foldGutter: false }}
+                                    theme={resolvedEditorTheme}
+                                    autoFocus={true}
+                                />
+                            ) : (
+                                <pre
+                                    className={`resolved-content-static ${resolvedCellType}-content${draftResolvedContent.endsWith('\n') ? ' trailing-newline' : ''}`}
+                                    onClick={handleStaticContentClick}
+                                    title="Click to edit"
+                                >
+                                    {draftResolvedContent}
+                                </pre>
+                            )}
                         </div>
-                        {isEditing ? (
-                            <CodeMirror
-                                value={draftResolvedContent}
-                                onChange={handleContentChange}
-                                onBlur={() => { handleBlur(); setIsEditing(false); }}
-                                onCreateEditor={handleResolvedEditorCreate}
-                                extensions={editorExtensions}
-                                placeholder="Enter cell content..."
-                                className="resolved-content-input"
-                                basicSetup={{ lineNumbers: false, foldGutter: false }}
-                                theme={resolvedEditorTheme}
-                                autoFocus={true}
-                            />
-                        ) : (
-                            <pre
-                                className={`resolved-content-static ${resolvedCellType}-content${draftResolvedContent.endsWith('\n') ? ' trailing-newline' : ''}`}
-                                onClick={handleStaticContentClick}
-                                title="Click to edit"
-                            >
-                                {draftResolvedContent}
-                            </pre>
-                        )}
                     </div>
                 </div>
             </div>
