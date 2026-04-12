@@ -13,8 +13,10 @@ import {
     clickHistoryUndo,
     clickHistoryRedo,
     waitForResolvedCount,
-    getResolvedEditorValue,
+    getResolvedContentValue,
     fillResolvedEditor,
+    enterResolvedEditMode,
+    saveResolvedEdits,
     type MergeSide,
 } from '../../../test-fixtures/shared/integrationUtils';
 import {
@@ -42,16 +44,16 @@ async function pickBranchButton(row: Locator): Promise<{ selector: string; side:
 }
 
 async function waitForResolvedEditorText(
-    textarea: Locator,
+    row: Locator,
     expected: string,
     timeoutMs = 5000,
     pollMs = 100,
 ): Promise<string> {
     const start = Date.now();
-    let last = await getResolvedEditorValue(textarea);
+    let last = await getResolvedContentValue(row);
 
     while (Date.now() - start < timeoutMs) {
-        last = await getResolvedEditorValue(textarea);
+        last = await getResolvedContentValue(row);
         if (last === expected) {
             return last;
         }
@@ -101,21 +103,28 @@ test.describe('Undo/Redo Actions', () => {
             await firstRow.scrollIntoViewIfNeeded();
             const branchChoice = await pickBranchButton(firstRow);
             await firstRow.locator(branchChoice.selector).click();
-            await firstRow.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+            await firstRow.locator('.resolved-cell').waitFor({ timeout: 5000 });
 
             await page.click('.header-title');
             await page.keyboard.press(`${primaryModifier}+Z`);
-            await firstRow.locator('.resolved-content-input').waitFor({ state: 'detached', timeout: 5000 });
+            await firstRow.locator('.resolved-cell').waitFor({ state: 'detached', timeout: 5000 });
 
             await page.click('.header-title');
             await page.keyboard.press(`${primaryModifier}+Shift+Z`);
-            await firstRow.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+            await firstRow.locator('.resolved-cell').waitFor({ timeout: 5000 });
             logger.info('  ✓ Keyboard undo/redo toggled branch selection');
 
             // Action 2: delete selection + header undo/redo
             logger.info('\n=== Undo/Redo: Delete Selection (Header Buttons) ===');
             const deleteRow = conflictRows.nth(conflictCount > 1 ? 1 : 0);
             await deleteRow.scrollIntoViewIfNeeded();
+            // When conflictCount === 1, deleteRow is the same as firstRow which is
+            // still branch-resolved from Action 1. The delete button only exists in the
+            // unresolved view, so we need to clear the current resolution first.
+            if (await deleteRow.locator('.resolved-cell').count() > 0) {
+                await deleteRow.locator('button:has-text("Undo resolution")').click();
+                await deleteRow.locator('.resolved-cell').waitFor({ state: 'detached', timeout: 5000 });
+            }
             await deleteRow.locator('.btn-delete').click();
             await deleteRow.locator('.resolved-deleted').waitFor({ timeout: 5000 });
 
@@ -129,18 +138,25 @@ test.describe('Undo/Redo Actions', () => {
             // Action 3: edit content + undo/redo
             logger.info('\n=== Undo/Redo: Content Edit ===');
             await firstRow.scrollIntoViewIfNeeded();
-            if (await firstRow.locator('.resolved-content-input').count() === 0) {
+            // Ensure the row is branch-resolved (not delete-resolved) before editing.
+            // When conflictCount === 1, firstRow may be in delete-resolved state from Action 2.
+            const isDeleteResolved = await firstRow.locator('.resolved-deleted').count() > 0;
+            if (isDeleteResolved || await firstRow.locator('.resolved-cell').count() === 0) {
+                if (isDeleteResolved) {
+                    await firstRow.locator('button:has-text("Undo resolution")').click();
+                    await firstRow.locator('.resolved-cell').waitFor({ state: 'detached', timeout: 5000 });
+                }
                 await firstRow.locator(branchChoice.selector).click();
-                await firstRow.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+                await firstRow.locator('.resolved-cell').waitFor({ timeout: 5000 });
             }
-            const textarea = firstRow.locator('.resolved-content-input');
+            const textarea = await enterResolvedEditMode(firstRow);
             await textarea.waitFor({ timeout: 5000 });
-            const original = await getResolvedEditorValue(textarea);
+            const original = await getResolvedContentValue(firstRow);
             const edited = `${original}\n(edited)`;
             const historyItemsForEdit = page.locator('[data-testid="history-item"]');
             const historyCountBeforeEdit = await historyItemsForEdit.count();
             await fillResolvedEditor(textarea, edited);
-            await textarea.locator('.cm-content').blur();
+            await saveResolvedEdits(firstRow);
 
             const historyCommitStart = Date.now();
             while (Date.now() - historyCommitStart < 5000) {
@@ -151,11 +167,11 @@ test.describe('Undo/Redo Actions', () => {
             }
 
             await clickHistoryUndo(page);
-            const afterUndo = await waitForResolvedEditorText(textarea, original);
+            const afterUndo = await waitForResolvedEditorText(firstRow, original);
             expect(afterUndo).toBe(original);
 
             await clickHistoryRedo(page);
-            const afterRedo = await waitForResolvedEditorText(textarea, edited);
+            const afterRedo = await waitForResolvedEditorText(firstRow, edited);
             expect(afterRedo).toBe(edited);
             logger.info('  ✓ Undo/redo restored edited content');
 

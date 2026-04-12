@@ -13,14 +13,17 @@ import {
     validateNotebookStructure,
 } from '../../../test-fixtures/shared/testHelpers';
 import {
+    getColumnCell,
     getColumnCellType,
     ensureCheckboxChecked,
     collectExpectedCellsFromUI,
     clickHistoryUndo,
     clickHistoryRedo,
     getHistoryEntries,
+    enterResolvedEditMode,
     getResolvedEditorValue,
     fillResolvedEditor,
+    saveResolvedEdits,
     type ConflictChoice,
 } from '../../../test-fixtures/shared/integrationUtils';
 import {
@@ -106,8 +109,9 @@ test.describe('Per-Cell Resolution', () => {
             logger.info(`  - Both current & incoming (unmatched from base): ${unmatchedBoth}`);
             logger.info(`  - Total unmatched: ${unmatchedCurrentOnly + unmatchedIncomingOnly + unmatchedBoth}`);
 
-            // Track resolution choices for cell type determination
-            const resolutionChoices: Map<number, { choice: ConflictChoice; chosenCellType: string }> = new Map();
+            // Track resolution choices for cell type determination and pre-captured cell
+            // data (needed for metadata/outputs after resolution hides column cells).
+            const resolutionChoices: Map<number, { choice: ConflictChoice; chosenCellType: string; cellData?: Record<string, unknown> }> = new Map();
 
             // Resolve each conflict
             logger.info('\n=== Resolving conflicts ===');
@@ -170,13 +174,20 @@ test.describe('Per-Cell Resolution', () => {
                     }
                 }
 
-                resolutionChoices.set(conflictIdx, { choice, chosenCellType });
+                // Capture the chosen cell's data before clicking — after resolution the
+                // three-column view is removed from the DOM, so we can't read it later.
+                let cellData: Record<string, unknown> | undefined;
+                if (!isDeleteAction && (choice === 'base' || choice === 'current' || choice === 'incoming')) {
+                    cellData = await getColumnCell(row, choice, rowIndex) ?? undefined;
+                }
+
+                resolutionChoices.set(conflictIdx, { choice, chosenCellType, cellData });
 
                 const button = row.locator(buttonToClick);
                 await button.waitFor({ timeout: 10000 });
                 await button.click();
 
-                const resolvedSelector = isDeleteAction ? '.resolved-deleted' : '.resolved-content-input';
+                const resolvedSelector = isDeleteAction ? '.resolved-deleted' : '.resolved-cell';
                 await row.locator(resolvedSelector).waitFor({ timeout: 5000 });
 
                 // Test undo/redo on first conflict
@@ -195,7 +206,7 @@ test.describe('Per-Cell Resolution', () => {
 
                 // Modify textarea content to append choice indicator
                 if (!isDeleteAction) {
-                    const textarea = row.locator('.resolved-content-input');
+                    const textarea = await enterResolvedEditMode(row);
                     const originalContent = await getResolvedEditorValue(textarea);
                     let modifiedContent = originalContent;
 
@@ -209,6 +220,7 @@ test.describe('Per-Cell Resolution', () => {
 
                     if (modifiedContent !== originalContent) {
                         await fillResolvedEditor(textarea, modifiedContent);
+                        await saveResolvedEdits(row);
                     }
                 }
 
@@ -226,7 +238,7 @@ test.describe('Per-Cell Resolution', () => {
                     if (!resInfo) {
                         throw new Error(`Missing resolution info for conflict row ${rowIndex}`);
                     }
-                    return { choice: resInfo.choice, chosenCellType: resInfo.chosenCellType };
+                    return { choice: resInfo.choice, chosenCellType: resInfo.chosenCellType, cellData: resInfo.cellData };
                 },
                 includeMetadata: true,
                 includeOutputs: true,

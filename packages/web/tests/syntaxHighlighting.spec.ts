@@ -51,6 +51,11 @@ test.describe('Syntax Highlighting', () => {
             await resolvedCell.waitFor({ timeout: 10_000 });
             logger.info('✓ Resolved cell appeared after clicking Use Current');
 
+            const editButton = firstRow.locator('button:has-text("Edit")');
+            await editButton.waitFor({ timeout: 10_000 });
+            await editButton.click();
+            logger.info('✓ Entered edit mode for the resolved cell');
+
             // Assert CodeMirror editor is present (textarea was replaced)
             const textarea = resolvedCell.locator('textarea.resolved-content-input');
             const textareaCount = await textarea.count();
