@@ -34,9 +34,9 @@ test.describe('Edit Warning on Blur', () => {
             });
 
             const workspacePath = conflictRepo({
-                base: '02_base.ipynb',
-                current: '02_current.ipynb',
-                incoming: '02_incoming.ipynb',
+                base: '04_base.ipynb',
+                current: '04_current.ipynb',
+                incoming: '04_incoming.ipynb',
             });
 
             const session = await conflictSession(workspacePath);
@@ -106,9 +106,9 @@ test.describe('Edit Warning on Blur', () => {
             });
 
             const workspacePath = conflictRepo({
-                base: '02_base.ipynb',
-                current: '02_current.ipynb',
-                incoming: '02_incoming.ipynb',
+                base: '04_base.ipynb',
+                current: '04_current.ipynb',
+                incoming: '04_incoming.ipynb',
             });
 
             const session = await conflictSession(workspacePath);
@@ -146,6 +146,76 @@ test.describe('Edit Warning on Blur', () => {
         }
     });
 
+    test('editing one resolved cell disables other row actions until save', async ({ conflictRepo, conflictSession }) => {
+        const settingsSnapshot = readSettingsFileSnapshot();
+
+        try {
+            writeSettingsFile({
+                'autoResolve.executionCount': false,
+                'autoResolve.stripOutputs': false,
+                'autoResolve.whitespace': false,
+            });
+
+            const workspacePath = conflictRepo({
+                base: '04_base.ipynb',
+                current: '04_current.ipynb',
+                incoming: '04_incoming.ipynb',
+            });
+
+            const session = await conflictSession(workspacePath);
+            const { page } = session;
+
+            const conflictRows = page.locator('.merge-row.conflict-row');
+            const firstConflict = conflictRows.first();
+            const secondConflict = conflictRows.nth(1);
+
+            await conflictRows.first().waitFor({ timeout: 10000 });
+            expect(await conflictRows.count()).toBeGreaterThan(1);
+
+            for (const row of [firstConflict, secondConflict]) {
+                await row.scrollIntoViewIfNeeded();
+                const resolveBtn = row.locator('.btn-resolve.btn-current, .btn-resolve.btn-incoming, .btn-resolve.btn-base').first();
+                await resolveBtn.waitFor({ timeout: 10000 });
+                await resolveBtn.click();
+                await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
+            }
+
+            const firstEditor = await enterResolvedEditMode(firstConflict);
+            await expect(firstEditor).toBeVisible();
+
+            const firstSaveButton = firstConflict.locator('[data-testid="save-edits-button"]');
+            const firstUndoButton = firstConflict.locator('button:has-text("Undo resolution")');
+            const secondEditButton = secondConflict.locator('[data-testid="edit-button"]');
+            const secondUndoButton = secondConflict.locator('button:has-text("Undo resolution")');
+
+            await expect(firstSaveButton).toBeEnabled();
+            await expect(firstUndoButton).toBeDisabled();
+            await expect(secondEditButton).toBeDisabled();
+            await expect(secondUndoButton).toBeDisabled();
+
+            await page.locator('.header-title').click();
+
+            const warningModal = page.locator('[data-testid="edit-warning-modal"]');
+            await expect(warningModal).toBeVisible({ timeout: 3000 });
+            await expect(firstConflict.locator('.resolved-content-input')).toBeVisible();
+            await expect(secondConflict.locator('.resolved-content-input')).toHaveCount(0);
+            await expect(page.locator('[data-testid="undo-warning-modal"]')).toHaveCount(0);
+
+            await warningModal.locator('[data-testid="edit-warning-save"]').click();
+
+            await expect(warningModal).not.toBeVisible();
+            await firstConflict.locator('.resolved-content-static').waitFor({ timeout: 5000 });
+
+            await expect(secondEditButton).toBeEnabled();
+            await expect(secondUndoButton).toBeEnabled();
+
+            await secondEditButton.click();
+            await expect(secondConflict.locator('.resolved-content-input')).toBeVisible({ timeout: 5000 });
+        } finally {
+            restoreSettingsFileSnapshot(settingsSnapshot);
+        }
+    });
+
     test('undo resolution warns before discarding edited resolved content', async ({ conflictRepo, conflictSession }) => {
         const settingsSnapshot = readSettingsFileSnapshot();
 
@@ -157,9 +227,9 @@ test.describe('Edit Warning on Blur', () => {
             });
 
             const workspacePath = conflictRepo({
-                base: '02_base.ipynb',
-                current: '02_current.ipynb',
-                incoming: '02_incoming.ipynb',
+                base: '04_base.ipynb',
+                current: '04_current.ipynb',
+                incoming: '04_incoming.ipynb',
             });
 
             const session = await conflictSession(workspacePath);
