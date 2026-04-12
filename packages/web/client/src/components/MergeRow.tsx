@@ -63,7 +63,6 @@ function MergeRowInner({
     const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
     const [isEditing, setIsEditing] = useState(false);
     const draftResolvedContentRef = useRef(draftResolvedContent);
-    const pendingCursorPointRef = useRef<{ x: number; y: number } | null>(null);
 
     useEffect(() => {
         setDraftResolvedContent(resolutionState?.resolvedContent ?? '');
@@ -150,27 +149,6 @@ function MergeRowInner({
         onCommitContent(conflictIndex, draftResolvedContentRef.current);
     };
 
-    // Enter edit mode on direct click of the static content. If the user just
-    // created a text selection, do not switch to editor.
-    const handleStaticContentClick = (event: React.MouseEvent<HTMLPreElement>) => {
-        const selection = window.getSelection();
-        if (selection && !selection.isCollapsed) {
-            return;
-        }
-
-        pendingCursorPointRef.current = { x: event.clientX, y: event.clientY };
-        setIsEditing(true);
-    };
-
-    const handleResolvedEditorCreate = (view: EditorView) => {
-        const pendingPoint = pendingCursorPointRef.current;
-        if (!pendingPoint) return;
-
-        const pos = view.posAtCoords(pendingPoint);
-        const anchor = Math.max(0, Math.min(pos ?? 0, view.state.doc.length));
-        view.dispatch({ selection: { anchor } });
-        pendingCursorPointRef.current = null;
-    };
 
     const base = row.baseCellIndex;
     const currentDelta = (isReordered && base !== undefined && row.currentCellIndex !== undefined)
@@ -286,9 +264,9 @@ function MergeRowInner({
             );
         }
 
-        // Resolved but not deleted — static by default so cross-cell text selection works.
-        // Switching to a contenteditable CodeMirror editor breaks inter-cell drag-selection
-        // because browsers treat contenteditable boundaries as selection isolation points.
+        // Resolved but not deleted — CodeMirror stays editable={false} until the user
+        // clicks the Edit button. This keeps contenteditable off the DOM so cross-cell
+        // drag-selection works freely. Edit button → setIsEditing(true) → useEffect focuses.
         return (
             <div className={rowClasses} data-testid={testId}>
                 <div className="resolved-row-wrapper">
@@ -303,6 +281,14 @@ function MergeRowInner({
                                     </span>
                                 </div>
                                 <div className="resolved-header-actions" data-testid="resolved-action-bar">
+                                    {!isEditing && (
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={() => setIsEditing(true)}
+                                        >
+                                            Edit
+                                        </button>
+                                    )}
                                     <button
                                         className="btn btn-secondary"
                                         onClick={() => onClearChoice?.(conflictIndex)}
@@ -317,7 +303,6 @@ function MergeRowInner({
                                     value={draftResolvedContent}
                                     onChange={handleContentChange}
                                     onBlur={() => { handleBlur(); setIsEditing(false); }}
-                                    onCreateEditor={handleResolvedEditorCreate}
                                     extensions={editorExtensions}
                                     placeholder="Enter cell content..."
                                     className="resolved-content-input"
@@ -326,11 +311,7 @@ function MergeRowInner({
                                     autoFocus={true}
                                 />
                             ) : (
-                                <pre
-                                    className={`resolved-content-static ${resolvedCellType}-content${draftResolvedContent.endsWith('\n') ? ' trailing-newline' : ''}`}
-                                    onClick={handleStaticContentClick}
-                                    title="Click to edit"
-                                >
+                                <pre className={`resolved-content-static ${resolvedCellType}-content`}>
                                     {draftResolvedContent}
                                 </pre>
                             )}
