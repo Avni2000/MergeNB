@@ -25,6 +25,7 @@ interface MergeRowProps {
     languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
     isEditing?: boolean;
+    activeEditingConflictIndex?: number | null;
     editWarningNonce?: number;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onCommitContent: (index: number, resolvedContent: string) => void;
@@ -55,6 +56,7 @@ function MergeRowInner({
     languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
     isEditing = false,
+    activeEditingConflictIndex = null,
     editWarningNonce = 0,
     onSelectChoice,
     onCommitContent,
@@ -299,6 +301,11 @@ function MergeRowInner({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
+    const anotherConflictIsEditing = activeEditingConflictIndex !== null && activeEditingConflictIndex !== conflictIndex;
+    const anyConflictIsEditing = activeEditingConflictIndex !== null;
+    const disableResolvedUndo = anyConflictIsEditing;
+    const disableResolvedEdit = anotherConflictIsEditing;
+    const disableConflictActions = anyConflictIsEditing;
 
     // If resolved, show single-column collapsed view with undo button
     if (resolutionState && conflictIndex >= 0) {
@@ -320,6 +327,7 @@ function MergeRowInner({
                                             className="btn btn-secondary"
                                             onClick={handleUndoResolution}
                                             title="Undo resolution and show the conflict again"
+                                            disabled={disableConflictActions}
                                         >
                                             Undo resolution
                                         </button>
@@ -363,6 +371,7 @@ function MergeRowInner({
                                         }}
                                         data-editing-allow={isEditing ? 'true' : undefined}
                                         data-testid={isEditing ? 'save-edits-button' : 'edit-button'}
+                                        disabled={disableResolvedEdit}
                                     >
                                         {isEditing ? 'Save edits' : 'Edit'}
                                     </button>
@@ -370,7 +379,7 @@ function MergeRowInner({
                                         className="btn btn-secondary"
                                         onClick={handleUndoResolution}
                                         title="Undo resolution and show the conflict again"
-                                        data-editing-allow={isEditing ? 'true' : undefined}
+                                        disabled={disableResolvedUndo}
                                     >
                                         Undo resolution
                                     </button>
@@ -433,6 +442,7 @@ function MergeRowInner({
                     <button
                         className={`btn-resolve btn-delete ${resolutionState?.choice === 'delete' ? 'selected' : ''}`}
                         onClick={() => handleChoiceClick('delete')}
+                        disabled={disableConflictActions}
                     >
                         Delete Cell
                     </button>
@@ -448,6 +458,7 @@ function MergeRowInner({
                                     onClick={() => onUnmatchRow?.(rowIndex)}
                                     title="Unmatch this row into separate cells"
                                     data-testid="unmatch-btn"
+                                    disabled={disableConflictActions}
                                 >
                                     Unmatch
                                 </button>
@@ -460,6 +471,7 @@ function MergeRowInner({
                                         onClick={() => onRematchRows?.(row.unmatchGroupId)}
                                         title="Rematch these cells back into one row"
                                         data-testid="rematch-btn"
+                                        disabled={disableConflictActions}
                                     >
                                         Rematch
                                     </button>
@@ -547,6 +559,7 @@ function MergeRowInner({
                             <button
                                 className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
                                 onClick={() => handleChoiceClick('base')}
+                                disabled={disableConflictActions}
                             >
                                 Use Base
                             </button>
@@ -558,6 +571,7 @@ function MergeRowInner({
                         <button
                             className={`btn-resolve btn-current ${resolutionState?.choice === 'current' ? 'selected' : ''}`}
                             onClick={() => handleChoiceClick('current')}
+                            disabled={disableConflictActions}
                         >
                             Use Current
                         </button>
@@ -568,6 +582,7 @@ function MergeRowInner({
                         <button
                             className={`btn-resolve btn-incoming ${resolutionState?.choice === 'incoming' ? 'selected' : ''}`}
                             onClick={() => handleChoiceClick('incoming')}
+                            disabled={disableConflictActions}
                         >
                             Use Incoming
                         </button>

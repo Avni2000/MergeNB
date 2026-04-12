@@ -211,6 +211,10 @@ export function ConflictResolver({
             if (event.key.toLowerCase() !== 'z') return;
 
             event.preventDefault();
+            if (activeEditingConflictIndex !== null) {
+                promptToSaveEdits(activeEditingConflictIndex);
+                return;
+            }
             if (event.shiftKey) {
                 redo();
             } else {
@@ -220,7 +224,15 @@ export function ConflictResolver({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [enableUndoRedoHotkeys, redo, undo, isMac, isEditableTarget]);
+    }, [
+        activeEditingConflictIndex,
+        enableUndoRedoHotkeys,
+        isEditableTarget,
+        isMac,
+        promptToSaveEdits,
+        redo,
+        undo,
+    ]);
 
     useEffect(() => {
         const el = mainContentRef.current;
@@ -678,6 +690,7 @@ export function ConflictResolver({
                                         theme={conflict.theme ?? 'light'}
                                         resolutionState={resolutionState}
                                         isEditing={conflictIdx >= 0 && editingConflicts.has(conflictIdx)}
+                                        activeEditingConflictIndex={activeEditingConflictIndex}
                                         editWarningNonce={conflictIdx >= 0 && editWarningRequest?.conflictIndex === conflictIdx
                                             ? editWarningRequest.nonce
                                             : 0}
