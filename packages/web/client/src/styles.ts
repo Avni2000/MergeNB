@@ -1068,12 +1068,18 @@ ${bodySel} {
     margin: 0;
     padding: 10px 12px;
     border-radius: 4px;
+    cursor: text;
     font-family: var(--font-code);
     font-size: 13px;
     line-height: 1.5;
-    white-space: pre-wrap;
+    white-space: break-spaces;
     word-break: break-word;
     color: var(--text-primary);
+}
+
+/* Keep terminal blank lines visible when content ends with one or more '\n'. */
+.resolved-content-static.trailing-newline::after {
+    content: '\\200B';
 }
 
 .resolved-cell.code-cell .resolved-content-static {
