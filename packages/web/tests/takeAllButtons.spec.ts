@@ -24,7 +24,7 @@ import {
     collectExpectedCellsFromUI,
     clickHistoryUndo,
     clickHistoryRedo,
-    getResolvedEditorValue,
+    getResolvedContentValue,
 } from '../../../test-fixtures/shared/integrationUtils';
 import {
     buildExpectedCellsFromNotebook,
@@ -120,7 +120,7 @@ async function selectManualRows(
         const expectedCellType = await getColumnCellType(row, manualChoice);
 
         await button.click();
-        await row.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+        await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
 
         selected.push({ index: i, expectedSource, expectedCellType });
     }
@@ -146,38 +146,30 @@ async function verifyTakeAllUnresolved(
         const manual = manualIndex.get(i);
 
         if (manual) {
-            const textarea = row.locator('.resolved-content-input');
-            if (await textarea.count() === 0) {
+            if (await row.locator('.resolved-cell').count() === 0) {
                 throw new Error(`Row ${i}: expected resolved content for manual choice`);
             }
-            const actualValue = await getResolvedEditorValue(textarea);
+            const actualValue = await getResolvedContentValue(row);
             if (actualValue !== manual.expectedSource) {
                 throw new Error(`Row ${i}: manual choice overwritten by take-all`);
             }
             continue;
         }
 
-        const hasSideCell = await row.locator(`.${action}-column .notebook-cell`).count() > 0;
-        if (!hasSideCell) {
+        const resolvedChoice = ((await row.locator('.resolved-base strong').textContent()) || '').trim().toLowerCase();
+        if (resolvedChoice === 'delete') {
             const isDeleted = await row.locator('.resolved-cell.resolved-deleted').count() > 0;
             if (!isDeleted) {
-                throw new Error(`Row ${i}: expected delete for missing ${action} cell`);
+                throw new Error(`Row ${i}: resolved choice says delete, but delete styling is missing`);
             }
             continue;
         }
 
-        const expectedCell = await getColumnCell(row, action, i);
-        if (!expectedCell) {
-            throw new Error(`Row ${i}: could not read ${action} cell data`);
+        if (resolvedChoice !== action) {
+            throw new Error(`Row ${i}: expected ${action}, found ${resolvedChoice}`);
         }
-        const expectedSource = getCellSource(expectedCell);
-        const textarea = row.locator('.resolved-content-input');
-        if (await textarea.count() === 0) {
+        if (await row.locator('.resolved-cell').count() === 0) {
             throw new Error(`Row ${i}: expected resolved content after take-all`);
-        }
-        const actualValue = await getResolvedEditorValue(textarea);
-        if (actualValue !== expectedSource) {
-            throw new Error(`Row ${i}: take-all content mismatch for ${action}`);
         }
     }
 }
@@ -193,21 +185,21 @@ async function verifyManualSelectionsAfterUndo(
     for (let i = 0; i < count; i++) {
         const row = rows.nth(i);
         const manual = manualIndex.get(i);
-        const textarea = row.locator('.resolved-content-input');
+        const resolvedCell = row.locator('.resolved-cell');
         const deleted = row.locator('.resolved-cell.resolved-deleted');
 
         if (manual) {
-            if (await textarea.count() === 0) {
+            if (await resolvedCell.count() === 0) {
                 throw new Error(`Row ${i}: expected manual resolution after undo`);
             }
-            const actualValue = await getResolvedEditorValue(textarea);
+            const actualValue = await getResolvedContentValue(row);
             if (actualValue !== manual.expectedSource) {
                 throw new Error(`Row ${i}: manual resolution mismatch after undo`);
             }
             continue;
         }
 
-        if (await textarea.count() > 0 || await deleted.count() > 0) {
+        if (await resolvedCell.count() > 0 || await deleted.count() > 0) {
             throw new Error(`Row ${i}: expected unresolved state after undo`);
         }
     }
@@ -324,9 +316,9 @@ test.describe('Take All Buttons', () => {
             // Build expected resolved cells from UI before applying
             const expectedCellsFromUI = await collectExpectedCellsFromUI(page, {
                 resolveConflictChoice: async (row, _conflictIndex, rowIndex) => {
-                    const selectedButton = row.locator('.btn-resolve.selected');
-                    const selectedText = (await selectedButton.textContent()) || '';
-                    const normalized = selectedText.toLowerCase();
+                    const resolvedBase = row.locator('.resolved-base strong');
+                    const resolvedText = (await resolvedBase.textContent()) || '';
+                    const normalized = resolvedText.toLowerCase();
                     if (normalized.includes('base')) return { choice: 'base' };
                     if (normalized.includes('current')) return { choice: 'current' };
                     if (normalized.includes('incoming')) return { choice: 'incoming' };

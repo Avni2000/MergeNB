@@ -853,17 +853,17 @@ test.describe('Settings Matrix - UI Integration', () => {
             const row = await findExecutionConflictRow(page);
 
             await row.locator('.btn-current').click();
-            await row.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+            await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
 
             await page.click('.header-title');
             await page.keyboard.press(`${mod}+Z`);
-            await row.locator('.resolved-content-input').waitFor({
+            await row.locator('.resolved-cell').waitFor({
                 state: 'detached', timeout: 5000,
             });
 
             await page.click('.header-title');
             await page.keyboard.press(`${mod}+Shift+Z`);
-            await row.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+            await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
             logger.info('  pass: ui-hotkeys-enabled');
         } finally {
             restoreSettingsFileSnapshot(settingsSnapshot);
@@ -891,15 +891,15 @@ test.describe('Settings Matrix - UI Integration', () => {
             const row = await findExecutionConflictRow(page);
 
             await row.locator('.btn-current').click();
-            await row.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+            await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
 
             await page.click('.header-title');
             await page.keyboard.press(`${mod}+Z`);
 
             // Resolution should remain (hotkeys disabled)
-            await expect(row.locator('.resolved-content-input')).toBeVisible({ timeout: 500 });
+            await expect(row.locator('.resolved-cell')).toBeVisible({ timeout: 500 });
 
-            const stillResolved = await row.locator('.resolved-content-input').count();
+            const stillResolved = await row.locator('.resolved-cell').count();
             expect(stillResolved).toBeGreaterThan(0);
             logger.info('  pass: ui-hotkeys-disabled');
         } finally {
@@ -949,12 +949,12 @@ test.describe('Settings Matrix - UI Integration', () => {
             // enableUndoRedoHotkeys=false -- undo should not revert
             const conflictRow = await findExecutionConflictRow(page);
             await conflictRow.locator('.btn-current').click();
-            await conflictRow.locator('.resolved-content-input').waitFor({ timeout: 5000 });
+            await conflictRow.locator('.resolved-cell').waitFor({ timeout: 5000 });
             await page.click('.header-title');
             const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
             await page.keyboard.press(`${mod}+Z`);
-            await expect(conflictRow.locator('.resolved-content-input')).toBeVisible({ timeout: 500 });
-            const stillResolved = await conflictRow.locator('.resolved-content-input').count();
+            await expect(conflictRow.locator('.resolved-cell')).toBeVisible({ timeout: 500 });
+            const stillResolved = await conflictRow.locator('.resolved-cell').count();
             expect(stillResolved).toBeGreaterThan(0);
 
             logger.info('  pass: ui-payload-completeness');
