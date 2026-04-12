@@ -11,6 +11,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
+import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
 import { CellContent, mergeNBEditorStructure } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
@@ -60,9 +61,11 @@ function MergeRowInner({
     const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
     const [showWarning, setShowWarning] = useState(false);
     const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
+    const [isEditing, setIsEditing] = useState(false);
 
     useEffect(() => {
         setDraftResolvedContent(resolutionState?.resolvedContent ?? '');
+        setIsEditing(false);
     }, [resolutionState?.choice, resolutionState?.resolvedContent, conflictIndex]);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
@@ -82,7 +85,7 @@ function MergeRowInner({
         : (row.currentCell?.cell_type || row.incomingCell?.cell_type || row.baseCell?.cell_type || 'code');
     
     const editorExtensions = useMemo(
-        () => [...(resolvedCellType === 'markdown' ? [] : languageExtensions), mergeNBEditorStructure],
+        () => [...(resolvedCellType === 'markdown' ? [] : languageExtensions), mergeNBEditorStructure, EditorView.lineWrapping],
         [languageExtensions, resolvedCellType]
     );
 
@@ -244,11 +247,22 @@ function MergeRowInner({
             );
         }
 
-        // Resolved but not deleted - show the resolved editor with undo button
+        // Resolved but not deleted — static by default so cross-cell text selection works.
+        // Switching to a contenteditable CodeMirror editor breaks inter-cell drag-selection
+        // because browsers treat contenteditable boundaries as selection isolation points.
         return (
             <div className={rowClasses} data-testid={testId}>
                 <div className="resolved-row-wrapper">
                     <div className="resolved-row-header">
+                        {!isEditing && (
+                            <button
+                                className="btn btn-secondary"
+                                onClick={() => setIsEditing(true)}
+                                title="Edit resolved content"
+                            >
+                                Edit
+                            </button>
+                        )}
                         <button
                             className="btn btn-secondary"
                             onClick={() => onClearChoice?.(conflictIndex)}
@@ -265,16 +279,23 @@ function MergeRowInner({
                                 {isContentModified && <span className="modified-badge">(edited)</span>}
                             </span>
                         </div>
-                        <CodeMirror
-                            value={draftResolvedContent}
-                            onChange={handleContentChange}
-                            onBlur={handleBlur}
-                            extensions={editorExtensions}
-                            placeholder="Enter cell content..."
-                            className="resolved-content-input"
-                            basicSetup={{ lineNumbers: false, foldGutter: false }}
-                            theme={resolvedEditorTheme}
-                        />
+                        {isEditing ? (
+                            <CodeMirror
+                                value={draftResolvedContent}
+                                onChange={handleContentChange}
+                                onBlur={() => { handleBlur(); setIsEditing(false); }}
+                                extensions={editorExtensions}
+                                placeholder="Enter cell content..."
+                                className="resolved-content-input"
+                                basicSetup={{ lineNumbers: false, foldGutter: false }}
+                                theme={resolvedEditorTheme}
+                                autoFocus={true}
+                            />
+                        ) : (
+                            <pre className={`resolved-content-static ${resolvedCellType}-content`}>
+                                {draftResolvedContent}
+                            </pre>
+                        )}
                     </div>
                 </div>
             </div>
