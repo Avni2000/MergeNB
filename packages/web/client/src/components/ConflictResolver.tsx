@@ -8,6 +8,7 @@ import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/rea
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
+import { createPortal } from 'react-dom';
 import { normalizeCellSource } from '../../../../core/src';
 import type {
     UnifiedConflictData,
@@ -53,12 +54,18 @@ export function ConflictResolver({
     );
     const [historyOpen, setHistoryOpen] = useState(false);
     const [autoResolveBannerOpen, setAutoResolveBannerOpen] = useState(false);
-    const [editWarningRequest, setEditWarningRequest] = useState<{ conflictIndex: number; nonce: number } | null>(null);
+    const [destructiveActionWarning, setDestructiveActionWarning] = useState<{
+        title: string;
+        message: string;
+        confirmLabel: string;
+    } | null>(null);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
     const isDraggingRef = useRef(false);
     const dragRenderedIndicesRef = useRef<number[] | null>(null);
     const pendingMeasureNodesRef = useRef<Set<HTMLElement>>(new Set());
+    const pendingDestructiveActionRef = useRef<(() => void) | null>(null);
+    const suppressApplyResolutionClickRef = useRef(false);
 
     const choices = useStore(resolverStore, state => state.choices);
     const editingConflicts = useStore(resolverStore, state => state.editingConflicts);
@@ -91,23 +98,40 @@ export function ConflictResolver({
         return firstEditing.done ? null : firstEditing.value;
     }, [editingConflicts]);
 
-    const promptToSaveEdits = useCallback((conflictIndex?: number | null) => {
-        const targetConflictIndex = conflictIndex ?? activeEditingConflictIndex;
-        if (targetConflictIndex === null || targetConflictIndex === undefined) return false;
-        setEditWarningRequest(prev => ({
-            conflictIndex: targetConflictIndex,
-            nonce: targetConflictIndex === prev?.conflictIndex ? prev.nonce + 1 : 1,
-        }));
-        return true;
-    }, [activeEditingConflictIndex]);
+    const hasEditedResolvedContent = useMemo(
+        () => Array.from(choices.values()).some(choice => choice.resolvedContent !== choice.originalContent),
+        [choices]
+    );
 
-    const guardWhileEditing = useCallback((action: () => void) => {
-        if (activeEditingConflictIndex !== null) {
-            promptToSaveEdits(activeEditingConflictIndex);
-            return;
-        }
-        action();
-    }, [activeEditingConflictIndex, promptToSaveEdits]);
+    const guardEditedResolutions = useCallback(
+        (action: () => void) => {
+            if (!hasEditedResolvedContent) {
+                action();
+                return;
+            }
+
+            pendingDestructiveActionRef.current = action;
+            setDestructiveActionWarning({
+                title: 'Discard edited resolutions?',
+                message:
+                    'This action will discard one or more edited resolved cells from history.',
+                confirmLabel: 'Discard edits',
+            });
+        },
+        [hasEditedResolvedContent]
+    );
+
+    const dismissDestructiveActionWarning = useCallback(() => {
+        pendingDestructiveActionRef.current = null;
+        setDestructiveActionWarning(null);
+    }, []);
+
+    const confirmDestructiveActionWarning = useCallback(() => {
+        const action = pendingDestructiveActionRef.current;
+        pendingDestructiveActionRef.current = null;
+        setDestructiveActionWarning(null);
+        action?.();
+    }, []);
 
     const isEditableTarget = useCallback((target: EventTarget | null): boolean => {
         if (!target || !(target as HTMLElement).closest) return false;
@@ -211,10 +235,6 @@ export function ConflictResolver({
             if (event.key.toLowerCase() !== 'z') return;
 
             event.preventDefault();
-            if (activeEditingConflictIndex !== null) {
-                promptToSaveEdits(activeEditingConflictIndex);
-                return;
-            }
             if (event.shiftKey) {
                 redo();
             } else {
@@ -224,15 +244,7 @@ export function ConflictResolver({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [
-        activeEditingConflictIndex,
-        enableUndoRedoHotkeys,
-        isEditableTarget,
-        isMac,
-        promptToSaveEdits,
-        redo,
-        undo,
-    ]);
+    }, [enableUndoRedoHotkeys, isEditableTarget, isMac, redo, undo]);
 
     useEffect(() => {
         const el = mainContentRef.current;
@@ -242,9 +254,12 @@ export function ConflictResolver({
         const onDown = (event: MouseEvent) => {
             if (event.button !== 0) return;
             const target = event.target instanceof Element ? event.target : null;
-            if (!target?.closest?.(
-                '.cell-content, .cell-output-host, .cell-output-fallback, .resolved-content-input, .markdown-content'
-            )) return;
+            if (
+                !target?.closest?.(
+                    '.cell-content, .cell-output-host, .cell-output-fallback, .resolved-content-input, .markdown-content'
+                )
+            )
+                return;
             isDraggingRef.current = true;
             dragRenderedIndicesRef.current = null;
             prevScrollTop = el?.scrollTop ?? 0;
@@ -256,8 +271,8 @@ export function ConflictResolver({
             // If the user completed a drag-selection, keep the accumulated
             // row indices pinned so the browser selection survives scrolling.
             const sel = window.getSelection();
-            const hasSelection = sel && !sel.isCollapsed
-                && el?.contains(sel.anchorNode ?? null);
+            const hasSelection =
+                sel && !sel.isCollapsed && el?.contains(sel.anchorNode ?? null);
             if (!hasSelection) {
                 dragRenderedIndicesRef.current = null;
             }
@@ -316,11 +331,7 @@ export function ConflictResolver({
         };
     }, []);
 
-    const handleResolve = () => {
-        if (activeEditingConflictIndex !== null) {
-            promptToSaveEdits(activeEditingConflictIndex);
-            return;
-        }
+    const applyResolutionNow = useCallback(() => {
         const {
             rows: liveRows,
             choices: liveChoices,
@@ -329,32 +340,82 @@ export function ConflictResolver({
             renumberExecutionCounts: liveRenumberExecutionCounts,
         } = resolverStore.getState();
         // Build resolved rows - this is the source of truth for reconstruction
-        const resolvedRows: import('../types').ResolvedRow[] = liveRows.map((row) => {
-            const conflictIdx = row.conflictIndex ?? -1;
-            const resolutionState = conflictIdx >= 0 ? liveChoices.get(conflictIdx) : undefined;
+        const resolvedRows: import('../types').ResolvedRow[] = liveRows.map(
+            row => {
+                const conflictIdx = row.conflictIndex ?? -1;
+                const resolutionState =
+                    conflictIdx >= 0 ? liveChoices.get(conflictIdx) : undefined;
 
-            return {
-                baseCell: row.baseCell,
-                currentCell: row.currentCell,
-                incomingCell: row.incomingCell,
-                baseCellIndex: row.baseCellIndex,
-                currentCellIndex: row.currentCellIndex,
-                incomingCellIndex: row.incomingCellIndex,
-                resolution: resolutionState ? {
-                    choice: resolutionState.choice,
-                    resolvedContent: resolutionState.resolvedContent
-                } : undefined
-            };
-        });
+                return {
+                    baseCell: row.baseCell,
+                    currentCell: row.currentCell,
+                    incomingCell: row.incomingCell,
+                    baseCellIndex: row.baseCellIndex,
+                    currentCellIndex: row.currentCellIndex,
+                    incomingCellIndex: row.incomingCellIndex,
+                    resolution: resolutionState
+                        ? {
+                            choice: resolutionState.choice,
+                            resolvedContent: resolutionState.resolvedContent,
+                        }
+                        : undefined,
+                };
+            }
+        );
 
-        const semanticChoice = (
+        const semanticChoice =
             liveTakeAllChoice &&
-            isTakeAllChoiceConsistent(liveRows, liveChoices, liveTakeAllChoice, true)
-        )
-            ? liveTakeAllChoice
-            : inferTakeAllChoice(liveRows, liveChoices);
-        onResolve(liveMarkAsResolved, liveRenumberExecutionCounts, resolvedRows, semanticChoice);
-    };
+                isTakeAllChoiceConsistent(liveRows, liveChoices, liveTakeAllChoice, true)
+                ? liveTakeAllChoice
+                : inferTakeAllChoice(liveRows, liveChoices);
+        onResolve(
+            liveMarkAsResolved,
+            liveRenumberExecutionCounts,
+            resolvedRows,
+            semanticChoice
+        );
+    }, [onResolve, resolverStore]);
+
+    const handleResolve = useCallback(() => {
+        if (suppressApplyResolutionClickRef.current) {
+            suppressApplyResolutionClickRef.current = false;
+            return;
+        }
+
+        if (activeEditingConflictIndex !== null) {
+            pendingDestructiveActionRef.current = applyResolutionNow;
+            setDestructiveActionWarning({
+                title: 'Apply resolution now?',
+                message:
+                    'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
+                confirmLabel: 'Apply resolution (without saving edits)',
+            });
+            return;
+        }
+
+        applyResolutionNow();
+    }, [activeEditingConflictIndex, applyResolutionNow]);
+
+    const handleResolveMouseDown = useCallback(
+        (event: React.MouseEvent<HTMLButtonElement>) => {
+            if (activeEditingConflictIndex === null) {
+                return;
+            }
+
+            // Intercept before CodeMirror blur autosaves, so Apply Resolution can still
+            // ask whether to keep editing or proceed with the last saved content.
+            event.preventDefault();
+            suppressApplyResolutionClickRef.current = true;
+            pendingDestructiveActionRef.current = applyResolutionNow;
+            setDestructiveActionWarning({
+                title: 'Apply resolution now?',
+                message:
+                    'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
+                confirmLabel: 'Apply resolution',
+            });
+        },
+        [activeEditingConflictIndex, applyResolutionNow]
+    );
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
     const getScrollElement = useCallback(() => mainContentRef.current, []);
@@ -363,7 +424,9 @@ export function ConflictResolver({
     // apart initially (harmless gaps) rather than overlapping (visible flicker).
     const estimatedRowHeights = useMemo(() => {
         return rows.map(row => {
-            const cells = [row.currentCell, row.incomingCell, row.baseCell].filter(Boolean);
+            const cells = [row.currentCell, row.incomingCell, row.baseCell].filter(
+                Boolean
+            );
             const maxLines = Math.max(
                 ...cells.map(c => normalizeCellSource(c!.source).split('\n').length),
                 3
@@ -372,9 +435,12 @@ export function ConflictResolver({
             return Math.max(120, maxLines * 22 + 80);
         });
     }, [rows]);
-    const estimateRowSize = useCallback((index: number) => {
-        return estimatedRowHeights[index] ?? 200;
-    }, [estimatedRowHeights]);
+    const estimateRowSize = useCallback(
+        (index: number) => {
+            return estimatedRowHeights[index] ?? 200;
+        },
+        [estimatedRowHeights]
+    );
 
     // During drag-select, never remove rows from the DOM — only accumulate.
     // The browser anchors its selection to specific DOM nodes; if the
@@ -428,8 +494,40 @@ export function ConflictResolver({
     }, []);
     const totalSize = rowVirtualizer.getTotalSize();
 
+    const destructiveActionModal = destructiveActionWarning
+        ? createPortal(
+            <div
+                className="warning-modal-overlay"
+                data-testid="destructive-action-warning-modal"
+            >
+                <div className="warning-modal">
+                    <div className="warning-icon">⚠️</div>
+                    <h3>{destructiveActionWarning.title}</h3>
+                    <p>{destructiveActionWarning.message}</p>
+                    <div className="warning-actions">
+                        <button
+                            className="btn-cancel"
+                            onClick={dismissDestructiveActionWarning}
+                        >
+                            Keep my edits
+                        </button>
+                        <button
+                            className="btn-confirm"
+                            onClick={confirmDestructiveActionWarning}
+                            data-testid="destructive-action-warning-confirm"
+                        >
+                            {destructiveActionWarning.confirmLabel}
+                        </button>
+                    </div>
+                </div>
+            </div>,
+            document.body
+        )
+        : null;
+
     return (
         <div className="app-container jp-Notebook">
+            {destructiveActionModal}
             <header className="header">
                 <div className="header-toolbar">
                     <div className="header-left">
@@ -450,7 +548,7 @@ export function ConflictResolver({
                         <div className="header-group">
                                 <button
                                     className="btn btn-secondary"
-                                    onClick={() => guardWhileEditing(undo)}
+                                    onClick={undo}
                                     disabled={!canUndo}
                                     data-testid="history-undo"
                                     title={`Undo (${undoShortcutLabel})`}
@@ -459,7 +557,7 @@ export function ConflictResolver({
                             </button>
                                 <button
                                     className="btn btn-secondary"
-                                    onClick={() => guardWhileEditing(redo)}
+                                    onClick={redo}
                                     disabled={!canRedo}
                                     data-testid="history-redo"
                                     title={`Redo (${redoShortcutLabel})`}
@@ -469,7 +567,7 @@ export function ConflictResolver({
                             <div className="history-menu" ref={historyMenuRef}>
                                 <button
                                     className="btn btn-secondary history-toggle"
-                                    onClick={() => guardWhileEditing(() => setHistoryOpen(prev => !prev))}
+                                    onClick={() => setHistoryOpen(prev => !prev)}
                                     aria-expanded={historyOpen}
                                     data-testid="history-toggle"
                                 >
@@ -485,7 +583,7 @@ export function ConflictResolver({
                                         <div className="history-actions">
                                             <button
                                                 className="btn btn-secondary"
-                                                onClick={() => guardWhileEditing(undo)}
+                                                onClick={undo}
                                                 disabled={!canUndo}
                                                 data-testid="history-panel-undo"
                                             >
@@ -493,7 +591,7 @@ export function ConflictResolver({
                                             </button>
                                             <button
                                                 className="btn btn-secondary"
-                                                onClick={() => guardWhileEditing(redo)}
+                                                onClick={redo}
                                                 disabled={!canRedo}
                                                 data-testid="history-panel-redo"
                                             >
@@ -510,17 +608,17 @@ export function ConflictResolver({
                                                 role="button"
                                                 tabIndex={0}
                                                 aria-current={index === history.index ? 'true' : undefined}
-                                                onClick={() => guardWhileEditing(() => {
+                                                onClick={() => {
                                                     jumpToHistory(index);
                                                     setHistoryOpen(false);
-                                                })}
-                                                onKeyDown={(event) => {
+                                                }}
+                                                onKeyDown={event => {
                                                     if (event.key === 'Enter' || event.key === ' ') {
                                                         event.preventDefault();
-                                                        guardWhileEditing(() => {
+                                                        {
                                                             jumpToHistory(index);
                                                             setHistoryOpen(false);
-                                                        });
+                                                        }
                                                     }
                                                 }}
                                             >
@@ -543,7 +641,7 @@ export function ConflictResolver({
                                         padding: '4px 8px'
                                     }}
                                     title="Accept all base (original) changes"
-                                    onClick={() => guardWhileEditing(() => acceptAll('base'))}
+                                    onClick={() => acceptAll('base')}
                                 >
                                     All Base
                                 </button>
@@ -555,10 +653,10 @@ export function ConflictResolver({
                                     border: '1px solid var(--current-border)',
                                     color: 'var(--text-primary)',
                                     fontSize: 11,
-                                    padding: '4px 8px'
+                                    padding: '4px 8px',
                                 }}
                                 title="Accept all current (local) changes"
-                                onClick={() => guardWhileEditing(() => acceptAll('current'))}
+                                onClick={() => acceptAll('current')}
                             >
                                 All Current
                             </button>
@@ -572,7 +670,7 @@ export function ConflictResolver({
                                     padding: '4px 8px'
                                 }}
                                 title="Accept all incoming (remote) changes"
-                                onClick={() => guardWhileEditing(() => acceptAll('incoming'))}
+                                onClick={() => acceptAll('incoming')}
                             >
                                 All Incoming
                             </button>
@@ -581,13 +679,7 @@ export function ConflictResolver({
                             <input
                                 type="checkbox"
                                 checked={renumberExecutionCounts}
-                                onChange={e => {
-                                    if (activeEditingConflictIndex !== null) {
-                                        promptToSaveEdits(activeEditingConflictIndex);
-                                        return;
-                                    }
-                                    setRenumberExecutionCounts(e.target.checked);
-                                }}
+                                onChange={e => setRenumberExecutionCounts(e.target.checked)}
                             />
                             Renumber execution counts
                         </label>
@@ -595,18 +687,13 @@ export function ConflictResolver({
                             <input
                                 type="checkbox"
                                 checked={markAsResolved}
-                                onChange={e => {
-                                    if (activeEditingConflictIndex !== null) {
-                                        promptToSaveEdits(activeEditingConflictIndex);
-                                        return;
-                                    }
-                                    setMarkAsResolved(e.target.checked);
-                                }}
+                                onChange={e => setMarkAsResolved(e.target.checked)}
                             />
                             Mark as resolved (stage in Git)
                         </label>
                         <button
                             className="btn btn-primary"
+                            onMouseDown={handleResolveMouseDown}
                             onClick={handleResolve}
                             disabled={!allResolved}
                         >
@@ -621,16 +708,19 @@ export function ConflictResolver({
                         </div>
                     )}
                     <div className="column-label current">
-                        Current {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
+                        Current{' '}
+                        {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
                     </div>
                     <div className="column-label incoming">
-                        Incoming {conflict.incomingBranch ? `(${conflict.incomingBranch})` : ''}
+                        Incoming{' '}
+                        {conflict.incomingBranch ? `(${conflict.incomingBranch})` : ''}
                     </div>
                 </div>
             </header>
 
             <main className="main-content" ref={mainContentRef}>
-                    {conflict.autoResolveResult && conflict.autoResolveResult.autoResolvedCount > 0 && (
+                {conflict.autoResolveResult &&
+                    conflict.autoResolveResult.autoResolvedCount > 0 && (
                         <div className="auto-resolve-banner">
                             <button
                                 className="auto-resolve-summary"
@@ -639,9 +729,15 @@ export function ConflictResolver({
                             >
                                 <span className="icon">✓</span>
                                 <span className="text">
-                                    Auto-resolved {conflict.autoResolveResult.autoResolvedCount} conflict{conflict.autoResolveResult.autoResolvedCount !== 1 ? 's' : ''}
+                                    Auto-resolved {conflict.autoResolveResult.autoResolvedCount}{' '}
+                                    conflict
+                                    {conflict.autoResolveResult.autoResolvedCount !== 1
+                                        ? 's'
+                                        : ''}
                                 </span>
-                                <span className="chevron">{autoResolveBannerOpen ? '▲' : '▼'}</span>
+                                <span className="chevron">
+                                    {autoResolveBannerOpen ? '▲' : '▼'}
+                                </span>
                             </button>
                             {autoResolveBannerOpen && conflict.autoResolveResult.autoResolvedDescriptions.length > 0 && (
                                 <ul className="auto-resolve-list">
@@ -667,50 +763,54 @@ export function ConflictResolver({
 
                             if (!row) return null;
 
-                            return (
-                                <div
-                                    key={virtualRow.key}
-                                    // tanstack uses this attribute to associate DOM measurements
-                                    //  with the correct virtualized item
-                                    data-index={virtualRow.index}
-                                    ref={measureRef}
-                                    className="virtual-row"
-                                    style={{
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        width: '100%',
-                                        transform: `translateY(${virtualRow.start}px)`,
-                                    }}
-                                >
-                                    <MergeRow
-                                        row={row}
-                                        rowIndex={i}
-                                        languageExtensions={languageExtensions}
-                                        theme={conflict.theme ?? 'light'}
-                                        resolutionState={resolutionState}
-                                        isEditing={conflictIdx >= 0 && editingConflicts.has(conflictIdx)}
-                                        activeEditingConflictIndex={activeEditingConflictIndex}
-                                        editWarningNonce={conflictIdx >= 0 && editWarningRequest?.conflictIndex === conflictIdx
-                                            ? editWarningRequest.nonce
-                                            : 0}
-                                        onSelectChoice={handleSelectChoice}
-                                        onCommitContent={handleCommitContent}
-                                        onStartEditing={handleStartEditing}
-                                        onStopEditing={handleStopEditing}
-                                        onClearChoice={handleClearChoice}
-                                        onUnmatchRow={(targetRowIndex) => guardWhileEditing(() => unmatchRow(targetRowIndex))}
-                                        onRematchRows={(groupId) => guardWhileEditing(() => rematchRows(groupId))}
-                                        showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
-                                        showBaseColumn={showBaseColumn}
-                                        showCellHeaders={showCellHeaders}
-                                        data-testid={conflictIdx >= 0 ? `conflict-row-${conflictIdx}` : `row-${i}`}
-                                    />
-                                </div>
-                            );
-                        })}
-                    </div>
-                </main>
+                        return (
+                            <div
+                                key={virtualRow.key}
+                                // tanstack uses this attribute to associate DOM measurements
+                                //  with the correct virtualized item
+                                data-index={virtualRow.index}
+                                ref={measureRef}
+                                className="virtual-row"
+                                style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    transform: `translateY(${virtualRow.start}px)`,
+                                }}
+                            >
+                                <MergeRow
+                                    row={row}
+                                    rowIndex={i}
+                                    languageExtensions={languageExtensions}
+                                    theme={conflict.theme ?? 'light'}
+                                    resolutionState={resolutionState}
+                                    isEditing={
+                                        conflictIdx >= 0 && editingConflicts.has(conflictIdx)
+                                    }
+                                    onSelectChoice={handleSelectChoice}
+                                    onCommitContent={handleCommitContent}
+                                    onStartEditing={handleStartEditing}
+                                    onStopEditing={handleStopEditing}
+                                    onClearChoice={handleClearChoice}
+                                    onUnmatchRow={unmatchRow}
+                                    onRematchRows={rematchRows}
+                                    showOutputs={
+                                        !conflict.hideNonConflictOutputs || row.type === 'conflict'
+                                    }
+                                    showBaseColumn={showBaseColumn}
+                                    showCellHeaders={showCellHeaders}
+                                    data-testid={
+                                        conflictIdx >= 0
+                                            ? `conflict-row-${conflictIdx}`
+                                            : `row-${i}`
+                                    }
+                                />
+                            </div>
+                        );
+                    })}
+                </div>
+            </main>
         </div>
     );
 }
@@ -721,8 +821,9 @@ function isTakeAllChoiceConsistent(
     side: TakeAllChoice,
     allowSingleConflict: boolean
 ): boolean {
-    const conflictRows = rows.filter((row): row is MergeRowType & { conflictIndex: number } =>
-        row.type === 'conflict' && row.conflictIndex !== undefined
+    const conflictRows = rows.filter(
+        (row): row is MergeRowType & { conflictIndex: number } =>
+            row.type === 'conflict' && row.conflictIndex !== undefined
     );
 
     if (conflictRows.length === 0) {

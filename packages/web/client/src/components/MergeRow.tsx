@@ -5,8 +5,8 @@
  * UI flow:
  * 1. User selects a branch (base/current/incoming) 
  * 2. A resolved text area appears with green highlighting, pre-filled with that branch's content
- * 3. User can enter an explicit edit mode and save changes when ready
- * 4. Leaving edit mode requires an explicit save to keep local/global history coherent
+ * 3. User can enter edit mode, which shows a CodeMirror editor for the resolved content
+ * 4. Leaving the editor via blur autosaves the current draft and exits edit mode
  */
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
@@ -18,7 +18,6 @@ import { CellContent, mergeNBEditorStructure } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import type { ResolutionState } from '../store/resolverStore';
-import { useFocusTargetAfterGuardDismissal } from '../hooks/useFocusTargetAfterGuardDismissal';
 
 interface MergeRowProps {
     row: MergeRowType;
@@ -26,8 +25,6 @@ interface MergeRowProps {
     languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
     isEditing?: boolean;
-    activeEditingConflictIndex?: number | null;
-    editWarningNonce?: number;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onCommitContent: (index: number, resolvedContent: string) => void;
     onStartEditing: (index: number) => void;
@@ -57,8 +54,6 @@ function MergeRowInner({
     languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
     isEditing = false,
-    activeEditingConflictIndex = null,
-    editWarningNonce = 0,
     onSelectChoice,
     onCommitContent,
     onStartEditing,
@@ -78,11 +73,9 @@ function MergeRowInner({
 
     // All hooks must be called unconditionally at the top (Rules of Hooks)
     const [showUndoWarning, setShowUndoWarning] = useState(false);
-    const [showEditWarning, setShowEditWarning] = useState(false);
     const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
     const draftResolvedContentRef = useRef(draftResolvedContent);
-    const { onEditorReady: onResolvedEditorReady, prepareFocusReturn: prepareResolvedEditorFocus } =
-        useFocusTargetAfterGuardDismissal(showEditWarning);
+    const suppressBlurEditGuardRef = useRef(false);
 
     useEffect(() => {
         setDraftResolvedContent(resolutionState?.resolvedContent ?? '');
@@ -91,16 +84,6 @@ function MergeRowInner({
     useEffect(() => {
         draftResolvedContentRef.current = draftResolvedContent;
     }, [draftResolvedContent]);
-
-    useEffect(() => {
-        if (!isEditing) {
-            setShowEditWarning(false);
-            return;
-        }
-        if (editWarningNonce > 0) {
-            setShowEditWarning(true);
-        }
-    }, [editWarningNonce, isEditing]);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (which triggers StateEffect.reconfigure) only fires when these values actually
@@ -133,8 +116,11 @@ function MergeRowInner({
     };
 
     // Check if content has been modified from the original
+    const displayedResolvedContent = isEditing
+        ? draftResolvedContent
+        : (resolutionState?.resolvedContent ?? '');
     const isContentModified = resolutionState
-        ? draftResolvedContent !== resolutionState.originalContent
+        ? displayedResolvedContent !== resolutionState.originalContent
         : false;
 
     const handleChoiceClick = (choice: ResolutionChoice) => {
@@ -167,45 +153,10 @@ function MergeRowInner({
 
     const handleSaveEdits = () => {
         if (!resolutionState) return;
+        suppressBlurEditGuardRef.current = true;
         onCommitContent(conflictIndex, draftResolvedContentRef.current);
         onStopEditing(conflictIndex);
-        setShowEditWarning(false);
     };
-
-    const editWarningModal = showEditWarning
-        ? renderViewportModal(
-            <div className="warning-modal-overlay" data-testid="edit-warning-modal">
-                <div className="warning-modal">
-                    <div className="warning-icon">⚠️</div>
-                    <h3>Save edits before leaving?</h3>
-                    <p>
-                        This cell is still in edit mode. Click Save edits to keep your changes,
-                        or keep editing and finish when you are ready.
-                    </p>
-                    <div className="warning-actions">
-                        <button
-                            className="btn-cancel"
-                            onClick={() => {
-                                prepareResolvedEditorFocus();
-                                setShowEditWarning(false);
-                            }}
-                            data-editing-allow="true"
-                        >
-                            Keep editing
-                        </button>
-                        <button
-                            className="btn-confirm"
-                            onClick={handleSaveEdits}
-                            data-editing-allow="true"
-                            data-testid="edit-warning-save"
-                        >
-                            Save edits
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )
-        : null;
 
     const undoWarningModal = showUndoWarning
         ? renderViewportModal(
@@ -247,7 +198,7 @@ function MergeRowInner({
         const identicalClasses = [
             'merge-row',
             'identical-row',
-            isReordered && 'reordered-row',
+            isReordered && 'reordered-row'
         ].filter(Boolean).join(' ');
         return (
             <div
@@ -307,12 +258,6 @@ function MergeRowInner({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
-    const anotherConflictIsEditing = activeEditingConflictIndex !== null && activeEditingConflictIndex !== conflictIndex;
-    const anyConflictIsEditing = activeEditingConflictIndex !== null;
-    const disableResolvedUndo = anyConflictIsEditing;
-    const disableResolvedEdit = anotherConflictIsEditing;
-    const disableConflictActions = anyConflictIsEditing;
-
     // If resolved, show single-column collapsed view with undo button
     if (resolutionState && conflictIndex >= 0) {
         if (resolutionState.choice === 'delete') {
@@ -333,7 +278,6 @@ function MergeRowInner({
                                             className="btn btn-secondary"
                                             onClick={handleUndoResolution}
                                             title="Undo resolution and show the conflict again"
-                                            disabled={disableConflictActions}
                                         >
                                             Undo resolution
                                         </button>
@@ -372,7 +316,6 @@ function MergeRowInner({
                                         }}
                                         data-editing-allow={isEditing ? 'true' : undefined}
                                         data-testid={isEditing ? 'save-edits-button' : 'edit-button'}
-                                        disabled={disableResolvedEdit}
                                     >
                                         {isEditing ? 'Save edits' : 'Edit'}
                                     </button>
@@ -380,7 +323,6 @@ function MergeRowInner({
                                         className="btn btn-secondary"
                                         onClick={handleUndoResolution}
                                         title="Undo resolution and show the conflict again"
-                                        disabled={disableResolvedUndo}
                                     >
                                         Undo resolution
                                     </button>
@@ -391,17 +333,21 @@ function MergeRowInner({
                                     <CodeMirror
                                         value={draftResolvedContent}
                                         onChange={handleContentChange}
-                                        onCreateEditor={onResolvedEditorReady}
                                         extensions={editorExtensions}
                                         placeholder="Enter cell content..."
                                         className="resolved-content-input"
                                         basicSetup={{ lineNumbers: false, foldGutter: false }}
                                         theme={resolvedEditorTheme}
                                         autoFocus={true}
-                                        onBlur={(event) => {
+                                        onBlur={event => {
+                                            if (suppressBlurEditGuardRef.current) {
+                                                suppressBlurEditGuardRef.current = false;
+                                                return;
+                                            }
                                             const relatedTarget = event.relatedTarget as HTMLElement | null;
                                             if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
-                                            setShowEditWarning(true);
+                                            onCommitContent(conflictIndex, draftResolvedContentRef.current);
+                                            onStopEditing(conflictIndex);
                                         }}
                                     />
                                 </div>
@@ -414,7 +360,6 @@ function MergeRowInner({
                     </div>
                 </div>
 
-                {editWarningModal}
                 {undoWarningModal}
             </div>
         );
@@ -444,7 +389,6 @@ function MergeRowInner({
                     <button
                         className={`btn-resolve btn-delete ${resolutionState?.choice === 'delete' ? 'selected' : ''}`}
                         onClick={() => handleChoiceClick('delete')}
-                        disabled={disableConflictActions}
                     >
                         Delete Cell
                     </button>
@@ -460,7 +404,6 @@ function MergeRowInner({
                                     onClick={() => onUnmatchRow?.(rowIndex)}
                                     title="Unmatch this row into separate cells"
                                     data-testid="unmatch-btn"
-                                    disabled={disableConflictActions}
                                 >
                                     Unmatch
                                 </button>
@@ -471,12 +414,11 @@ function MergeRowInner({
                                     <button
                                         className="btn-rematch"
                                         onClick={() => onRematchRows?.(row.unmatchGroupId)}
-                                        title="Rematch these cells back into one row"
-                                        data-testid="rematch-btn"
-                                        disabled={disableConflictActions}
-                                    >
-                                        Rematch
-                                    </button>
+                                    title="Rematch these cells back into one row"
+                                    data-testid="rematch-btn"
+                                >
+                                    Rematch
+                                </button>
                                 </>
                             )}
                         </div>
@@ -485,8 +427,6 @@ function MergeRowInner({
             </div>
 
             {undoWarningModal}
-
-            {editWarningModal}
 
             {/* Three-way diff view */}
             <div className={`cell-columns${showBaseColumn ? '' : ' two-column'}`}>
@@ -561,7 +501,6 @@ function MergeRowInner({
                             <button
                                 className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
                                 onClick={() => handleChoiceClick('base')}
-                                disabled={disableConflictActions}
                             >
                                 Use Base
                             </button>
@@ -573,7 +512,6 @@ function MergeRowInner({
                         <button
                             className={`btn-resolve btn-current ${resolutionState?.choice === 'current' ? 'selected' : ''}`}
                             onClick={() => handleChoiceClick('current')}
-                            disabled={disableConflictActions}
                         >
                             Use Current
                         </button>
@@ -584,7 +522,6 @@ function MergeRowInner({
                         <button
                             className={`btn-resolve btn-incoming ${resolutionState?.choice === 'incoming' ? 'selected' : ''}`}
                             onClick={() => handleChoiceClick('incoming')}
-                            disabled={disableConflictActions}
                         >
                             Use Incoming
                         </button>
