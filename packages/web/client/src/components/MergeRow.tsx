@@ -74,8 +74,7 @@ function MergeRowInner({
     const conflictIndex = row.conflictIndex ?? -1;
 
     // All hooks must be called unconditionally at the top (Rules of Hooks)
-    const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
-    const [showWarning, setShowWarning] = useState(false);
+    const [showUndoWarning, setShowUndoWarning] = useState(false);
     const [showEditWarning, setShowEditWarning] = useState(false);
     const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
     const draftResolvedContentRef = useRef(draftResolvedContent);
@@ -133,33 +132,26 @@ function MergeRowInner({
         ? draftResolvedContent !== resolutionState.originalContent
         : false;
 
-    // Handle branch selection
     const handleChoiceClick = (choice: ResolutionChoice) => {
-        if (resolutionState && isContentModified && choice !== resolutionState.choice) {
-            // User has modified content and is trying to change branch - show warning
-            setPendingChoice(choice);
-            setShowWarning(true);
-        } else {
-            // No modification or same choice - proceed directly
-            const content = getContentForChoice(choice);
-            onSelectChoice(conflictIndex, choice, content);
-        }
+        const content = getContentForChoice(choice);
+        onSelectChoice(conflictIndex, choice, content);
     };
 
-    // Confirm branch change (overwrite edited content)
-    const confirmBranchChange = () => {
-        if (pendingChoice) {
-            const content = getContentForChoice(pendingChoice);
-            onSelectChoice(conflictIndex, pendingChoice, content);
+    const handleUndoResolution = () => {
+        if (isContentModified) {
+            setShowUndoWarning(true);
+            return;
         }
-        setShowWarning(false);
-        setPendingChoice(null);
+        onClearChoice?.(conflictIndex);
     };
 
-    // Cancel branch change
-    const cancelBranchChange = () => {
-        setShowWarning(false);
-        setPendingChoice(null);
+    const confirmUndoResolution = () => {
+        setShowUndoWarning(false);
+        onClearChoice?.(conflictIndex);
+    };
+
+    const cancelUndoResolution = () => {
+        setShowUndoWarning(false);
     };
 
     // Handle content editing in the resolved editor
@@ -200,6 +192,26 @@ function MergeRowInner({
                             data-testid="edit-warning-save"
                         >
                             Save edits
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )
+        : null;
+
+    const undoWarningModal = showUndoWarning
+        ? renderViewportModal(
+            <div className="warning-modal-overlay" data-testid="undo-warning-modal">
+                <div className="warning-modal">
+                    <div className="warning-icon">⚠️</div>
+                    <h3>Discard edits and undo resolution?</h3>
+                    <p>You have edited the resolved content. Undoing this resolution will discard those changes.</p>
+                    <div className="warning-actions">
+                        <button className="btn-cancel" onClick={cancelUndoResolution}>
+                            Keep my edits
+                        </button>
+                        <button className="btn-confirm" onClick={confirmUndoResolution}>
+                            Undo resolution
                         </button>
                     </div>
                 </div>
@@ -306,7 +318,7 @@ function MergeRowInner({
                                     <div className="resolved-header-actions" data-testid="resolved-action-bar">
                                         <button
                                             className="btn btn-secondary"
-                                            onClick={() => onClearChoice?.(conflictIndex)}
+                                            onClick={handleUndoResolution}
                                             title="Undo resolution and show the conflict again"
                                         >
                                             Undo resolution
@@ -356,8 +368,9 @@ function MergeRowInner({
                                     </button>
                                     <button
                                         className="btn btn-secondary"
-                                        onClick={() => onClearChoice?.(conflictIndex)}
+                                        onClick={handleUndoResolution}
                                         title="Undo resolution and show the conflict again"
+                                        data-editing-allow={isEditing ? 'true' : undefined}
                                     >
                                         Undo resolution
                                     </button>
@@ -391,6 +404,7 @@ function MergeRowInner({
                 </div>
 
                 {editWarningModal}
+                {undoWarningModal}
             </div>
         );
     }
@@ -456,24 +470,7 @@ function MergeRowInner({
                 </div>
             </div>
 
-            {/* Warning modal for branch change */}
-            {showWarning && (
-                <div className="warning-modal-overlay">
-                    <div className="warning-modal">
-                        <div className="warning-icon">⚠️</div>
-                        <h3>Change base branch?</h3>
-                        <p>You have edited the resolved content. Changing the base branch will overwrite your changes.</p>
-                        <div className="warning-actions">
-                            <button className="btn-cancel" onClick={cancelBranchChange}>
-                                Keep my edits
-                            </button>
-                            <button className="btn-confirm" onClick={confirmBranchChange}>
-                                Overwrite with {pendingChoice}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {undoWarningModal}
 
             {editWarningModal}
 
