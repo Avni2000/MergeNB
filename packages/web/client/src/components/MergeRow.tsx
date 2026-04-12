@@ -9,7 +9,7 @@
  * 4. If user changes the selected branch after editing, show a warning
  */
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
@@ -62,11 +62,17 @@ function MergeRowInner({
     const [showWarning, setShowWarning] = useState(false);
     const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
     const [isEditing, setIsEditing] = useState(false);
+    const draftResolvedContentRef = useRef(draftResolvedContent);
+    const pendingCursorPointRef = useRef<{ x: number; y: number } | null>(null);
 
     useEffect(() => {
         setDraftResolvedContent(resolutionState?.resolvedContent ?? '');
         setIsEditing(false);
     }, [resolutionState?.choice, resolutionState?.resolvedContent, conflictIndex]);
+
+    useEffect(() => {
+        draftResolvedContentRef.current = draftResolvedContent;
+    }, [draftResolvedContent]);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (which triggers StateEffect.reconfigure) only fires when these values actually
@@ -134,13 +140,36 @@ function MergeRowInner({
 
     // Handle content editing in the resolved editor
     const handleContentChange = (value: string) => {
+        draftResolvedContentRef.current = value;
         setDraftResolvedContent(value);
     };
 
     // Commit content to history on blur
     const handleBlur = () => {
         if (!resolutionState) return;
-        onCommitContent(conflictIndex, draftResolvedContent);
+        onCommitContent(conflictIndex, draftResolvedContentRef.current);
+    };
+
+    // Enter edit mode on direct click of the static content. If the user just
+    // created a text selection, do not switch to editor.
+    const handleStaticContentClick = (event: React.MouseEvent<HTMLPreElement>) => {
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed) {
+            return;
+        }
+
+        pendingCursorPointRef.current = { x: event.clientX, y: event.clientY };
+        setIsEditing(true);
+    };
+
+    const handleResolvedEditorCreate = (view: EditorView) => {
+        const pendingPoint = pendingCursorPointRef.current;
+        if (!pendingPoint) return;
+
+        const pos = view.posAtCoords(pendingPoint);
+        const anchor = Math.max(0, Math.min(pos ?? 0, view.state.doc.length));
+        view.dispatch({ selection: { anchor } });
+        pendingCursorPointRef.current = null;
     };
 
     const base = row.baseCellIndex;
@@ -254,15 +283,6 @@ function MergeRowInner({
             <div className={rowClasses} data-testid={testId}>
                 <div className="resolved-row-wrapper">
                     <div className="resolved-row-header">
-                        {!isEditing && (
-                            <button
-                                className="btn btn-secondary"
-                                onClick={() => setIsEditing(true)}
-                                title="Edit resolved content"
-                            >
-                                Edit
-                            </button>
-                        )}
                         <button
                             className="btn btn-secondary"
                             onClick={() => onClearChoice?.(conflictIndex)}
@@ -284,6 +304,7 @@ function MergeRowInner({
                                 value={draftResolvedContent}
                                 onChange={handleContentChange}
                                 onBlur={() => { handleBlur(); setIsEditing(false); }}
+                                onCreateEditor={handleResolvedEditorCreate}
                                 extensions={editorExtensions}
                                 placeholder="Enter cell content..."
                                 className="resolved-content-input"
@@ -292,7 +313,11 @@ function MergeRowInner({
                                 autoFocus={true}
                             />
                         ) : (
-                            <pre className={`resolved-content-static ${resolvedCellType}-content`}>
+                            <pre
+                                className={`resolved-content-static ${resolvedCellType}-content${draftResolvedContent.endsWith('\n') ? ' trailing-newline' : ''}`}
+                                onClick={handleStaticContentClick}
+                                title="Click to edit"
+                            >
                                 {draftResolvedContent}
                             </pre>
                         )}
