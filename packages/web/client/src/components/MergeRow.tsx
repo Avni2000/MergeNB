@@ -168,10 +168,18 @@ function MergeRowInner({
         suppressBlurEditGuardRef.current = true;
         onCommitContent(conflictIndex, draftResolvedContentRef.current);
         onStopEditing(conflictIndex);
-        
+
         // Trigger save animation
         setJustSaved(true);
         setTimeout(() => setJustSaved(false), 1000);
+
+        // Clear the blur-suppress flag after editor unmounts.
+        // The blur event may have already fired (hitting the relatedTarget guard),
+        // so we can't rely on onBlur to clear the flag. Use a microtask to ensure
+        // the flag is reset after the editor unmounts.
+        Promise.resolve().then(() => {
+            suppressBlurEditGuardRef.current = false;
+        });
     };
 
     const undoWarningModal = showUndoWarning
