@@ -27,6 +27,7 @@ export const mergeNBEditorStructure: Extension = EditorView.theme({
     '&.cm-focused': { outline: 'none !important' },
     '.cm-content': { fontFamily: 'var(--font-code)', fontSize: '13px', lineHeight: '1.5', padding: '0' },
     '.cm-line': { padding: '0' },
+    '.cm-activeLine': { backgroundColor: 'rgba(255, 255, 255, 0.05) !important' },
     '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit' },
     '.cm-gutters': { display: 'none' },
 });

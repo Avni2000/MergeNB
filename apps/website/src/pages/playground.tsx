@@ -32,6 +32,7 @@ function PlaygroundInner(): ReactNode {
                         filePath: 'demo.ipynb',
                         conflictKey: 'playground-demo-v1',
                         type: 'semantic',
+                        theme: 'dark',
                         semanticConflict: {
                             filePath: 'demo.ipynb',
                             semanticConflicts,
