@@ -98,7 +98,9 @@ function specLabel(filename: string): string {
 
 function runPlaywright(specFiles: string[] = []): Promise<boolean> {
     return new Promise(resolve => {
-        const args = ['playwright', 'test', ...specFiles];
+        // regex to match .spec.ts files
+        const sourceSpecFiles = specFiles.map(f => f.replace(/^out\//, '').replace(/\.js$/, '.ts'));
+        const args = ['playwright', 'test', ...sourceSpecFiles];
         const proc = spawn('npx', args, {
             stdio: 'inherit',
             cwd: path.resolve(__dirname, '../../../..'),
