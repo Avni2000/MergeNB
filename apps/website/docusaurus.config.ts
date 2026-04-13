@@ -41,19 +41,28 @@ const config: Config = {
     function ipynbLoader() {
       return {
         name: 'ipynb-loader',
-        configureWebpack() {
+        configureWebpack(existingConfig) {
+          const resolveConfig = existingConfig.resolve ?? {};
+          const existingAlias = resolveConfig.alias ?? {};
+          const existingFallback = resolveConfig.fallback ?? {};
+
           return {
             module: {
               rules: [{test: /\.ipynb$/, type: 'json'}],
             },
             resolve: {
+              ...resolveConfig,
               alias: {
                 // JupyterLab settingregistry uses `import * as json5` and calls json5.parse.
                 // The ESM build of json5 only exposes a default export, so force CJS here.
+                ...existingAlias,
                 json5$: 'json5/lib/index.js',
-                // ws treats these as optional perf deps; disable resolution to avoid warnings.
-                bufferutil$: false,
-                'utf-8-validate$': false,
+              },
+              // ws treats these as optional perf deps; disable resolution to avoid warnings.
+              fallback: {
+                ...existingFallback,
+                bufferutil: false,
+                'utf-8-validate': false,
               },
             },
           };
