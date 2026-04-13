@@ -124,7 +124,15 @@ export function ConflictResolver({
     const dismissDestructiveActionWarning = useCallback(() => {
         pendingDestructiveActionRef.current = null;
         setDestructiveActionWarning(null);
-    }, []);
+
+        // Scroll to the actively edited cell when keeping edits
+        if (activeEditingConflictIndex !== null) {
+            const rowIndex = rows.findIndex(row => row.conflictIndex === activeEditingConflictIndex);
+            if (rowIndex !== -1) {
+                virtualizerRef.current?.scrollToIndex(rowIndex, { align: 'center' });
+            }
+        }
+    }, [activeEditingConflictIndex, rows]);
 
     const confirmDestructiveActionWarning = useCallback(() => {
         const action = pendingDestructiveActionRef.current;
@@ -132,6 +140,23 @@ export function ConflictResolver({
         setDestructiveActionWarning(null);
         action?.();
     }, []);
+
+    // Wrapped handlers for destructive actions
+    const handleUndo = useCallback(() => {
+        guardEditedResolutions(() => undo());
+    }, [guardEditedResolutions, undo]);
+
+    const handleRedo = useCallback(() => {
+        guardEditedResolutions(() => redo());
+    }, [guardEditedResolutions, redo]);
+
+    const handleAcceptAll = useCallback((choice: TakeAllChoice) => {
+        guardEditedResolutions(() => acceptAll(choice));
+    }, [guardEditedResolutions, acceptAll]);
+
+    const handleJumpToHistory = useCallback((index: number) => {
+        guardEditedResolutions(() => jumpToHistory(index));
+    }, [guardEditedResolutions, jumpToHistory]);
 
     const isEditableTarget = useCallback((target: EventTarget | null): boolean => {
         if (!target || !(target as HTMLElement).closest) return false;
@@ -236,15 +261,15 @@ export function ConflictResolver({
 
             event.preventDefault();
             if (event.shiftKey) {
-                redo();
+                guardEditedResolutions(() => redo());
             } else {
-                undo();
+                guardEditedResolutions(() => undo());
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [enableUndoRedoHotkeys, isEditableTarget, isMac, redo, undo]);
+    }, [enableUndoRedoHotkeys, isEditableTarget, isMac, redo, undo, guardEditedResolutions]);
 
     useEffect(() => {
         const el = mainContentRef.current;
@@ -548,7 +573,7 @@ export function ConflictResolver({
                         <div className="header-group">
                                 <button
                                     className="btn btn-secondary"
-                                    onClick={undo}
+                                    onClick={handleUndo}
                                     disabled={!canUndo}
                                     data-testid="history-undo"
                                     title={`Undo (${undoShortcutLabel})`}
@@ -557,7 +582,7 @@ export function ConflictResolver({
                             </button>
                                 <button
                                     className="btn btn-secondary"
-                                    onClick={redo}
+                                    onClick={handleRedo}
                                     disabled={!canRedo}
                                     data-testid="history-redo"
                                     title={`Redo (${redoShortcutLabel})`}
@@ -583,7 +608,7 @@ export function ConflictResolver({
                                         <div className="history-actions">
                                             <button
                                                 className="btn btn-secondary"
-                                                onClick={undo}
+                                                onClick={handleUndo}
                                                 disabled={!canUndo}
                                                 data-testid="history-panel-undo"
                                             >
@@ -591,7 +616,7 @@ export function ConflictResolver({
                                             </button>
                                             <button
                                                 className="btn btn-secondary"
-                                                onClick={redo}
+                                                onClick={handleRedo}
                                                 disabled={!canRedo}
                                                 data-testid="history-panel-redo"
                                             >
@@ -609,14 +634,14 @@ export function ConflictResolver({
                                                 tabIndex={0}
                                                 aria-current={index === history.index ? 'true' : undefined}
                                                 onClick={() => {
-                                                    jumpToHistory(index);
+                                                    handleJumpToHistory(index);
                                                     setHistoryOpen(false);
                                                 }}
                                                 onKeyDown={event => {
                                                     if (event.key === 'Enter' || event.key === ' ') {
                                                         event.preventDefault();
                                                         {
-                                                            jumpToHistory(index);
+                                                            handleJumpToHistory(index);
                                                             setHistoryOpen(false);
                                                         }
                                                     }
@@ -641,7 +666,7 @@ export function ConflictResolver({
                                         padding: '4px 8px'
                                     }}
                                     title="Accept all base (original) changes"
-                                    onClick={() => acceptAll('base')}
+                                    onClick={() => handleAcceptAll('base')}
                                 >
                                     All Base
                                 </button>
@@ -656,7 +681,7 @@ export function ConflictResolver({
                                     padding: '4px 8px',
                                 }}
                                 title="Accept all current (local) changes"
-                                onClick={() => acceptAll('current')}
+                                onClick={() => handleAcceptAll('current')}
                             >
                                 All Current
                             </button>
@@ -670,7 +695,7 @@ export function ConflictResolver({
                                     padding: '4px 8px'
                                 }}
                                 title="Accept all incoming (remote) changes"
-                                onClick={() => acceptAll('incoming')}
+                                onClick={() => handleAcceptAll('incoming')}
                             >
                                 All Incoming
                             </button>
