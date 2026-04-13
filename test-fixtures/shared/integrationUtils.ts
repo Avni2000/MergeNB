@@ -37,6 +37,14 @@ type ConflictChoiceResolver = (
  */
 export async function getResolvedEditorValue(editorLocator: Locator): Promise<string> {
     return await editorLocator.evaluate(el => {
+        if (el instanceof HTMLTextAreaElement) {
+            return el.value ?? '';
+        }
+        const textarea = el.querySelector('textarea') as HTMLTextAreaElement | null;
+        if (textarea) {
+            return textarea.value ?? '';
+        }
+
         type CodeMirrorDoc = { toString: () => string };
         type CodeMirrorViewState = { doc?: CodeMirrorDoc };
         type CodeMirrorView = { state?: CodeMirrorViewState };
@@ -97,6 +105,17 @@ export async function getResolvedContentValue(scope: Locator): Promise<string> {
  * `.fill()` cannot be used because CodeMirror manages a `contenteditable` div, not a `<textarea>`.
  */
 export async function fillResolvedEditor(editorLocator: Locator, value: string): Promise<void> {
+    const isTextarea = await editorLocator.evaluate(el => el.tagName === 'TEXTAREA');
+    if (isTextarea) {
+        await editorLocator.fill(value);
+        return;
+    }
+    const textareaChild = editorLocator.locator('textarea');
+    if (await textareaChild.count() > 0) {
+        await textareaChild.first().fill(value);
+        return;
+    }
+
     const page = editorLocator.page();
     const content = editorLocator.locator('.cm-content');
     await content.click();
