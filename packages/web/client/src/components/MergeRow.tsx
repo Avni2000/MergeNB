@@ -370,28 +370,50 @@ function MergeRowInner({
                             </div>
                             {isEditing ? (
                                 <div data-editing-allow="true">
-                                    <CodeMirror
-                                        value={draftResolvedContent}
-                                        onChange={handleContentChange}
-                                        extensions={editorExtensions}
-                                        placeholder="Enter cell content..."
-                                        className="resolved-content-input"
-                                        basicSetup={{ lineNumbers: false, foldGutter: false }}
-                                        theme={resolvedEditorTheme}
-                                        autoFocus={true}
-                                        onBlur={event => {
-                                            if (suppressBlurEditGuardRef.current) {
-                                                suppressBlurEditGuardRef.current = false;
-                                                return;
-                                            }
-                                            const relatedTarget = event.relatedTarget as HTMLElement | null;
-                                            if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
-                                            onCommitContent(conflictIndex, draftResolvedContentRef.current);
-                                            onStopEditing(conflictIndex);
-                                            setJustSaved(true);
-                                            setTimeout(() => setJustSaved(false), 1000);
-                                        }}
-                                    />
+                                    {resolvedCellType === 'markdown' ? (
+                                        <textarea
+                                            value={draftResolvedContent}
+                                            onChange={e => handleContentChange(e.target.value)}
+                                            placeholder="Enter cell content..."
+                                            className="resolved-content-input"
+                                            autoFocus={true}
+                                            onBlur={event => {
+                                                if (suppressBlurEditGuardRef.current) {
+                                                    suppressBlurEditGuardRef.current = false;
+                                                    return;
+                                                }
+                                                const relatedTarget = event.relatedTarget as HTMLElement | null;
+                                                if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
+                                                onCommitContent(conflictIndex, draftResolvedContentRef.current);
+                                                onStopEditing(conflictIndex);
+                                                setJustSaved(true);
+                                                setTimeout(() => setJustSaved(false), 1000);
+                                            }}
+                                        />
+                                    ) : (
+                                        <CodeMirror
+                                            value={draftResolvedContent}
+                                            onChange={handleContentChange}
+                                            extensions={editorExtensions}
+                                            placeholder="Enter cell content..."
+                                            className="resolved-content-input"
+                                            basicSetup={{ lineNumbers: false, foldGutter: false }}
+                                            theme={resolvedEditorTheme}
+                                            autoFocus={true}
+                                            onBlur={event => {
+                                                if (suppressBlurEditGuardRef.current) {
+                                                    suppressBlurEditGuardRef.current = false;
+                                                    return;
+                                                }
+                                                const relatedTarget = event.relatedTarget as HTMLElement | null;
+                                                if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
+                                                onCommitContent(conflictIndex, draftResolvedContentRef.current);
+                                                onStopEditing(conflictIndex);
+                                                setJustSaved(true);
+                                                setTimeout(() => setJustSaved(false), 1000);
+                                            }}
+                                        />
+                                    )}
                                 </div>
                             ) : (
                                 resolvedCellType === 'markdown' ? (
