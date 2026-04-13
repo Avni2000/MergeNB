@@ -154,7 +154,7 @@ function MergeRowInner({
     };
 
     const handleUndoResolution = () => {
-        if (isContentModified) {
+        if (isEditing || isContentModified) {
             setShowUndoWarning(true);
             return;
         }
@@ -358,6 +358,9 @@ function MergeRowInner({
                                     </button>
                                     <button
                                         className="btn btn-resolved-undo"
+                                        onMouseDown={e => {
+                                            if (isEditing) e.preventDefault();
+                                        }}
                                         onClick={handleUndoResolution}
                                         title="Undo resolution and show the conflict again"
                                     >
