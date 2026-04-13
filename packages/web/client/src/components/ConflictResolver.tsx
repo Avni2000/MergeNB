@@ -8,6 +8,7 @@ import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/rea
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
+import { createPortal } from 'react-dom';
 import { normalizeCellSource } from '../../../../core/src';
 import type {
     UnifiedConflictData,
@@ -53,32 +54,128 @@ export function ConflictResolver({
     );
     const [historyOpen, setHistoryOpen] = useState(false);
     const [autoResolveBannerOpen, setAutoResolveBannerOpen] = useState(false);
+    const [destructiveActionWarning, setDestructiveActionWarning] = useState<{
+        title: string;
+        message: string;
+        confirmLabel: string;
+    } | null>(null);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
     const isDraggingRef = useRef(false);
     const dragRenderedIndicesRef = useRef<number[] | null>(null);
     const pendingMeasureNodesRef = useRef<Set<HTMLElement>>(new Set());
+    const pendingDestructiveActionRef = useRef<(() => void) | null>(null);
+    const suppressApplyResolutionClickRef = useRef(false);
+    const suppressGuardedClickRef = useRef(false);
 
     const choices = useStore(resolverStore, state => state.choices);
+    const editingConflicts = useStore(resolverStore, state => state.editingConflicts);
     const rows = useStore(resolverStore, state => state.rows);
     const markAsResolved = useStore(resolverStore, state => state.markAsResolved);
     const renumberExecutionCounts = useStore(resolverStore, state => state.renumberExecutionCounts);
     const history = useStore(resolverStore, state => state.history);
 
     const handleSelectChoice = useStore(resolverStore, state => state.selectChoice);
+    const handleStartEditing = useStore(resolverStore, state => state.startEditing);
+    const handleStopEditing = useStore(resolverStore, state => state.stopEditing);
     const handleCommitContent = useStore(resolverStore, state => state.commitContent);
-    const handleAcceptAll = useStore(resolverStore, state => state.acceptAll);
-    const handleToggleRenumberExecutionCounts = useStore(resolverStore, state => state.setRenumberExecutionCounts);
-    const handleToggleMarkAsResolved = useStore(resolverStore, state => state.setMarkAsResolved);
-    const handleJumpToHistory = useStore(resolverStore, state => state.jumpToHistory);
-    const handleUnmatchRow = useStore(resolverStore, state => state.unmatchRow);
-    const handleRematchRows = useStore(resolverStore, state => state.rematchRows);
-    const handleUndo = useStore(resolverStore, state => state.undo);
-    const handleRedo = useStore(resolverStore, state => state.redo);
+    const acceptAll = useStore(resolverStore, state => state.acceptAll);
+    const setRenumberExecutionCounts = useStore(resolverStore, state => state.setRenumberExecutionCounts);
+    const setMarkAsResolved = useStore(resolverStore, state => state.setMarkAsResolved);
+    const jumpToHistory = useStore(resolverStore, state => state.jumpToHistory);
+    const unmatchRow = useStore(resolverStore, state => state.unmatchRow);
+    const rematchRows = useStore(resolverStore, state => state.rematchRows);
+    const undo = useStore(resolverStore, state => state.undo);
+    const redo = useStore(resolverStore, state => state.redo);
+    const handleClearChoice = useStore(resolverStore, state => state.clearChoice);
 
     useEffect(() => {
         setHistoryOpen(false);
     }, [resolverStore]);
+
+    const activeEditingConflictIndex = useMemo(() => {
+        const editingIterator = editingConflicts.values();
+        const firstEditing = editingIterator.next();
+        return firstEditing.done ? null : firstEditing.value;
+    }, [editingConflicts]);
+
+    const hasEditedResolvedContent = useMemo(
+        () => Array.from(choices.values()).some(choice => choice.resolvedContent !== choice.originalContent),
+        [choices]
+    );
+
+    const guardEditedResolutions = useCallback(
+        (action: () => void) => {
+            if (!hasEditedResolvedContent) {
+                action();
+                return;
+            }
+
+            pendingDestructiveActionRef.current = action;
+            setDestructiveActionWarning({
+                title: 'Discard edited resolutions?',
+                message:
+                    'This action will discard one or more edited resolved cells from history.',
+                confirmLabel: 'Discard edits',
+            });
+        },
+        [hasEditedResolvedContent]
+    );
+
+    const dismissDestructiveActionWarning = useCallback(() => {
+        pendingDestructiveActionRef.current = null;
+        setDestructiveActionWarning(null);
+
+        // Scroll to the actively edited cell when keeping edits
+        if (activeEditingConflictIndex !== null) {
+            const rowIndex = rows.findIndex(row => row.conflictIndex === activeEditingConflictIndex);
+            if (rowIndex !== -1) {
+                virtualizerRef.current?.scrollToIndex(rowIndex, { align: 'center' });
+            }
+        }
+    }, [activeEditingConflictIndex, rows]);
+
+    const confirmDestructiveActionWarning = useCallback(() => {
+        const action = pendingDestructiveActionRef.current;
+        pendingDestructiveActionRef.current = null;
+        setDestructiveActionWarning(null);
+        action?.();
+    }, []);
+
+    // Wrapped handlers for destructive actions
+    const handleUndo = useCallback(() => {
+        guardEditedResolutions(() => undo());
+    }, [guardEditedResolutions, undo]);
+
+    const handleRedo = useCallback(() => {
+        guardEditedResolutions(() => redo());
+    }, [guardEditedResolutions, redo]);
+
+    const handleAcceptAll = useCallback((choice: TakeAllChoice) => {
+        guardEditedResolutions(() => acceptAll(choice));
+    }, [guardEditedResolutions, acceptAll]);
+
+    const handleJumpToHistory = useCallback((index: number) => {
+        guardEditedResolutions(() => jumpToHistory(index));
+    }, [guardEditedResolutions, jumpToHistory]);
+
+    // Generic mousedown guard for controls that would trigger a blur+autosave race.
+    // Call from onMouseDown with event.preventDefault() to keep the editor focused until
+    // the user confirms. The click event still fires; the suppress ref discards it.
+    const mouseDownGuardActiveEditing = useCallback(
+        (event: React.MouseEvent, action: () => void) => {
+            if (activeEditingConflictIndex === null) return;
+            event.preventDefault();
+            suppressGuardedClickRef.current = true;
+            pendingDestructiveActionRef.current = action;
+            setDestructiveActionWarning({
+                title: 'A cell is still being edited',
+                message: 'Finish editing first, or proceed using the last saved content.',
+                confirmLabel: 'Proceed anyway',
+            });
+        },
+        [activeEditingConflictIndex]
+    );
 
     const isEditableTarget = useCallback((target: EventTarget | null): boolean => {
         if (!target || !(target as HTMLElement).closest) return false;
@@ -183,15 +280,15 @@ export function ConflictResolver({
 
             event.preventDefault();
             if (event.shiftKey) {
-                handleRedo();
+                guardEditedResolutions(() => redo());
             } else {
-                handleUndo();
+                guardEditedResolutions(() => undo());
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [enableUndoRedoHotkeys, handleRedo, handleUndo, isMac, isEditableTarget]);
+    }, [enableUndoRedoHotkeys, isEditableTarget, isMac, redo, undo, guardEditedResolutions]);
 
     useEffect(() => {
         const el = mainContentRef.current;
@@ -201,9 +298,12 @@ export function ConflictResolver({
         const onDown = (event: MouseEvent) => {
             if (event.button !== 0) return;
             const target = event.target instanceof Element ? event.target : null;
-            if (!target?.closest?.(
-                '.cell-content, .cell-output-host, .cell-output-fallback, .resolved-content-input, .markdown-content'
-            )) return;
+            if (
+                !target?.closest?.(
+                    '.cell-content, .cell-output-host, .cell-output-fallback, .resolved-content-input, .resolved-content-static, .markdown-content'
+                )
+            )
+                return;
             isDraggingRef.current = true;
             dragRenderedIndicesRef.current = null;
             prevScrollTop = el?.scrollTop ?? 0;
@@ -215,8 +315,8 @@ export function ConflictResolver({
             // If the user completed a drag-selection, keep the accumulated
             // row indices pinned so the browser selection survives scrolling.
             const sel = window.getSelection();
-            const hasSelection = sel && !sel.isCollapsed
-                && el?.contains(sel.anchorNode ?? null);
+            const hasSelection =
+                sel && !sel.isCollapsed && el?.contains(sel.anchorNode ?? null);
             if (!hasSelection) {
                 dragRenderedIndicesRef.current = null;
             }
@@ -275,7 +375,7 @@ export function ConflictResolver({
         };
     }, []);
 
-    const handleResolve = () => {
+    const applyResolutionNow = useCallback(() => {
         const {
             rows: liveRows,
             choices: liveChoices,
@@ -284,32 +384,82 @@ export function ConflictResolver({
             renumberExecutionCounts: liveRenumberExecutionCounts,
         } = resolverStore.getState();
         // Build resolved rows - this is the source of truth for reconstruction
-        const resolvedRows: import('../types').ResolvedRow[] = liveRows.map((row) => {
-            const conflictIdx = row.conflictIndex ?? -1;
-            const resolutionState = conflictIdx >= 0 ? liveChoices.get(conflictIdx) : undefined;
+        const resolvedRows: import('../types').ResolvedRow[] = liveRows.map(
+            row => {
+                const conflictIdx = row.conflictIndex ?? -1;
+                const resolutionState =
+                    conflictIdx >= 0 ? liveChoices.get(conflictIdx) : undefined;
 
-            return {
-                baseCell: row.baseCell,
-                currentCell: row.currentCell,
-                incomingCell: row.incomingCell,
-                baseCellIndex: row.baseCellIndex,
-                currentCellIndex: row.currentCellIndex,
-                incomingCellIndex: row.incomingCellIndex,
-                resolution: resolutionState ? {
-                    choice: resolutionState.choice,
-                    resolvedContent: resolutionState.resolvedContent
-                } : undefined
-            };
-        });
+                return {
+                    baseCell: row.baseCell,
+                    currentCell: row.currentCell,
+                    incomingCell: row.incomingCell,
+                    baseCellIndex: row.baseCellIndex,
+                    currentCellIndex: row.currentCellIndex,
+                    incomingCellIndex: row.incomingCellIndex,
+                    resolution: resolutionState
+                        ? {
+                            choice: resolutionState.choice,
+                            resolvedContent: resolutionState.resolvedContent,
+                        }
+                        : undefined,
+                };
+            }
+        );
 
-        const semanticChoice = (
+        const semanticChoice =
             liveTakeAllChoice &&
-            isTakeAllChoiceConsistent(liveRows, liveChoices, liveTakeAllChoice, true)
-        )
-            ? liveTakeAllChoice
-            : inferTakeAllChoice(liveRows, liveChoices);
-        onResolve(liveMarkAsResolved, liveRenumberExecutionCounts, resolvedRows, semanticChoice);
-    };
+                isTakeAllChoiceConsistent(liveRows, liveChoices, liveTakeAllChoice, true)
+                ? liveTakeAllChoice
+                : inferTakeAllChoice(liveRows, liveChoices);
+        onResolve(
+            liveMarkAsResolved,
+            liveRenumberExecutionCounts,
+            resolvedRows,
+            semanticChoice
+        );
+    }, [onResolve, resolverStore]);
+
+    const handleResolve = useCallback(() => {
+        if (suppressApplyResolutionClickRef.current) {
+            suppressApplyResolutionClickRef.current = false;
+            return;
+        }
+
+        if (activeEditingConflictIndex !== null) {
+            pendingDestructiveActionRef.current = applyResolutionNow;
+            setDestructiveActionWarning({
+                title: 'Apply resolution now?',
+                message:
+                    'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
+                confirmLabel: 'Apply resolution (without saving edits)',
+            });
+            return;
+        }
+
+        applyResolutionNow();
+    }, [activeEditingConflictIndex, applyResolutionNow]);
+
+    const handleResolveMouseDown = useCallback(
+        (event: React.MouseEvent<HTMLButtonElement>) => {
+            if (activeEditingConflictIndex === null) {
+                return;
+            }
+
+            // Intercept before CodeMirror blur autosaves, so Apply Resolution can still
+            // ask whether to keep editing or proceed with the last saved content.
+            event.preventDefault();
+            suppressApplyResolutionClickRef.current = true;
+            pendingDestructiveActionRef.current = applyResolutionNow;
+            setDestructiveActionWarning({
+                title: 'Apply resolution now?',
+                message:
+                    'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
+                confirmLabel: 'Apply resolution',
+            });
+        },
+        [activeEditingConflictIndex, applyResolutionNow]
+    );
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
     const getScrollElement = useCallback(() => mainContentRef.current, []);
@@ -318,7 +468,9 @@ export function ConflictResolver({
     // apart initially (harmless gaps) rather than overlapping (visible flicker).
     const estimatedRowHeights = useMemo(() => {
         return rows.map(row => {
-            const cells = [row.currentCell, row.incomingCell, row.baseCell].filter(Boolean);
+            const cells = [row.currentCell, row.incomingCell, row.baseCell].filter(
+                Boolean
+            );
             const maxLines = Math.max(
                 ...cells.map(c => normalizeCellSource(c!.source).split('\n').length),
                 3
@@ -327,9 +479,12 @@ export function ConflictResolver({
             return Math.max(120, maxLines * 22 + 80);
         });
     }, [rows]);
-    const estimateRowSize = useCallback((index: number) => {
-        return estimatedRowHeights[index] ?? 200;
-    }, [estimatedRowHeights]);
+    const estimateRowSize = useCallback(
+        (index: number) => {
+            return estimatedRowHeights[index] ?? 200;
+        },
+        [estimatedRowHeights]
+    );
 
     // During drag-select, never remove rows from the DOM — only accumulate.
     // The browser anchors its selection to specific DOM nodes; if the
@@ -383,8 +538,41 @@ export function ConflictResolver({
     }, []);
     const totalSize = rowVirtualizer.getTotalSize();
 
+    const destructiveActionModal = destructiveActionWarning
+        ? createPortal(
+            <div
+                className="warning-modal-overlay"
+                data-testid="destructive-action-warning-modal"
+                data-editing-allow="true"
+            >
+                <div className="warning-modal">
+                    <div className="warning-icon">⚠️</div>
+                    <h3>{destructiveActionWarning.title}</h3>
+                    <p>{destructiveActionWarning.message}</p>
+                    <div className="warning-actions">
+                        <button
+                            className="btn-cancel"
+                            onClick={dismissDestructiveActionWarning}
+                        >
+                            Keep my edits
+                        </button>
+                        <button
+                            className="btn-confirm"
+                            onClick={confirmDestructiveActionWarning}
+                            data-testid="destructive-action-warning-confirm"
+                        >
+                            {destructiveActionWarning.confirmLabel}
+                        </button>
+                    </div>
+                </div>
+            </div>,
+            document.body
+        )
+        : null;
+
     return (
         <div className="app-container jp-Notebook">
+            {destructiveActionModal}
             <header className="header">
                 <div className="header-toolbar">
                     <div className="header-left">
@@ -403,21 +591,29 @@ export function ConflictResolver({
                             {resolvedCount} / {totalConflicts} resolved
                         </span>
                         <div className="header-group">
-                            <button
-                                className="btn btn-secondary"
-                                onClick={handleUndo}
-                                disabled={!canUndo}
-                                data-testid="history-undo"
-                                title={`Undo (${undoShortcutLabel})`}
+                                <button
+                                    className="btn btn-secondary"
+                                    onMouseDown={e => mouseDownGuardActiveEditing(e, handleUndo)}
+                                    onClick={() => {
+                                        if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
+                                        handleUndo();
+                                    }}
+                                    disabled={!canUndo}
+                                    data-testid="history-undo"
+                                    title={`Undo (${undoShortcutLabel})`}
                             >
                                 Undo
                             </button>
-                            <button
-                                className="btn btn-secondary"
-                                onClick={handleRedo}
-                                disabled={!canRedo}
-                                data-testid="history-redo"
-                                title={`Redo (${redoShortcutLabel})`}
+                                <button
+                                    className="btn btn-secondary"
+                                    onMouseDown={e => mouseDownGuardActiveEditing(e, handleRedo)}
+                                    onClick={() => {
+                                        if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
+                                        handleRedo();
+                                    }}
+                                    disabled={!canRedo}
+                                    data-testid="history-redo"
+                                    title={`Redo (${redoShortcutLabel})`}
                             >
                                 Redo
                             </button>
@@ -440,7 +636,11 @@ export function ConflictResolver({
                                         <div className="history-actions">
                                             <button
                                                 className="btn btn-secondary"
-                                                onClick={handleUndo}
+                                                onMouseDown={e => mouseDownGuardActiveEditing(e, handleUndo)}
+                                                onClick={() => {
+                                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
+                                                    handleUndo();
+                                                }}
                                                 disabled={!canUndo}
                                                 data-testid="history-panel-undo"
                                             >
@@ -448,7 +648,11 @@ export function ConflictResolver({
                                             </button>
                                             <button
                                                 className="btn btn-secondary"
-                                                onClick={handleRedo}
+                                                onMouseDown={e => mouseDownGuardActiveEditing(e, handleRedo)}
+                                                onClick={() => {
+                                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
+                                                    handleRedo();
+                                                }}
                                                 disabled={!canRedo}
                                                 data-testid="history-panel-redo"
                                             >
@@ -465,11 +669,13 @@ export function ConflictResolver({
                                                 role="button"
                                                 tabIndex={0}
                                                 aria-current={index === history.index ? 'true' : undefined}
+                                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => { handleJumpToHistory(index); setHistoryOpen(false); })}
                                                 onClick={() => {
+                                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
                                                     handleJumpToHistory(index);
                                                     setHistoryOpen(false);
                                                 }}
-                                                onKeyDown={(event) => {
+                                                onKeyDown={event => {
                                                     if (event.key === 'Enter' || event.key === ' ') {
                                                         event.preventDefault();
                                                         handleJumpToHistory(index);
@@ -496,7 +702,11 @@ export function ConflictResolver({
                                         padding: '4px 8px'
                                     }}
                                     title="Accept all base (original) changes"
-                                    onClick={() => handleAcceptAll('base')}
+                                    onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('base'))}
+                                    onClick={() => {
+                                        if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
+                                        handleAcceptAll('base');
+                                    }}
                                 >
                                     All Base
                                 </button>
@@ -508,10 +718,14 @@ export function ConflictResolver({
                                     border: '1px solid var(--current-border)',
                                     color: 'var(--text-primary)',
                                     fontSize: 11,
-                                    padding: '4px 8px'
+                                    padding: '4px 8px',
                                 }}
                                 title="Accept all current (local) changes"
-                                onClick={() => handleAcceptAll('current')}
+                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('current'))}
+                                onClick={() => {
+                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
+                                    handleAcceptAll('current');
+                                }}
                             >
                                 All Current
                             </button>
@@ -525,7 +739,11 @@ export function ConflictResolver({
                                     padding: '4px 8px'
                                 }}
                                 title="Accept all incoming (remote) changes"
-                                onClick={() => handleAcceptAll('incoming')}
+                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('incoming'))}
+                                onClick={() => {
+                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
+                                    handleAcceptAll('incoming');
+                                }}
                             >
                                 All Incoming
                             </button>
@@ -534,7 +752,7 @@ export function ConflictResolver({
                             <input
                                 type="checkbox"
                                 checked={renumberExecutionCounts}
-                                onChange={e => handleToggleRenumberExecutionCounts(e.target.checked)}
+                                onChange={e => setRenumberExecutionCounts(e.target.checked)}
                             />
                             Renumber execution counts
                         </label>
@@ -542,15 +760,13 @@ export function ConflictResolver({
                             <input
                                 type="checkbox"
                                 checked={markAsResolved}
-                                onChange={e => handleToggleMarkAsResolved(e.target.checked)}
+                                onChange={e => setMarkAsResolved(e.target.checked)}
                             />
                             Mark as resolved (stage in Git)
                         </label>
-                        <button className="btn btn-secondary" onClick={onCancel}>
-                            Cancel
-                        </button>
                         <button
                             className="btn btn-primary"
+                            onMouseDown={handleResolveMouseDown}
                             onClick={handleResolve}
                             disabled={!allResolved}
                         >
@@ -565,51 +781,60 @@ export function ConflictResolver({
                         </div>
                     )}
                     <div className="column-label current">
-                        Current {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
+                        Current{' '}
+                        {conflict.currentBranch ? `(${conflict.currentBranch})` : ''}
                     </div>
                     <div className="column-label incoming">
-                        Incoming {conflict.incomingBranch ? `(${conflict.incomingBranch})` : ''}
+                        Incoming{' '}
+                        {conflict.incomingBranch ? `(${conflict.incomingBranch})` : ''}
                     </div>
                 </div>
             </header>
 
             <main className="main-content" ref={mainContentRef}>
-                {conflict.autoResolveResult && conflict.autoResolveResult.autoResolvedCount > 0 && (
-                    <div className="auto-resolve-banner">
-                        <button
-                            className="auto-resolve-summary"
-                            onClick={() => setAutoResolveBannerOpen(o => !o)}
-                            aria-expanded={autoResolveBannerOpen}
-                        >
-                            <span className="icon">✓</span>
-                            <span className="text">
-                                Auto-resolved {conflict.autoResolveResult.autoResolvedCount} conflict{conflict.autoResolveResult.autoResolvedCount !== 1 ? 's' : ''}
-                            </span>
-                            <span className="chevron">{autoResolveBannerOpen ? '▲' : '▼'}</span>
-                        </button>
-                        {autoResolveBannerOpen && conflict.autoResolveResult.autoResolvedDescriptions.length > 0 && (
-                            <ul className="auto-resolve-list">
-                                {conflict.autoResolveResult.autoResolvedDescriptions.map((desc, i) => (
-                                    <li key={i}>{desc}</li>
-                                ))}
-                            </ul>
-                        )}
-                    </div>
-                )}
+                {conflict.autoResolveResult &&
+                    conflict.autoResolveResult.autoResolvedCount > 0 && (
+                        <div className="auto-resolve-banner">
+                            <button
+                                className="auto-resolve-summary"
+                                onClick={() => setAutoResolveBannerOpen(o => !o)}
+                                aria-expanded={autoResolveBannerOpen}
+                            >
+                                <span className="icon">✓</span>
+                                <span className="text">
+                                    Auto-resolved {conflict.autoResolveResult.autoResolvedCount}{' '}
+                                    conflict
+                                    {conflict.autoResolveResult.autoResolvedCount !== 1
+                                        ? 's'
+                                        : ''}
+                                </span>
+                                <span className="chevron">
+                                    {autoResolveBannerOpen ? '▲' : '▼'}
+                                </span>
+                            </button>
+                            {autoResolveBannerOpen && conflict.autoResolveResult.autoResolvedDescriptions.length > 0 && (
+                                <ul className="auto-resolve-list">
+                                    {conflict.autoResolveResult.autoResolvedDescriptions.map((desc, i) => (
+                                        <li key={i}>{desc}</li>
+                                    ))}
+                                </ul>
+                            )}
+                        </div>
+                    )}
 
-                <div
-                    style={{
-                        height: totalSize,
-                        position: 'relative',
-                    }}
-                >
-                    {virtualRows.map((virtualRow) => {
-                        const i = virtualRow.index;
-                        const row = rows[i];
-                        const conflictIdx = row?.conflictIndex ?? -1;
-                        const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+                    <div
+                        style={{
+                            height: totalSize,
+                            position: 'relative',
+                        }}
+                    >
+                        {virtualRows.map((virtualRow) => {
+                            const i = virtualRow.index;
+                            const row = rows[i];
+                            const conflictIdx = row?.conflictIndex ?? -1;
+                            const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
 
-                        if (!row) return null;
+                            if (!row) return null;
 
                         return (
                             <div
@@ -633,14 +858,26 @@ export function ConflictResolver({
                                     languageExtensions={languageExtensions}
                                     theme={conflict.theme ?? 'light'}
                                     resolutionState={resolutionState}
+                                    isEditing={
+                                        conflictIdx >= 0 && editingConflicts.has(conflictIdx)
+                                    }
                                     onSelectChoice={handleSelectChoice}
                                     onCommitContent={handleCommitContent}
-                                    onUnmatchRow={handleUnmatchRow}
-                                    onRematchRows={handleRematchRows}
-                                    showOutputs={!conflict.hideNonConflictOutputs || row.type === 'conflict'}
+                                    onStartEditing={handleStartEditing}
+                                    onStopEditing={handleStopEditing}
+                                    onClearChoice={handleClearChoice}
+                                    onUnmatchRow={unmatchRow}
+                                    onRematchRows={rematchRows}
+                                    showOutputs={
+                                        !conflict.hideNonConflictOutputs || row.type === 'conflict'
+                                    }
                                     showBaseColumn={showBaseColumn}
                                     showCellHeaders={showCellHeaders}
-                                    data-testid={conflictIdx >= 0 ? `conflict-row-${conflictIdx}` : `row-${i}`}
+                                    data-testid={
+                                        conflictIdx >= 0
+                                            ? `conflict-row-${conflictIdx}`
+                                            : `row-${i}`
+                                    }
                                 />
                             </div>
                         );
@@ -657,8 +894,9 @@ function isTakeAllChoiceConsistent(
     side: TakeAllChoice,
     allowSingleConflict: boolean
 ): boolean {
-    const conflictRows = rows.filter((row): row is MergeRowType & { conflictIndex: number } =>
-        row.type === 'conflict' && row.conflictIndex !== undefined
+    const conflictRows = rows.filter(
+        (row): row is MergeRowType & { conflictIndex: number } =>
+            row.type === 'conflict' && row.conflictIndex !== undefined
     );
 
     if (conflictRows.length === 0) {

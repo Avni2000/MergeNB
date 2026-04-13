@@ -27,6 +27,7 @@ function getStyles(theme: 'dark' | 'light' = 'light'): string {
         textSecondary: '#858585',
         accentBlue: '#569cd6',
         accentGreen: '#4ec9b0',
+        accentForest: '#2d8a6c', // Forest green for resolved cells
         currentBg: 'rgba(86, 156, 214, 0.45)',
         currentBorder: '#569cd6',
         currentRgb: '86, 156, 214',
@@ -59,6 +60,7 @@ function getStyles(theme: 'dark' | 'light' = 'light'): string {
         textSecondary: '#6B7280',
         accentBlue: '#569cd6',
         accentGreen: '#4ec9b0',
+        accentForest: '#228b22', // Forest green for resolved cells
         currentBg: 'rgba(164, 212, 222, 0.45)',
         currentBorder: '#A4D4DE',
         currentRgb: '164, 212, 222',
@@ -103,6 +105,7 @@ function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --text-secondary: ${colors.textSecondary};
     --accent-blue: ${colors.accentBlue};
     --accent-green: ${colors.accentGreen};
+    --accent-forest: ${colors.accentForest};
     --current-bg: ${colors.currentBg};
     --current-border: ${colors.currentBorder};
     --current-rgb: ${colors.currentRgb};
@@ -967,29 +970,113 @@ body {
     text-align: center;
 }
 
-/* Resolved cell styling - green highlighting to mark as resolved */
-.resolved-cell {
-    margin: 12px 24px;
-    width: calc(100% - 48px);
+/* Outer border on .resolved-row-chrome — same role as conflict row chrome wrapping
+   the whole resolved block (header + body). */
+.resolved-row-chrome {
+    width: 100%;
     box-sizing: border-box;
-    padding: 12px;
-    background: var(--cell-surface);
-    border: 2px solid var(--accent-green);
+    border: 3px solid var(--accent-forest);
     border-radius: 6px;
+    overflow: clip;
+    background: rgba(34, 139, 34, 0.04);
+}
+
+.resolved-row-chrome.just-saved {
+    animation: pulse-saved 1s ease-out;
+}
+
+@keyframes pulse-saved {
+    0% { box-shadow: 0 0 0 0 rgba(34, 139, 34, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(34, 139, 34, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(34, 139, 34, 0); }
+}
+
+.resolved-row-chrome--delete {
+    border-color: #f48771;
+    background: rgba(244, 135, 113, 0.05);
+}
+
+/* Resolved cell body — border is on .resolved-row-chrome */
+.resolved-cell {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 14px;
+    background: var(--cell-surface);
+    border: none;
+    border-radius: 0;
 }
 
 .resolved-header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: -14px -14px 10px;
+    padding: 8px 14px 10px;
     border-bottom: 1px solid rgba(78, 201, 176, 0.3);
+    background: var(--bg-tertiary);
     user-select: none;
 }
 
+.resolved-header-lead {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    min-width: 0;
+    flex: 1;
+}
+
+.resolved-header-actions {
+    flex-shrink: 0;
+    display: flex;
+    gap: 8px;
+}
+
+.btn-resolved-edit {
+    background: var(--accent-blue);
+    color: white;
+    border: none;
+}
+
+.btn-resolved-edit:hover {
+    background: #4a90e2;
+}
+
+.btn-resolved-save {
+    background: var(--accent-forest);
+    color: white;
+    border: none;
+}
+
+.btn-resolved-save:hover {
+    background: #1e7a1e;
+}
+
+.btn-resolved-undo {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-resolved-undo:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.resolved-cell.resolved-deleted .resolved-header {
+    border-bottom-color: rgba(244, 135, 113, 0.35);
+}
+
+.resolved-deleted-message {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+
 .resolved-label {
-    color: var(--accent-green);
+    color: var(--accent-forest);
     font-weight: 600;
     font-size: 13px;
 }
@@ -1014,15 +1101,16 @@ body {
     font-size: 11px;
 }
 
-/* CodeMirror resolved editor — className="resolved-content-input" targets .cm-editor */
-.resolved-content-input.cm-editor {
+/* CodeMirror resolved editor — className="resolved-content-input" goes to the cm-theme
+   wrapper div, NOT cm-editor. Use descendant selectors (space) not compound selectors. */
+.resolved-content-input .cm-editor {
     width: 100%;
     border: 1px solid rgba(78, 201, 176, 0.4);
     border-radius: 4px;
     outline: none !important;
 }
 
-.resolved-cell.markdown-cell .resolved-content-input.cm-editor {
+.resolved-cell.markdown-cell .resolved-content-input .cm-editor {
     border-left: 3px solid var(--accent-green);
 }
 
@@ -1030,20 +1118,20 @@ body {
     font-family: var(--font-ui) !important;
 }
 
-.resolved-cell.code-cell .resolved-content-input.cm-editor {
+.resolved-cell.code-cell .resolved-content-input .cm-editor {
     background: var(--bg-primary);
     border-left: 3px solid var(--accent-blue);
 }
 
-.resolved-content-input.cm-editor.cm-focused {
+.resolved-content-input .cm-editor.cm-focused {
     border-color: var(--accent-green);
     box-shadow: 0 0 0 2px rgba(78, 201, 176, 0.2);
     outline: none !important;
 }
 
 .resolved-content-input .cm-scroller {
-    min-height: 100px;
-    overflow: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .resolved-content-input .cm-content {
@@ -1054,20 +1142,44 @@ body {
     padding: 0;
 }
 
+/* Static read-only display for resolved cells (editing via Edit button only).
+   Use pre-wrap like .cell-content pre / StaticDiffContent so line breaks match CodeMirror. */
+.resolved-content-static {
+    margin: 0;
+    padding: 10px 12px;
+    border-radius: 4px;
+    font-family: var(--font-code);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-primary);
+}
+
+.resolved-cell.code-cell .resolved-content-static {
+    background: var(--bg-primary);
+    border-left: 3px solid var(--accent-blue);
+}
+
+.resolved-cell.markdown-cell .resolved-content-static {
+    font-family: var(--font-ui);
+    border-left: 3px solid var(--accent-green);
+}
+
 /* Resolved deleted cell */
 .resolved-cell.resolved-deleted {
     background: rgba(244, 135, 113, 0.1);
-    border-color: #f48771;
 }
 
 .resolved-deleted .resolved-label {
     color: #f48771;
 }
 
-/* Resolved row styling */
-.merge-row.resolved-row {
-    border-color: var(--accent-green);
-    background: rgba(78, 201, 176, 0.03);
+/* Resolved conflict rows should collapse to readable unified width, so remove
+   full-width conflict chrome from the outer merge row. */
+.merge-row.conflict-row.resolved-row {
+    border: none;
+    background: transparent;
 }
 
 /* Warning modal for branch change */
@@ -1366,6 +1478,23 @@ body {
 .btn-rematch:hover {
     background: var(--bg-tertiary);
     color: var(--text-primary);
+}
+
+/* Readable-width wrapper for unified (non-conflict) rows */
+.readable-row-wrapper {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 12px 24px;
+    box-sizing: border-box;
+}
+
+/* Resolved rows: same max-width and horizontal padding as .readable-row-wrapper
+   so the undo bar and resolved cell align with unified single-column rows. */
+.resolved-row-wrapper {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 12px 24px 16px;
+    box-sizing: border-box;
 }
 `;
 }

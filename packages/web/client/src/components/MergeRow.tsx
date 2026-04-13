@@ -5,12 +5,14 @@
  * UI flow:
  * 1. User selects a branch (base/current/incoming) 
  * 2. A resolved text area appears with green highlighting, pre-filled with that branch's content
- * 3. User can edit the content freely
- * 4. If user changes the selected branch after editing, show a warning
+ * 3. User can enter edit mode, which shows a CodeMirror editor for the resolved content
+ * 4. Leaving the editor via blur autosaves the current draft and exits edit mode
  */
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
+import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
 import { CellContent, mergeNBEditorStructure } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
@@ -22,8 +24,12 @@ interface MergeRowProps {
     rowIndex: number;
     languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
+    isEditing?: boolean;
     onSelectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     onCommitContent: (index: number, resolvedContent: string) => void;
+    onStartEditing: (index: number) => void;
+    onStopEditing: (index: number) => void;
+    onClearChoice?: (conflictIndex: number) => void;
     onUnmatchRow?: (rowIndex: number) => void;
     onRematchRows?: (unmatchGroupId: string) => void;
     showOutputs?: boolean;
@@ -35,13 +41,24 @@ interface MergeRowProps {
 
 const EMPTY_EXTENSIONS: Extension[] = [];
 
+function renderViewportModal(modal: React.ReactElement): React.ReactElement {
+    if (typeof document === 'undefined') {
+        return modal;
+    }
+    return createPortal(modal, document.body);
+}
+
 function MergeRowInner({
     row,
     rowIndex,
     languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
+    isEditing = false,
     onSelectChoice,
     onCommitContent,
+    onStartEditing,
+    onStopEditing,
+    onClearChoice,
     onUnmatchRow,
     onRematchRows,
     showOutputs = true,
@@ -55,13 +72,43 @@ function MergeRowInner({
     const conflictIndex = row.conflictIndex ?? -1;
 
     // All hooks must be called unconditionally at the top (Rules of Hooks)
-    const [pendingChoice, setPendingChoice] = useState<ResolutionChoice | null>(null);
-    const [showWarning, setShowWarning] = useState(false);
+    const [showUndoWarning, setShowUndoWarning] = useState(false);
+    const [justSaved, setJustSaved] = useState(false);
     const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
+    const draftResolvedContentRef = useRef(draftResolvedContent);
+    const suppressBlurEditGuardRef = useRef(false);
+    const isEditingRef = useRef(isEditing);
+    const latestResolvedContentRef = useRef(resolutionState?.resolvedContent);
 
     useEffect(() => {
         setDraftResolvedContent(resolutionState?.resolvedContent ?? '');
     }, [resolutionState?.choice, resolutionState?.resolvedContent, conflictIndex]);
+
+    useEffect(() => {
+        draftResolvedContentRef.current = draftResolvedContent;
+    }, [draftResolvedContent]);
+
+    useEffect(() => {
+        isEditingRef.current = isEditing;
+    }, [isEditing]);
+
+    useEffect(() => {
+        latestResolvedContentRef.current = resolutionState?.resolvedContent;
+    }, [resolutionState?.resolvedContent]);
+
+    // TODO: test that this fully works; we will have to conditionally pass the noVirt prop in @fixtures to do it.
+    // Cleanup on unmount (e.g., when virtualized out of view): commit pending edits to prevent data loss.
+    // Uses refs so the cleanup reads current values rather than stale closed-over ones — preventing
+    // duplicate callbacks when deps change mid-lifecycle (e.g., isEditing flips false on blur autosave).
+    useEffect(() => {
+        return () => {
+            if (isEditingRef.current && draftResolvedContentRef.current !== latestResolvedContentRef.current) {
+                onCommitContent(conflictIndex, draftResolvedContentRef.current);
+                onStopEditing(conflictIndex);
+            }
+        };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (which triggers StateEffect.reconfigure) only fires when these values actually
@@ -80,7 +127,7 @@ function MergeRowInner({
         : (row.currentCell?.cell_type || row.incomingCell?.cell_type || row.baseCell?.cell_type || 'code');
     
     const editorExtensions = useMemo(
-        () => [...(resolvedCellType === 'markdown' ? [] : languageExtensions), mergeNBEditorStructure],
+        () => [...(resolvedCellType === 'markdown' ? [] : languageExtensions), mergeNBEditorStructure, EditorView.lineWrapping],
         [languageExtensions, resolvedCellType]
     );
 
@@ -94,49 +141,79 @@ function MergeRowInner({
     };
 
     // Check if content has been modified from the original
+    const displayedResolvedContent = isEditing
+        ? draftResolvedContent
+        : (resolutionState?.resolvedContent ?? '');
     const isContentModified = resolutionState
-        ? draftResolvedContent !== resolutionState.originalContent
+        ? displayedResolvedContent !== resolutionState.originalContent
         : false;
 
-    // Handle branch selection
     const handleChoiceClick = (choice: ResolutionChoice) => {
-        if (resolutionState && isContentModified && choice !== resolutionState.choice) {
-            // User has modified content and is trying to change branch - show warning
-            setPendingChoice(choice);
-            setShowWarning(true);
-        } else {
-            // No modification or same choice - proceed directly
-            const content = getContentForChoice(choice);
-            onSelectChoice(conflictIndex, choice, content);
-        }
+        const content = getContentForChoice(choice);
+        onSelectChoice(conflictIndex, choice, content);
     };
 
-    // Confirm branch change (overwrite edited content)
-    const confirmBranchChange = () => {
-        if (pendingChoice) {
-            const content = getContentForChoice(pendingChoice);
-            onSelectChoice(conflictIndex, pendingChoice, content);
+    const handleUndoResolution = () => {
+        if (isEditing || isContentModified) {
+            setShowUndoWarning(true);
+            return;
         }
-        setShowWarning(false);
-        setPendingChoice(null);
+        onClearChoice?.(conflictIndex);
     };
 
-    // Cancel branch change
-    const cancelBranchChange = () => {
-        setShowWarning(false);
-        setPendingChoice(null);
+    const confirmUndoResolution = () => {
+        setShowUndoWarning(false);
+        onClearChoice?.(conflictIndex);
+    };
+
+    const cancelUndoResolution = () => {
+        setShowUndoWarning(false);
     };
 
     // Handle content editing in the resolved editor
     const handleContentChange = (value: string) => {
+        draftResolvedContentRef.current = value;
         setDraftResolvedContent(value);
     };
 
-    // Commit content to history on blur
-    const handleBlur = () => {
+    const handleSaveEdits = () => {
         if (!resolutionState) return;
-        onCommitContent(conflictIndex, draftResolvedContent);
+        suppressBlurEditGuardRef.current = true;
+        onCommitContent(conflictIndex, draftResolvedContentRef.current);
+        onStopEditing(conflictIndex);
+
+        // Trigger save animation
+        setJustSaved(true);
+        setTimeout(() => setJustSaved(false), 1000);
+
+        // Clear the blur-suppress flag after editor unmounts.
+        // The blur event may have already fired (hitting the relatedTarget guard),
+        // so we can't rely on onBlur to clear the flag. Use a microtask to ensure
+        // the flag is reset after the editor unmounts.
+        Promise.resolve().then(() => {
+            suppressBlurEditGuardRef.current = false;
+        });
     };
+
+    const undoWarningModal = showUndoWarning
+        ? renderViewportModal(
+            <div className="warning-modal-overlay" data-testid="undo-warning-modal">
+                <div className="warning-modal">
+                    <div className="warning-icon">⚠️</div>
+                    <h3>Discard edits and undo resolution?</h3>
+                    <p>You have edited the resolved content. Undoing this resolution will discard those changes.</p>
+                    <div className="warning-actions">
+                        <button className="btn-cancel" onClick={cancelUndoResolution}>
+                            Keep my edits
+                        </button>
+                        <button className="btn-confirm" onClick={confirmUndoResolution}>
+                            Undo resolution
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )
+        : null;
 
     const base = row.baseCellIndex;
     const currentDelta = (isReordered && base !== undefined && row.currentCellIndex !== undefined)
@@ -158,7 +235,7 @@ function MergeRowInner({
         const identicalClasses = [
             'merge-row',
             'identical-row',
-            isReordered && 'reordered-row',
+            isReordered && 'reordered-row'
         ].filter(Boolean).join(' ');
         return (
             <div
@@ -182,19 +259,17 @@ function MergeRowInner({
                         )}
                     </div>
                 )}
-                <div className="cell-columns">
-                    <div className="cell-column" style={{ gridColumn: '1 / -1' }}>
-                        <CellContent
-                            cell={cell}
-                            cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
-                            side="current"
-                            isConflict={false}
-                            languageExtensions={languageExtensions}
-                            theme={theme}
-                            showOutputs={showOutputs}
-                            showCellHeaders={showCellHeaders}
-                        />
-                    </div>
+                <div className="readable-row-wrapper">
+                    <CellContent
+                        cell={cell}
+                        cellIndex={row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex}
+                        side="current"
+                        isConflict={false}
+                        languageExtensions={languageExtensions}
+                        theme={theme}
+                        showOutputs={showOutputs}
+                        showCellHeaders={showCellHeaders}
+                    />
                 </div>
             </div>
         );
@@ -220,6 +295,118 @@ function MergeRowInner({
     const hasBase = !!row.baseCell;
     const hasCurrent = !!row.currentCell;
     const hasIncoming = !!row.incomingCell;
+    // If resolved, show single-column collapsed view with undo button
+    if (resolutionState && conflictIndex >= 0) {
+        if (resolutionState.choice === 'delete') {
+            return (
+                <div className={rowClasses} data-testid={testId}>
+                    <div className="resolved-row-wrapper">
+                        <div className="resolved-row-chrome resolved-row-chrome--delete">
+                            <div className="resolved-cell resolved-deleted">
+                                <div className="resolved-header">
+                                    <div className="resolved-header-lead">
+                                        <span className="resolved-label">✓ Resolved</span>
+                                        <span className="resolved-base">
+                                            Based on: <strong>delete</strong>
+                                        </span>
+                                    </div>
+                                    <div className="resolved-header-actions" data-testid="resolved-action-bar">
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={handleUndoResolution}
+                                            title="Undo resolution and show the conflict again"
+                                        >
+                                            Undo resolution
+                                        </button>
+                                    </div>
+                                </div>
+                                <p className="resolved-deleted-message">This cell will be deleted.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div className={rowClasses} data-testid={testId}>
+                <div className="resolved-row-wrapper">
+                    <div className={`resolved-row-chrome${justSaved ? ' just-saved' : ''}`}>
+                        <div className={`resolved-cell ${resolvedCellType}-cell`}>
+                            <div className="resolved-header">
+                                <div className="resolved-header-lead">
+                                    <span className="resolved-label">✓ Resolved</span>
+                                    <span className="resolved-base">
+                                        Based on: <strong>{resolutionState.choice}</strong>
+                                        {isContentModified && <span className="modified-badge">(edited)</span>}
+                                    </span>
+                                </div>
+                                <div className="resolved-header-actions" data-testid="resolved-action-bar">
+                                    <button
+                                        className={`btn ${isEditing ? 'btn-resolved-save' : 'btn-resolved-edit'}`}
+                                        onClick={() => {
+                                            if (isEditing) {
+                                                handleSaveEdits();
+                                                return;
+                                            }
+                                            onStartEditing(conflictIndex);
+                                        }}
+                                        data-editing-allow={isEditing ? 'true' : undefined}
+                                        data-testid={isEditing ? 'save-edits-button' : 'edit-button'}
+                                    >
+                                        {isEditing ? 'Save edits' : 'Edit'}
+                                    </button>
+                                    <button
+                                        className="btn btn-resolved-undo"
+                                        onMouseDown={e => {
+                                            if (isEditing) e.preventDefault();
+                                        }}
+                                        onClick={handleUndoResolution}
+                                        title="Undo resolution and show the conflict again"
+                                    >
+                                        Undo resolution
+                                    </button>
+                                </div>
+                            </div>
+                            {isEditing ? (
+                                <div data-editing-allow="true">
+                                    <CodeMirror
+                                        value={draftResolvedContent}
+                                        onChange={handleContentChange}
+                                        extensions={editorExtensions}
+                                        placeholder="Enter cell content..."
+                                        className="resolved-content-input"
+                                        basicSetup={{ lineNumbers: false, foldGutter: false }}
+                                        theme={resolvedEditorTheme}
+                                        autoFocus={true}
+                                        onBlur={event => {
+                                            if (suppressBlurEditGuardRef.current) {
+                                                suppressBlurEditGuardRef.current = false;
+                                                return;
+                                            }
+                                            const relatedTarget = event.relatedTarget as HTMLElement | null;
+                                            if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
+                                            onCommitContent(conflictIndex, draftResolvedContentRef.current);
+                                            onStopEditing(conflictIndex);
+                                            setJustSaved(true);
+                                            setTimeout(() => setJustSaved(false), 1000);
+                                        }}
+                                    />
+                                </div>
+                            ) : (
+                                <pre className="resolved-content-static">
+                                    {displayedResolvedContent}
+                                </pre>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {undoWarningModal}
+            </div>
+        );
+    }
+
     return (
         <div className={rowClasses} data-testid={testId}>
             {/* Top action bar - always present for conflicts */}
@@ -269,11 +456,11 @@ function MergeRowInner({
                                     <button
                                         className="btn-rematch"
                                         onClick={() => onRematchRows?.(row.unmatchGroupId)}
-                                        title="Rematch these cells back into one row"
-                                        data-testid="rematch-btn"
-                                    >
-                                        Rematch
-                                    </button>
+                                    title="Rematch these cells back into one row"
+                                    data-testid="rematch-btn"
+                                >
+                                    Rematch
+                                </button>
                                 </>
                             )}
                         </div>
@@ -281,24 +468,7 @@ function MergeRowInner({
                 </div>
             </div>
 
-            {/* Warning modal for branch change */}
-            {showWarning && (
-                <div className="warning-modal-overlay">
-                    <div className="warning-modal">
-                        <div className="warning-icon">⚠️</div>
-                        <h3>Change base branch?</h3>
-                        <p>You have edited the resolved content. Changing the base branch will overwrite your changes.</p>
-                        <div className="warning-actions">
-                            <button className="btn-cancel" onClick={cancelBranchChange}>
-                                Keep my edits
-                            </button>
-                            <button className="btn-confirm" onClick={confirmBranchChange}>
-                                Overwrite with {pendingChoice}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {undoWarningModal}
 
             {/* Three-way diff view */}
             <div className={`cell-columns${showBaseColumn ? '' : ' two-column'}`}>
@@ -401,38 +571,6 @@ function MergeRowInner({
                 </div>
             </div>
 
-            {/* Resolved content editor - appears after selecting a branch */}
-            {resolutionState && resolutionState.choice !== 'delete' && (
-                <div className={`resolved-cell ${resolvedCellType}-cell`}>
-                    <div className="resolved-header">
-                        <span className="resolved-label">✓ Resolved</span>
-                        <span className="resolved-base">
-                            Based on: <strong>{resolutionState.choice}</strong>
-                            {isContentModified && <span className="modified-badge">(edited)</span>}
-                        </span>
-                    </div>
-                    <CodeMirror
-                        value={draftResolvedContent}
-                        onChange={handleContentChange}
-                        onBlur={handleBlur}
-                        extensions={editorExtensions}
-                        placeholder="Enter cell content..."
-                        className="resolved-content-input"
-                        basicSetup={{ lineNumbers: false, foldGutter: false }}
-                        theme={resolvedEditorTheme}
-                    />
-                </div>
-            )}
-
-            {/* Show delete confirmation */}
-            {resolutionState && resolutionState.choice === 'delete' && (
-                <div className="resolved-cell resolved-deleted">
-                    <div className="resolved-header">
-                        <span className="resolved-label">✓ Resolved</span>
-                        <span className="resolved-base">Cell will be deleted</span>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

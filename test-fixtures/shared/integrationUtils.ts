@@ -19,6 +19,8 @@ export type ConflictChoice = MergeSide | 'delete';
 interface ConflictChoiceInfo {
     choice: ConflictChoice;
     chosenCellType?: string;
+    /** Pre-captured cell data for metadata/outputs, used when column cells are hidden after resolution. */
+    cellData?: Record<string, unknown>;
 }
 
 type ConflictChoiceResolver = (
@@ -73,6 +75,24 @@ export async function getResolvedEditorValue(editorLocator: Locator): Promise<st
 }
 
 /**
+ * Read resolved cell content regardless of whether the row is showing the
+ * static saved view or the live CodeMirror editor.
+ */
+export async function getResolvedContentValue(scope: Locator): Promise<string> {
+    const editor = scope.locator('.resolved-content-input');
+    if (await editor.count() > 0) {
+        return getResolvedEditorValue(editor);
+    }
+
+    const staticContent = scope.locator('.resolved-content-static');
+    if (await staticContent.count() > 0) {
+        return await staticContent.first().evaluate(el => el.textContent ?? '');
+    }
+
+    return '';
+}
+
+/**
  * Replace the content of a CodeMirror `.resolved-content-input` editor.
  * `.fill()` cannot be used because CodeMirror manages a `contenteditable` div, not a `<textarea>`.
  */
@@ -82,6 +102,24 @@ export async function fillResolvedEditor(editorLocator: Locator, value: string):
     await content.click();
     await page.keyboard.press('ControlOrMeta+A');  
     await page.keyboard.insertText(value);
+}
+
+/** Enter explicit edit mode for a resolved row and return the live editor locator. */
+export async function enterResolvedEditMode(row: Locator): Promise<Locator> {
+    const editButton = row.locator('button:has-text("Edit")');
+    await editButton.waitFor({ timeout: 5000 });
+    await editButton.click();
+    const editor = row.locator('.resolved-content-input');
+    await editor.waitFor({ timeout: 5000 });
+    return editor;
+}
+
+/** Save the current resolved-row edit session and wait for static content to return. */
+export async function saveResolvedEdits(row: Locator): Promise<void> {
+    const saveButton = row.locator('button:has-text("Save edits")');
+    await saveButton.waitFor({ timeout: 5000 });
+    await saveButton.click();
+    await row.locator('.resolved-content-static').waitFor({ timeout: 5000 });
 }
 
 /** Get a cell reference from a column in a conflict row */
@@ -95,14 +133,24 @@ export async function getColumnCell(row: Locator, column: MergeSide, rowIndex: n
 /** Get the cell type from a notebook cell element */
 export async function getColumnCellType(row: Locator, column: MergeSide): Promise<string> {
     const cell = row.locator(`.${column}-column .notebook-cell`);
-    if (await cell.count() === 0) return 'code';
+    if (await cell.count() === 0) {
+        // Row may be resolved — column cells are not rendered. Fall back to the
+        // resolved-cell CSS class which encodes the cell type as `<type>-cell`.
+        const resolvedCell = row.locator('.resolved-cell');
+        if (await resolvedCell.count() > 0) {
+            const isMarkdown = await resolvedCell.evaluate(el => el.classList.contains('markdown-cell'));
+            return isMarkdown ? 'markdown' : 'code';
+        }
+        return 'code';
+    }
     const isCode = await cell.evaluate(el => el.classList.contains('code-cell'));
     return isCode ? 'code' : 'markdown';
 }
 
 /**
- * Verify that every conflict row's textarea matches the expected side's content.
- * Returns the collected textarea values for further verification.
+ * Verify that every conflict row is resolved to the expected side.
+ * After resolution the row is collapsed, so this reads the resolved header label
+ * instead of the hidden per-side source columns.
  */
 export async function verifyAllConflictsMatchSide(
     page: Page,
@@ -116,66 +164,33 @@ export async function verifyAllConflictsMatchSide(
 
     for (let i = 0; i < count; i++) {
         const row = conflictRows.nth(i);
+        const resolvedChoice = ((await row.locator('.resolved-base strong').textContent()) || '').trim().toLowerCase();
+        if (!resolvedChoice) {
+            mismatches.push(`Row ${i}: missing resolved choice label`);
+            continue;
+        }
 
-        // Check if the chosen side has a cell
-        const hasSideCell = await row.locator(`.${side}-column .notebook-cell`).count() > 0;
-
-        if (!hasSideCell) {
-            // No cell on chosen side → expect "resolved-deleted"
+        if (resolvedChoice === 'delete') {
             const isDeleted = await row.locator('.resolved-cell.resolved-deleted').count() > 0;
-            if (isDeleted) {
-                deleteCount++;
-            } else {
-                mismatches.push(`Row ${i}: expected deleted (no ${side} cell), but not marked deleted`);
+            if (!isDeleted) {
+                mismatches.push(`Row ${i}: resolved choice says delete, but delete styling is missing`);
+                continue;
             }
+            deleteCount++;
             continue;
         }
 
-        // Get the reference cell source from the chosen side
-        const refCell = await getColumnCell(row, side, i);
-        if (!refCell) {
-            mismatches.push(`Row ${i}: could not read ${side} cell data`);
-            continue;
-        }
-        const expectedSource = getCellSource(refCell);
-
-        // Check textarea value
-        const textarea = row.locator('.resolved-content-input');
-        if (await textarea.count() === 0) {
-            mismatches.push(`Row ${i}: no textarea found`);
+        if (resolvedChoice !== side) {
+            mismatches.push(`Row ${i}: expected ${side}, found ${resolvedChoice}`);
             continue;
         }
 
-        const actualValue = await getResolvedEditorValue(textarea);
-        if (actualValue !== expectedSource) {
-            // Show full comparison for better debugging
-            const expectedLen = expectedSource.length;
-            const actualLen = actualValue.length;
-            let firstDiffIndex = -1;
-            for (let j = 0; j < Math.max(expectedLen, actualLen); j++) {
-                if (expectedSource[j] !== actualValue[j]) {
-                    firstDiffIndex = j;
-                    break;
-                }
-            }
-            
-            const diffContext = firstDiffIndex !== -1 
-                ? `\n    First diff at index ${firstDiffIndex}:\n` +
-                  `    Expected char code: ${expectedSource.charCodeAt(firstDiffIndex)} (${JSON.stringify(expectedSource[firstDiffIndex])})\n` +
-                  `    Actual char code:   ${actualValue.charCodeAt(firstDiffIndex)} (${JSON.stringify(actualValue[firstDiffIndex])})\n` +
-                  `    Context (expected): ${JSON.stringify(expectedSource.substring(Math.max(0, firstDiffIndex - 10), firstDiffIndex + 20))}\n` +
-                  `    Context (actual):   ${JSON.stringify(actualValue.substring(Math.max(0, firstDiffIndex - 10), firstDiffIndex + 20))}`
-                : '';
-            
-            mismatches.push(
-                `Row ${i}: textarea mismatch (len: expected=${expectedLen}, actual=${actualLen})\n` +
-                `  Expected (${side}): "${expectedSource.substring(0, 100).replace(/\n/g, '\\n')}${expectedLen > 100 ? '...' : ''}"\n` +
-                `  Actual:            "${actualValue.substring(0, 100).replace(/\n/g, '\\n')}${actualLen > 100 ? '...' : ''}"` +
-                diffContext
-            );
-        } else {
-            matchCount++;
+        if (await row.locator('.resolved-content-static, .resolved-content-input').count() === 0) {
+            mismatches.push(`Row ${i}: missing resolved content for ${side}`);
+            continue;
         }
+
+        matchCount++;
     }
 
     return { matchCount, deleteCount, mismatches };
@@ -243,6 +258,8 @@ export async function clickHistoryUndo(page: Page): Promise<void> {
     const button = page.locator('[data-testid="history-undo"]');
     await button.waitFor({ timeout: 5000 });
     await button.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
 }
 
 /** Click the redo button in the history panel. */
@@ -250,6 +267,70 @@ export async function clickHistoryRedo(page: Page): Promise<void> {
     const button = page.locator('[data-testid="history-redo"]');
     await button.waitFor({ timeout: 5000 });
     await button.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
+}
+
+/**
+ * Confirm the destructive action warning modal if it appears.
+ * This is used when a destructive action would lose edited resolutions.
+ */
+export async function confirmDestructiveActionWarningIfNeeded(page: Page): Promise<void> {
+    const modal = page.locator('[data-testid="destructive-action-warning-modal"]');
+    const isVisible = await modal.count() > 0;
+    if (isVisible) {
+        const confirmBtn = modal.locator('[data-testid="destructive-action-warning-confirm"]');
+        await confirmBtn.waitFor({ timeout: 5000 });
+        await confirmBtn.click();
+    }
+}
+
+/** Click the "All Current" button to accept all current (local) resolutions. */
+export async function clickAcceptAllCurrent(page: Page): Promise<void> {
+    const button = page.locator('button:has-text("All Current")').first();
+    await button.waitFor({ timeout: 5000 });
+    await button.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
+}
+
+/** Click the "All Incoming" button to accept all incoming (remote) resolutions. */
+export async function clickAcceptAllIncoming(page: Page): Promise<void> {
+    const button = page.locator('button:has-text("All Incoming")').first();
+    await button.waitFor({ timeout: 5000 });
+    await button.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
+}
+
+/** Click the "All Base" button to accept all base (original) resolutions. */
+export async function clickAcceptAllBase(page: Page): Promise<void> {
+    const button = page.locator('button:has-text("All Base")').first();
+    await button.waitFor({ timeout: 5000 });
+    await button.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
+}
+
+/** Click an acceptAll button by side ('base', 'current', or 'incoming'). */
+export async function clickAcceptAll(page: Page, side: 'base' | 'current' | 'incoming'): Promise<void> {
+    if (side === 'base') {
+        await clickAcceptAllBase(page);
+    } else if (side === 'current') {
+        await clickAcceptAllCurrent(page);
+    } else {
+        await clickAcceptAllIncoming(page);
+    }
+}
+
+/** Jump to a specific point in history by index. */
+export async function clickHistoryItemByIndex(page: Page, index: number): Promise<void> {
+    const items = page.locator('[data-testid="history-item"]');
+    const item = items.nth(index);
+    await item.waitFor({ timeout: 5000 });
+    await item.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
 }
 
 /** Return the text of every entry in the history panel, in order. */
@@ -345,11 +426,10 @@ export async function collectExpectedCellsFromUI(
             const choiceInfo = await options.resolveConflictChoice(row, conflictIdx, i);
             const choice = choiceInfo.choice;
 
-            const textarea = row.locator('.resolved-content-input');
-            if (await textarea.count() === 0) {
-                throw new Error(`Row ${i}: missing resolved content input`);
+            const resolvedContent = await getResolvedContentValue(row);
+            if (!resolvedContent && await row.locator('.resolved-content-static, .resolved-content-input').count() === 0) {
+                throw new Error(`Row ${i}: missing resolved content`);
             }
-            const resolvedContent = await getResolvedEditorValue(textarea);
             let cellType = choiceInfo.chosenCellType;
 
             if (!cellType && (choice === 'base' || choice === 'current' || choice === 'incoming')) {
@@ -363,7 +443,9 @@ export async function collectExpectedCellsFromUI(
             let hasOutputs = false;
             let normalizedOutputs: Array<Record<string, unknown>> | undefined;
             if ((includeMetadata || includeOutputs) && (choice === 'base' || choice === 'current' || choice === 'incoming')) {
-                const referenceCell = await getColumnCell(row, choice, i);
+                // Prefer pre-captured cell data (passed via choiceInfo.cellData) so this
+                // still works after resolution when the column cells are removed from DOM.
+                const referenceCell = choiceInfo.cellData ?? await getColumnCell(row, choice, i);
                 if (!referenceCell) {
                     throw new Error(`Row ${i}: could not read ${choice} cell data`);
                 }
