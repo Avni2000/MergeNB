@@ -3,6 +3,34 @@ import Layout from '@theme/Layout';
 import BrowserOnly from '@docusaurus/BrowserOnly';
 import 'katex/dist/katex.min.css';
 
+/**
+ * Custom CSS to ensure the playground fills the viewport and hides the footer. 
+ * Removes scroll conflicts
+*/
+const PLAYGROUND_LAYOUT_CSS = `
+/* Hide footer on the playground page */
+.playground-wrapper + footer { display: none !important; }
+
+/* Fill remaining viewport after the sticky navbar */
+.playground-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--ifm-navbar-height, 60px));
+    overflow: hidden;
+}
+
+/* Playground root fills the wrapper */
+.mergenb-playground-root {
+    flex: 1;
+    min-height: 0;
+}
+
+/* Override standalone 100vh — let the parent dictate height */
+.mergenb-playground-root .app-container {
+    height: 100% !important;
+}
+`;
+
 function PlaygroundInner(): ReactNode {
     const [content, setContent] = useState<ReactNode>(null);
 
@@ -57,7 +85,8 @@ function PlaygroundInner(): ReactNode {
 
 export default function Playground() {
     return (
-        <Layout title="MergeNB Playground">
+        <Layout title="MergeNB Playground" wrapperClassName="playground-wrapper">
+            <style>{PLAYGROUND_LAYOUT_CSS}</style>
             <BrowserOnly fallback={<div>Loading playground...</div>}>
                 {() => <PlaygroundInner />}
             </BrowserOnly>
