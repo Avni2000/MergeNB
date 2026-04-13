@@ -1,6 +1,7 @@
 import {useState, useEffect, type ReactNode} from 'react';
 import Layout from '@theme/Layout';
 import BrowserOnly from '@docusaurus/BrowserOnly';
+import 'katex/dist/katex.min.css';
 
 function PlaygroundInner(): ReactNode {
     const [content, setContent] = useState<ReactNode>(null);
