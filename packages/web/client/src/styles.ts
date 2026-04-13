@@ -97,9 +97,6 @@ html, body {
 }`;
 
     return `
-        /* Load Inter, Playfair Display, and JetBrains Mono from Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@1,500&display=swap');
-
 ${rootSel} {
     --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     
@@ -1504,6 +1501,13 @@ ${bodySel} {
 }
 
 ${scope ? `
+/* CSS containment: isolate style/layout recalculation from the host page (e.g. Docusaurus
+   Infima) so scroll and DOM changes inside this subtree don't trigger page-wide reflows. */
+${scope} {
+    contain: content;
+    isolation: isolate;
+}
+
 /* When embedded in a host page (e.g. Docusaurus), reset framework styles that bleed into
    our pre/code elements (Infima, Bootstrap, etc.) so diff highlighting and code backgrounds
    look the same as in the standalone extension. */
@@ -1516,12 +1520,41 @@ ${scope} code {
     color: inherit;
     border: none;
 }
+
+/* Reset additional framework styles that affect layout and typography */
+${scope} h1, ${scope} h2, ${scope} h3, ${scope} h4, ${scope} h5, ${scope} h6 {
+    margin: unset;
+    font-size: unset;
+    font-weight: unset;
+}
+${scope} a {
+    color: inherit;
+    text-decoration: none;
+}
+${scope} button {
+    font-family: inherit;
+}
 ` : ''}
 `;
 }
 
+const GOOGLE_FONTS_URL = 'https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@1,500&display=swap';
+
+function ensureGoogleFontsLink(): void {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('mergenb-google-fonts')) return;
+
+    const link = document.createElement('link');
+    link.id = 'mergenb-google-fonts';
+    link.rel = 'stylesheet';
+    link.href = GOOGLE_FONTS_URL;
+    document.head.appendChild(link);
+}
+
 export function injectStyles(theme: 'dark' | 'light' = 'light', scope?: string): void {
     if (typeof document !== 'undefined') {
+        ensureGoogleFontsLink();
+
         const id = scope ? 'mergenb-styles-scoped' : 'mergenb-styles';
         const existing = document.getElementById(id);
         if (existing) {
