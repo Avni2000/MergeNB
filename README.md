@@ -1,4 +1,4 @@
-<div style={{textAlign: 'center'}}>
+<div align="center">
 
 ![MergeNB Logo](readme-assets/MergeNB-logo.png)
 
@@ -49,12 +49,12 @@ Right now, that means a VSCode + Web UI flow that works without extra Git config
 
 - Light and dark themes (the demo above needs to be updated!):
 
-<div >
-    <div style={{boxShadow:'0 12px 30px rgba(0,0,0,0.18)',borderRadius:'8px',overflow:'hidden',marginBottom:'32px'}}>
-        <img src="readme-assets/light-theme.png" alt="Light theme" style={{display:'block',width:'100%',height:'auto'}} />
+<div>
+    <div>
+        <img src="readme-assets/light-theme.png" alt="Light theme" />
     </div>
-    <div style={{boxShadow:'0 12px 30px rgba(0,0,0,0.18)',borderRadius:'8px',overflow:'hidden'}}>
-        <img src="readme-assets/dark-theme.png" alt="Dark theme" style={{display:'block',width:'100%',height:'auto'}} />
+    <div>
+        <img src="readme-assets/dark-theme.png" alt="Dark theme" />
     </div>
 </div>
 
