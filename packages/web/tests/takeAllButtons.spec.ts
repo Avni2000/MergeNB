@@ -16,6 +16,7 @@ import {
 import {
     type MergeSide,
     verifyAllConflictsMatchSide,
+    captureExpectedContentPerSide,
     getResolvedCount,
     waitForAllConflictsResolved,
     waitForResolvedCount,
@@ -270,6 +271,11 @@ test.describe('Take All Buttons', () => {
             const buttonLabel = `All ${capitalize(action)}`;
             logger.info(`\n=== Clicking "${buttonLabel}" ===`);
 
+            // Capture expected content from chosen side before bulk resolution
+            // (after resolution, column cells are removed from DOM)
+            const expectedContent = await captureExpectedContentPerSide(page, action);
+            logger.info(`Captured expected content for ${expectedContent.size} rows`);
+
             await clickAcceptAll(page, action);
 
             // Verify resolution count
@@ -282,10 +288,10 @@ test.describe('Take All Buttons', () => {
                 await verifyTakeAllUnresolved(page, action, manualSelections);
                 logger.info(`  ✓ Take-all respected manual resolutions and applied to unresolved rows only`);
             } else {
-                const result = await verifyAllConflictsMatchSide(page, action);
+                const result = await verifyAllConflictsMatchSide(page, action, expectedContent);
                 logger.info(`  Matches: ${result.matchCount}, Deletes: ${result.deleteCount}`);
                 expect(result.mismatches).toHaveLength(0);
-                logger.info(`  ✓ All resolved cells match ${action}-side content in UI`);
+                logger.info(`  ✓ All resolved cells match ${action}-side content in UI (text verified)`);
             }
 
             // Undo/Redo verification
@@ -310,7 +316,7 @@ test.describe('Take All Buttons', () => {
                 if (mode === 'unresolved') {
                     await verifyTakeAllUnresolved(page, action, manualSelections);
                 } else {
-                    const redoResult = await verifyAllConflictsMatchSide(page, action);
+                    const redoResult = await verifyAllConflictsMatchSide(page, action, expectedContent);
                     expect(redoResult.mismatches).toHaveLength(0);
                 }
             }
