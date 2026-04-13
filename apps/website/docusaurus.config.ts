@@ -46,6 +46,16 @@ const config: Config = {
             module: {
               rules: [{test: /\.ipynb$/, type: 'json'}],
             },
+            resolve: {
+              alias: {
+                // JupyterLab settingregistry uses `import * as json5` and calls json5.parse.
+                // The ESM build of json5 only exposes a default export, so force CJS here.
+                json5$: 'json5/lib/index.js',
+                // ws treats these as optional perf deps; disable resolution to avoid warnings.
+                bufferutil$: false,
+                'utf-8-validate$': false,
+              },
+            },
           };
         },
       };

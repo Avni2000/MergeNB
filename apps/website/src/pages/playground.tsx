@@ -2,6 +2,7 @@ import {useState, useEffect, type ReactNode} from 'react';
 import Layout from '@theme/Layout';
 import BrowserOnly from '@docusaurus/BrowserOnly';
 import 'katex/dist/katex.min.css';
+import type {Notebook} from '../../../../packages/core/src/types';
 
 /**
  * Custom CSS to ensure the playground fills the viewport and hides the footer. 
@@ -31,6 +32,11 @@ const PLAYGROUND_LAYOUT_CSS = `
 }
 `;
 
+function getNotebook(moduleValue: unknown): Notebook {
+    const maybeModule = moduleValue as {default?: Notebook};
+    return (maybeModule.default ?? moduleValue) as Notebook;
+}
+
 function PlaygroundInner(): ReactNode {
     const [content, setContent] = useState<ReactNode>(null);
 
@@ -45,9 +51,9 @@ function PlaygroundInner(): ReactNode {
                 import('../../../../test-fixtures/demo_incoming.ipynb'),
             ]);
 
-            const base = baseNb.default ?? baseNb;
-            const current = currentNb.default ?? currentNb;
-            const incoming = incomingNb.default ?? incomingNb;
+            const base = getNotebook(baseNb);
+            const current = getNotebook(currentNb);
+            const incoming = getNotebook(incomingNb);
 
             const cellMappings = matchCells(base, current, incoming);
             const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);

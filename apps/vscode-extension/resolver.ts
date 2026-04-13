@@ -528,7 +528,7 @@ export class NotebookConflictResolver {
 
         const resolvedRows = resolution.resolvedRows;
 
-        if (resolvedRows == null) {
+        if (resolvedRows === null || resolvedRows === undefined) {
             // No resolutions provided
             if (autoResolveResult) {
                 let resolvedNotebook = autoResolveResult.resolvedNotebook;
