@@ -39,52 +39,72 @@ function getNotebook(moduleValue: unknown): Notebook {
 
 function PlaygroundInner(): ReactNode {
     const [content, setContent] = useState<ReactNode>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
-        (async () => {
-            const [{ConflictResolver}, {matchCells, analyzeSemanticConflictsFromMappings}, {injectStyles}, baseNb, currentNb, incomingNb] = await Promise.all([
-                import('../../../../packages/web/client/src/components/ConflictResolver'),
-                import('../../../../packages/core/src'),
-                import('../../../../packages/web/client/src/styles'),
-                import('../../../../test-fixtures/demo_base.ipynb'),
-                import('../../../../test-fixtures/demo_current.ipynb'),
-                import('../../../../test-fixtures/demo_incoming.ipynb'),
-            ]);
+        let cancelled = false;
 
-            const base = getNotebook(baseNb);
-            const current = getNotebook(currentNb);
-            const incoming = getNotebook(incomingNb);
+        void (async () => {
+            try {
+                const [{ConflictResolver}, {matchCells, analyzeSemanticConflictsFromMappings}, {injectStyles}, baseNb, currentNb, incomingNb] = await Promise.all([
+                    import('../../../../packages/web/client/src/components/ConflictResolver'),
+                    import('../../../../packages/core/src'),
+                    import('../../../../packages/web/client/src/styles'),
+                    import('../../../../test-fixtures/demo_base.ipynb'),
+                    import('../../../../test-fixtures/demo_current.ipynb'),
+                    import('../../../../test-fixtures/demo_incoming.ipynb'),
+                ]);
 
-            const cellMappings = matchCells(base, current, incoming);
-            const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
+                const base = getNotebook(baseNb);
+                const current = getNotebook(currentNb);
+                const incoming = getNotebook(incomingNb);
 
-            injectStyles('dark', '.mergenb-playground-root');
+                const cellMappings = matchCells(base, current, incoming);
+                const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
 
-            setContent(
-                <div className="mergenb-playground-root">
-                <ConflictResolver
-                    conflict={{
-                        filePath: 'demo.ipynb',
-                        conflictKey: 'playground-demo-v1',
-                        type: 'semantic',
-                        theme: 'dark',
-                        semanticConflict: {
+                injectStyles('dark', '.mergenb-playground-root');
+
+                if (cancelled) return;
+                setContent(
+                    <div className="mergenb-playground-root">
+                    <ConflictResolver
+                        conflict={{
                             filePath: 'demo.ipynb',
-                            semanticConflicts,
-                            cellMappings,
-                            base,
-                            current,
-                            incoming,
-                            currentBranch: 'current',
-                            incomingBranch: 'incoming',
-                    }}}
-                    onResolve={() => {}}
-                    onCancel={() => {}}
-                />
-                </div>
-            );
+                            conflictKey: 'playground-demo-v1',
+                            type: 'semantic',
+                            theme: 'dark',
+                            semanticConflict: {
+                                filePath: 'demo.ipynb',
+                                semanticConflicts,
+                                cellMappings,
+                                base,
+                                current,
+                                incoming,
+                                currentBranch: 'current',
+                                incomingBranch: 'incoming',
+                        }}}
+                        onResolve={() => {}}
+                        onCancel={() => {}}
+                    />
+                    </div>
+                );
+            } catch (error) {
+                if (cancelled) return;
+
+                const message = error instanceof Error ? error.message : 'Unknown error';
+                console.error('[MergeNB playground] Failed to initialize:', error);
+                setLoadError(message);
+            }
         })();
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
+
+    if (loadError) {
+        return <div role="alert">Failed to load playground: {loadError}</div>;
+    }
 
     return content ?? <div>Loading playground...</div>;
 }
