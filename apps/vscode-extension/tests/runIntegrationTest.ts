@@ -52,6 +52,13 @@ interface ManualSandbox {
 
 const MANUAL_SANDBOXES: ManualSandbox[] = [
     {
+        id: '00',
+        label: 'Fixture 00',
+        base: '00_base.ipynb',
+        current: '00_incoming.ipynb',
+        incoming: '00_current.ipynb',
+    },
+    {
         id: '02',
         label: 'Fixture 02 — standard merge conflicts',
         base: '02_base.ipynb',
