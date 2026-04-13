@@ -1502,6 +1502,21 @@ ${bodySel} {
     padding: 12px 24px 16px;
     box-sizing: border-box;
 }
+
+${scope ? `
+/* When embedded in a host page (e.g. Docusaurus), reset framework styles that bleed into
+   our pre/code elements (Infima, Bootstrap, etc.) so diff highlighting and code backgrounds
+   look the same as in the standalone extension. */
+${scope} pre,
+${scope} code {
+    background: transparent;
+    border-radius: unset;
+    padding: unset;
+    font-size: unset;
+    color: inherit;
+    border: none;
+}
+` : ''}
 `;
 }
 
