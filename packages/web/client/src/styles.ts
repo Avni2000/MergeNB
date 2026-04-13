@@ -1167,6 +1167,11 @@ ${bodySel} {
 .resolved-cell.markdown-cell .resolved-content-static {
     font-family: var(--font-ui);
     border-left: 3px solid var(--accent-green);
+    white-space: normal;
+}
+
+.resolved-cell.markdown-cell .resolved-content-static .markdown-content {
+    padding: 0;
 }
 
 /* Resolved deleted cell */
@@ -1510,9 +1515,11 @@ ${scope} {
 
 /* When embedded in a host page (e.g. Docusaurus), reset framework styles that bleed into
    our pre/code elements (Infima, Bootstrap, etc.) so diff highlighting and code backgrounds
-   look the same as in the standalone extension. */
-${scope} pre,
-${scope} code {
+   look the same as in the standalone extension.
+   Exclude .cell-content and .markdown-content descendants — MergeNB's own styles already
+   handle those, and the reset would strip intentional padding (e.g. 12px on .cell-content pre). */
+${scope} pre:not(.cell-content *):not(.markdown-content *):not(.resolved-content-static):not(.resolved-content-static *),
+${scope} code:not(.cell-content *):not(.markdown-content *):not(.resolved-content-static):not(.resolved-content-static *) {
     background: transparent;
     border-radius: unset;
     padding: unset;
@@ -1521,13 +1528,15 @@ ${scope} code {
     border: none;
 }
 
-/* Reset additional framework styles that affect layout and typography */
-${scope} h1, ${scope} h2, ${scope} h3, ${scope} h4, ${scope} h5, ${scope} h6 {
+/* Reset additional framework styles that affect layout and typography.
+   Exclude .markdown-content descendants so rendered markdown keeps its own heading
+   sizes/weights/margins and link colors. */
+${scope} :is(h1, h2, h3, h4, h5, h6):not(.markdown-content *) {
     margin: unset;
     font-size: unset;
     font-weight: unset;
 }
-${scope} a {
+${scope} a:not(.markdown-content *) {
     color: inherit;
     text-decoration: none;
 }

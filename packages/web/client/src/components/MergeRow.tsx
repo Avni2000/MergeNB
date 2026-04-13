@@ -14,7 +14,7 @@ import { createPortal } from 'react-dom';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
-import { CellContent, mergeNBEditorStructure } from './CellContent';
+import { CellContent, MarkdownContent, mergeNBEditorStructure, StaticHighlightedCode } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import type { ResolutionState } from '../store/resolverStore';
@@ -394,9 +394,21 @@ function MergeRowInner({
                                     />
                                 </div>
                             ) : (
-                                <pre className="resolved-content-static">
-                                    {displayedResolvedContent}
-                                </pre>
+                                resolvedCellType === 'markdown' ? (
+                                    <div className="resolved-content-static">
+                                        <MarkdownContent
+                                            source={displayedResolvedContent}
+                                            theme={theme}
+                                        />
+                                    </div>
+                                ) : (
+                                    <StaticHighlightedCode
+                                        source={displayedResolvedContent}
+                                        langExtensions={languageExtensions}
+                                        theme={theme}
+                                        className="resolved-content-static"
+                                    />
+                                )
                             )}
                         </div>
                     </div>
