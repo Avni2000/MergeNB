@@ -258,6 +258,8 @@ export async function clickHistoryUndo(page: Page): Promise<void> {
     const button = page.locator('[data-testid="history-undo"]');
     await button.waitFor({ timeout: 5000 });
     await button.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
 }
 
 /** Click the redo button in the history panel. */
@@ -265,6 +267,70 @@ export async function clickHistoryRedo(page: Page): Promise<void> {
     const button = page.locator('[data-testid="history-redo"]');
     await button.waitFor({ timeout: 5000 });
     await button.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
+}
+
+/**
+ * Confirm the destructive action warning modal if it appears.
+ * This is used when a destructive action would lose edited resolutions.
+ */
+export async function confirmDestructiveActionWarningIfNeeded(page: Page): Promise<void> {
+    const modal = page.locator('[data-testid="destructive-action-warning-modal"]');
+    const isVisible = await modal.count() > 0;
+    if (isVisible) {
+        const confirmBtn = modal.locator('[data-testid="destructive-action-warning-confirm"]');
+        await confirmBtn.waitFor({ timeout: 5000 });
+        await confirmBtn.click();
+    }
+}
+
+/** Click the "All Current" button to accept all current (local) resolutions. */
+export async function clickAcceptAllCurrent(page: Page): Promise<void> {
+    const button = page.locator('button:has-text("All Current")').first();
+    await button.waitFor({ timeout: 5000 });
+    await button.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
+}
+
+/** Click the "All Incoming" button to accept all incoming (remote) resolutions. */
+export async function clickAcceptAllIncoming(page: Page): Promise<void> {
+    const button = page.locator('button:has-text("All Incoming")').first();
+    await button.waitFor({ timeout: 5000 });
+    await button.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
+}
+
+/** Click the "All Base" button to accept all base (original) resolutions. */
+export async function clickAcceptAllBase(page: Page): Promise<void> {
+    const button = page.locator('button:has-text("All Base")').first();
+    await button.waitFor({ timeout: 5000 });
+    await button.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
+}
+
+/** Click an acceptAll button by side ('base', 'current', or 'incoming'). */
+export async function clickAcceptAll(page: Page, side: 'base' | 'current' | 'incoming'): Promise<void> {
+    if (side === 'base') {
+        await clickAcceptAllBase(page);
+    } else if (side === 'current') {
+        await clickAcceptAllCurrent(page);
+    } else {
+        await clickAcceptAllIncoming(page);
+    }
+}
+
+/** Jump to a specific point in history by index. */
+export async function clickHistoryItemByIndex(page: Page, index: number): Promise<void> {
+    const items = page.locator('[data-testid="history-item"]');
+    const item = items.nth(index);
+    await item.waitFor({ timeout: 5000 });
+    await item.click();
+    // Handle destructive action warning if it appears (occurs when there's edited content)
+    await confirmDestructiveActionWarningIfNeeded(page);
 }
 
 /** Return the text of every entry in the history panel, in order. */

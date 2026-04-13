@@ -24,6 +24,10 @@ import {
     collectExpectedCellsFromUI,
     clickHistoryUndo,
     clickHistoryRedo,
+    clickAcceptAllCurrent,
+    clickAcceptAllIncoming,
+    clickAcceptAllBase,
+    clickAcceptAll,
     getResolvedContentValue,
 } from '../../../test-fixtures/shared/integrationUtils';
 import {
@@ -266,9 +270,7 @@ test.describe('Take All Buttons', () => {
             const buttonLabel = `All ${capitalize(action)}`;
             logger.info(`\n=== Clicking "${buttonLabel}" ===`);
 
-            const actionButton = page.locator(`button:has-text("${buttonLabel}")`);
-            await actionButton.waitFor({ timeout: 5000 });
-            await actionButton.click();
+            await clickAcceptAll(page, action);
 
             // Verify resolution count
             const afterAction = await waitForAllConflictsResolved(page);

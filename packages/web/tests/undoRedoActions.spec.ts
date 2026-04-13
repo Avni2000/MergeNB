@@ -12,6 +12,7 @@ import * as logger from '../../core/src';
 import {
     clickHistoryUndo,
     clickHistoryRedo,
+    clickHistoryItemByIndex,
     waitForResolvedCount,
     getResolvedContentValue,
     fillResolvedEditor,
@@ -210,7 +211,7 @@ test.describe('Undo/Redo Actions', () => {
             const historyCount = await historyItems.count();
             expect(historyCount).toBeGreaterThan(0);
 
-            await historyItems.nth(0).click();
+            await clickHistoryItemByIndex(page, 0);
 
             const resolvedAfterJump = await waitForResolvedCount(page, 0, 5000);
             expect(resolvedAfterJump.resolved).toBe(0);
