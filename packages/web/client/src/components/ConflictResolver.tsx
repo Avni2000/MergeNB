@@ -640,10 +640,8 @@ export function ConflictResolver({
                                                 onKeyDown={event => {
                                                     if (event.key === 'Enter' || event.key === ' ') {
                                                         event.preventDefault();
-                                                        {
-                                                            handleJumpToHistory(index);
-                                                            setHistoryOpen(false);
-                                                        }
+                                                        handleJumpToHistory(index);
+                                                        setHistoryOpen(false);
                                                     }
                                                 }}
                                             >
