@@ -371,7 +371,7 @@ function MergeRowInner({
                                 </div>
                             ) : (
                                 <pre className="resolved-content-static">
-                                    {draftResolvedContent}
+                                    {displayedResolvedContent}
                                 </pre>
                             )}
                         </div>
