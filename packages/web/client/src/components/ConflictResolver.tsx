@@ -300,7 +300,7 @@ export function ConflictResolver({
             const target = event.target instanceof Element ? event.target : null;
             if (
                 !target?.closest?.(
-                    '.cell-content, .cell-output-host, .cell-output-fallback, .resolved-content-input, .markdown-content'
+                    '.cell-content, .cell-output-host, .cell-output-fallback, .resolved-content-input, .resolved-content-static, .markdown-content'
                 )
             )
                 return;
@@ -543,6 +543,7 @@ export function ConflictResolver({
             <div
                 className="warning-modal-overlay"
                 data-testid="destructive-action-warning-modal"
+                data-editing-allow="true"
             >
                 <div className="warning-modal">
                     <div className="warning-icon">⚠️</div>
@@ -592,7 +593,7 @@ export function ConflictResolver({
                         <div className="header-group">
                                 <button
                                     className="btn btn-secondary"
-                                    onMouseDown={e => mouseDownGuardActiveEditing(e, () => undo())}
+                                    onMouseDown={e => mouseDownGuardActiveEditing(e, handleUndo)}
                                     onClick={() => {
                                         if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
                                         handleUndo();
@@ -605,7 +606,7 @@ export function ConflictResolver({
                             </button>
                                 <button
                                     className="btn btn-secondary"
-                                    onMouseDown={e => mouseDownGuardActiveEditing(e, () => redo())}
+                                    onMouseDown={e => mouseDownGuardActiveEditing(e, handleRedo)}
                                     onClick={() => {
                                         if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
                                         handleRedo();
@@ -635,7 +636,7 @@ export function ConflictResolver({
                                         <div className="history-actions">
                                             <button
                                                 className="btn btn-secondary"
-                                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => undo())}
+                                                onMouseDown={e => mouseDownGuardActiveEditing(e, handleUndo)}
                                                 onClick={() => {
                                                     if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
                                                     handleUndo();
@@ -647,7 +648,7 @@ export function ConflictResolver({
                                             </button>
                                             <button
                                                 className="btn btn-secondary"
-                                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => redo())}
+                                                onMouseDown={e => mouseDownGuardActiveEditing(e, handleRedo)}
                                                 onClick={() => {
                                                     if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
                                                     handleRedo();
@@ -668,7 +669,7 @@ export function ConflictResolver({
                                                 role="button"
                                                 tabIndex={0}
                                                 aria-current={index === history.index ? 'true' : undefined}
-                                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => { jumpToHistory(index); setHistoryOpen(false); })}
+                                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => { handleJumpToHistory(index); setHistoryOpen(false); })}
                                                 onClick={() => {
                                                     if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
                                                     handleJumpToHistory(index);
@@ -701,7 +702,7 @@ export function ConflictResolver({
                                         padding: '4px 8px'
                                     }}
                                     title="Accept all base (original) changes"
-                                    onMouseDown={e => mouseDownGuardActiveEditing(e, () => acceptAll('base'))}
+                                    onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('base'))}
                                     onClick={() => {
                                         if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
                                         handleAcceptAll('base');
@@ -720,7 +721,7 @@ export function ConflictResolver({
                                     padding: '4px 8px',
                                 }}
                                 title="Accept all current (local) changes"
-                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => acceptAll('current'))}
+                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('current'))}
                                 onClick={() => {
                                     if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
                                     handleAcceptAll('current');
@@ -738,7 +739,7 @@ export function ConflictResolver({
                                     padding: '4px 8px'
                                 }}
                                 title="Accept all incoming (remote) changes"
-                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => acceptAll('incoming'))}
+                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('incoming'))}
                                 onClick={() => {
                                     if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
                                     handleAcceptAll('incoming');
