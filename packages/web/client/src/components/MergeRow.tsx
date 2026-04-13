@@ -77,6 +77,8 @@ function MergeRowInner({
     const [draftResolvedContent, setDraftResolvedContent] = useState(resolutionState?.resolvedContent ?? '');
     const draftResolvedContentRef = useRef(draftResolvedContent);
     const suppressBlurEditGuardRef = useRef(false);
+    const isEditingRef = useRef(isEditing);
+    const latestResolvedContentRef = useRef(resolutionState?.resolvedContent);
 
     useEffect(() => {
         setDraftResolvedContent(resolutionState?.resolvedContent ?? '');
@@ -85,17 +87,28 @@ function MergeRowInner({
     useEffect(() => {
         draftResolvedContentRef.current = draftResolvedContent;
     }, [draftResolvedContent]);
+
+    useEffect(() => {
+        isEditingRef.current = isEditing;
+    }, [isEditing]);
+
+    useEffect(() => {
+        latestResolvedContentRef.current = resolutionState?.resolvedContent;
+    }, [resolutionState?.resolvedContent]);
+
     // TODO: test that this fully works; we will have to conditionally pass the noVirt prop in @fixtures to do it.
-    // Cleanup on unmount (e.g., when virtualized out of view): commit pending edits to prevent data loss
-    // This handles the case where blur doesn't fire (e.g., row gets virtualized before blur event propagates)
+    // Cleanup on unmount (e.g., when virtualized out of view): commit pending edits to prevent data loss.
+    // Uses refs so the cleanup reads current values rather than stale closed-over ones — preventing
+    // duplicate callbacks when deps change mid-lifecycle (e.g., isEditing flips false on blur autosave).
     useEffect(() => {
         return () => {
-            if (isEditing && draftResolvedContentRef.current !== resolutionState?.resolvedContent) {
+            if (isEditingRef.current && draftResolvedContentRef.current !== latestResolvedContentRef.current) {
                 onCommitContent(conflictIndex, draftResolvedContentRef.current);
                 onStopEditing(conflictIndex);
             }
         };
-    }, [isEditing, conflictIndex, onCommitContent, onStopEditing, resolutionState?.resolvedContent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (which triggers StateEffect.reconfigure) only fires when these values actually
