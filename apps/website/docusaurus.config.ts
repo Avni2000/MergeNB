@@ -5,8 +5,8 @@ import type * as Preset from '@docusaurus/preset-classic';
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 const config: Config = {
-  title: 'My Site',
-  tagline: 'Dinosaurs are cool',
+  title: 'MergeNB documentation',
+  tagline: 'Jupyter notebook conflict resolution tool',
   favicon: 'img/favicon.ico',
 
   // Future flags, see https://docusaurus.io/docs/api/docusaurus-config#future
@@ -36,6 +36,40 @@ const config: Config = {
     defaultLocale: 'en',
     locales: ['en'],
   },
+
+  plugins: [
+    function ipynbLoader() {
+      return {
+        name: 'ipynb-loader',
+        configureWebpack(existingConfig) {
+          const resolveConfig = existingConfig.resolve ?? {};
+          const existingAlias = resolveConfig.alias ?? {};
+          const existingFallback = resolveConfig.fallback ?? {};
+
+          return {
+            module: {
+              rules: [{test: /\.ipynb$/, type: 'json'}],
+            },
+            resolve: {
+              ...resolveConfig,
+              alias: {
+                // JupyterLab settingregistry uses `import * as json5` and calls json5.parse.
+                // The ESM build of json5 only exposes a default export, so force CJS here.
+                ...existingAlias,
+                json5$: 'json5/lib/index.js',
+              },
+              // ws treats these as optional perf deps; disable resolution to avoid warnings.
+              fallback: {
+                ...existingFallback,
+                bufferutil: false,
+                'utf-8-validate': false,
+              },
+            },
+          };
+        },
+      };
+    },
+  ],
 
   presets: [
     [
@@ -77,7 +111,7 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'My Site',
+      title: 'MergeNB',
       logo: {
         alt: 'My Site Logo',
         src: 'img/logo.svg',

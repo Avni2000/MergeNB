@@ -27,6 +27,7 @@ export const mergeNBEditorStructure: Extension = EditorView.theme({
     '&.cm-focused': { outline: 'none !important' },
     '.cm-content': { fontFamily: 'var(--font-code)', fontSize: '13px', lineHeight: '1.5', padding: '0' },
     '.cm-line': { padding: '0' },
+    '.cm-activeLine': { backgroundColor: 'rgba(255, 255, 255, 0.05) !important' },
     '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit' },
     '.cm-gutters': { display: 'none' },
 });
@@ -510,7 +511,7 @@ async function enhanceMarkdownCodeBlocks(host: HTMLElement, theme: 'dark' | 'lig
     }
 }
 
-function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactElement {
+export function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactElement {
     const hostRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -552,10 +553,11 @@ function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactEl
 
 // ─── Static display components (replace CodeMirror read-only instances) ───────
 
-function StaticHighlightedCode({ source, langExtensions, theme }: {
+export function StaticHighlightedCode({ source, langExtensions, theme, className = 'cell-source-static' }: {
     source: string;
     langExtensions: Extension[];
     theme: 'dark' | 'light';
+    className?: string;
 }): React.ReactElement {
     const nodes = useMemo(() => {
         const tokens = getSyntaxTokens(source, langExtensions, theme);
@@ -563,7 +565,7 @@ function StaticHighlightedCode({ source, langExtensions, theme }: {
     }, [source, langExtensions, theme]);
 
     return (
-        <pre className="cell-source-static">
+        <pre className={className}>
             <code>{nodes}</code>
         </pre>
     );

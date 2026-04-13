@@ -3,7 +3,7 @@
  * @description Shared styles for the conflict resolver UI.
  */
 
-function getStyles(theme: 'dark' | 'light' = 'light'): string {
+function getStyles(theme: 'dark' | 'light' = 'light', scope?: string): string {
     const isDark = theme === 'dark';
 
     // Checkered background gradients
@@ -85,11 +85,19 @@ function getStyles(theme: 'dark' | 'light' = 'light'): string {
 
     const hasBackgroundImage = colors.bodyBackgroundImage !== 'none';
 
-    return `
-        /* Load Inter, Playfair Display, and JetBrains Mono from Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@1,500&display=swap');
+    const rootSel = scope ?? ':root';
+    const bodySel = scope ?? 'body';
+    const universalSel = scope ? `${scope} *` : '*';
+    const htmlBodyBlock = scope ? '' : `
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    overflow: hidden;
+}`;
 
-:root {
+    return `
+${rootSel} {
     --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
     
     /* Code Font: Inherit VS Code's Editor font, fall back to standard monospace */
@@ -126,18 +134,13 @@ function getStyles(theme: 'dark' | 'light' = 'light'): string {
     --logo-blend-mode: ${colors.logoBlendMode};
 }
 
-html, body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    overflow: hidden;
-}
+${htmlBodyBlock}
 
-* {
+${universalSel} {
     box-sizing: border-box;
 }
 
-body {
+${bodySel} {
     margin: 0;
     padding: 0;
     font-family: var(--font-ui);
@@ -1185,6 +1188,11 @@ body {
 .resolved-cell.markdown-cell .resolved-content-static {
     font-family: var(--font-ui);
     border-left: 3px solid var(--accent-green);
+    white-space: normal;
+}
+
+.resolved-cell.markdown-cell .resolved-content-static .markdown-content {
+    padding: 0;
 }
 
 /* Resolved deleted cell */
@@ -1517,20 +1525,76 @@ body {
     padding: 12px 24px 16px;
     box-sizing: border-box;
 }
+
+${scope ? `
+/* CSS containment: isolate style/layout recalculation from the host page (e.g. Docusaurus
+   Infima) so scroll and DOM changes inside this subtree don't trigger page-wide reflows. */
+${scope} {
+    contain: content;
+    isolation: isolate;
+}
+
+/* When embedded in a host page (e.g. Docusaurus), reset framework styles that bleed into
+   our pre/code elements (Infima, Bootstrap, etc.) so diff highlighting and code backgrounds
+   look the same as in the standalone extension.
+   Exclude .cell-content and .markdown-content descendants — MergeNB's own styles already
+   handle those, and the reset would strip intentional padding (e.g. 12px on .cell-content pre). */
+${scope} pre:not(.cell-content *):not(.markdown-content *):not(.resolved-content-static):not(.resolved-content-static *),
+${scope} code:not(.cell-content *):not(.markdown-content *):not(.resolved-content-static):not(.resolved-content-static *) {
+    background: transparent;
+    border-radius: unset;
+    padding: unset;
+    font-size: unset;
+    color: inherit;
+    border: none;
+}
+
+/* Reset additional framework styles that affect layout and typography.
+   Exclude .markdown-content descendants so rendered markdown keeps its own heading
+   sizes/weights/margins and link colors. */
+${scope} :is(h1, h2, h3, h4, h5, h6):not(.markdown-content *) {
+    margin: unset;
+    font-size: unset;
+    font-weight: unset;
+}
+${scope} a:not(.markdown-content *) {
+    color: inherit;
+    text-decoration: none;
+}
+${scope} button {
+    font-family: inherit;
+}
+` : ''}
 `;
 }
 
-export function injectStyles(theme: 'dark' | 'light' = 'light'): void {
+const GOOGLE_FONTS_URL = 'https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=JetBrains+Mono:ital,wght@0,400..700;1,400..700&family=Playfair+Display:ital,wght@1,500&display=swap';
+
+function ensureGoogleFontsLink(): void {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('mergenb-google-fonts')) return;
+
+    const link = document.createElement('link');
+    link.id = 'mergenb-google-fonts';
+    link.rel = 'stylesheet';
+    link.href = GOOGLE_FONTS_URL;
+    document.head.appendChild(link);
+}
+
+export function injectStyles(theme: 'dark' | 'light' = 'light', scope?: string): void {
     if (typeof document !== 'undefined') {
-        const existing = document.getElementById('mergenb-styles');
+        ensureGoogleFontsLink();
+
+        const id = scope ? 'mergenb-styles-scoped' : 'mergenb-styles';
+        const existing = document.getElementById(id);
         if (existing) {
-            existing.textContent = getStyles(theme);
+            existing.textContent = getStyles(theme, scope);
             return;
         }
 
         const style = document.createElement('style');
-        style.id = 'mergenb-styles';
-        style.textContent = getStyles(theme);
+        style.id = id;
+        style.textContent = getStyles(theme, scope);
         document.head.appendChild(style);
     }
 }

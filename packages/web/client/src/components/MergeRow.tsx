@@ -14,7 +14,7 @@ import { createPortal } from 'react-dom';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
-import { CellContent, mergeNBEditorStructure } from './CellContent';
+import { CellContent, MarkdownContent, mergeNBEditorStructure, StaticHighlightedCode } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import type { ResolutionState } from '../store/resolverStore';
@@ -332,7 +332,10 @@ function MergeRowInner({
             <div className={rowClasses} data-testid={testId}>
                 <div className="resolved-row-wrapper">
                     <div className={`resolved-row-chrome${justSaved ? ' just-saved' : ''}`}>
-                        <div className={`resolved-cell ${resolvedCellType}-cell`}>
+                        <div
+                            className={`resolved-cell ${resolvedCellType}-cell`}
+                            data-raw-source={displayedResolvedContent}
+                        >
                             <div className="resolved-header">
                                 <div className="resolved-header-lead">
                                     <span className="resolved-label">✓ Resolved</span>
@@ -341,32 +344,37 @@ function MergeRowInner({
                                         {isContentModified && <span className="modified-badge">(edited)</span>}
                                     </span>
                                 </div>
-                                <div className="resolved-header-actions" data-testid="resolved-action-bar">
+                            <div className="resolved-header-actions" data-testid="resolved-action-bar">
+                                {isEditing && (
                                     <button
-                                        className={`btn ${isEditing ? 'btn-resolved-save' : 'btn-resolved-edit'}`}
-                                        onClick={() => {
-                                            if (isEditing) {
-                                                handleSaveEdits();
-                                                return;
-                                            }
-                                            onStartEditing(conflictIndex);
-                                        }}
-                                        data-editing-allow={isEditing ? 'true' : undefined}
-                                        data-testid={isEditing ? 'save-edits-button' : 'edit-button'}
+                                        className="btn btn-resolved-save"
+                                        onClick={handleSaveEdits}
+                                        data-editing-allow="true"
+                                        data-testid="save-edits-button"
                                     >
-                                        {isEditing ? 'Save edits' : 'Edit'}
+                                        Save edits
                                     </button>
+                                )}
+                                {!isEditing && (
                                     <button
-                                        className="btn btn-resolved-undo"
-                                        onMouseDown={e => {
-                                            if (isEditing) e.preventDefault();
-                                        }}
-                                        onClick={handleUndoResolution}
-                                        title="Undo resolution and show the conflict again"
+                                        className="btn btn-resolved-edit"
+                                        onClick={() => onStartEditing(conflictIndex)}
+                                        data-testid="edit-button"
                                     >
-                                        Undo resolution
+                                        Edit
                                     </button>
-                                </div>
+                                )}
+                                <button
+                                    className="btn btn-resolved-undo"
+                                    onMouseDown={e => {
+                                        if (isEditing) e.preventDefault();
+                                    }}
+                                    onClick={handleUndoResolution}
+                                    title="Undo resolution and show the conflict again"
+                                >
+                                    Undo resolution
+                                </button>
+                            </div>
                             </div>
                             {isEditing ? (
                                 <div data-editing-allow="true">
@@ -416,9 +424,21 @@ function MergeRowInner({
                                     )}
                                 </div>
                             ) : (
-                                <pre className="resolved-content-static">
-                                    {displayedResolvedContent}
-                                </pre>
+                                resolvedCellType === 'markdown' ? (
+                                    <div className="resolved-content-static">
+                                        <MarkdownContent
+                                            source={displayedResolvedContent}
+                                            theme={theme}
+                                        />
+                                    </div>
+                                ) : (
+                                    <StaticHighlightedCode
+                                        source={displayedResolvedContent}
+                                        langExtensions={languageExtensions}
+                                        theme={theme}
+                                        className="resolved-content-static"
+                                    />
+                                )
                             )}
                         </div>
                     </div>
