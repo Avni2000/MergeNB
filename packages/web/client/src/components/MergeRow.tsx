@@ -85,6 +85,17 @@ function MergeRowInner({
     useEffect(() => {
         draftResolvedContentRef.current = draftResolvedContent;
     }, [draftResolvedContent]);
+    // TODO: test that this fully works; we will have to conditionally pass the noVirt prop in @fixtures to do it.
+    // Cleanup on unmount (e.g., when virtualized out of view): commit pending edits to prevent data loss
+    // This handles the case where blur doesn't fire (e.g., row gets virtualized before blur event propagates)
+    useEffect(() => {
+        return () => {
+            if (isEditing && draftResolvedContentRef.current !== resolutionState?.resolvedContent) {
+                onCommitContent(conflictIndex, draftResolvedContentRef.current);
+                onStopEditing(conflictIndex);
+            }
+        };
+    }, [isEditing, conflictIndex, onCommitContent, onStopEditing, resolutionState?.resolvedContent]);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
     // (which triggers StateEffect.reconfigure) only fires when these values actually
