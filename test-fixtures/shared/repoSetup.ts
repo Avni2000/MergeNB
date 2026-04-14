@@ -13,6 +13,9 @@ import * as os from 'os';
 import { execSync } from 'child_process';
 import * as logger from '../../packages/core/src';
 
+
+// TODO: why are there only like 7 lol? We have the entire jupyter rendermime library at our disposal, 
+// so we should be able to render a much wider variety of image types.
 const IMAGE_EXTENSIONS = new Set([
     '.png',
     '.jpg',
@@ -83,11 +86,11 @@ export function createMergeConflictRepo(
     git(tmpDir, 'config', 'user.email', '"test@mergenb.test"');
     git(tmpDir, 'config', 'user.name', '"MergeNB Test"');
 
-    copyFixtureImageAssets([baseFile, currentFile, incomingFile], tmpDir);
+    const conflictNotebookPath = path.join(tmpDir, 'conflict.ipynb');
 
     // Base commit
     logger.info(`[RepoSetup] Setting up base commit from ${baseFile}`);
-    fs.copyFileSync(baseFile, path.join(tmpDir, 'conflict.ipynb'));
+    fs.copyFileSync(baseFile, conflictNotebookPath);
     git(tmpDir, 'add', '.');
     git(tmpDir, 'commit', '-m', '"base"');
 
@@ -97,7 +100,7 @@ export function createMergeConflictRepo(
     // Current branch
     logger.info(`[RepoSetup] Creating current branch from ${currentFile}`);
     git(tmpDir, 'checkout', '-b', 'current');
-    fs.copyFileSync(currentFile, path.join(tmpDir, 'conflict.ipynb'));
+    fs.copyFileSync(currentFile, conflictNotebookPath);
     git(tmpDir, 'add', 'conflict.ipynb');
     git(tmpDir, 'commit', '-m', '"current"');
 
@@ -105,7 +108,7 @@ export function createMergeConflictRepo(
     logger.info(`[RepoSetup] Creating incoming branch from ${incomingFile}`);
     git(tmpDir, 'checkout', baseBranch);
     git(tmpDir, 'checkout', '-b', 'incoming');
-    fs.copyFileSync(incomingFile, path.join(tmpDir, 'conflict.ipynb'));
+    fs.copyFileSync(incomingFile, conflictNotebookPath);
     git(tmpDir, 'add', 'conflict.ipynb');
     git(tmpDir, 'commit', '-m', '"incoming"');
 

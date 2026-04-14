@@ -21,9 +21,9 @@ async function main(): Promise<void> {
     const extensionTestsPath = path.resolve(__dirname, './nbdimeGuard.test.js');
     const vscodeVersion = process.env.VSCODE_VERSION?.trim();
 
-    const baseFile = path.join(testDir, '02_base.ipynb');
-    const currentFile = path.join(testDir, '02_current.ipynb');
-    const incomingFile = path.join(testDir, '02_incoming.ipynb');
+    const baseFile = path.join(testDir, 'general/conflict_0/base.ipynb');
+    const currentFile = path.join(testDir, 'general/conflict_0/current.ipynb');
+    const incomingFile = path.join(testDir, 'general/conflict_0/incoming.ipynb');
 
     for (const notebook of [baseFile, currentFile, incomingFile]) {
         if (!fs.existsSync(notebook)) {

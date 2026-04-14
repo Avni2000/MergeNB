@@ -511,9 +511,9 @@ interface MergeNBFixtures {
  * 
  * test('my test', async ({ conflictRepo, conflictSession }) => {
  *     const workspacePath = conflictRepo({
- *         base: '04_base.ipynb',
- *         current: '04_current.ipynb',
- *         incoming: '04_incoming.ipynb',
+ *         base: 'general/conflict_2/base.ipynb',
+ *         current: 'general/conflict_2/current.ipynb',
+ *         incoming: 'general/conflict_2/incoming.ipynb',
  *     });
  *     const session = await conflictSession(workspacePath);
  *     // ... test code

@@ -8,7 +8,7 @@
  *   node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright <spec># Run one spec (basename)
  *   node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode           # Run VS Code regression tests
  *   node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e              # Run E2E resolution tests (web server + WebSocket)
- *   node out/apps/vscode-extension/tests/runIntegrationTest.js --manual <fixture> # Open manual sandbox (02/03/04/09)
+ *   node out/apps/vscode-extension/tests/runIntegrationTest.js --manual <fixture> # Open manual sandbox
  *
  * npm scripts (see package.json):
  *   npm run test          # Interactive TUI picker
@@ -45,42 +45,61 @@ async function clack(): Promise<any> {
 interface ManualSandbox {
     id: string;
     label: string;
-    base: string;
-    current: string;
-    incoming: string;
+    baseFile: string;
+    currentFile: string;
+    incomingFile: string;
 }
 
 const MANUAL_SANDBOXES: ManualSandbox[] = [
     {
         id: '02',
-        label: 'Fixture 02 — standard merge conflicts',
-        base: '02_base.ipynb',
-        current: '02_current.ipynb',
-        incoming: '02_incoming.ipynb',
+        label: 'Fixture 0 — standard merge conflicts',
+        baseFile: 'general/conflict_0/base.ipynb',
+        currentFile: 'general/conflict_0/current.ipynb',
+        incomingFile: 'general/conflict_0/incoming.ipynb',
     },
     {
         id: '03',
-        label: 'Fixture 03',
-        base: '03_base.ipynb',
-        current: '03_current.ipynb',
-        incoming: '03_incoming.ipynb',
+        label: 'Fixture 1',
+        baseFile: 'general/conflict_1/base.ipynb',
+        currentFile: 'general/conflict_1/current.ipynb',
+        incomingFile: 'general/conflict_1/incoming.ipynb',
     },
     {
         id: '04',
-        label: 'Fixture 04 — bulk take-all scenarios',
-        base: '04_base.ipynb',
-        current: '04_current.ipynb',
-        incoming: '04_incoming.ipynb',
+        label: 'Fixture 2 — bulk take-all scenarios',
+        baseFile: 'general/conflict_2/base.ipynb',
+        currentFile: 'general/conflict_2/current.ipynb',
+        incomingFile: 'general/conflict_2/incoming.ipynb',
     },
     {
         id: '09',
-        label: 'Fixture 09 — reordered cells',
-        base: '09_reorder_base.ipynb',
-        current: '09_reorder_current.ipynb',
-        incoming: '09_reorder_incoming.ipynb',
+        label: 'Fixture 9 — reordered cells',
+        baseFile: 'edge-cases/reordered-cells/base.ipynb',
+        currentFile: 'edge-cases/reordered-cells/current.ipynb',
+        incomingFile: 'edge-cases/reordered-cells/incoming.ipynb',
     },
 ];
 
+function resolveManualSandboxFromInput(input: string): ManualSandbox {
+    const normalized = input.trim();
+    if (!normalized) {
+        throw new Error('Manual fixture input cannot be empty.');
+    }
+
+    const id = normalized.replace(/^0+/, '') || normalized;
+    const paddedId = id.padStart(2, '0');
+    const sandbox = MANUAL_SANDBOXES.find(
+        s => s.id === id || s.id === paddedId || s.label === normalized
+    );
+
+    if (!sandbox) {
+        const available = MANUAL_SANDBOXES.map(s => s.id).join(', ');
+        throw new Error(`Unknown manual fixture: ${normalized}. Available: ${available}`);
+    }
+
+    return sandbox;
+}
 // ─── Playwright helpers ───────────────────────────────────────────────────────
 
 function discoverSpecFiles(): string[] {
@@ -133,9 +152,9 @@ async function runVSCodeTests(options: VSCodeTestOptions): Promise<boolean> {
     const configInfo = prepareIsolatedConfigPath(`vscode-${id}${isCi ? '-vsix' : ''}`);
     const vscodeVersion = process.env.VSCODE_VERSION?.trim();
 
-    const baseFile = path.join(testDir, '02_base.ipynb');
-    const currentFile = path.join(testDir, '02_current.ipynb');
-    const incomingFile = path.join(testDir, '02_incoming.ipynb');
+    const baseFile = path.join(testDir, 'general/conflict_0/base.ipynb');
+    const currentFile = path.join(testDir, 'general/conflict_0/current.ipynb');
+    const incomingFile = path.join(testDir, 'general/conflict_0/incoming.ipynb');
 
     let stubDir: string | undefined;
     let vscodeExecutablePath: string | undefined;
@@ -252,9 +271,9 @@ function resolveManualWorkspacePath(): string {
 
 function openManualSandbox(sandbox: ManualSandbox): void {
     const testDir = path.resolve(__dirname, '../../../../test-fixtures');
-    const baseFile = path.join(testDir, sandbox.base);
-    const currentFile = path.join(testDir, sandbox.current);
-    const incomingFile = path.join(testDir, sandbox.incoming);
+    const baseFile = path.join(testDir, sandbox.baseFile);
+    const currentFile = path.join(testDir, sandbox.currentFile);
+    const incomingFile = path.join(testDir, sandbox.incomingFile);
 
     for (const f of [baseFile, currentFile, incomingFile]) {
         if (!fs.existsSync(f)) {
@@ -371,17 +390,17 @@ async function runPlaywrightTUI(c: any): Promise<void> {
 }
 
 async function runManualTUI(c: any): Promise<void> {
-    const selected = await c.select({
+    const sourceChoice = await c.select({
         message: 'Select fixture',
-        options: MANUAL_SANDBOXES.map(s => ({
-            value: s.id,
-            label: s.label,
+        options: MANUAL_SANDBOXES.map(sandbox => ({
+            value: sandbox.id,
+            label: sandbox.label,
         })),
     });
 
-    if (c.isCancel(selected)) { c.cancel('Cancelled.'); process.exit(0); }
+    if (c.isCancel(sourceChoice)) { c.cancel('Cancelled.'); process.exit(0); }
 
-    const sandbox = MANUAL_SANDBOXES.find(s => s.id === selected)!;
+    const sandbox = MANUAL_SANDBOXES.find(candidate => candidate.id === sourceChoice)!;
     c.outro(`Opening sandbox: ${sandbox.label}`);
     openManualSandbox(sandbox);
 }
@@ -451,18 +470,14 @@ async function main(): Promise<void> {
     }
 
     if (cli.manual) {
-        const id = cli.manual.replace(/^0+/, '') || cli.manual;
-        const paddedId = id.padStart(2, '0');
-        const sandbox = MANUAL_SANDBOXES.find(
-            s => s.id === id || s.id === paddedId
-        );
-        if (!sandbox) {
-            const available = MANUAL_SANDBOXES.map(s => s.id).join(', ');
-            console.error(pc.red(`Unknown manual fixture: ${cli.manual}`));
-            console.error(pc.dim(`Available: ${available}`));
+        try {
+            const sandbox = resolveManualSandboxFromInput(cli.manual);
+            openManualSandbox(sandbox);
+        } catch (err: any) {
+            console.error(pc.red(`Unknown manual fixture input: ${cli.manual}`));
+            console.error(pc.dim(String(err?.message || err)));
             process.exit(1);
         }
-        openManualSandbox(sandbox);
         return;
     }
 

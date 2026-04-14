@@ -86,6 +86,7 @@ node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright # Direct
 
 ### Notebook Fixtures Available:
 
-- `test-fixtures/02_*.ipynb`
-- `test-fixtures/03_*.ipynb`
-- `test-fixtures/04_*.ipynb`
+- `test-fixtures/general/conflict_0/*.ipynb`
+- `test-fixtures/general/conflict_1/*.ipynb`
+- `test-fixtures/general/conflict_2/*.ipynb`
+- `test-fixtures/edge-cases/*/{base,current,incoming}.ipynb`
