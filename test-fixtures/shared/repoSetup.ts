@@ -13,18 +13,7 @@ import * as os from 'os';
 import { execSync } from 'child_process';
 import * as logger from '../../packages/core/src';
 
-
-// TODO: why are there only like 7 lol? We have the entire jupyter rendermime library at our disposal, 
-// so we should be able to render a much wider variety of image types.
-const IMAGE_EXTENSIONS = new Set([
-    '.png',
-    '.jpg',
-    '.jpeg',
-    '.gif',
-    '.svg',
-    '.webp',
-    '.bmp',
-]);
+const TRIPLET_NOTEBOOK_FILENAMES = new Set(['base.ipynb', 'current.ipynb', 'incoming.ipynb']);
 
 interface MergeConflictRepoOptions {
     /**
@@ -88,6 +77,8 @@ export function createMergeConflictRepo(
 
     const conflictNotebookPath = path.join(tmpDir, 'conflict.ipynb');
 
+    copyFixtureCompanionFiles([baseFile, currentFile, incomingFile], tmpDir);
+
     // Base commit
     logger.info(`[RepoSetup] Setting up base commit from ${baseFile}`);
     fs.copyFileSync(baseFile, conflictNotebookPath);
@@ -144,32 +135,57 @@ function prepareDeterministicRepoDir(targetDir: string): string {
     return resolved;
 }
 
-function copyFixtureImageAssets(notebookFiles: string[], targetDir: string): void {
-    const fixtureDirs = new Set(notebookFiles.map(file => path.dirname(file)));
+function copyFixtureCompanionFiles(notebookFiles: string[], targetDir: string): void {
+    const fixtureDirs = new Set(notebookFiles.map(file => path.dirname(path.resolve(file))));
+    const skippedFiles = new Set(notebookFiles.map(file => path.resolve(file)));
 
     for (const fixtureDir of fixtureDirs) {
-        let entries: fs.Dirent[] = [];
-        try {
-            entries = fs.readdirSync(fixtureDir, { withFileTypes: true });
-        } catch (err) {
-            logger.warn(`[RepoSetup] Could not read fixture directory for assets: ${fixtureDir}`, err);
+        copyDirectoryContents(fixtureDir, targetDir, skippedFiles, '');
+    }
+}
+
+function copyDirectoryContents(
+    sourceDir: string,
+    targetDir: string,
+    skippedFiles: Set<string>,
+    relativePath: string,
+): void {
+    let entries: fs.Dirent[] = [];
+    try {
+        entries = fs.readdirSync(sourceDir, { withFileTypes: true });
+    } catch (err) {
+        logger.warn(`[RepoSetup] Could not read fixture directory for companion files: ${sourceDir}`, err);
+        return;
+    }
+
+    for (const entry of entries) {
+        const sourcePath = path.join(sourceDir, entry.name);
+        const childRelativePath = relativePath
+            ? path.join(relativePath, entry.name)
+            : entry.name;
+
+        if (entry.isDirectory()) {
+            copyDirectoryContents(sourcePath, targetDir, skippedFiles, childRelativePath);
             continue;
         }
 
-        for (const entry of entries) {
-            if (!entry.isFile()) continue;
-            const ext = path.extname(entry.name).toLowerCase();
-            if (!IMAGE_EXTENSIONS.has(ext)) continue;
+        if (!entry.isFile()) continue;
 
-            const sourcePath = path.join(fixtureDir, entry.name);
-            const targetPath = path.join(targetDir, entry.name);
+        const resolvedSourcePath = path.resolve(sourcePath);
+        if (skippedFiles.has(resolvedSourcePath)) {
+            continue;
+        }
+        if (TRIPLET_NOTEBOOK_FILENAMES.has(entry.name)) {
+            continue;
+        }
 
-            try {
-                fs.copyFileSync(sourcePath, targetPath);
-                logger.info(`[RepoSetup] Copied fixture asset: ${entry.name}`);
-            } catch (err) {
-                logger.warn(`[RepoSetup] Failed to copy fixture asset "${entry.name}":`, err);
-            }
+        const targetPath = path.join(targetDir, childRelativePath);
+        try {
+            fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+            fs.copyFileSync(sourcePath, targetPath);
+            logger.info(`[RepoSetup] Copied fixture companion file: ${childRelativePath}`);
+        } catch (err) {
+            logger.warn(`[RepoSetup] Failed to copy fixture companion file "${childRelativePath}":`, err);
         }
     }
 }

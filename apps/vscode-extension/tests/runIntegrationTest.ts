@@ -8,7 +8,7 @@
  *   node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright <spec># Run one spec (basename)
  *   node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode           # Run VS Code regression tests
  *   node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e              # Run E2E resolution tests (web server + WebSocket)
- *   node out/apps/vscode-extension/tests/runIntegrationTest.js --manual <fixture> # Open manual sandbox
+ *   node out/apps/vscode-extension/tests/runIntegrationTest.js --manual <folder>  # Open manual sandbox by fixture folder
  *
  * npm scripts (see package.json):
  *   npm run test          # Interactive TUI picker
@@ -45,41 +45,81 @@ async function clack(): Promise<any> {
 interface ManualSandbox {
     id: string;
     label: string;
+    folderPath: string;
     baseFile: string;
     currentFile: string;
     incomingFile: string;
 }
 
-const MANUAL_SANDBOXES: ManualSandbox[] = [
-    {
-        id: '02',
-        label: 'Fixture 0 — standard merge conflicts',
-        baseFile: 'general/conflict_0/base.ipynb',
-        currentFile: 'general/conflict_0/current.ipynb',
-        incomingFile: 'general/conflict_0/incoming.ipynb',
-    },
-    {
-        id: '03',
-        label: 'Fixture 1',
-        baseFile: 'general/conflict_1/base.ipynb',
-        currentFile: 'general/conflict_1/current.ipynb',
-        incomingFile: 'general/conflict_1/incoming.ipynb',
-    },
-    {
-        id: '04',
-        label: 'Fixture 2 — bulk take-all scenarios',
-        baseFile: 'general/conflict_2/base.ipynb',
-        currentFile: 'general/conflict_2/current.ipynb',
-        incomingFile: 'general/conflict_2/incoming.ipynb',
-    },
-    {
-        id: '09',
-        label: 'Fixture 9 — reordered cells',
-        baseFile: 'edge-cases/reordered-cells/base.ipynb',
-        currentFile: 'edge-cases/reordered-cells/current.ipynb',
-        incomingFile: 'edge-cases/reordered-cells/incoming.ipynb',
-    },
-];
+const MANUAL_TRIPLET_FILENAMES = ['base.ipynb', 'current.ipynb', 'incoming.ipynb'] as const;
+
+function getTestFixturesRoot(): string {
+    return path.resolve(__dirname, '../../../../test-fixtures');
+}
+
+function discoverManualSandboxes(): ManualSandbox[] {
+    const fixturesRoot = getTestFixturesRoot();
+    if (!fs.existsSync(fixturesRoot)) return [];
+
+    const folders: string[] = [];
+    const walk = (dirPath: string): void => {
+        let entries: fs.Dirent[] = [];
+        try {
+            entries = fs.readdirSync(dirPath, { withFileTypes: true });
+        } catch {
+            return;
+        }
+
+        const hasTriplet = MANUAL_TRIPLET_FILENAMES.every(filename =>
+            entries.some(entry => entry.isFile() && entry.name === filename)
+        );
+        if (hasTriplet) {
+            const relative = path.relative(fixturesRoot, dirPath).split(path.sep).join('/');
+            folders.push(relative);
+        }
+
+        for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            walk(path.join(dirPath, entry.name));
+        }
+    };
+
+    walk(fixturesRoot);
+
+    return folders
+        .sort((a, b) => a.localeCompare(b))
+        .map((folderPath, index) => ({
+            id: String(index + 1).padStart(2, '0'),
+            label: folderPath,
+            folderPath,
+            baseFile: path.posix.join(folderPath, 'base.ipynb'),
+            currentFile: path.posix.join(folderPath, 'current.ipynb'),
+            incomingFile: path.posix.join(folderPath, 'incoming.ipynb'),
+        }));
+}
+
+const MANUAL_SANDBOXES: ManualSandbox[] = discoverManualSandboxes();
+
+function normalizeManualSandboxInput(input: string): string {
+    const fixturesRoot = getTestFixturesRoot();
+    let normalized = input.trim();
+    if (!normalized) return normalized;
+
+    if (path.isAbsolute(normalized)) {
+        const relative = path.relative(fixturesRoot, normalized);
+        if (!relative.startsWith('..') && !path.isAbsolute(relative)) {
+            normalized = relative;
+        }
+    }
+
+    normalized = normalized.replace(/\\/g, '/');
+    normalized = normalized.replace(/^\.\//, '');
+    normalized = normalized.replace(/^test-fixtures\//, '');
+    normalized = normalized.replace(/\/(base|current|incoming)\.ipynb$/i, '');
+    normalized = normalized.replace(/\/+$/, '');
+
+    return normalized;
+}
 
 function resolveManualSandboxFromInput(input: string): ManualSandbox {
     const normalized = input.trim();
@@ -87,14 +127,15 @@ function resolveManualSandboxFromInput(input: string): ManualSandbox {
         throw new Error('Manual fixture input cannot be empty.');
     }
 
+    const normalizedPath = normalizeManualSandboxInput(normalized);
     const id = normalized.replace(/^0+/, '') || normalized;
     const paddedId = id.padStart(2, '0');
     const sandbox = MANUAL_SANDBOXES.find(
-        s => s.id === id || s.id === paddedId || s.label === normalized
+        s => s.id === id || s.id === paddedId || s.folderPath === normalizedPath || s.label === normalizedPath
     );
 
     if (!sandbox) {
-        const available = MANUAL_SANDBOXES.map(s => s.id).join(', ');
+        const available = MANUAL_SANDBOXES.map(s => `${s.id}:${s.folderPath}`).join(', ');
         throw new Error(`Unknown manual fixture: ${normalized}. Available: ${available}`);
     }
 
@@ -270,7 +311,7 @@ function resolveManualWorkspacePath(): string {
 }
 
 function openManualSandbox(sandbox: ManualSandbox): void {
-    const testDir = path.resolve(__dirname, '../../../../test-fixtures');
+    const testDir = getTestFixturesRoot();
     const baseFile = path.join(testDir, sandbox.baseFile);
     const currentFile = path.join(testDir, sandbox.currentFile);
     const incomingFile = path.join(testDir, sandbox.incomingFile);
@@ -390,18 +431,24 @@ async function runPlaywrightTUI(c: any): Promise<void> {
 }
 
 async function runManualTUI(c: any): Promise<void> {
+    if (MANUAL_SANDBOXES.length === 0) {
+        c.cancel('No manual fixture folders found with base/current/incoming notebooks.');
+        process.exit(1);
+    }
+
     const sourceChoice = await c.select({
-        message: 'Select fixture',
+        message: 'Select fixture folder',
         options: MANUAL_SANDBOXES.map(sandbox => ({
-            value: sandbox.id,
-            label: sandbox.label,
+            value: sandbox.folderPath,
+            label: sandbox.folderPath,
+            hint: `#${sandbox.id}`,
         })),
     });
 
     if (c.isCancel(sourceChoice)) { c.cancel('Cancelled.'); process.exit(0); }
 
-    const sandbox = MANUAL_SANDBOXES.find(candidate => candidate.id === sourceChoice)!;
-    c.outro(`Opening sandbox: ${sandbox.label}`);
+    const sandbox = resolveManualSandboxFromInput(String(sourceChoice));
+    c.outro(`Opening sandbox: ${sandbox.folderPath}`);
     openManualSandbox(sandbox);
 }
 
@@ -474,7 +521,7 @@ async function main(): Promise<void> {
             const sandbox = resolveManualSandboxFromInput(cli.manual);
             openManualSandbox(sandbox);
         } catch (err: any) {
-            console.error(pc.red(`Unknown manual fixture input: ${cli.manual}`));
+            console.error(pc.red(`Invalid manual fixture input: ${cli.manual}`));
             console.error(pc.dim(String(err?.message || err)));
             process.exit(1);
         }
