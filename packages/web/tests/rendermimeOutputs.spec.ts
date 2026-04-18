@@ -134,7 +134,7 @@ test.describe('RenderMime Outputs', () => {
         }
     });
 
-    test('Render text/html/png/svg/json outputs and unsupported fallback (05 notebooks)', async ({ conflictRepo, conflictSession }) => {
+    test('Render text/html/png/svg/json outputs and unsupported fallback (edge-cases/mime-output-rendering/)', async ({ conflictRepo, conflictSession }) => {
         logger.info('Starting rendermime outputs integration test...');
 
         const settingsSnapshot = readSettingsFileSnapshot();

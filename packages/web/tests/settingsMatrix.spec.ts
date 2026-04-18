@@ -648,6 +648,12 @@ test.describe('Settings Matrix - Backend Logic', () => {
 
 // ─── UI Integration Tests (Section B) ───────────────────────────────────────
 
+const SETTINGS_MATRIX_TRIPLET = {
+    base: 'edge-cases/settings-matrix/base.ipynb',
+    current: 'edge-cases/settings-matrix/current.ipynb',
+    incoming: 'edge-cases/settings-matrix/incoming.ipynb',
+};
+
 test.describe('Settings Matrix - UI Integration', () => {
     test.beforeAll(() => {
         logger.info('\n====== SECTION B: UI Integration Tests ======');
@@ -663,11 +669,7 @@ test.describe('Settings Matrix - UI Integration', () => {
             logger.info('\n=== UI Scenario: ui-theme-light ===');
             writeSettingsFile(buildUISettings({ 'ui.theme': 'light' }));
 
-            const workspacePath = conflictRepo({
-                base: 'edge-cases/settings-matrix/base.ipynb',
-                current: 'edge-cases/settings-matrix/current.ipynb',
-                incoming: 'edge-cases/settings-matrix/incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(SETTINGS_MATRIX_TRIPLET);
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
@@ -685,11 +687,7 @@ test.describe('Settings Matrix - UI Integration', () => {
             logger.info('\n=== UI Scenario: ui-base-column-off ===');
             writeSettingsFile(buildUISettings({ 'ui.showBaseColumn': false }));
 
-            const workspacePath = conflictRepo({
-                base: 'edge-cases/settings-matrix/base.ipynb',
-                current: 'edge-cases/settings-matrix/current.ipynb',
-                incoming: 'edge-cases/settings-matrix/incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(SETTINGS_MATRIX_TRIPLET);
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
@@ -713,11 +711,7 @@ test.describe('Settings Matrix - UI Integration', () => {
             logger.info('\n=== UI Scenario: ui-base-column-on ===');
             writeSettingsFile(buildUISettings({ 'ui.showBaseColumn': true }));
 
-            const workspacePath = conflictRepo({
-                base: 'edge-cases/settings-matrix/base.ipynb',
-                current: 'edge-cases/settings-matrix/current.ipynb',
-                incoming: 'edge-cases/settings-matrix/incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(SETTINGS_MATRIX_TRIPLET);
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
@@ -738,11 +732,7 @@ test.describe('Settings Matrix - UI Integration', () => {
             logger.info('\n=== UI Scenario: ui-cell-headers-off ===');
             writeSettingsFile(buildUISettings({ 'ui.showCellHeaders': false, 'ui.showBaseColumn': true }));
 
-            const workspacePath = conflictRepo({
-                base: 'edge-cases/settings-matrix/base.ipynb',
-                current: 'edge-cases/settings-matrix/current.ipynb',
-                incoming: 'edge-cases/settings-matrix/incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(SETTINGS_MATRIX_TRIPLET);
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
@@ -760,11 +750,7 @@ test.describe('Settings Matrix - UI Integration', () => {
             logger.info('\n=== UI Scenario: ui-cell-headers-on ===');
             writeSettingsFile(buildUISettings({ 'ui.showCellHeaders': true, 'ui.showBaseColumn': true }));
 
-            const workspacePath = conflictRepo({
-                base: 'edge-cases/settings-matrix/base.ipynb',
-                current: 'edge-cases/settings-matrix/current.ipynb',
-                incoming: 'edge-cases/settings-matrix/incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(SETTINGS_MATRIX_TRIPLET);
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
@@ -785,11 +771,7 @@ test.describe('Settings Matrix - UI Integration', () => {
                 'ui.showBaseColumn': true,
             }));
 
-            const workspacePath = conflictRepo({
-                base: 'edge-cases/settings-matrix/base.ipynb',
-                current: 'edge-cases/settings-matrix/current.ipynb',
-                incoming: 'edge-cases/settings-matrix/incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(SETTINGS_MATRIX_TRIPLET);
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
@@ -815,11 +797,7 @@ test.describe('Settings Matrix - UI Integration', () => {
                 'ui.showBaseColumn': true,
             }));
 
-            const workspacePath = conflictRepo({
-                base: 'edge-cases/settings-matrix/base.ipynb',
-                current: 'edge-cases/settings-matrix/current.ipynb',
-                incoming: 'edge-cases/settings-matrix/incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(SETTINGS_MATRIX_TRIPLET);
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
@@ -841,11 +819,7 @@ test.describe('Settings Matrix - UI Integration', () => {
                 'ui.showBaseColumn': true,
             }));
 
-            const workspacePath = conflictRepo({
-                base: 'edge-cases/settings-matrix/base.ipynb',
-                current: 'edge-cases/settings-matrix/current.ipynb',
-                incoming: 'edge-cases/settings-matrix/incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(SETTINGS_MATRIX_TRIPLET);
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
@@ -879,11 +853,7 @@ test.describe('Settings Matrix - UI Integration', () => {
                 'ui.showBaseColumn': true,
             }));
 
-            const workspacePath = conflictRepo({
-                base: 'edge-cases/settings-matrix/base.ipynb',
-                current: 'edge-cases/settings-matrix/current.ipynb',
-                incoming: 'edge-cases/settings-matrix/incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(SETTINGS_MATRIX_TRIPLET);
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
@@ -919,11 +889,7 @@ test.describe('Settings Matrix - UI Integration', () => {
                 'ui.theme': 'light',
             }));
 
-            const workspacePath = conflictRepo({
-                base: 'edge-cases/settings-matrix/base.ipynb',
-                current: 'edge-cases/settings-matrix/current.ipynb',
-                incoming: 'edge-cases/settings-matrix/incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(SETTINGS_MATRIX_TRIPLET);
             const session = await conflictSession(workspacePath);
             const { page } = session;
 
