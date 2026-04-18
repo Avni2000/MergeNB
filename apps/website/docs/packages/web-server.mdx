@@ -1,0 +1,63 @@
+---
+id: web-server
+title: packages/web/server
+sidebar_label: web-server
+sidebar_position: 4
+description: Local HTTP + WebSocket bridge that hosts the resolver and relays messages.
+---
+
+# `packages/web/server`
+
+A local HTTP server that serves the compiled web client and brokers messages between the VS Code extension and the browser.
+
+## What it does
+
+- Starts on a random free port on `127.0.0.1`.
+- Serves the built client from `dist/web/`.
+- Upgrades a single route to WebSocket, keyed by a per-session token.
+- Sends the `WebConflictData` payload on connect.
+- Pipes browser-originated messages (`resolve`, `cancel`) back to the extension via a per-session `onMessage` callback.
+
+## Lifecycle
+
+```text
+extension startup
+    │
+    ▼
+getWebServer().start()     ──► listens on 127.0.0.1:<port>
+    │
+    ▼
+server.openSession(id, onMessage)
+    │
+    ▼
+open URL in browser with ?session=<id>&token=<...>
+    │
+    ▼
+browser connects → server sends WebConflictData
+    │
+    ▼
+browser posts { command: 'resolve', ... }
+    │
+    ▼
+onMessage fires in extension → notebook written, git add, session closed
+```
+
+The server is a singleton, reused across resolutions so subsequent conflicts reuse the same port and worker.
+
+## Session security
+
+Sessions are keyed by both a short ID (in the URL) and a `sessionToken` (random bytes) that the browser must echo on connect. The token is generated per session, not per server start, so stale tabs from a previous conflict cannot hijack the active session.
+
+## Types
+
+`webTypes.ts` defines the wire format:
+
+- `UnifiedConflict`: what the extension hands to the server.
+- `WebConflictData`: the browser-ready version with `conflictKey`, display flags, and theme.
+- `UnifiedResolution`: what the browser sends back, including `resolvedRows`, `markAsResolved`, and `renumberExecutionCounts`.
+
+All three are re-exported from `packages/web/server/src/index.ts` alongside `getWebServer()` and the `toWebConflictData` adapter.
+
+## Running headless
+
+The server tries `require('vscode')` at import time and falls back gracefully when it is absent. That is how the Playwright harness boots the exact same server against temp-dir conflict repos without a VS Code host. See [Testing](../testing).

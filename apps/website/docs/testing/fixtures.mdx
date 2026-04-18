@@ -1,0 +1,51 @@
+---
+id: fixtures
+title: Fixtures
+sidebar_label: Fixtures
+sidebar_position: 4
+description: Notebook triplets and shared test plumbing under test-fixtures/.
+---
+
+# Fixtures
+
+`test-fixtures/` holds the notebook triplets both test layers use, plus shared helpers.
+
+## Notebook triplets
+
+Each fixture is a directory with three files: `base.ipynb`, `current.ipynb`, and `incoming.ipynb`. The test harness creates a Git repo, commits base, branches off for current and incoming, and triggers a merge. The resulting conflicted repo is what the test runs against.
+
+```text
+test-fixtures/
+├── demo/                       # used by the website's /playground
+│   ├── base.ipynb
+│   ├── current.ipynb
+│   └── incoming.ipynb
+├── general/
+│   ├── conflict_0/  ...  conflict_13/     # graduated difficulty
+├── edge-cases/
+│   ├── mime-output-rendering/
+│   ├── reordered-cells/
+│   ├── settings-matrix/
+│   ├── single-conflict/
+│   └── syntax-highlighting/
+└── shared/                     # helpers both test layers import
+    ├── repoSetup.ts
+    ├── integrationUtils.ts
+    ├── testHelpers.ts
+    └── testRunnerShared.ts
+```
+
+## Shared helpers
+
+| File | Role |
+|---|---|
+| `repoSetup.ts` | `createMergeConflictRepo(triplet)` builds a temp-dir repo with a real unmerged state. Cleanup is automatic per worker. |
+| `integrationUtils.ts` | High-level Playwright actions: click a row's branch button, apply resolution, read the rendered notebook. |
+| `testHelpers.ts` | Lower-level helpers: `ExpectedCell`, `getCellSource`, per-row assertions. |
+| `testRunnerShared.ts` | `prepareIsolatedConfigPath` + `cleanupIsolatedConfigPath` so parallel workers get separate `MERGENB_CONFIG_PATH` values. |
+
+## Conventions
+
+- On-disk content and UI content must match. A test that only checks the UI can pass while the extension writes garbage to disk. Every E2E assertion reads back from the resolved file as well.
+- A fixture named after a bug is a regression test. Deleting the fixture deletes the regression coverage. Don't do that.
+- `demo/` is special: it is also imported by the docs site's [Playground](/playground). Changes to those three files show up publicly.

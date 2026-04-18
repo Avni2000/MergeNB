@@ -1,0 +1,77 @@
+---
+id: web-client
+title: packages/web/client
+sidebar_label: web-client
+sidebar_position: 3
+description: React frontend for the conflict resolver UI.
+---
+
+# `packages/web/client`
+
+React app that renders the resolver. Built once, served by `packages/web/server`, and also consumed directly by this site's [Playground](/playground).
+
+## Component tree
+
+```text
+App
+└── ConflictResolver
+    ├── Toolbar (take all, undo / redo, mark resolved, renumber)
+    ├── Virtualized row list (@tanstack/react-virtual)
+    │   └── MergeRow  ── one per logical cell
+    │       ├── base | current | incoming columns
+    │       │   └── CellContent  ── read-only CodeMirror or Markdown
+    │       └── resolved editor  ── editable CodeMirror
+    └── History panel
+```
+
+| File | Role |
+|---|---|
+| `components/App.tsx` | Top-level. Wires up the WebSocket hook, handles loading/success/error states, and mounts `ConflictResolver`. |
+| `components/ConflictResolver.tsx` | Main screen. Owns the virtualizer, keyboard shortcuts, and the resolve/cancel handlers. |
+| `components/MergeRow.tsx` | Renders one logical cell across base/current/incoming plus the resolved editor. |
+| `components/CellContent.tsx` | Read-only display of a single cell. Branches on code/Markdown/diff. |
+| `hooks/useWebSocket.ts` | Connects to the server with `session` and `token` URL params and streams conflict data. |
+| `store/resolverStore.ts` | Zustand (+immer) store. Holds choices, edited content, history, and all action reducers. |
+| `utils/mergeRowBuilder.ts` | Turns `NotebookSemanticConflict` + auto-resolved notebook into the row list the UI renders. |
+| `utils/reorderUtils.ts` | Detects move-only reorderings so they render as reorder rows instead of add/delete pairs. |
+| `styles.ts` | `injectStyles(theme)` returns a CSS string and mounts it. Theme flows through props from `App`. |
+| `editorTheme.ts` | CodeMirror theme bridge. `createMergeNBTheme(mode)` + `mergeNBEditorStructure`. |
+
+## State model
+
+The store is authoritative. Every user action goes through a reducer:
+
+- `selectChoice(rowIndex, choice)` sets the branch pick for a row.
+- `startEditing` / `stopEditing` track which rows the user is hand-editing.
+- `updateResolvedContent` writes edited text into the row's resolution state.
+- `takeAll(choice)` flips every conflicting row at once.
+- `undo` / `redo` pop and replay snapshots from `history`.
+
+Snapshots capture `choices`, `rows`, and a couple of top-level toggles. History is bounded; undo is always safe.
+
+## Virtualization
+
+Large notebooks are common. The row list uses `@tanstack/react-virtual` with dynamic measurement so variable-height rows (think long Markdown cells) still behave. Drag-to-reorder tracks a list of currently-rendered indices so items outside the viewport are not dropped mid-gesture.
+
+## Syntax highlighting
+
+Read-only cells render through `@uiw/react-codemirror` with a MergeNB-specific theme:
+
+- `createMergeNBTheme(mode)` produces a `@uiw/codemirror-themes` theme whose background is a CSS variable, so light and dark themes just switch a variable.
+- `mergeNBEditorStructure` is a plain `EditorView.theme` for structural overrides (padding, gutters, etc.).
+- Language support is loaded per-component via `LanguageDescription.matchLanguageName` from `@codemirror/language-data`, using the notebook's `kernelspec.language`.
+
+Markdown still renders through the custom `MarkdownContent` pipeline. Conflict diffs render inline spans in `DiffContent`.
+
+## Theme flow
+
+Theme is not a context. It flows as a prop:
+
+```text
+App.conflictData.theme
+  └► ConflictResolver  (prop)
+      └► MergeRow      (prop)
+          └► CellContent  (prop)
+```
+
+`App.tsx` calls `injectStyles(theme)` once, which swaps CSS variables globally. The prop chain is for CodeMirror themes and any per-component branching.

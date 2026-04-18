@@ -1,0 +1,102 @@
+---
+id: core
+title: packages/core
+sidebar_label: core
+sidebar_position: 2
+description: The notebook-aware merge engine. Zero VS Code or browser imports.
+---
+
+# `packages/core`
+
+The merge engine. Every other package depends on it; it depends on nothing platform-specific. That means it runs in Node tests, in Playwright's browser context, and in the docs site's client bundle without ceremony.
+
+## Module map
+
+| File | Responsibility |
+|---|---|
+| `types.ts` | `Notebook`, `NotebookCell`, `CellMapping`, `SemanticConflict`, `ResolvedRow`, `MergeNBSettings`, `GitOperations` |
+| `notebookParser.ts` | `parseNotebook`, `serializeNotebook`, `renumberExecutionCounts` |
+| `notebookUtils.ts` | `normalizeCellSource`, `stableStringify`, output and metadata helpers |
+| `cellMatcher.ts` | `matchCells`, `detectReordering` |
+| `conflictDetector.ts` | `detectSemanticConflicts`, `applyAutoResolutions`, `buildResolvedNotebookFromRows` |
+| `semanticResolution.ts` | The three-way rule and its application |
+| `positionUtils.ts` | `sortByPosition` and friends |
+| `logger.ts` | Leveled logger with a pluggable sink |
+
+Public surface is re-exported from `packages/core/src/index.ts`.
+
+## Key types
+
+### `Notebook`
+
+nbformat v4 with `cells`, `nbformat`, `nbformat_minor`, and `metadata`. Cell source is normalized to a string internally even though `nbformat` allows string arrays.
+
+### `SemanticConflictType`
+
+```ts
+type SemanticConflictType =
+  | 'cell-added'
+  | 'cell-deleted'
+  | 'cell-modified'
+  | 'cell-reordered'
+  | 'metadata-changed'
+  | 'outputs-changed'
+  | 'execution-count-changed';
+```
+
+### `ResolvedRow`
+
+The source of truth for reconstructing a merged notebook. Every row in the UI maps to one `ResolvedRow`: the three candidate cells plus an optional `resolution` with the user's `choice` and final `resolvedContent`.
+
+### `GitOperations`
+
+```ts
+interface GitOperations {
+  getThreeWayVersions(filePath: string): Promise<{
+    base: string | null;
+    current: string | null;
+    incoming: string | null;
+  } | null>;
+  getCurrentBranch(filePath: string): Promise<string | null>;
+  getMergeBranch(filePath: string): Promise<string | null>;
+}
+```
+
+The detector depends on this interface rather than on `git` directly, which keeps `core` portable and lets tests stub in canned conflict data.
+
+## Cell matching
+
+`cellMatcher.ts` blends three signals:
+
+- **Hard anchors first.** Matches on unique `id`, unique Markdown heading, or unique exact source run in order. Anchors are never reassigned.
+- **Global optimum on the rest.** Hungarian assignment across unmatched cells, scored by:
+  - content similarity (longest-common-substring-like, roughly Python's `difflib.SequenceMatcher`)
+  - output similarity for code cells
+  - contextual fingerprint of neighbouring cell prefixes
+- **Type mismatch is expensive.** A code cell will not silently match a Markdown cell.
+
+Code and Markdown use different weight mixes: Markdown leans heavier on content because outputs do not exist; code splits weight between source, outputs, and context.
+
+## Conflict detection
+
+`detectSemanticConflicts(filePath, gitOps)` walks the three notebooks once cells are matched and emits a `NotebookSemanticConflict` with:
+
+- `semanticConflicts`: one per conflicting entity (source, metadata, outputs, execution count)
+- `cellMappings`: one per logical cell across the three sides
+- Full `base` / `current` / `incoming` notebooks, so the UI can show context for non-conflicting rows
+
+## Auto-resolution
+
+`applyAutoResolutions` runs before the UI and returns an `AutoResolveResult`:
+
+```ts
+interface AutoResolveResult {
+  remainingConflicts: SemanticConflict[];
+  autoResolvedCount: number;
+  autoResolvedDescriptions: string[];
+  resolvedNotebook: Notebook;
+  kernelAutoResolved: boolean;
+}
+```
+
+Each auto-resolver is gated on a setting in `MergeNBSettings`. The resolved notebook is mutated in-place for the handled entities, so if every conflict is covered the UI never opens.

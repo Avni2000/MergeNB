@@ -1,0 +1,59 @@
+---
+id: overview
+slug: /overview
+title: Overview
+sidebar_position: 1
+description: What MergeNB is and how it resolves Jupyter notebook merge conflicts.
+---
+
+# Overview
+
+MergeNB is a VS Code extension and web UI for resolving Jupyter notebook (`.ipynb`) merge conflicts.
+
+Git diffs notebooks line by line, which turns a small cell edit into a wall of JSON noise.
+MergeNB matches cells across the three sides of the merge (base, current, incoming),
+applies auto-resolution for trivial differences, and opens a cell-level UI for the rest.
+
+## Design goals
+
+- **Stay inside the normal Git workflow.** No separate CLI, no `.gitattributes` rewrite.
+- **Resolve by cell, not by byte.** Moves, reorders, and matched edits should look like what they are.
+- **Make undo cheap.** Every action is stacked on a history so dragging or picking the wrong side never costs you work.
+- **Fall through to auto-resolution.** Execution counts, whitespace, kernel metadata, and outputs get handled without prompting when settings allow it.
+
+## How a resolution flows
+
+```text
+VS Code command
+    │
+    ▼
+scan repo for unmerged .ipynb files
+    │
+    ▼
+detect semantic conflicts from git stages :1 :2 :3
+    │
+    ▼
+apply auto-resolutions (execution_count, kernel, whitespace, outputs)
+    │
+    ▼
+open local web UI for remaining conflicts
+    │
+    ▼
+user picks base / current / incoming / delete per row
+    │
+    ▼
+rebuild notebook, write to disk, stage with git add
+```
+
+## What lives where
+
+| Piece | Path | Role |
+|---|---|---|
+| Core logic | `packages/core` | Parsing, cell matching, conflict detection, auto-resolution |
+| Web client | `packages/web/client` | React UI for the resolver |
+| Web server | `packages/web/server` | HTTP + WebSocket bridge to the browser |
+| VS Code extension | `apps/vscode-extension` | Commands, status bar, git integration |
+| Docs site | `apps/website` | This site, including the browser playground |
+
+See [Architecture](./architecture) for how they fit together,
+or jump to [Installation](./installation) to get it running.

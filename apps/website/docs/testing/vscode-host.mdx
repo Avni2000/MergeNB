@@ -1,0 +1,66 @@
+---
+id: vscode-host
+title: VS Code host
+sidebar_label: VS Code host
+sidebar_position: 3
+description: Regression tests that launch a real VS Code via @vscode/test-electron.
+---
+
+# VS Code host tests
+
+Lives in `apps/vscode-extension/tests/`. These tests run inside a real VS Code Extension Development Host. That is the only way to exercise things like the status bar, command quick-picks, and the `vscode.git` API surface.
+
+## Running
+
+```bash
+npm run test:vscode
+node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode
+npm run test:e2e    # same runner, but boots the web server + WebSocket too
+```
+
+## Files
+
+| File | Role |
+|---|---|
+| `runIntegrationTest.ts` | TUI picker and CLI runner for every test suite, plus `--manual` sandboxes |
+| `testHarness.ts` | Extension host setup, browser automation for E2E flows |
+| `logicRegression.test.ts` | Pure logic regressions against the core engine |
+| `e2eResolution.test.ts` | End-to-end: VS Code command → browser UI → disk write |
+| `vscodeRegression.test.ts` | Extension surface: commands, keybindings, context keys |
+| `statusIndicatorsRegression.test.ts` | Status bar + file decoration state |
+| `unmergedStatusMatrix.test.ts` | Covers every `UU` / `AU` / `UA` / `DD` / ... git state |
+| `auUaPickOneRegression.test.ts` / `duUdPickOneRegression.test.ts` | Tricky unmerged-status combos |
+| `nbdimeGuard.test.ts` | The nbdime compatibility warning flow |
+| `gitTestUtils.ts` | Git helpers for the VS Code host |
+| `settingsFile.ts` | Config-file overrides for deterministic tests |
+
+## E2E flow
+
+`e2eResolution.test.ts` boots:
+
+1. A temp Git repo with a three-way merge conflict.
+2. The extension host pointing at that repo.
+3. The real web server.
+4. A headless browser that clicks through the resolver.
+5. Assertions against both the UI state and the on-disk notebook.
+
+This is the test that would catch a WebSocket contract break between client and server.
+
+## Manual sandboxes
+
+The TUI exposes a third option besides "run a test" and "list tests": open a manual sandbox. It builds a real conflict repo from `test-fixtures/general/` or `test-fixtures/edge-cases/` and hands it to you inside the extension host. Great for debugging a specific fixture by hand:
+
+```bash
+npm run test:manual
+npm run test --manual 02                   # shorthand for general/conflict_2
+node out/apps/vscode-extension/tests/runIntegrationTest.js --manual manual_02
+MERGENB_MANUAL_SANDBOX_DIR=/tmp/foo npm run test --manual 02   # override sandbox path
+```
+
+## Always compile before running
+
+```bash
+npm run compile && npm run compile-tests
+```
+
+`pretest:vscode`, `pretest:e2e`, and `pretest:pw` do this for you, but when you run the `node out/...` form directly, you own the compile step.

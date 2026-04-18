@@ -1,0 +1,18 @@
+---
+id: index
+slug: /apps
+title: Apps
+sidebar_position: 1
+description: Shipping surfaces for MergeNB.
+---
+
+# Apps
+
+Two apps consume the shared packages:
+
+| App | Description |
+|---|---|
+| [`vscode-extension`](./apps/vscode-extension) | The actual VS Code extension. Registers commands, drives Git, and opens the resolver. |
+| [`website`](./apps/website) | This Docusaurus site. Hosts the docs and a live browser [Playground](/playground) of the resolver. |
+
+Everything under `apps/` is allowed to depend on `packages/`. Nothing under `packages/` is allowed to depend on anything under `apps/`.

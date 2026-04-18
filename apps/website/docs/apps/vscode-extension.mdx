@@ -1,0 +1,65 @@
+---
+id: vscode-extension
+title: apps/vscode-extension
+sidebar_label: vscode-extension
+sidebar_position: 2
+description: The VS Code extension that hosts MergeNB.
+---
+
+# `apps/vscode-extension`
+
+The VS Code extension. Thin orchestration on top of `packages/core` and `packages/web/server`.
+
+## Files
+
+| File | Role |
+|---|---|
+| `extension.ts` | Activation, command registration, status bar, file decorations, workspace scanning |
+| `resolver.ts` | `NotebookConflictResolver`: the end-to-end flow from "detect conflict" to "stage resolution" |
+| `gitIntegration.ts` | Shelling out to `git`, reading unmerged stages, branch name discovery, nbdime guard |
+| `settings.ts` | Reads VS Code workspace config and the config file, returns a typed `MergeNBSettings` |
+| `web/WebConflictPanel.ts` | Bridge that routes WebSocket messages into a `Promise<UnifiedResolution>` |
+| `typings/git.d.ts` | Types for VS Code's built-in Git API |
+
+## Commands
+
+| Command ID | Title | Trigger |
+|---|---|---|
+| `merge-nb.findConflicts` | Find Notebooks with Merge Conflicts | Command Palette, `Ctrl/Cmd+Shift+M` on an `.ipynb`, explorer context, status bar |
+| `merge-nb.resolveCurrentFile` | Resolve Merge Conflicts | Editor title bar when an `.ipynb` has conflicts |
+
+Both funnel into the same resolver flow. `findConflicts` picks the active file if it is unmerged; otherwise it opens a quick-pick of every unmerged notebook in the workspace.
+
+## Status bar and decorations
+
+When the workspace has unmerged notebooks the extension:
+
+- Sets the context key `mergeNB.hasConflicts` so menus and keybindings light up.
+- Shows a `$(git-merge)` status bar item that clicks into the conflict picker.
+- Registers a `FileDecorationProvider` so conflicted notebooks pick up a badge in the file explorer.
+
+## The resolution flow
+
+`NotebookConflictResolver` in `resolver.ts`:
+
+1. Check the active notebook, or scan the workspace for unmerged `.ipynb` files via Git's `Repository.state.mergeChanges`.
+2. Call `detectSemanticConflicts(filePath, gitOps)` from `packages/core`.
+3. Call `applyAutoResolutions` with the user's current settings.
+4. If every conflict was auto-resolved, write the notebook and stage it. No UI opens.
+5. Otherwise, open the browser via `getWebServer().openSession(...)`.
+6. On a `resolve` message, call `buildResolvedNotebookFromRows(resolvedRows)`, optionally renumber execution counts, write to disk, and `git add` the file.
+
+Two event emitters publish the result for tests and other listeners:
+
+- `onDidResolveConflict: Event<Uri>`
+- `onDidResolveConflictWithDetails: Event<ResolvedConflictDetails>`
+
+The detailed event exposes the final `resolvedNotebook` and `resolvedRows`, which is what the VS Code regression suite asserts against.
+
+## The nbdime guard
+
+`gitIntegration.ts` inspects `merge.tool` and every `merge.<name>.driver` / `diff.<name>.driver` entry across local and global Git config. If anything looks like a Jupyter notebook tool (regex on `/jupyter|ipynb|nbdiff|nbdime/`) it shows a one-time warning before opening a conflict. Accepting the warning offers to rewrite the offending keys.
+
+## Settings
+
+Everything the extension reads is declared in `package.json` under `contributes.configuration`. See [Settings](../settings) for the full list and precedence rules.

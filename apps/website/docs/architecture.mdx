@@ -1,0 +1,93 @@
+---
+id: architecture
+slug: /architecture
+title: Architecture
+sidebar_position: 90
+description: How MergeNB's pieces fit together.
+---
+
+# Architecture
+
+MergeNB is a monorepo. The VS Code extension is the host, but the core logic and UI are deliberately decoupled so they can be exercised from Playwright tests, a headless CLI, or the browser playground on this site.
+
+## Layer diagram
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│  apps/vscode-extension                                          │
+│    extension.ts  ── commands, status bar, file decorations      │
+│    resolver.ts   ── orchestration                               │
+│    gitIntegration.ts                                            │
+└───────────▲─────────────────────────────────────────────────────┘
+            │ calls
+┌───────────┴───────────────────┐    ┌────────────────────────────┐
+│  packages/core                │    │  packages/web/server       │
+│    types.ts                   │    │    webServer.ts (HTTP+WS)  │
+│    notebookParser.ts          │    │    webTypes.ts             │
+│    cellMatcher.ts             │◄───┤                            │
+│    conflictDetector.ts        │    │                            │
+│    semanticResolution.ts      │    └───────────▲────────────────┘
+│    notebookUtils.ts           │                │ WebSocket
+└───────────────────────────────┘                │
+                                                 │
+                                    ┌────────────┴───────────────┐
+                                    │  packages/web/client       │
+                                    │    App.tsx                 │
+                                    │    ConflictResolver.tsx    │
+                                    │    MergeRow.tsx            │
+                                    │    CellContent.tsx         │
+                                    │    resolverStore.ts (zustand) │
+                                    └────────────────────────────┘
+```
+
+## Dependency direction
+
+- `packages/core` depends on nothing VS Code or browser specific. Pure TypeScript, no `vscode` imports.
+- `packages/web/server` wraps a `GitOperations` implementation and hosts the compiled client.
+- `packages/web/client` imports types and helpers from `packages/core` only; it never talks to Git or the filesystem directly.
+- `apps/vscode-extension` depends on all of the above. It is the only place `vscode.*` APIs are imported.
+
+This boundary is what lets the [Playground](/playground) on this site load the real `ConflictResolver` React component against notebook fixtures without any backend.
+
+## The three-way merge contract
+
+Git exposes unmerged files in three stages:
+
+- `:1:path` = base (common ancestor)
+- `:2:path` = current (ours / `HEAD`)
+- `:3:path` = incoming (theirs / `MERGE_HEAD`)
+
+`conflictDetector.ts` reads those three blobs, parses them as notebooks, and hands them to `cellMatcher.ts`. The matcher produces a list of `CellMapping` entries (one per logical cell across the three sides). Each mapping becomes a row in the UI.
+
+## Cell matching
+
+Two-stage process in `cellMatcher.ts`:
+
+1. **Hard anchors.** Unique cell IDs, then unique Markdown heading matches, then unique exact source matches.
+2. **Hungarian assignment** on whatever's left, scored by content similarity, output similarity, and a contextual fingerprint of neighbouring cells.
+
+The effect: a reordered cell still matches its twin on the other side, so a 20-cell "move" does not explode into 40 add/delete conflicts.
+
+## Resolution flow
+
+For each matched row, the three-way rule in `semanticResolution.ts`:
+
+```text
+if current == base == incoming:   keep any
+elif current == incoming:          keep current (both agree)
+elif current == base:              take incoming
+elif incoming == base:             keep current
+else:                              CONFLICT ── send to UI
+```
+
+Auto-resolution hooks in before the UI opens: execution counts, outputs, kernel metadata, and whitespace-only diffs all short-circuit the "CONFLICT" branch when enabled in [Settings](./settings).
+
+## WebSocket contract
+
+The extension runs a local HTTP + WebSocket server. Each resolution opens a session with a token in the URL. Messages are one-way-per-direction:
+
+- Extension sends the `UnifiedConflict` payload on connect.
+- Browser sends `{ command: 'resolve', ... }` or `{ command: 'cancel' }` when the user acts.
+- Server applies the resolution, writes the notebook, stages with `git add`, and closes the session.
+
+See [packages/web/server](./packages/web-server) for the exact types.

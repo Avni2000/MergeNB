@@ -1,0 +1,43 @@
+---
+id: index
+slug: /testing
+title: Testing
+sidebar_position: 1
+description: How MergeNB's tests are organized.
+---
+
+# Testing
+
+Three kinds of tests, all runnable from the repo root:
+
+| Layer | Runner | Location |
+|---|---|---|
+| [Playwright integration](./testing/playwright) | `@playwright/test` | `packages/web/tests/*.spec.ts` |
+| [VS Code extension host](./testing/vscode-host) | `@vscode/test-electron` | `apps/vscode-extension/tests/*.test.ts` |
+| Shared helpers | imported by both | `test-fixtures/shared/` |
+
+## Entry points
+
+```bash
+npm run test            # interactive TUI picker (also supports manual sandboxes)
+npm run test:all        # everything
+npm run test:pw         # Playwright specs only
+npm run test:vscode     # VS Code regression tests
+npm run test:e2e        # end-to-end resolution through the real WebSocket server
+npm run test:list       # list everything the TUI would offer
+```
+
+Every script except `test:pw` goes through `apps/vscode-extension/tests/runIntegrationTest.ts`, which is both the TUI and a flag-driven CLI (`--playwright`, `--vscode`, `--e2e`, `--manual <id>`).
+
+## The compile step
+
+Playwright and the VS Code host runner both read compiled output:
+
+```bash
+npm run compile           # builds the extension + packages
+npm run compile-tests     # tsc to out/ for the VS Code host
+```
+
+The `pretest:*` npm hooks run both for you. Skipping compile is the most common cause of "my changes aren't showing up".
+
+See [Playwright](./testing/playwright), [VS Code host](./testing/vscode-host), and [Fixtures](./testing/fixtures) for the details of each layer.

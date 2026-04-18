@@ -1,0 +1,19 @@
+---
+id: index
+slug: /packages
+title: Packages
+sidebar_position: 1
+description: Reusable libraries that power MergeNB.
+---
+
+# Packages
+
+Everything under `packages/` is shipped as a workspace package and imported by `apps/`. The rule: packages never reach for `vscode` or DOM globals at module scope.
+
+| Package | Description |
+|---|---|
+| [`@mergenb/core`](./packages/core) | Pure TypeScript: notebook parsing, cell matching, conflict detection, auto-resolution |
+| [`@mergenb/web-client`](./packages/web-client) | React-based resolver UI with zustand state and virtualized rows |
+| [`@mergenb/web-server`](./packages/web-server) | Local HTTP + WebSocket bridge between the extension and the browser |
+
+Both web packages are consumed by `apps/vscode-extension`; `core` is consumed by everything, including the docs site's playground.

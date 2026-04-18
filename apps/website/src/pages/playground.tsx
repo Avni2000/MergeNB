@@ -50,9 +50,9 @@ function PlaygroundInner(): ReactNode {
                     import('../../../../packages/web/client/src/components/ConflictResolver'),
                     import('../../../../packages/core/src'),
                     import('../../../../packages/web/client/src/styles'),
-                    import('../../../../test-fixtures/demo_base.ipynb'),
-                    import('../../../../test-fixtures/demo_current.ipynb'),
-                    import('../../../../test-fixtures/demo_incoming.ipynb'),
+                    import('../../../../test-fixtures/demo/base.ipynb'),
+                    import('../../../../test-fixtures/demo/current.ipynb'),
+                    import('../../../../test-fixtures/demo/incoming.ipynb'),
                 ]);
 
                 const base = getNotebook(baseNb);
