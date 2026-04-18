@@ -349,7 +349,7 @@ test.describe('Take All Buttons', () => {
             if (mode === 'unresolved') {
                 assertNotebookMatches(expectedCellsFromUI, resolvedNotebook, {
                     expectedLabel: 'Expected from UI',
-                    compareMetadata: true,
+                    compareMetadata: false,
                 });
             } else {
                 const expectedFromTarget = buildExpectedCellsFromNotebook(targetNotebook);

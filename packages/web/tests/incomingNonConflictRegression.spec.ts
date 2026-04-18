@@ -42,18 +42,18 @@ test.describe('Incoming Non-Conflict Regression', () => {
         logger.info('Starting incoming non-conflict regression integration test...');
 
         const workspacePath = conflictRepo({
-            base: 'demo_base.ipynb',
-            current: 'demo_current.ipynb',
-            incoming: 'demo_incoming.ipynb',
+            base: 'demo/base.ipynb',
+            current: 'demo/current.ipynb',
+            incoming: 'demo/incoming.ipynb',
         });
 
         const session = await conflictSession(workspacePath);
         const { page, conflictFile } = session;
 
         // Read fixtures for comparison
-        const baseNotebook = readFixtureNotebook('demo_base.ipynb');
-        const currentNotebook = readFixtureNotebook('demo_current.ipynb');
-        const incomingNotebook = readFixtureNotebook('demo_incoming.ipynb');
+        const baseNotebook = readFixtureNotebook('demo/base.ipynb');
+        const currentNotebook = readFixtureNotebook('demo/current.ipynb');
+        const incomingNotebook = readFixtureNotebook('demo/incoming.ipynb');
 
         const baseStep1Source = getStep1GradientDescentSource(baseNotebook, 'Base fixture');
         const currentStep1Source = getStep1GradientDescentSource(currentNotebook, 'Current fixture');

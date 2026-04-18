@@ -100,7 +100,7 @@ async function assertMarkdownKatexRendered(page: Page): Promise<void> {
 // ─── Test Definitions ───────────────────────────────────────────────────────
 
 test.describe('RenderMime Outputs', () => {
-    test('Render markdown local SVG assets (logo.svg) in conflict_0 fixture', async ({ conflictRepo, conflictSession }) => {
+    test('Render markdown local SVG assets (logo.svg) in mime-output-rendering fixture', async ({ conflictRepo, conflictSession }) => {
         logger.info('Starting rendermime outputs integration test...');
 
         const settingsSnapshot = readSettingsFileSnapshot();
@@ -112,9 +112,9 @@ test.describe('RenderMime Outputs', () => {
             });
 
             const workspacePath = conflictRepo({
-                base: 'general/conflict_0/base.ipynb',
-                current: 'general/conflict_0/current.ipynb',
-                incoming: 'general/conflict_0/incoming.ipynb',
+                base: 'edge-cases/mime-output-rendering/base.ipynb',
+                current: 'edge-cases/mime-output-rendering/current.ipynb',
+                incoming: 'edge-cases/mime-output-rendering/incoming.ipynb',
             });
 
             const session = await conflictSession(workspacePath);

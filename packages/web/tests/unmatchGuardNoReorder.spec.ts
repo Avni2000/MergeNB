@@ -58,9 +58,9 @@ test.describe('Unmatch Guard - No Reorder', () => {
             });
 
             const workspacePath = conflictRepo({
-                base: 'general/conflict_0/base.ipynb',
-                current: 'general/conflict_0/current.ipynb',
-                incoming: 'general/conflict_0/incoming.ipynb',
+                base: 'general/conflict_2/base.ipynb',
+                current: 'general/conflict_2/current.ipynb',
+                incoming: 'general/conflict_2/incoming.ipynb',
             });
 
             const session = await conflictSession(workspacePath);
