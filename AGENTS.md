@@ -1,60 +1,24 @@
 # MergeNB - Jupyter Notebook Merge Conflict Resolver
 
-A VSCode extension for resolving merge conflicts in Jupyter notebooks (`.ipynb` files). Git's default merge behavior strips execution counts to `null` when merging notebooks, which can cause different execution states, outputs, or cell modifications between branches.
+A VSCode extension for resolving merge conflicts in Jupyter notebooks (`.ipynb` files). 
+This extension provides a rich UI for notebook-aware conflict resolution. 
 
-This extension provides a rich UI for notebook-aware conflict resolution. Instead of treating `.ipynb` files as flat JSON, it parses the notebook structure and presents conflicts at the cell level, letting users accept current/incoming/both versions per-cell while preserving valid notebook format.
+## Rules
+Always respect settings when working on features. Settings can be found in `apps/vscode-extension/settings.ts`
 
-## Key Behaviors
+Follow conventional commits and commit often. 
+- Prefer shorter commits with bullet points instead of listing every change in every file.
 
-- **Always parse raw JSON**: Conflicts may be in `cells[].source`, `cells[].outputs`, or `metadata`—never assume they're only in code
-- **Preserve notebook validity**: Resolved output must be valid `.ipynb` JSON with proper cell structure
-- **Handle execution counts**: nbdime nullifies `execution_count`; optionally restore or renumber after resolution
-- **Cell-level diffing**: Show side-by-side or inline diffs for conflicting cells, not raw JSON lines
+Tests should always verify on-disk and UI content match. 
 
-## Tech Stack
+Handle notebook metadata as needed for the task.
 
-- VSCode Extension API (TypeScript)
-- Custom editor or webview for conflict UI
-- `nbformat`-compatible JSON parsing
+Unified cells are cells that don't have merge conflicts -- where base/current
+/incoming match, or incoming overwrites current cleanly.
 
-## Conflict Types
+Core logic should always be in `packages/core`
 
-1. **Semantic conflicts** - Git `UU` status; different execution states, outputs, or cell modifications between branches
-
-## Key Files
-
-- `conflictDetector.ts` - Detection (`analyzeNotebookConflicts`, `detectSemanticConflicts`) and resolution (`resolveAllConflicts`)
-- `gitIntegration.ts` - Git operations (retrieve base/current/incoming versions from staging areas, detect `UU` status)
-- `cellMatcher.ts` - Content-based cell matching algorithm for 3-way merge
-- `positionUtils.ts` - Browser-safe position comparison/sorting utilities for cell ordering
-- `notebookUtils.ts` - Browser-safe notebook helpers (normalizeCellSource, getCellPreview)
-- `diffUtils.ts` - LCS-based text diffing with inline change detection
-- `resolver.ts` - VSCode commands and unified conflict resolution flow
-- `web/WebConflictPanel.ts` - Opens conflict resolver in browser via local web server
-- `web/webServer.ts` - HTTP/WebSocket server for browser-based UI
-- `web/client/` - React-based conflict resolution UI
-
-## Test Structure
-
-Tests are distributed across the monorepo:
-
-- `test-fixtures/` - Notebook fixture files (`.ipynb` triplets for base/current/incoming)
-- `test-fixtures/shared/` - Shared test infrastructure used by both VSCode and Playwright tests:
-  - `repoSetup.ts` - Creates temporary git repos with merge conflicts from fixture triplets
-  - `testHelpers.ts` - Shared types (`ExpectedCell`, `TestConfig`), server health-check utils
-  - `testRunnerShared.ts` - Isolated config path helpers for test runners
-  - `integrationUtils.ts` - Playwright `Page`/`Locator` helpers for driving the conflict UI
-- `apps/vscode-extension/tests/` - VSCode extension host tests (`@vscode/test-electron`):
-  - `runIntegrationTest.ts` - Master TUI/CLI runner (entry point for `npm run test`)
-  - `runNbdimeGuardTest.ts` - CI-only nbdime guard runner
-  - `testHarness.ts` - Extension host lifecycle and headless conflict resolver setup
-  - `gitTestUtils.ts` - Git CLI helpers for regression tests
-  - `settingsFile.ts` - Settings file read/write helpers
-  - `vscodeRegression.test.ts`, `e2eResolution.test.ts`, etc. - Test suites
-- `packages/web/tests/` - Playwright browser tests:
-  - `fixtures.ts` - Playwright Test fixtures (conflict repo setup, session management)
-  - `globalSetup.ts` / `globalTeardown.ts` - Shared web server lifecycle
-  - `*.spec.ts` - Test specs
+Always follow DRY principles. Run find-dead-code as needed.
 
 ## Commands
 
@@ -86,7 +50,15 @@ node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright # Direct
 
 ### Notebook Fixtures Available:
 
+#### Generic Conflicts:
 - `test-fixtures/general/conflict_0/*.ipynb`
 - `test-fixtures/general/conflict_1/*.ipynb`
 - `test-fixtures/general/conflict_2/*.ipynb`
-- `test-fixtures/edge-cases/*/{base,current,incoming}.ipynb`
+- for all `conflict_0` to `conflict_13`
+
+#### Specific Edge Case Conflict:
+- `test-fixtures/edge-cases/mime-output-rendering/{base,current,incoming}.ipynb`
+- `test-fixtures/edge-cases/reordered-cells/{base,current,incoming}.ipynb`
+- `test-fixtures/edge-cases/settings-matrix/{base,current,incoming}.ipynb`
+- `test-fixtures/edge-cases/single-conflict/{base,current,incoming}.ipynb`
+- `test-fixtures/edge-cases/syntax-highlighting/{base,current,incoming}.ipynb`
