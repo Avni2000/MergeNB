@@ -62,6 +62,7 @@ function discoverManualSandboxes(): ManualSandbox[] {
     if (!fs.existsSync(fixturesRoot)) return [];
 
     const folders: string[] = [];
+    const visited = new Set<string>();
     const walk = (dirPath: string): void => {
         let entries: fs.Dirent[] = [];
         try {
@@ -79,11 +80,20 @@ function discoverManualSandboxes(): ManualSandbox[] {
         }
 
         for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-            walk(path.join(dirPath, entry.name));
+            if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+            if (entry.name === '.git' || entry.name === 'node_modules') continue;
+            const childPath = path.join(dirPath, entry.name);
+            let realChild: string;
+            try { realChild = fs.realpathSync(childPath); } catch { continue; }
+            if (visited.has(realChild)) continue;
+            visited.add(realChild);
+            walk(childPath);
         }
     };
 
+    let rootReal: string;
+    try { rootReal = fs.realpathSync(fixturesRoot); } catch { return []; }
+    visited.add(rootReal);
     walk(fixturesRoot);
 
     return folders
@@ -98,7 +108,11 @@ function discoverManualSandboxes(): ManualSandbox[] {
         }));
 }
 
-const MANUAL_SANDBOXES: ManualSandbox[] = discoverManualSandboxes();
+let _manualSandboxesCache: ManualSandbox[] | undefined;
+function getManualSandboxes(): ManualSandbox[] {
+    if (!_manualSandboxesCache) _manualSandboxesCache = discoverManualSandboxes();
+    return _manualSandboxesCache;
+}
 
 function normalizeManualSandboxInput(input: string): string {
     const fixturesRoot = getTestFixturesRoot();
@@ -128,14 +142,17 @@ function resolveManualSandboxFromInput(input: string): ManualSandbox {
     }
 
     const normalizedPath = normalizeManualSandboxInput(normalized);
-    const id = normalized.replace(/^0+/, '') || normalized;
-    const paddedId = id.padStart(2, '0');
-    const sandbox = MANUAL_SANDBOXES.find(
-        s => s.id === id || s.id === paddedId || s.folderPath === normalizedPath || s.label === normalizedPath
+    const isNumeric = /^\d+$/.test(normalized);
+    const id = isNumeric ? (normalized.replace(/^0+/, '') || normalized) : undefined;
+    const paddedId = id !== undefined ? id.padStart(2, '0') : undefined;
+    const sandbox = getManualSandboxes().find(s =>
+        (id !== undefined && (s.id === id || s.id === paddedId)) ||
+        s.folderPath === normalizedPath ||
+        s.label === normalizedPath
     );
 
     if (!sandbox) {
-        const available = MANUAL_SANDBOXES.map(s => `${s.id}:${s.folderPath}`).join(', ');
+        const available = getManualSandboxes().map(s => `${s.id}:${s.folderPath}`).join(', ');
         throw new Error(`Unknown manual fixture: ${normalized}. Available: ${available}`);
     }
 
@@ -431,14 +448,14 @@ async function runPlaywrightTUI(c: any): Promise<void> {
 }
 
 async function runManualTUI(c: any): Promise<void> {
-    if (MANUAL_SANDBOXES.length === 0) {
+    if (getManualSandboxes().length === 0) {
         c.cancel('No manual fixture folders found with base/current/incoming notebooks.');
         process.exit(1);
     }
 
     const sourceChoice = await c.select({
         message: 'Select fixture folder',
-        options: MANUAL_SANDBOXES.map(sandbox => ({
+        options: getManualSandboxes().map(sandbox => ({
             value: sandbox.folderPath,
             label: sandbox.folderPath,
             hint: `#${sandbox.id}`,
