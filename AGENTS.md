@@ -4,6 +4,7 @@ A VSCode extension for resolving merge conflicts in Jupyter notebooks (`.ipynb` 
 This extension provides a rich UI for notebook-aware conflict resolution. 
 
 ## Rules
+
 Always respect settings when working on features. Settings can be found in `apps/vscode-extension/settings.ts`
 
 Follow conventional commits and commit often. 
@@ -51,12 +52,11 @@ node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright # Direct
 ### Notebook Fixtures Available:
 
 #### Generic Conflicts:
-- `test-fixtures/general/conflict_0/*.ipynb`
-- `test-fixtures/general/conflict_1/*.ipynb`
-- `test-fixtures/general/conflict_2/*.ipynb`
-- for all `conflict_0` to `conflict_13`
+
++- `test-fixtures/general/conflict_{0..13}/{base,current,incoming}.ipynb`
 
 #### Specific Edge Case Conflict:
+
 - `test-fixtures/edge-cases/mime-output-rendering/{base,current,incoming}.ipynb`
 - `test-fixtures/edge-cases/reordered-cells/{base,current,incoming}.ipynb`
 - `test-fixtures/edge-cases/settings-matrix/{base,current,incoming}.ipynb`
