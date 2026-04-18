@@ -46,9 +46,9 @@ test.describe('Reorder Unmatch Apply Disk', () => {
             });
 
             const workspacePath = conflictRepo({
-                base: '09_reorder_base.ipynb',
-                current: '09_reorder_current.ipynb',
-                incoming: '09_reorder_incoming.ipynb',
+                base: 'edge-cases/reordered-cells/base.ipynb',
+                current: 'edge-cases/reordered-cells/current.ipynb',
+                incoming: 'edge-cases/reordered-cells/incoming.ipynb',
             });
 
             const session = await conflictSession(workspacePath);
@@ -97,8 +97,8 @@ test.describe('Reorder Unmatch Apply Disk', () => {
             expect(splitRowBasePlaceholders.every(text => text.trim() === '(unmatched cell)')).toBe(true);
 
             logger.info('\n=== Step 3: Accept all current and capture independent expectation ===');
-            const baseFixture = readNotebookFixtureFromRepo('09_reorder_base.ipynb');
-            const currentFixture = readNotebookFixtureFromRepo('09_reorder_current.ipynb');
+            const baseFixture = readNotebookFixtureFromRepo('edge-cases/reordered-cells/base.ipynb');
+            const currentFixture = readNotebookFixtureFromRepo('edge-cases/reordered-cells/current.ipynb');
             const baseExpected = buildExpectedCellsFromNotebook(baseFixture);
             const currentExpected = buildExpectedCellsFromNotebook(currentFixture);
             const conflictRows = page.locator('.merge-row.conflict-row');

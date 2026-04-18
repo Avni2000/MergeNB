@@ -67,7 +67,7 @@ async function waitForResolvedEditorText(
 // ─── Test Suite ─────────────────────────────────────────────────────────────
 
 test.describe('Undo/Redo Actions', () => {
-    test('Undo/redo actions (02 notebooks)', async ({ conflictRepo, conflictSession }) => {
+    test('Undo/redo actions (conflict_0 fixture)', async ({ conflictRepo, conflictSession }) => {
         logger.info('Starting MergeNB Undo/Redo Actions Integration Test...');
 
         const primaryModifier = process.platform === 'darwin' ? 'Meta' : 'Control';
@@ -83,9 +83,9 @@ test.describe('Undo/Redo Actions', () => {
 
             // Create merge conflict repo
             const workspacePath = conflictRepo({
-                base: '02_base.ipynb',
-                current: '02_current.ipynb',
-                incoming: '02_incoming.ipynb',
+                base: 'general/conflict_0/base.ipynb',
+                current: 'general/conflict_0/current.ipynb',
+                incoming: 'general/conflict_0/incoming.ipynb',
             });
 
             // Set up conflict resolver

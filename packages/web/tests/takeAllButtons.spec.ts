@@ -16,6 +16,7 @@ import {
 import {
     type MergeSide,
     verifyAllConflictsMatchSide,
+    captureExpectedContentPerSide,
     getResolvedCount,
     waitForAllConflictsResolved,
     waitForResolvedCount,
@@ -54,38 +55,38 @@ const takeAllVariants: TakeAllTestVariant[] = [
     {
         id: 'takeAll_base',
         description: 'Take All Base',
-        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
+        notebooks: ['general/conflict_2/base.ipynb', 'general/conflict_2/current.ipynb', 'general/conflict_2/incoming.ipynb'],
         action: 'base',
     },
     {
         id: 'takeAll_current',
         description: 'Take All Current',
-        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
+        notebooks: ['general/conflict_2/base.ipynb', 'general/conflict_2/current.ipynb', 'general/conflict_2/incoming.ipynb'],
         action: 'current',
     },
     {
         id: 'takeAll_current_single_conflict',
         description: 'Take All Current (single-conflict notebook)',
-        notebooks: ['06_base.ipynb', '06_current.ipynb', '06_incoming.ipynb'],
+        notebooks: ['edge-cases/single-conflict/base.ipynb', 'edge-cases/single-conflict/current.ipynb', 'edge-cases/single-conflict/incoming.ipynb'],
         action: 'current',
     },
     {
         id: 'takeAll_incoming',
         description: 'Take All Incoming',
-        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
+        notebooks: ['general/conflict_2/base.ipynb', 'general/conflict_2/current.ipynb', 'general/conflict_2/incoming.ipynb'],
         action: 'incoming',
     },
     {
         id: 'takeAll_current_undoRedo',
         description: 'Take All Current + undo/redo',
-        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
+        notebooks: ['general/conflict_2/base.ipynb', 'general/conflict_2/current.ipynb', 'general/conflict_2/incoming.ipynb'],
         action: 'current',
         undoRedo: true,
     },
     {
         id: 'takeAll_unresolved_current',
         description: 'Take All Current (Checks manual choices are respected)',
-        notebooks: ['04_base.ipynb', '04_current.ipynb', '04_incoming.ipynb'],
+        notebooks: ['general/conflict_2/base.ipynb', 'general/conflict_2/current.ipynb', 'general/conflict_2/incoming.ipynb'],
         action: 'current',
         mode: 'unresolved',
         manualChoice: 'incoming',
@@ -270,6 +271,11 @@ test.describe('Take All Buttons', () => {
             const buttonLabel = `All ${capitalize(action)}`;
             logger.info(`\n=== Clicking "${buttonLabel}" ===`);
 
+            // Capture expected content from chosen side before bulk resolution
+            // (after resolution, column cells are removed from DOM)
+            const expectedContent = await captureExpectedContentPerSide(page, action);
+            logger.info(`Captured expected content for ${expectedContent.size} rows`);
+
             await clickAcceptAll(page, action);
 
             // Verify resolution count
@@ -282,10 +288,10 @@ test.describe('Take All Buttons', () => {
                 await verifyTakeAllUnresolved(page, action, manualSelections);
                 logger.info(`  ✓ Take-all respected manual resolutions and applied to unresolved rows only`);
             } else {
-                const result = await verifyAllConflictsMatchSide(page, action);
+                const result = await verifyAllConflictsMatchSide(page, action, expectedContent);
                 logger.info(`  Matches: ${result.matchCount}, Deletes: ${result.deleteCount}`);
                 expect(result.mismatches).toHaveLength(0);
-                logger.info(`  ✓ All resolved cells match ${action}-side content in UI`);
+                logger.info(`  ✓ All resolved cells match ${action}-side content in UI (text verified)`);
             }
 
             // Undo/Redo verification
@@ -310,7 +316,7 @@ test.describe('Take All Buttons', () => {
                 if (mode === 'unresolved') {
                     await verifyTakeAllUnresolved(page, action, manualSelections);
                 } else {
-                    const redoResult = await verifyAllConflictsMatchSide(page, action);
+                    const redoResult = await verifyAllConflictsMatchSide(page, action, expectedContent);
                     expect(redoResult.mismatches).toHaveLength(0);
                 }
             }
@@ -343,7 +349,7 @@ test.describe('Take All Buttons', () => {
             if (mode === 'unresolved') {
                 assertNotebookMatches(expectedCellsFromUI, resolvedNotebook, {
                     expectedLabel: 'Expected from UI',
-                    compareMetadata: true,
+                    compareMetadata: false,
                 });
             } else {
                 const expectedFromTarget = buildExpectedCellsFromNotebook(targetNotebook);

@@ -37,7 +37,7 @@ import {
 } from '../../../apps/vscode-extension/tests/settingsFile';
 
 test.describe('Per-Cell Resolution', () => {
-    test('Check we correctly write to disk from text areas (02 notebooks)', async ({ conflictRepo, conflictSession }) => {
+    test('Check we correctly write to disk from text areas (conflict_0 fixture)', async ({ conflictRepo, conflictSession }) => {
         logger.info('Starting MergeNB VS Code Integration Test...');
 
         const settingsSnapshot = readSettingsFileSnapshot();
@@ -52,9 +52,9 @@ test.describe('Per-Cell Resolution', () => {
 
             // Create merge conflict repo
             const workspacePath = conflictRepo({
-                base: '02_base.ipynb',
-                current: '02_current.ipynb',
-                incoming: '02_incoming.ipynb',
+                base: 'general/conflict_0/base.ipynb',
+                current: 'general/conflict_0/current.ipynb',
+                incoming: 'general/conflict_0/incoming.ipynb',
             });
 
             // Set up conflict resolver

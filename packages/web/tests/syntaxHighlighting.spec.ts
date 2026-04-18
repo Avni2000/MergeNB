@@ -26,9 +26,9 @@ test.describe('Syntax Highlighting', () => {
 
             // Create merge conflict repo with syntax highlighting fixture
             const workspacePath = conflictRepo({
-                base: '07_syntax_base.ipynb',
-                current: '07_syntax_current.ipynb',
-                incoming: '07_syntax_incoming.ipynb',
+                base: 'edge-cases/syntax-highlighting/base.ipynb',
+                current: 'edge-cases/syntax-highlighting/current.ipynb',
+                incoming: 'edge-cases/syntax-highlighting/incoming.ipynb',
             });
 
             // Set up conflict resolver

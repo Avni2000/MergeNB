@@ -78,9 +78,9 @@ test.describe('Reorder Unmatch/Rematch', () => {
             });
 
             const workspacePath = conflictRepo({
-                base: '09_reorder_base.ipynb',
-                current: '09_reorder_current.ipynb',
-                incoming: '09_reorder_incoming.ipynb',
+                base: 'edge-cases/reordered-cells/base.ipynb',
+                current: 'edge-cases/reordered-cells/current.ipynb',
+                incoming: 'edge-cases/reordered-cells/incoming.ipynb',
             });
 
             const session = await conflictSession(workspacePath);
@@ -236,9 +236,9 @@ test.describe('Reorder Unmatch/Rematch', () => {
 
             // === Step 8: Resolve with explicit mixed choices + verify notebook written to disk ===
             logger.info('\n=== Step 8: Resolve with explicit mixed choices + verify disk output ===');
-            const baseFixture = readNotebookFixtureFromRepo('09_reorder_base.ipynb');
-            const currentFixture = readNotebookFixtureFromRepo('09_reorder_current.ipynb');
-            const incomingFixture = readNotebookFixtureFromRepo('09_reorder_incoming.ipynb');
+            const baseFixture = readNotebookFixtureFromRepo('edge-cases/reordered-cells/base.ipynb');
+            const currentFixture = readNotebookFixtureFromRepo('edge-cases/reordered-cells/current.ipynb');
+            const incomingFixture = readNotebookFixtureFromRepo('edge-cases/reordered-cells/incoming.ipynb');
             const baseExpected = buildExpectedCellsFromNotebook(baseFixture);
             const currentExpected = buildExpectedCellsFromNotebook(currentFixture);
             const incomingExpected = buildExpectedCellsFromNotebook(incomingFixture);

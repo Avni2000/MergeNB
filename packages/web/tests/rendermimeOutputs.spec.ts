@@ -100,7 +100,7 @@ async function assertMarkdownKatexRendered(page: Page): Promise<void> {
 // ─── Test Definitions ───────────────────────────────────────────────────────
 
 test.describe('RenderMime Outputs', () => {
-    test('Render markdown local SVG assets (logo.svg) in fixture 02', async ({ conflictRepo, conflictSession }) => {
+    test('Render markdown local SVG assets (logo.svg) in mime-output-rendering fixture', async ({ conflictRepo, conflictSession }) => {
         logger.info('Starting rendermime outputs integration test...');
 
         const settingsSnapshot = readSettingsFileSnapshot();
@@ -112,9 +112,9 @@ test.describe('RenderMime Outputs', () => {
             });
 
             const workspacePath = conflictRepo({
-                base: '02_base.ipynb',
-                current: '02_current.ipynb',
-                incoming: '02_incoming.ipynb',
+                base: 'edge-cases/mime-output-rendering/base.ipynb',
+                current: 'edge-cases/mime-output-rendering/current.ipynb',
+                incoming: 'edge-cases/mime-output-rendering/incoming.ipynb',
             });
 
             const session = await conflictSession(workspacePath);
@@ -134,7 +134,7 @@ test.describe('RenderMime Outputs', () => {
         }
     });
 
-    test('Render text/html/png/svg/json outputs and unsupported fallback (05 notebooks)', async ({ conflictRepo, conflictSession }) => {
+    test('Render text/html/png/svg/json outputs and unsupported fallback (edge-cases/mime-output-rendering/)', async ({ conflictRepo, conflictSession }) => {
         logger.info('Starting rendermime outputs integration test...');
 
         const settingsSnapshot = readSettingsFileSnapshot();
@@ -146,9 +146,9 @@ test.describe('RenderMime Outputs', () => {
             });
 
             const workspacePath = conflictRepo({
-                base: '05_mime_base.ipynb',
-                current: '05_mime_current.ipynb',
-                incoming: '05_mime_incoming.ipynb',
+                base: 'edge-cases/mime-output-rendering/base.ipynb',
+                current: 'edge-cases/mime-output-rendering/current.ipynb',
+                incoming: 'edge-cases/mime-output-rendering/incoming.ipynb',
             });
 
             const session = await conflictSession(workspacePath);

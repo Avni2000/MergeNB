@@ -8,7 +8,7 @@
  *   node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright <spec># Run one spec (basename)
  *   node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode           # Run VS Code regression tests
  *   node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e              # Run E2E resolution tests (web server + WebSocket)
- *   node out/apps/vscode-extension/tests/runIntegrationTest.js --manual <fixture> # Open manual sandbox (02/03/04/09)
+ *   node out/apps/vscode-extension/tests/runIntegrationTest.js --manual <folder>  # Open manual sandbox by fixture folder
  *
  * npm scripts (see package.json):
  *   npm run test          # Interactive TUI picker
@@ -45,42 +45,119 @@ async function clack(): Promise<any> {
 interface ManualSandbox {
     id: string;
     label: string;
-    base: string;
-    current: string;
-    incoming: string;
+    folderPath: string;
+    baseFile: string;
+    currentFile: string;
+    incomingFile: string;
 }
 
-const MANUAL_SANDBOXES: ManualSandbox[] = [
-    {
-        id: '02',
-        label: 'Fixture 02 — standard merge conflicts',
-        base: '02_base.ipynb',
-        current: '02_current.ipynb',
-        incoming: '02_incoming.ipynb',
-    },
-    {
-        id: '03',
-        label: 'Fixture 03',
-        base: '03_base.ipynb',
-        current: '03_current.ipynb',
-        incoming: '03_incoming.ipynb',
-    },
-    {
-        id: '04',
-        label: 'Fixture 04 — bulk take-all scenarios',
-        base: '04_base.ipynb',
-        current: '04_current.ipynb',
-        incoming: '04_incoming.ipynb',
-    },
-    {
-        id: '09',
-        label: 'Fixture 09 — reordered cells',
-        base: '09_reorder_base.ipynb',
-        current: '09_reorder_current.ipynb',
-        incoming: '09_reorder_incoming.ipynb',
-    },
-];
+const MANUAL_TRIPLET_FILENAMES = ['base.ipynb', 'current.ipynb', 'incoming.ipynb'] as const;
 
+function getTestFixturesRoot(): string {
+    return path.resolve(__dirname, '../../../../test-fixtures');
+}
+
+function discoverManualSandboxes(): ManualSandbox[] {
+    const fixturesRoot = getTestFixturesRoot();
+    if (!fs.existsSync(fixturesRoot)) return [];
+
+    const folders: string[] = [];
+    const visited = new Set<string>();
+    const walk = (dirPath: string): void => {
+        let entries: fs.Dirent[] = [];
+        try {
+            entries = fs.readdirSync(dirPath, { withFileTypes: true });
+        } catch {
+            return;
+        }
+
+        const hasTriplet = MANUAL_TRIPLET_FILENAMES.every(filename =>
+            entries.some(entry => entry.isFile() && entry.name === filename)
+        );
+        if (hasTriplet) {
+            const relative = path.relative(fixturesRoot, dirPath).split(path.sep).join('/');
+            folders.push(relative);
+        }
+
+        for (const entry of entries) {
+            if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+            if (entry.name === '.git' || entry.name === 'node_modules') continue;
+            const childPath = path.join(dirPath, entry.name);
+            let realChild: string;
+            try { realChild = fs.realpathSync(childPath); } catch { continue; }
+            if (visited.has(realChild)) continue;
+            visited.add(realChild);
+            walk(childPath);
+        }
+    };
+
+    let rootReal: string;
+    try { rootReal = fs.realpathSync(fixturesRoot); } catch { return []; }
+    visited.add(rootReal);
+    walk(fixturesRoot);
+
+    return folders
+        .sort((a, b) => a.localeCompare(b))
+        .map((folderPath, index) => ({
+            id: String(index + 1).padStart(2, '0'),
+            label: folderPath,
+            folderPath,
+            baseFile: path.posix.join(folderPath, 'base.ipynb'),
+            currentFile: path.posix.join(folderPath, 'current.ipynb'),
+            incomingFile: path.posix.join(folderPath, 'incoming.ipynb'),
+        }));
+}
+
+let _manualSandboxesCache: ManualSandbox[] | undefined;
+function getManualSandboxes(): ManualSandbox[] {
+    if (!_manualSandboxesCache) _manualSandboxesCache = discoverManualSandboxes();
+    return _manualSandboxesCache;
+}
+
+function normalizeManualSandboxInput(input: string): string {
+    const fixturesRoot = getTestFixturesRoot();
+    let normalized = input.trim();
+    if (!normalized) return normalized;
+
+    if (path.isAbsolute(normalized)) {
+        const relative = path.relative(fixturesRoot, normalized);
+        if (!relative.startsWith('..') && !path.isAbsolute(relative)) {
+            normalized = relative;
+        }
+    }
+
+    normalized = normalized.replace(/\\/g, '/');
+    normalized = normalized.replace(/^\.\//, '');
+    normalized = normalized.replace(/^test-fixtures\//, '');
+    normalized = normalized.replace(/\/(base|current|incoming)\.ipynb$/i, '');
+    normalized = normalized.replace(/\/+$/, '');
+
+    return normalized;
+}
+
+function resolveManualSandboxFromInput(input: string): ManualSandbox {
+    const normalized = input.trim();
+    if (!normalized) {
+        throw new Error('Manual fixture input cannot be empty.');
+    }
+
+    const normalizedPath = normalizeManualSandboxInput(normalized);
+    const isNumeric = /^\d+$/.test(normalized);
+    const id = isNumeric ? (normalized.replace(/^0+/, '') || normalized) : undefined;
+    const paddedId = id !== undefined ? id.padStart(2, '0') : undefined;
+    const sandbox = getManualSandboxes().find(s =>
+        (id !== undefined && (s.id === id || s.id === paddedId)) ||
+        s.folderPath === normalizedPath ||
+        s.label === normalizedPath
+    );
+
+    if (!sandbox) {
+        const available = getManualSandboxes().map(s => `${s.id}:${s.folderPath}`).join(', ');
+        throw new Error(`Unknown manual fixture: ${normalized}. Available: ${available}`);
+    }
+
+    return sandbox;
+}
 // ─── Playwright helpers ───────────────────────────────────────────────────────
 
 function discoverSpecFiles(): string[] {
@@ -98,7 +175,13 @@ function specLabel(filename: string): string {
 
 function runPlaywright(specFiles: string[] = []): Promise<boolean> {
     return new Promise(resolve => {
-        const args = ['playwright', 'test', ...specFiles];
+        // Translate compiled out/**/*.spec.js paths back to source *.spec.ts paths
+        // (Playwright runs TS directly per playwright.config.ts testDir/testMatch).
+        const sourceSpecFiles = specFiles.map(f => {
+            const normalized = f.split(path.sep).join('/');
+            return normalized.replace(/^out\//, '').replace(/\.js$/, '.ts');
+        });
+        const args = ['playwright', 'test', ...sourceSpecFiles];
         const proc = spawn('npx', args, {
             stdio: 'inherit',
             cwd: path.resolve(__dirname, '../../../..'),
@@ -131,9 +214,9 @@ async function runVSCodeTests(options: VSCodeTestOptions): Promise<boolean> {
     const configInfo = prepareIsolatedConfigPath(`vscode-${id}${isCi ? '-vsix' : ''}`);
     const vscodeVersion = process.env.VSCODE_VERSION?.trim();
 
-    const baseFile = path.join(testDir, '02_base.ipynb');
-    const currentFile = path.join(testDir, '02_current.ipynb');
-    const incomingFile = path.join(testDir, '02_incoming.ipynb');
+    const baseFile = path.join(testDir, 'general/conflict_0/base.ipynb');
+    const currentFile = path.join(testDir, 'general/conflict_0/current.ipynb');
+    const incomingFile = path.join(testDir, 'general/conflict_0/incoming.ipynb');
 
     let stubDir: string | undefined;
     let vscodeExecutablePath: string | undefined;
@@ -249,10 +332,10 @@ function resolveManualWorkspacePath(): string {
 }
 
 function openManualSandbox(sandbox: ManualSandbox): void {
-    const testDir = path.resolve(__dirname, '../../../../test-fixtures');
-    const baseFile = path.join(testDir, sandbox.base);
-    const currentFile = path.join(testDir, sandbox.current);
-    const incomingFile = path.join(testDir, sandbox.incoming);
+    const testDir = getTestFixturesRoot();
+    const baseFile = path.join(testDir, sandbox.baseFile);
+    const currentFile = path.join(testDir, sandbox.currentFile);
+    const incomingFile = path.join(testDir, sandbox.incomingFile);
 
     for (const f of [baseFile, currentFile, incomingFile]) {
         if (!fs.existsSync(f)) {
@@ -369,18 +452,24 @@ async function runPlaywrightTUI(c: any): Promise<void> {
 }
 
 async function runManualTUI(c: any): Promise<void> {
-    const selected = await c.select({
-        message: 'Select fixture',
-        options: MANUAL_SANDBOXES.map(s => ({
-            value: s.id,
-            label: s.label,
+    if (getManualSandboxes().length === 0) {
+        c.cancel('No manual fixture folders found with base/current/incoming notebooks.');
+        process.exit(1);
+    }
+
+    const sourceChoice = await c.select({
+        message: 'Select fixture folder',
+        options: getManualSandboxes().map(sandbox => ({
+            value: sandbox.folderPath,
+            label: sandbox.folderPath,
+            hint: `#${sandbox.id}`,
         })),
     });
 
-    if (c.isCancel(selected)) { c.cancel('Cancelled.'); process.exit(0); }
+    if (c.isCancel(sourceChoice)) { c.cancel('Cancelled.'); process.exit(0); }
 
-    const sandbox = MANUAL_SANDBOXES.find(s => s.id === selected)!;
-    c.outro(`Opening sandbox: ${sandbox.label}`);
+    const sandbox = resolveManualSandboxFromInput(String(sourceChoice));
+    c.outro(`Opening sandbox: ${sandbox.folderPath}`);
     openManualSandbox(sandbox);
 }
 
@@ -449,18 +538,14 @@ async function main(): Promise<void> {
     }
 
     if (cli.manual) {
-        const id = cli.manual.replace(/^0+/, '') || cli.manual;
-        const paddedId = id.padStart(2, '0');
-        const sandbox = MANUAL_SANDBOXES.find(
-            s => s.id === id || s.id === paddedId
-        );
-        if (!sandbox) {
-            const available = MANUAL_SANDBOXES.map(s => s.id).join(', ');
-            console.error(pc.red(`Unknown manual fixture: ${cli.manual}`));
-            console.error(pc.dim(`Available: ${available}`));
+        try {
+            const sandbox = resolveManualSandboxFromInput(cli.manual);
+            openManualSandbox(sandbox);
+        } catch (err: any) {
+            console.error(pc.red(`Invalid manual fixture input: ${cli.manual}`));
+            console.error(pc.dim(String(err?.message || err)));
             process.exit(1);
         }
-        openManualSandbox(sandbox);
         return;
     }
 

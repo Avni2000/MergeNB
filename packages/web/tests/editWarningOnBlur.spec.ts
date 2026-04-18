@@ -22,6 +22,12 @@ import {
     writeSettingsFile,
 } from '../../../apps/vscode-extension/tests/settingsFile';
 
+const CONFLICT_2_FIXTURES = {
+    base: 'general/conflict_2/base.ipynb',
+    current: 'general/conflict_2/current.ipynb',
+    incoming: 'general/conflict_2/incoming.ipynb',
+};
+
 test.describe('Edit Warning on Blur', () => {
     test('clicking outside autosaves the draft and exits edit mode', async ({ conflictRepo, conflictSession }) => {
         const settingsSnapshot = readSettingsFileSnapshot();
@@ -33,11 +39,7 @@ test.describe('Edit Warning on Blur', () => {
                 'autoResolve.whitespace': false,
             });
 
-            const workspacePath = conflictRepo({
-                base: '04_base.ipynb',
-                current: '04_current.ipynb',
-                incoming: '04_incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(CONFLICT_2_FIXTURES);
 
             const session = await conflictSession(workspacePath);
             const { page } = session;
@@ -86,11 +88,7 @@ test.describe('Edit Warning on Blur', () => {
                 'autoResolve.whitespace': false,
             });
 
-            const workspacePath = conflictRepo({
-                base: '04_base.ipynb',
-                current: '04_current.ipynb',
-                incoming: '04_incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(CONFLICT_2_FIXTURES);
 
             const session = await conflictSession(workspacePath);
             const { page } = session;
@@ -135,11 +133,7 @@ test.describe('Edit Warning on Blur', () => {
                 'autoResolve.whitespace': false,
             });
 
-            const workspacePath = conflictRepo({
-                base: '04_base.ipynb',
-                current: '04_current.ipynb',
-                incoming: '04_incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(CONFLICT_2_FIXTURES);
 
             const session = await conflictSession(workspacePath);
             const { page } = session;
@@ -196,11 +190,7 @@ test.describe('Edit Warning on Blur', () => {
                 'autoResolve.whitespace': false,
             });
 
-            const workspacePath = conflictRepo({
-                base: '04_base.ipynb',
-                current: '04_current.ipynb',
-                incoming: '04_incoming.ipynb',
-            });
+            const workspacePath = conflictRepo(CONFLICT_2_FIXTURES);
 
             const session = await conflictSession(workspacePath);
             const { page } = session;

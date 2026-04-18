@@ -178,10 +178,15 @@ export async function getColumnCellType(row: Locator, column: MergeSide): Promis
  * Verify that every conflict row is resolved to the expected side.
  * After resolution the row is collapsed, so this reads the resolved header label
  * instead of the hidden per-side source columns.
+ *
+ * @param expectedContent Optional map of row index to expected resolved text.
+ *                         When provided, verifies that the rendered resolved content
+ *                         actually matches the expected text, not just the header label.
  */
 export async function verifyAllConflictsMatchSide(
     page: Page,
     side: MergeSide,
+    expectedContent?: Map<number, string>,
 ): Promise<{ matchCount: number; deleteCount: number; mismatches: string[] }> {
     const conflictRows = page.locator('.merge-row.conflict-row');
     const count = await conflictRows.count();
@@ -215,6 +220,16 @@ export async function verifyAllConflictsMatchSide(
         if (await row.locator('.resolved-content-static, .resolved-content-input').count() === 0) {
             mismatches.push(`Row ${i}: missing resolved content for ${side}`);
             continue;
+        }
+
+        // Verify the actual rendered content matches expected, if provided
+        if (expectedContent && expectedContent.has(i)) {
+            const expectedText = expectedContent.get(i)!;
+            const actualContent = await getResolvedContentValue(row);
+            if (actualContent !== expectedText) {
+                mismatches.push(`Row ${i}: resolved content mismatch. Expected ${expectedText.length} chars, got ${actualContent.length} chars. Header says ${resolvedChoice} but content differs.`);
+                continue;
+            }
         }
 
         matchCount++;
@@ -369,6 +384,34 @@ export async function getHistoryEntries(page: Page): Promise<string[]> {
         entries.push((await items.nth(i).textContent())?.trim() || '');
     }
     return entries;
+}
+
+/**
+ * Capture the expected resolved content for each conflict row before a bulk resolution.
+ *
+ * Reads the source cell content from each side's column for all conflict rows,
+ * keyed by the conflict row index. This map can be passed to verifyAllConflictsMatchSide()
+ * to verify that the resolved content actually matches the chosen side's source.
+ *
+ * Call this BEFORE clicking a bulk-resolve button (Take All, etc.)
+ */
+export async function captureExpectedContentPerSide(
+    page: Page,
+    side: MergeSide,
+): Promise<Map<number, string>> {
+    const conflictRows = page.locator('.merge-row.conflict-row');
+    const count = await conflictRows.count();
+    const expectedContent = new Map<number, string>();
+
+    for (let i = 0; i < count; i++) {
+        const row = conflictRows.nth(i);
+        const cell = await getColumnCell(row, side, i);
+        if (cell) {
+            expectedContent.set(i, getCellSource(cell));
+        }
+    }
+
+    return expectedContent;
 }
 
 /**
