@@ -175,8 +175,12 @@ function specLabel(filename: string): string {
 
 function runPlaywright(specFiles: string[] = []): Promise<boolean> {
     return new Promise(resolve => {
-        // regex to match .spec.ts files
-        const sourceSpecFiles = specFiles.map(f => f.replace(/^out\//, '').replace(/\.js$/, '.ts'));
+        // Translate compiled out/**/*.spec.js paths back to source *.spec.ts paths
+        // (Playwright runs TS directly per playwright.config.ts testDir/testMatch).
+        const sourceSpecFiles = specFiles.map(f => {
+            const normalized = f.split(path.sep).join('/');
+            return normalized.replace(/^out\//, '').replace(/\.js$/, '.ts');
+        });
         const args = ['playwright', 'test', ...sourceSpecFiles];
         const proc = spawn('npx', args, {
             stdio: 'inherit',
