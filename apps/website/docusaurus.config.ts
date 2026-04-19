@@ -122,7 +122,7 @@ const config: Config = {
         {
           title: 'Project',
           items: [
-            {label: 'Docs', to: '/docs/overview'},
+            {label: 'Docs', to: '/docs'},
             {label: 'Installation', to: '/docs/installation'},
             {label: 'Playground', to: '/playground'},
           ],
