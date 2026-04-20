@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'MergeNB',
-  tagline: 'Resolve Jupyter notebook merge conflicts with a cell-aware UI.',
+  tagline: 'MergeNB is a VS Code extension for resolving Jupyter Notebook git merge conflicts.',
   favicon: 'img/favicon.ico',
 
   future: {
