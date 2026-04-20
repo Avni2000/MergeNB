@@ -1,7 +1,7 @@
 .hero {
   background: var(--mnb-hero-bg);
   border-bottom: 1px solid var(--mnb-border);
-  padding: 6rem 2rem 5rem;
+  padding: 3rem 3rem 3rem;
 }
 
 .heroInner {
@@ -13,7 +13,6 @@
 .title {
   font-size: clamp(2.5rem, 5vw, 3.75rem);
   line-height: 1.05;
-  margin: 0 0 1rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--mnb-fg);
