@@ -65,6 +65,16 @@
   --mnb-border: #e3d9c4;
 }
 
+/* Adjust code block margins and internal padding for better readability */
+.theme-code-block {
+  margin-top: 1.5rem !important;
+  margin-bottom: 1.5rem !important;
+}
+
+.theme-code-block pre {
+  padding: 1.25rem 1.5rem !important;
+}
+
 .medium-zoom-overlay {
   z-index: 2000 !important;
 }
