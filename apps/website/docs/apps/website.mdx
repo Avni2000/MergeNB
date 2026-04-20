@@ -1,0 +1,28 @@
+---
+id: website
+title: apps/website
+sidebar_label: website
+sidebar_position: 3
+description: The Docusaurus-powered docs site and live resolver playground.
+---
+
+# `apps/website`
+
+The site you are reading. Docusaurus 3.9 with a custom sidebar and a live playground that mounts the real resolver cleanly in the browser.
+
+The `.ipynb` imports work because of a tiny `ipynb-loader` webpack plugin wired up in `docusaurus.config.ts` that registers `.ipynb` as a JSON module.
+
+`onResolve` and `onCancel` are no-ops here; this is just a UI sandbox.
+- The primary usecase was going to be for showcasing the resolver, but I think it'd be simple to take in a folder + assets containing a triplet and run the whole thing on github pages, returning only the single merged file.
+
+## Build and develop
+
+```bash
+cd apps/website
+npm install      # from the root, this is not its own npm workspace
+npm start        # http://localhost:3000
+npm run build    # production build into build/
+npm run serve    # serve the production build locally
+```
+
+The site is deployed to GitHub Pages at `https://Avni2000.github.io/MergeNB/` from the `main` branch.
