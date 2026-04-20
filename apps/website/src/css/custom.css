@@ -65,6 +65,26 @@
   --mnb-border: #e3d9c4;
 }
 
+.medium-zoom-overlay {
+  z-index: 2000 !important;
+}
+/* Set as important because the feature-img on overview is right-transformed. Medium-zoom then pushes it off-center. */
+.medium-zoom-image--opened {
+  z-index: 2001 !important;
+  will-change: transform;
+  float: none !important;
+  max-width: none !important;
+  margin: 0 !important;
+}
+
+[data-theme='light'] .medium-zoom-overlay {
+  background: rgba(253, 250, 245, 0.94) !important;
+}
+
+[data-theme='dark'] .medium-zoom-overlay {
+  background: rgba(16, 14, 12, 0.9) !important;
+}
+
 [data-theme='dark'] {
   --ifm-color-primary: #e3a675;
   --ifm-color-primary-dark: #d99561;

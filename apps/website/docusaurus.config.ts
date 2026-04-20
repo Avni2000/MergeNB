@@ -33,6 +33,7 @@ const config: Config = {
   },
 
   plugins: [
+    require.resolve('docusaurus-plugin-image-zoom'),
     function ipynbLoader() {
       return {
         name: 'ipynb-loader',
@@ -61,6 +62,9 @@ const config: Config = {
         },
       };
     },
+
+
+    
   ],
 
   presets: [
@@ -82,6 +86,18 @@ const config: Config = {
   ],
 
   themeConfig: {
+    zoom: {
+      selector: '.markdown :not(em) > img',
+      background: {
+        light: 'rgb(255, 255, 255)',
+        dark: 'rgb(50, 50, 50)'
+      },
+      config: {
+        // medium-zoom options: https://github.com/francoischalifour/medium-zoom#usage
+        margin: 24,
+        scrollOffset: 40,
+      }
+    },
     colorMode: {
       defaultMode: 'light',
       respectPrefersColorScheme: true,
