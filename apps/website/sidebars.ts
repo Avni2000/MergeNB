@@ -39,7 +39,18 @@ const sidebars: SidebarsConfig = {
         'testing/fixtures',
       ],
     },
-    'architecture',
+    {
+      type: 'category',
+      label: 'Architecture',
+      collapsible: true,
+      collapsed: true,
+      link: {type: 'doc', id: 'architecture/index'},
+      items: [
+        'architecture/merge-lifecycle',
+        'architecture/state-management-and-ipc',
+        'architecture/design-philosophy',
+      ],
+    },
     'settings',
   ],
 };

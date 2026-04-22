@@ -1,0 +1,68 @@
+---
+title: Design Philosophy
+description: The architectural choices behind MergeNB's package boundaries and merge model.
+---
+
+# Design Philosophy
+
+## Host Decoupling
+
+The most important architectural choice in MergeNB is the strict split between reusable core logic and host-specific integration.
+
+`core` defines shared logic such as:
+
+- Notebook parsing
+- Cell matching
+- Conflict detection
+- Auto-resolution
+- Notebook reconstruction
+
+The host provides environment-specific pieces such as Git access and settings.
+
+That split makes the same core logic reusable across:
+
+- The VS Code extension
+- The docs playground
+- Playwright and fixture-driven tests
+- Future hosts such as a CLI or another editor integration
+
+## Browser Over WebView
+
+MergeNB renders the resolver in the user's default browser rather than a VS Code WebView.
+
+The advantages are:
+
+- Better debugging (full browser DevTools)
+- Fewer UI restrictions (no WebView CSP limitations for rich notebook output)
+- Better portability (the same client and server can be reused outside VS Code)
+
+The tradeoff is that the extension must manage its own HTTP server, WebSocket connections, session lifecycle, and auth tokens.
+
+## Settings-Driven Auto-Resolution
+
+Jupyter notebooks accumulate a lot of non-semantic state:
+
+- Execution counts
+- Cell outputs
+- Kernel metadata
+- Language metadata
+- Whitespace differences
+
+These are often responsible for a large share of notebook merge noise. MergeNB treats them as settings-controlled auto-resolution categories instead of forcing users to click through them manually every time.
+
+The guiding idea is simple: if a difference would disappear after a restart-and-run-all workflow, it probably should not dominate the merge experience.
+
+## Reconstructing Notebooks Instead of Patching
+
+When the user submits a resolution, MergeNB rebuilds the final notebook from structured row data instead of applying diffs to the working copy.
+ 
+ That approach is more predictable for notebook JSON:
+ 
+ - No offset drift
+ - No partial patch application
+ - No malformed intermediate JSON
+ - A final notebook that is always valid nbformat
+ 
+ This is especially important for notebook merges, where preserving JSON structure is just as important as preserving source text.
+ 
+ 

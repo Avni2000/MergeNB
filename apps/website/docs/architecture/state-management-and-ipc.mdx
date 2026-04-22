@@ -1,0 +1,26 @@
+---
+title: State Management and IPC
+description: How the browser UI, WebSocket protocol, and Zustand store communicate.
+---
+
+# State Management and IPC
+
+## WebSocket Protocol
+
+Communication between the extension and browser is intentionally simple.
+
+The server sends:
+
+- `conflict-data`: the initial payload
+- `resolution-success`: the resolution completed successfully
+- `resolution-error`: resolution failed
+
+The browser sends:
+
+- `ready`: request the initial payload
+- `resolve`: submit the user's choices
+- `cancel`: close the session
+
+Each browser session is authenticated with a random token. The token is included in the session URL and validated during both the initial HTTP request and the WebSocket upgrade. Sessions are single-use and are disposed after a successful resolution.
+
+> I'll finish up these docs soon enough, sorry about leaving it incomplete!
