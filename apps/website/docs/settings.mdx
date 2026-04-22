@@ -1,0 +1,62 @@
+---
+id: settings
+slug: /settings
+title: Settings
+sidebar_position: 91
+description: All Settings
+---
+
+# Settings
+
+MergeNB reads settings from three places, in order of precedence:
+
+1. VS Code workspace / folder settings (`.vscode/settings.json`)
+2. VS Code user settings
+3. A config file at `~/.config/mergenb/config.json` (respects `XDG_CONFIG_HOME` and `%APPDATA%`)
+4. Hardcoded defaults in `apps/vscode-extension/settings.ts`
+
+The `MERGENB_CONFIG_PATH` environment variable overrides path resolution entirely, which is how the Playwright suite runs with isolated configs in parallel.
+
+## Auto-resolution
+
+| Setting | Default | Effect |
+|---|---|---|
+| `mergeNB.autoResolve.executionCount` | `true` | Sets conflicting `execution_count` to `null` instead of asking |
+| `mergeNB.autoResolve.kernelVersion` | `true` | Uses current branch's kernel and `language_info.version` |
+| `mergeNB.autoResolve.stripOutputs` | `true` | Clears cell outputs during merge |
+| `mergeNB.autoResolve.whitespace` | `true` | Drops trailing-whitespace and CRLF-only diffs silently |
+
+All four fire before the UI opens. A banner at the top of the resolver lists what was auto-resolved so nothing is silent.
+
+## UI
+
+| Setting | Default | Effect |
+|---|---|---|
+| `mergeNB.ui.theme` | `"dark"` | Resolver theme. `"light"` uses a beige palette sourced from the logo. |
+| `mergeNB.ui.hideNonConflictOutputs` | `false` | Hides outputs for rows without conflicts |
+| `mergeNB.ui.showCellHeaders` | `false` | Shows cell type, execution count, and cell index in row headers |
+| `mergeNB.ui.showBaseColumn` | `false` | Shows the base column in the 3-way view (defaults on in headless/test mode) |
+| `mergeNB.ui.enableUndoRedoHotkeys` | `true` | Enables `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` inside the resolver |
+
+## Config file shape
+
+Example:
+```json
+{
+  "autoResolve": {
+    "executionCount": true,
+    "kernelVersion": true,
+    "stripOutputs": true,
+    "whitespace": true
+  },
+  "ui": {
+    "theme": "light",
+    "showBaseColumn": true,
+    "showCellHeaders": false,
+    "hideNonConflictOutputs": false,
+    "enableUndoRedoHotkeys": true
+  }
+}
+```
+
+Unknown keys are ignored. Partial files are fine and anything missing falls back to the built-in default for that scope.
