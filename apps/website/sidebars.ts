@@ -6,29 +6,6 @@ const sidebars: SidebarsConfig = {
     'installation',
     {
       type: 'category',
-      label: 'Packages',
-      collapsible: true,
-      collapsed: false,
-      link: {type: 'doc', id: 'packages/index'},
-      items: [
-        'packages/core',
-        'packages/web-client',
-        'packages/web-server',
-      ],
-    },
-    {
-      type: 'category',
-      label: 'Apps',
-      collapsible: true,
-      collapsed: false,
-      link: {type: 'doc', id: 'apps/index'},
-      items: [
-        'apps/vscode-extension',
-        'apps/website',
-      ],
-    },
-    {
-      type: 'category',
       label: 'Testing',
       collapsible: true,
       collapsed: true,
@@ -36,7 +13,6 @@ const sidebars: SidebarsConfig = {
       items: [
         'testing/playwright',
         'testing/vscode-host',
-        'testing/fixtures',
       ],
     },
     {
