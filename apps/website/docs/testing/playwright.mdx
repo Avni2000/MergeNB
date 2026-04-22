@@ -1,0 +1,72 @@
+---
+id: playwright
+title: Playwright
+sidebar_label: Playwright
+sidebar_position: 2
+description: Browser-level integration tests against the real resolver UI.
+---
+
+# Playwright
+
+Lives in `packages/web/tests/`. Each spec boots a real web server, a temp-dir Git repo with a three-way merge conflict, and a Chromium page pointed at the resolver. The UI is exercised the same way a user would.
+
+## Running
+
+```bash
+npm run test:pw                 # headless
+npm run test:pw:headed          # watch the browser
+npm run test:pw:ui              # Playwright's inspector UI
+npm run test:pw:debug           # debug mode with pause
+npx playwright test <file>.spec.ts --reporter=line
+```
+
+:::warning Compile before testing
+`npm run test` and its derivatives will pre-compile both the main code and test helpers, but if you're running tests directly with `npx` or with `node` or in an editor, remember to compile **both** first:
+```bash
+npm run compile           # builds the extension + packages
+npm run compile-tests     # tsc to out/ for the VS Code host
+```
+:::
+
+
+
+## Important Files
+
+| File | Purpose |
+|---|---|
+| `playwright.config.ts` | Worker count, timeouts, global setup/teardown, reporters |
+| `packages/web/tests/fixtures.ts` | Playwright Test fixtures: merge repo, session, page |
+| `packages/web/tests/globalSetup.ts` | Starts the web server once per run |
+| `packages/web/tests/globalTeardown.ts` | Stops it |
+| `packages/web/tests/*.spec.ts` | Current Specs |
+
+## Fixtures
+
+`fixtures.ts` exposes a `test` with custom fixtures:
+
+- Builds a temp Git repo from a `NotebookTriplet` (`base.ipynb`, `current.ipynb`, `incoming.ipynb`).
+- Opens a conflict session against the running web server.
+- Attaches a `page` already navigated to the session URL.
+- Teardown deletes the temp repo and closes the browser.
+
+Each spec declares what it wants:
+
+```ts
+test('cell reorder preserves unmatched cells', async ({ conflictSession }) => {
+  // conflictSession.page is ready to drive
+});
+```
+
+## Adding a new spec
+
+:::info Why is it called a spec?
+AFAIK ".spec.ts" and ".test.ts" are used somewhat interchangeably, and while migrating to the Playwright testing framework from a more manual setup, I chose ".spec.ts" to distinguish the new testing files vs. the old ones.
+:::
+
+See the test files under `packages/web/tests/` for details. 
+
+In general, the Playwright suite focuses on UI-level integration tests of the resolver, while the `test:vscode` regression suite covers the extension's Git integration and resolver entry points. There is some overlap, but new tests should generally go in Playwright unless they require VS Code APIs or Git interactions that are hard to mock.
+
+## Isolated config per worker
+
+`test-fixtures/shared/testRunnerShared.ts` provisions a per-worker `MERGENB_CONFIG_PATH` environment variable so parallel workers do not fight over the same settings file.

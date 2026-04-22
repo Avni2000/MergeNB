@@ -1,0 +1,57 @@
+---
+id: vscode-host
+title: VS Code host
+sidebar_label: VS Code host
+sidebar_position: 3
+description: Regression tests that launch a real VS Code via @vscode/test-electron.
+---
+
+# VS Code host tests
+
+Lives in `apps/vscode-extension/tests/`. These tests run inside a real VS Code Extension Development Host. That is the only way to exercise things like the status bar, command quick-picks, and the `vscode.git` API surface.
+
+## Running
+
+:::warning Compile before testing
+`npm run test` and its derivatives will pre-compile both the main code and test helpers, but if you're running tests directly with `npx` or with `node` or in an editor, remember to compile **both** first:
+```bash
+npm run compile           # builds the extension + packages
+npm run compile-tests     # tsc to out/ for the VS Code host
+```
+:::
+
+```bash
+npm run test:vscode # regression tests (status bar, settings stuff, checks commands...)
+node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode # equivalent to above.
+npm run test:e2e    # same runner, but boots the web server + WebSocket too. 
+node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e #equivalent to above.
+```
+
+## E2E flow
+
+`e2eResolution.test.ts` boots:
+
+1. A temp Git repo with a three-way merge conflict.
+2. The extension host pointing at that repo.
+3. The real web server.
+4. A headless browser that clicks through the resolver.
+5. Assertions against both the UI state and the on-disk notebook.
+
+This is the test that would catch a WebSocket contract break between client and server.
+
+## Manual sandboxes
+
+The TUI exposes a third option besides "run a test" and "list tests": open a manual sandbox. It builds a real conflict repo from `test-fixtures/general/` or `test-fixtures/edge-cases/` and hands it to you inside the extension host. Great for debugging a specific fixture by hand:
+
+```bash
+node out/apps/vscode-extension/tests/runIntegrationTest.js --manual general/conflict_11 #or any directory from test-fixtures.
+MERGENB_MANUAL_SANDBOX_DIR=/tmp/foo npm run test --manual general/conflict_11   # override sandbox path
+```
+
+## Always compile before running
+
+```bash
+npm run compile && npm run compile-tests
+```
+
+`pretest:vscode`, `pretest:e2e`, and `pretest:pw` do this for you, but when you run the `node out/...` form directly, you own the compile step.

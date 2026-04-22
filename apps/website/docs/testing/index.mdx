@@ -1,0 +1,71 @@
+---
+id: index
+slug: /testing
+title: Testing
+sidebar_position: 1
+description: How MergeNB's tests are organized.
+---
+
+# Testing
+
+## Entry points
+
+
+```bash
+# interactive TUI picker (also supports manual sandboxes)
+npm run test
+
+#everything
+npm run test:all
+
+# Playwright specs only
+npm run test:pw
+
+# VS Code regression tests
+npm run test:vscode
+
+# end-to-end resolution through VS Code + Playwright + WebSocket server
+npm run test:e2e
+```
+
+Every script except `test:pw` goes through `apps/vscode-extension/tests/runIntegrationTest.ts`, which is both an interactive TUI and a flag-driven CLI.
+
+### CLI Usage
+
+:::warning Compile before testing
+`npm run test` and its derivatives will pre-compile both the main code and test helpers, but if you're running tests directly with `npx` or with `node` or in an editor, remember to compile **both** first:
+```bash
+npm run compile           # builds the extension + packages
+npm run compile-tests     # tsc to out/ for the VS Code host
+```
+:::
+
+
+You can run the integration script directly with `node` (after compiling) to use specific flags:
+
+```bash
+# Run all Playwright specs
+node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright
+
+# Run a specific Playwright spec (by basename)
+node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright my_test
+
+# Run VS Code regression tests
+node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode
+
+# Run E2E resolution tests (starts web server + WebSocket)
+node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e
+
+# Open a manual sandbox for a specific fixture
+# <folder> is the relative path from test-fixtures/ (e.g., general/conflict_0)
+node out/apps/vscode-extension/tests/runIntegrationTest.js --manual <folder>
+```
+
+### Interactive TUI
+
+Running `npm run test` without flags opens an interactive picker. This is the recommended way to:
+- Select individual tests to run.
+- Browser and launch **Manual Sandboxes** from the [Fixtures](./testing/fixtures.mdx) library.
+  - since this opens a VS Code window, there's a bit more info about manual sandboxes there.
+
+See [Playwright](./testing/playwright.mdx), [VS Code host](./testing/vscode-host.mdx), and [Fixtures](./testing/fixtures.mdx) for more information.
