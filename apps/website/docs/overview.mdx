@@ -91,14 +91,25 @@ export function Hero() {
  
   # Why MergeNB?
 
-  ## Auto-resolution
+  <div className={styles.featureContainer}>
 
-  Based on user defined settings, MergeNB can automatically resolve certain classes of conflicts without user input, such as mismatched `execution counts`, `kernel versions` or trailing `whitespace` diffs.
+    <div className={styles.featureText}>
 
-  ## Configurability
+    ## Auto-resolution
 
-  [MergeNB's settings](./settings.mdx) allow users to customize their merge experience, from auto-resolution preferences to UI themes and hotkeys.
+    Based on user defined settings, MergeNB can automatically resolve certain classes of conflicts without user input, such as mismatched `execution counts`, `kernel versions` or trailing `whitespace` diffs.
 
+    ## Configurability
+
+    [MergeNB's settings](./settings.mdx) allow users to customize their merge experience, from auto-resolution preferences to UI themes and hotkeys.
+    </div>
+
+    <div className={styles.featureImage}>
+
+    ![Auto Resolution](../static/img/auto-resolution.svg)
+
+    </div>
+  </div>
   ## Undo/Redo
 
   Merge resolution is hard, and mistakes are inevitable. MergeNB supports undo and redo of user actions in the resolver, as well as a full history panel allowing you to jump back and forth between any state of the resolver.
