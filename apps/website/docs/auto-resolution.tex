@@ -30,6 +30,16 @@
 }
 
 %%=============================================================
+%% BACKGROUND HIGHLIGHTS (Conflicted & Resolved Areas)
+%%=============================================================
+% Conflicted Background (drawn first to be at the back)
+\draw[errRed, thick, fill=errRed!10, rounded corners=6pt] (3.5, -0.8) rectangle (8.7, 7.2);
+\node[font=\sffamily\small, text=errRed, anchor=north] at (6.1, -0.9) {Conflicted};
+
+% Auto Resolved Background (drawn first to be at the back)
+\draw[resGreen, thick, fill=resGreen!10, rounded corners=6pt] (9.6, 0.4) rectangle (12.9, 3.0);
+
+%%=============================================================
 %% TOP TITLE
 %%=============================================================
 \node[draw=black!80, fill=cellBg, rounded corners=3pt, font=\sffamily, inner sep=6pt, anchor=center] 
@@ -118,8 +128,8 @@
 % Current Cell
 \draw[fill=curBg!40, draw=curBdr!80, rounded corners=1.5pt] (4.0, -0.5) rectangle (5.8, 0.5);
 % First line with Whitespace conflict box at the end
-\draw[curBdr!90!black, line width=0.6pt] (4.2, 0.2) -- (5.2, 0.2);
-\draw[errRed, thick, fill=errRed!10] (5.2, 0.05) rectangle (5.6, 0.35);
+\draw[curBdr!90!black, line width=0.6pt] (4.2, 0.2) -- (5.6, 0.2);
+\draw[errRed, thick, fill=errRed!10] (5.2, -0.05) rectangle (5.3, -0.35);
 \codeline{curBdr!90!black}{4.2, -0.2}{5.2, -0.2}
 
 % Incoming Cell
@@ -127,19 +137,15 @@
 \codeline{incBdr!90!black}{6.6, 0.2}{8.0, 0.2}
 \codeline{incBdr!90!black}{6.6, -0.2}{7.6, -0.2}
 
-% Conflicted Text Label
-\node[font=\sffamily\small, text=errRed] at (6.1, -1.2) {Conflicted};
-
-
 %%=============================================================
 %% RIGHT COLUMN: MERGED RESOLVED CELL
 %%=============================================================
 
 % Arrows Converging to the Resolved Cell
-\draw[->, black!80, line width=0.7pt] (8.4, 6.0) to[out=0, in=180] (9.8, 2.4);
-\draw[->, black!80, line width=0.7pt] (8.4, 4.0) to[out=0, in=180] (9.8, 2.15);
-\draw[->, black!80, line width=0.7pt] (8.4, 2.0) to[out=0, in=180] (9.8, 1.9);
-\draw[->, black!80, line width=0.7pt] (8.4, 0.0) to[out=0, in=180] (9.8, 1.6);
+\draw[->, black!80, line width=0.7pt] (8.7, 6.0) to[out=0, in=180] (9.8, 2.6); 
+\draw[->, black!80, line width=0.7pt] (8.7, 4.0) to[out=-80, in=180] (9.8, 2.3); 
+\draw[->, black!80, line width=0.7pt] (8.7, 2.0) to[out=0, in=180] (9.8, 1.9);
+\draw[->, black!80, line width=0.7pt] (8.7, 0.0) to[out=0, in=180] (9.8, 1.6);
 
 % Auto-Resolved Output Cell
 \draw[fill=cellBg, draw=cellBdr!80!black, rounded corners=1.5pt] (10.0, 1.4) rectangle (12.5, 2.6);
