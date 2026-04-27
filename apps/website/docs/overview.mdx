@@ -1,0 +1,139 @@
+---
+id: overview
+slug: /
+title: Overview
+sidebar_position: 1
+description: What MergeNB is and how it resolves Jupyter notebook merge conflicts.
+hide_title: true
+---
+
+import React from 'react';
+import Link from '@docusaurus/Link';
+import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
+import styles from '../src/pages/index.module.css';
+import Logo from '../src/components/Logo';
+
+
+export function Hero() {
+  const {siteConfig} = useDocusaurusContext();
+
+  return (
+    <section className={styles.hero}>
+      <div className={styles.heroInner}>
+        <Logo size="large" />
+        <p className={styles.subtitle}>{siteConfig.tagline}</p>
+        <div className={styles.heroActions}>
+          <Link className={styles.buttonPrimary} to="/playground">
+            Open the playground
+          </Link>
+          <Link className={styles.buttonSecondary} to="/docs/installation">
+            Installation
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+<Hero />
+<main>
+<section className={styles.features}>
+  
+  <div className={`${styles.featureContainer} ${styles.featureContainerRight}`}>
+
+  <div className={styles.featureImage}>
+
+  ![MergeNB Light Theme](../static/img/light-theme.png)
+
+  </div>
+
+  <div className={styles.featureText}>
+
+  # Core Logic
+
+  At the end of the day, users should be able to resolve merge conflicts intuitively, and with regard to the cell structure of their notebooks.
+
+  ## Conflict Resolution UI
+
+  We show a side-by-side diff of conflicting cells, with intra-cell conflicts highlighted. Users can toggle between a 2-way diff view and a 3-way diff view with the base branch as the middle column.
+
+  </div>
+
+  </div>
+
+
+  <div className={styles.featureContainer}>
+
+  <div className={styles.featureImage}>
+
+  ![Cell reordering: before merge and conflict resolver panel](../static/img/cell-reordering.svg)
+
+  </div>
+
+  <div className={styles.featureText}>
+
+  ## Reordered Cell Handling
+
+  We treat cell matching as a special case of the assignment problem from linear optimization/operations research.
+
+  That is, given a weighted cost matrix of semantic distances between cells, we utilize the [Hungarian Algorithm](https://en.wikipedia.org/wiki/Hungarian_algorithm) to find the optimal matching of cells that minimizes the total distance, even in cases of reordering.
+
+  </div>
+
+  </div>
+
+
+  ## Handles all Media (MIME) Types
+
+  HTML, LaTeX, images, SVG plots, etc. We use the same rendering engine as JupyterLab to ensure that all media types are rendered correctly in the resolver, just as they would be in the notebook itself.
+ 
+ ---
+ 
+  # Why MergeNB?
+
+  <div className={styles.featureContainer}>
+
+    <div className={styles.featureText}>
+
+    ## Auto-resolution
+
+    Based on user defined settings, MergeNB can automatically resolve certain classes of conflicts without user input, such as mismatched `execution counts`, `kernel versions` or trailing `whitespace` diffs.
+
+    ## Configurability
+
+    [MergeNB's settings](./settings.mdx) allow users to customize their merge experience, from auto-resolution preferences to UI themes and hotkeys.
+    </div>
+
+    <div className={styles.featureImage}>
+
+    ![Auto Resolution](../static/img/auto-resolution.svg)
+
+    </div>
+  </div>
+
+  <div className={styles.featureContainer}>
+    <div className={styles.featureImage}>
+      ![History panel](../static/img/history.png)
+    </div>
+    <div className={styles.featureText}>
+      ## Undo/Redo
+
+      Merge resolution is hard, and mistakes are inevitable. MergeNB supports undo and redo of user actions in the resolver, as well as a full history panel allowing you to jump back and forth between any state of the resolver.
+    </div>
+  </div>
+  ## Syntax highlighting
+
+  We use [CodeMirror](https://codemirror.net/) to provide syntax highlighting in code cells, for any Jupyter-kernel-supported language (e.g. Python, Scala, R, Julia, etc.).
+
+  --- 
+
+  **MergeNB stands on the shoulders of all of the hardworking maintainers that came before it. Here are a few open source projects that made it possible:**
+  - JupyterLab Rendermime
+  - Visual Studio Code
+  - CodeMirror
+  - Zustand
+  - KaTeX
+
+</section>
+
+</main>

@@ -1,0 +1,123 @@
+---
+title: Merge Lifecycle
+description: The end-to-end flow from Git conflict to resolved notebook.
+---
+
+## The Merge Lifecycle
+
+I want this to be a high value document, so I won't attempt to explain every file. Instead, I'll focus on the core data flow of a merge operation, from Git conflict -> resolved notebook, and the architectural decisions that shape it.
+
+### 1. Discovery
+
+The user runs `merge-nb.findConflicts`. The extension calls `git status --porcelain` looking for unmerged `.ipynb` files (see status codes below) Simple cases (add-only, delete-vs-modify) are handled with quick-pick prompts in the top bar and never reach the merge UI.
+
+Here's a reference to the Git status codes for all possible merge conflicts (the output of git status --porcelain in a conflicted state):
+
+| Code | Meaning                              |
+| ---- | ------------------------------------ |
+| UU   | Both modified (most common conflict) |
+| AA   | Both added                           |
+| DD   | Both deleted                         |
+| AU   | Added by us, unmerged by them        |
+| UA   | Added by them, unmerged by us        |
+| DU   | Deleted by us, modified by them      |
+| UD   | Deleted by them, modified by us      |
+
+### 2. Three-way extraction
+
+For a `UU` conflict, `gitIntegration.getThreeWayVersions` reads three blobs from Git's staging area:
+
+- `:1:path`: base (common ancestor)
+- `:2:path`: current (ours / `HEAD`)
+- `:3:path`: incoming (theirs / `MERGE_HEAD`)
+
+Each blob is raw notebook JSON. `parseNotebook` in core validates the structure and returns typed `Notebook` objects.
+
+:::info Tip
+Run `git show :1:<path>.ipynb > base.ipynb; git show :2:<path>.ipynb > current.ipynb; git show :3:<path>.ipynb > incoming.ipynb` to see the notebooks the extension works with.
+:::
+
+### 3. Cell matching
+
+`cellMatcher.ts` takes the three notebooks and produces an ordered list of `CellMapping` entries, one per logical cell across all three sides. 
+- The matching process is quite complicated, we'll cover it in a future doc. See `packages/core/src/cellMatcher` for the full implementation.
+
+### 4. Conflict detection
+
+`analyzeSemanticConflictsFromMappings` sees the cell mappings and classifies each one:
+
+| Situation | Conflict type |
+|---|---|
+| Cell exists only in current or incoming | `cell-added` |
+| Cell removed in one branch, present in other | `cell-deleted` |
+| Both branches edited source differently | `cell-modified` |
+| Both branches changed metadata differently | `metadata-changed` |
+| Both branches changed outputs differently | `outputs-changed` |
+| Both branches changed execution_count differently | `execution-count-changed` |
+
+**The three-way rule applied to non-conflict cells is the classical one: if only one side diverged from base, take that side; if both diverged identically, take either; if neither diverged, keep as-is.**
+
+In code:
+
+```text
+if CURRENT == BASE == INCOMING:
+        result = any of them (all identical)
+elif CURRENT == INCOMING:
+        result = CURRENT  (both sides made same change, or didn't change)
+elif CURRENT == BASE:
+        result = INCOMING  (only INCOMING changed)
+elif INCOMING == BASE:
+        result = CURRENT   (only CURRENT changed)
+else:
+        CONFLICT  (all three differ)
+```
+
+There are 2 intentional exceptions and policy choices around structural changes:
+
+#### Exception 1: Reorder
+
+- Reordering is detected globally from the full set of `CellMapping` entries, not from a single row's `base/current/incoming` values in isolation.
+- Reorder can still be surfaced as a conflict even when content itself is not conflicting; MergeNB prefers to make notebook structure visible and user-controlled rather than silently auto-merging cell movement.
+- **Why this differs from the ordinary three-way rule:** if reorder followed the same "only one side changed, so auto-merge it" logic, many notebooks would resolve automatically in ways that are technically valid but surprising to the user. For notebooks, cell order often carries real meaning.
+- **Where to see this behavior:** check `test-fixtures/edge-cases/reordered-cells/*` and open the fixture through the normal resolver flow.
+
+#### Exception 2: Add/Delete
+
+- MergeNB currently shows one-sided adds and delete-vs-keep situations as structural conflict rows instead of always auto-merging them away.
+- Git has no guidance on this, and this project biases toward preserving user control. A structurally "safe" merge can still be the wrong UX if it hides that a cell was inserted, removed, or moved.
+
+### 5. Auto-resolution
+
+`applyAutoResolutions` runs before the UI ever opens. Based on user settings, it removes conflicts that are uninteresting:
+
+- **Execution counts** (`autoResolveExecutionCount`): set to `null`. These change on every notebook run and almost never carry meaning.
+
+- **Outputs** (`stripOutputs`): cleared entirely when the underlying source is identical. Outputs are execution artifacts, not authored content.
+
+- **Kernel/language metadata** (`autoResolveKernelVersion`): keep current. Version bumps in `kernelspec` or `language_info` are environment noise.
+
+- **Whitespace** (`autoResolveWhitespace`): if two sources differ only in trailing whitespace, keep current.
+
+If auto-resolution eliminates every conflict, the notebook is written to disk and staged immediately and the UI never opens.
+- This is especially convenient for most of the git merge conflict status codes where there's no "real" conflicts.
+
+### 6. UI presentation
+
+The remaining conflicts, along with the full cell mappings, three notebook versions, and auto-resolve results, are packed into a `UnifiedConflict` and handed to `WebConflictPanel`. The panel opens the browser to a session URL containing a one-time auth token. Once the WebSocket handshake completes, the server sends the payload as a `conflict-data` message.
+
+On the client side, `buildMergeRowsFromSemantic` transforms the conflict data into a list, `MergeRow[]`,  the model that drives the virtualised list. Each `MergeRow` element (row) is either `identical` (no conflict, rendered as context) or `conflict` (rendered with branch-selection buttons). 
+- exceptions to the `conflict` parsing are listed above in step 4.
+
+### 7. Resolution and writeback
+
+When the user clicks Apply, the client collects the end Zustand store state into `ResolvedRow[]` and sends a `resolve` message over WebSocket. Each `ResolvedRow` carries the user's branch choice, the (possibly hand-edited) resolved source text, and the original cell indices for reliable lookup.
+
+Back in the VS Code extension, `buildResolvedNotebookFromRows` reconstructs the notebook:
+
+1. For each resolved row, deep-clone the reference cell from the chosen branch, replace its source with the user's edited text, and optionally strip outputs.
+2. For non-conflict rows, apply the three-way rule (`selectNonConflictMergedCell`): if only one side diverged from base, take that side.
+    - The three-way rule is applied both during conflict detection and writeback to handle cases where row shapes change during user interaction.  
+3. Merge notebook-level metadata key by key using the same three-way logic, with kernel metadata optionally pinned to the current branch.
+4. Optionally renumber execution counts sequentially.
+
+The reconstructed notebook is serialized to JSON, written to disk via `vscode.workspace.fs.writeFile`, and optionally staged with `git add`.

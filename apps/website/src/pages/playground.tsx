@@ -50,9 +50,9 @@ function PlaygroundInner(): ReactNode {
                     import('../../../../packages/web/client/src/components/ConflictResolver'),
                     import('../../../../packages/core/src'),
                     import('../../../../packages/web/client/src/styles'),
-                    import('../../../../test-fixtures/demo_base.ipynb'),
-                    import('../../../../test-fixtures/demo_current.ipynb'),
-                    import('../../../../test-fixtures/demo_incoming.ipynb'),
+                    import('../../../../test-fixtures/demo/base.ipynb'),
+                    import('../../../../test-fixtures/demo/current.ipynb'),
+                    import('../../../../test-fixtures/demo/incoming.ipynb'),
                 ]);
 
                 const base = getNotebook(baseNb);
@@ -62,7 +62,7 @@ function PlaygroundInner(): ReactNode {
                 const cellMappings = matchCells(base, current, incoming);
                 const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
 
-                injectStyles('dark', '.mergenb-playground-root');
+                injectStyles('light', '.mergenb-playground-root');
 
                 if (cancelled) return;
                 setContent(
@@ -72,7 +72,7 @@ function PlaygroundInner(): ReactNode {
                             filePath: 'demo.ipynb',
                             conflictKey: 'playground-demo-v1',
                             type: 'semantic',
-                            theme: 'dark',
+                            theme: 'light',
                             semanticConflict: {
                                 filePath: 'demo.ipynb',
                                 semanticConflicts,
