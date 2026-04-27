@@ -100,7 +100,8 @@ const config: Config = {
     },
     colorMode: {
       defaultMode: 'light',
-      respectPrefersColorScheme: true,
+      disableSwitch: true,
+      respectPrefersColorScheme: false,
     },
     navbar: {
       items: [
@@ -157,7 +158,6 @@ const config: Config = {
     },
     prism: {
       theme: prismThemes.github,
-      darkTheme: prismThemes.vsDark,
       additionalLanguages: ['bash', 'json', 'typescript', 'tsx'],
     },
   } satisfies Preset.ThemeConfig,

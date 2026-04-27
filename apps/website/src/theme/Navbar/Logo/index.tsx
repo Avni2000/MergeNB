@@ -8,7 +8,7 @@ import useBaseUrl from '@docusaurus/useBaseUrl';
 
 type Props = WrapperProps<typeof LogoType>;
 
-export default function LogoWrapper(props: Props): JSX.Element {
+export default function LogoWrapper(props: Props): React.ReactElement {
   return (
     <Link to={useBaseUrl('/')} className="navbar__brand" style={{textDecoration: 'none'}}>
       <CustomLogo />
