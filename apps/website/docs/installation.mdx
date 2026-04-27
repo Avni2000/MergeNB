@@ -57,6 +57,13 @@ npm run package
 ### Development
 
 To load the extension in a development VS Code window:
-- Run `$ npm run compile && code --extensionDevelopmentPath=. --new-window <folder to open extension in>`
+- Run:
+
+```bash 
+npm run compile && code --extensionDevelopmentPath=. --new-window <folder to open extension in>
+```
    - There's also a `launch` configuration in VS Code that does this for you, as well as hot-reloading on file changes, but it's never worked for me.
-- See more in [Testing](./testing/index.mdx), since I've already created a TUI testing framework for this purpose.
+
+:::info testing
+See more in [Testing](./testing/index.mdx), since I've already created a TUI testing framework for this purpose.
+:::
