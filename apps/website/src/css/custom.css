@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@700&family=Playfair+Display:ital,wght@1,500&display=swap');
+
 /*
  * MergeNB site styles.
  *
@@ -78,11 +80,9 @@
 .medium-zoom-overlay {
   z-index: 2000 !important;
 }
-/* Set as important because the feature-img on overview is right-transformed. Medium-zoom then pushes it off-center. */
 .medium-zoom-image--opened {
   z-index: 2001 !important;
   will-change: transform;
-  float: none !important;
   max-width: none !important;
   margin: 0 !important;
 }

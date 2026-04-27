@@ -62,7 +62,7 @@ function PlaygroundInner(): ReactNode {
                 const cellMappings = matchCells(base, current, incoming);
                 const semanticConflicts = analyzeSemanticConflictsFromMappings(cellMappings);
 
-                injectStyles('dark', '.mergenb-playground-root');
+                injectStyles('light', '.mergenb-playground-root');
 
                 if (cancelled) return;
                 setContent(
@@ -72,7 +72,7 @@ function PlaygroundInner(): ReactNode {
                             filePath: 'demo.ipynb',
                             conflictKey: 'playground-demo-v1',
                             type: 'semantic',
-                            theme: 'dark',
+                            theme: 'light',
                             semanticConflict: {
                                 filePath: 'demo.ipynb',
                                 semanticConflicts,

@@ -11,6 +11,7 @@ import React from 'react';
 import Link from '@docusaurus/Link';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
 import styles from '../src/pages/index.module.css';
+import Logo from '../src/components/Logo';
 
 
 export function Hero() {
@@ -19,7 +20,7 @@ export function Hero() {
   return (
     <section className={styles.hero}>
       <div className={styles.heroInner}>
-        <h1 className={styles.title}>{siteConfig.title}</h1>
+        <Logo size="large" />
         <p className={styles.subtitle}>{siteConfig.tagline}</p>
         <div className={styles.heroActions}>
           <Link className={styles.buttonPrimary} to="/playground">
@@ -38,22 +39,49 @@ export function Hero() {
 <main>
 <section className={styles.features}>
   
-  
+  <div className={`${styles.featureContainer} ${styles.featureContainerRight}`}>
+
+  <div className={styles.featureImage}>
+
+  ![MergeNB Light Theme](../static/img/light-theme.png)
+
+  </div>
+
+  <div className={styles.featureText}>
+
   # Core Logic
 
   At the end of the day, users should be able to resolve merge conflicts intuitively, and with regard to the cell structure of their notebooks.
 
-
-  ![MergeNB Dark Theme](../static/img/dark-theme.png#featureImage)
   ## Conflict Resolution UI
 
   We show a side-by-side diff of conflicting cells, with intra-cell conflicts highlighted. Users can toggle between a 2-way diff view and a 3-way diff view with the base branch as the middle column.
 
+  </div>
+
+  </div>
+
+
+  <div className={styles.featureContainer}>
+
+  <div className={styles.featureImage}>
+
+  ![Cell reordering: before merge and conflict resolver panel](../static/img/cell-reordering.svg)
+
+  </div>
+
+  <div className={styles.featureText}>
+
   ## Reordered Cell Handling
 
-  We treat cell matching as a special case of the assignment problem from linear optimization and operations research.
+  We treat cell matching as a special case of the assignment problem from linear optimization/operations research.
 
-  That is, given a weighted cost matrix of distances between cells, we utilize the [Hungarian Algorithm](https://en.wikipedia.org/wiki/Hungarian_algorithm) to find the optimal matching of cells that minimizes the total distance, even in cases of reordering. 
+  That is, given a weighted cost matrix of semantic distances between cells, we utilize the [Hungarian Algorithm](https://en.wikipedia.org/wiki/Hungarian_algorithm) to find the optimal matching of cells that minimizes the total distance, even in cases of reordering.
+
+  </div>
+
+  </div>
+
 
   ## Handles all Media (MIME) Types
 
