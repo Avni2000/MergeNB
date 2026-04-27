@@ -110,17 +110,20 @@ export function Hero() {
 
     </div>
   </div>
-  ## Undo/Redo
 
-  Merge resolution is hard, and mistakes are inevitable. MergeNB supports undo and redo of user actions in the resolver, as well as a full history panel allowing you to jump back and forth between any state of the resolver.
+  <div className={styles.featureContainer}>
+    <div className={styles.featureImage}>
+      ![History panel](../static/img/history.png)
+    </div>
+    <div className={styles.featureText}>
+      ## Undo/Redo
 
+      Merge resolution is hard, and mistakes are inevitable. MergeNB supports undo and redo of user actions in the resolver, as well as a full history panel allowing you to jump back and forth between any state of the resolver.
+    </div>
+  </div>
   ## Syntax highlighting
 
   We use [CodeMirror](https://codemirror.net/) to provide syntax highlighting in code cells, for any Jupyter-kernel-supported language (e.g. Python, Scala, R, Julia, etc.).
-
-  ## Unmatching cells
-
-  Suppose a cell has been reordered across branches. We aim to afford the user maximum context for deciding whether to keep the cell in its new position as computed by our Hungarian Algorithm, move it back to its original position, or delete it entirely. To do this, we show a banner on top of the reordered cell showing the user exactly where, across branches, the cell was moved from and to, and allow the user to undo our computed reordering.
 
   --- 
 
