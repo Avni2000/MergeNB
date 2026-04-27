@@ -1,0 +1,77 @@
+.logoContainer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* --- Sizes --- */
+.small {
+  --logo-scale: 0.8;
+}
+
+.large {
+  --logo-scale: 1.5;
+  gap: 20px;
+}
+
+/* --- The Icon --- */
+.iconWrapper {
+  position: relative;
+  width: calc(50px * var(--logo-scale));
+  height: calc(40px * var(--logo-scale));
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.cellShape {
+  position: absolute;
+  width: calc(28px * var(--logo-scale));
+  height: calc(40px * var(--logo-scale));
+  border-radius: calc(5px * var(--logo-scale));
+  mix-blend-mode: multiply;
+  opacity: 0.9;
+  transform-origin: 50% 90%;
+  top: 0;
+}
+
+.cellLeft {
+  background-color: #A4D4DE; /* Soft Cyan */
+  left: calc(6px * var(--logo-scale));
+  transform: rotate(-25deg);
+}
+
+.cellRight {
+  background-color: #C3C9F2; /* Soft Purple */
+  right: calc(6px * var(--logo-scale));
+  transform: rotate(25deg);
+}
+
+/* Dark mode adjustments for blend mode */
+[data-theme='dark'] .cellShape {
+  mix-blend-mode: screen;
+  opacity: 0.8;
+}
+
+/* --- The Typography --- */
+.logoText {
+  display: flex;
+  align-items: baseline;
+  color: var(--ifm-navbar-link-color); /* Use Docusaurus theme color */
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.textMerge {
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+  font-weight: 500;
+  font-size: calc(28px * var(--logo-scale));
+  letter-spacing: -0.02em;
+}
+
+.textNb {
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 700;
+  font-size: calc(28px * var(--logo-scale));
+}

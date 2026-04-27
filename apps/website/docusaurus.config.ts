@@ -4,7 +4,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
   title: 'MergeNB',
-  tagline: 'MergeNB is a VS Code extension for resolving Jupyter Notebook git merge conflicts.',
+  tagline: 'VS Code extension for resolving Jupyter Notebook git merge conflicts.',
   favicon: 'img/favicon.ico',
 
   future: {
@@ -103,11 +103,6 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'MergeNB',
-      logo: {
-        alt: 'MergeNB',
-        src: 'img/logo.png',
-      },
       items: [
         {
           type: 'docSidebar',
