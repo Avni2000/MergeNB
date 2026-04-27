@@ -8,64 +8,100 @@ description: How MergeNB's tests are organized.
 
 # Testing
 
-## Entry points
+## Test layers
 
+| Layer | Use it for | Main entry point |
+| --- | --- | --- |
+| Playwright | Resolver UI behavior in a real browser with temp conflict repos | `npm run test:pw` |
+| VS Code host | Extension-host behavior such as commands, status indicators, and Git integration | `npm run test:vscode` |
+| E2E resolution | Full extension host + web server + browser + notebook write path | `npm run test:e2e` |
+| Manual sandbox | Debugging a real fixture by hand in VS Code | `npm run test` or `node ... --manual ...` |
+
+As a rule of thumb, prefer Playwright for resolver behavior and move to the VS Code host only when the test needs real VS Code APIs, command wiring, or Git state that should be exercised through the extension.
+
+## CLI commands
 
 ```bash
-# interactive TUI picker (also supports manual sandboxes)
+# Interactive TUI picker
 npm run test
 
-#everything
+# Everything
 npm run test:all
 
-# Playwright specs only
+# Resolver UI integration tests
 npm run test:pw
 
-# VS Code regression tests
+# VS Code extension-host regression tests
 npm run test:vscode
 
-# end-to-end resolution through VS Code + Playwright + WebSocket server
+# Full end-to-end resolution flow
 npm run test:e2e
 ```
 
-Every script except `test:pw` goes through `apps/vscode-extension/tests/runIntegrationTest.ts`, which is both an interactive TUI and a flag-driven CLI.
+`npm run test`, `npm run test:vscode`, and `npm run test:e2e` all go through `apps/vscode-extension/tests/runIntegrationTest.ts`. `npm run test:pw` calls Playwright directly.
 
-### CLI Usage
+## Compile behavior
 
-:::warning Compile before testing
-`npm run test` and its derivatives will pre-compile both the main code and test helpers, but if you're running tests directly with `npx` or with `node` or in an editor, remember to compile **both** first:
+:::warning Compile before using direct runners
+The npm test scripts already run `compile` and `compile-tests` through their `pretest:*` hooks.
+
+If you run `node out/...`, `npx playwright test`, or editor-integrated test commands directly, compile both layers first:
 ```bash
-npm run compile           # builds the extension + packages
-npm run compile-tests     # tsc to out/ for the VS Code host
+npm run compile
+npm run compile-tests
 ```
 :::
 
-
-You can run the integration script directly with `node` (after compiling) to use specific flags:
+## Direct runner usage
 
 ```bash
-# Run all Playwright specs
+# Run all Playwright specs through the shared runner
 node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright
 
-# Run a specific Playwright spec (by basename)
-node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright my_test
+# Run one Playwright spec by basename
+node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright perCellResolution
 
-# Run VS Code regression tests
+# Run the VS Code regression suite
 node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode
 
-# Run E2E resolution tests (starts web server + WebSocket)
+# Run the full E2E resolution test
 node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e
 
-# Open a manual sandbox for a specific fixture
-# <folder> is the relative path from test-fixtures/ (e.g., general/conflict_0)
-node out/apps/vscode-extension/tests/runIntegrationTest.js --manual <folder>
+# Open a manual sandbox from test-fixtures/
+node out/apps/vscode-extension/tests/runIntegrationTest.js --manual general/conflict_0
 ```
 
-### Interactive TUI
+Running `npm run test` with no flags opens the interactive TUI for the same modes, including fixture-backed manual sandboxes.
 
-Running `npm run test` without flags opens an interactive picker. This is the recommended way to:
-- Select individual tests to run.
-- Browser and launch **Manual Sandboxes** from any of the test-fixtures.
-  - since this opens a VS Code window, there's a bit more info about manual sandboxes there.
+## Key files
 
-See [Playwright](playwright.mdx), and [VS Code host](vscode-host.mdx) for more information.
+| File | Purpose |
+| --- | --- |
+| `apps/vscode-extension/tests/runIntegrationTest.ts` | Shared CLI/TUI runner for Playwright, VS Code host, E2E, and manual sandboxes |
+| `packages/web/tests/fixtures.ts` | Playwright fixtures for conflict repos, resolver sessions, and disk assertions |
+| `apps/vscode-extension/tests/testHarness.ts` | VS Code host helpers for launching the resolver and validating written notebooks |
+| `apps/vscode-extension/tests/e2eResolution.test.ts` | Full-stack resolution test inside the VS Code extension host |
+| `test-fixtures/shared/integrationUtils.ts` | Shared browser helpers, including UI-to-disk expectation builders |
+| `test-fixtures/shared/repoSetup.ts` | Temp merge-conflict repo creation from notebook triplets |
+
+## Adding a new test
+
+:::info testing efficiency
+VS Code tests:
+1.  are *significantly* more computationally expensive than playwright, and causes the CI to take much longer
+2.  have *terrible* logging in comparison to playwright tests, and cannot be parallelized unlike playwright. 
+:::
+
+1. Choose the lowest layer that proves the behavior.
+   - UI behavior in the resolver: add a Playwright spec under `packages/web/tests/`.
+   - Extension commands, status, or Git integration: add a VS Code host test under `apps/vscode-extension/tests/`.
+   - Cross-boundary resolution flow: extend or add an E2E-style host test.
+2. Reuse the existing fixture triplets under `test-fixtures/` when possible. Add a new fixture only when the behavior needs a new notebook shape.
+3. Respect settings explicitly. Tests that depend on auto-resolve or UI toggles should set them through the existing helpers rather than assuming defaults.
+4. Verify that the notebook written to disk matches what the UI showed. The existing helpers already support the expected pattern:
+   - build expected cells from the live UI
+   - apply the resolution
+   - assert the final notebook matches those cells
+5. Keep core merge behavior in `packages/core`. Docs and tests should reflect that split rather than re-creating merge logic in the harness.
+
+For suite-specific details, see [Playwright](playwright.mdx) and [VS Code host](vscode-host.mdx).

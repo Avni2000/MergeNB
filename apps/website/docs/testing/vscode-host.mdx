@@ -8,24 +8,52 @@ description: Regression tests that launch a real VS Code via @vscode/test-electr
 
 # VS Code host tests
 
-Lives in `apps/vscode-extension/tests/`. These tests run inside a real VS Code Extension Development Host. That is the only way to exercise things like the status bar, command quick-picks, and the `vscode.git` API surface.
+VS Code host tests live in `apps/vscode-extension/tests/`. They run inside a real VS Code Extension Development Host via `@vscode/test-electron`, which is the right layer for command wiring, status indicators, and `vscode.git` behavior that does not exist in the browser-only Playwright setup.
 
-## Running
+## What belongs here
 
-:::warning Compile before testing
-`npm run test` and its derivatives will pre-compile both the main code and test helpers, but if you're running tests directly with `npx` or with `node` or in an editor, remember to compile **both** first:
+Use this layer when the test needs real VS Code APIs, extension activation behavior, or Git integration that should be exercised from the extension side.
+
+There are two main modes:
+
+- `test:vscode`: regression tests for extension-host behavior
+- `test:e2e`: the full extension host + web server + browser + notebook write path
+
+## CLI commands
+
 ```bash
-npm run compile           # builds the extension + packages
-npm run compile-tests     # tsc to out/ for the VS Code host
+npm run test:vscode
+npm run test:e2e
+
+# Direct runner usage after compiling
+node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode
+node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e
+```
+
+Both commands run through `apps/vscode-extension/tests/runIntegrationTest.ts`.
+
+## Compile behavior
+
+:::warning Compile before direct runner usage
+`npm run test:vscode` and `npm run test:e2e` already compile the repo through `pretest:vscode` and `pretest:e2e`.
+
+If you run the compiled runner directly, compile both layers first:
+```bash
+npm run compile
+npm run compile-tests
 ```
 :::
 
-```bash
-npm run test:vscode # regression tests (status bar, settings stuff, checks commands...)
-node out/apps/vscode-extension/tests/runIntegrationTest.js --vscode # equivalent to above.
-npm run test:e2e    # same runner, but boots the web server + WebSocket too. 
-node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e #equivalent to above.
-```
+## Key files
+
+| File | Purpose |
+| --- | --- |
+| `apps/vscode-extension/tests/runIntegrationTest.ts` | Shared CLI/TUI runner for host tests, E2E, and manual sandboxes |
+| `apps/vscode-extension/tests/vscodeRegression.test.ts` | Batches the extension-host regression tests into one VS Code launch |
+| `apps/vscode-extension/tests/e2eResolution.test.ts` | Full-stack resolution test inside the extension host |
+| `apps/vscode-extension/tests/testHarness.ts` | Opens the conflict resolver and validates notebooks written to disk |
+| `apps/vscode-extension/tests/settingsFile.ts` | Writes test-specific MergeNB settings |
+| `apps/vscode-extension/tests/gitTestUtils.ts` | Shared Git helpers for host-side assertions |
 
 ## E2E flow
 
@@ -39,19 +67,23 @@ node out/apps/vscode-extension/tests/runIntegrationTest.js --e2e #equivalent to 
 
 This is the test that would catch a WebSocket contract break between client and server.
 
+## Adding a new VS Code host test
+
+1. Add the test under `apps/vscode-extension/tests/`.
+2. Put pure extension-host regression coverage into the regression suite, and keep full-stack browser resolution coverage in E2E-style tests.
+3. If the new test is a host regression case, export a `run()` function and wire it into `vscodeRegression.test.ts`.
+4. If the test changes settings-sensitive behavior, set those values explicitly with `writeSettingsFile(...)` rather than assuming defaults.
+5. If the test writes a notebook, verify that the final file matches what the UI showed by using the existing helpers such as `collectExpectedCellsFromUI(...)` and `assertNotebookMatches(...)`.
+
+`e2eResolution.test.ts` is the best example when you need the full browser-backed resolution path. `vscodeRegression.test.ts` is the best example when you want one more host-only regression in the shared sequential launch.
+
 ## Manual sandboxes
 
-The TUI exposes a third option besides "run a test" and "list tests": open a manual sandbox. It builds a real conflict repo from `test-fixtures/general/` or `test-fixtures/edge-cases/` and hands it to you inside the extension host. Great for debugging a specific fixture by hand:
+The same runner can also open a real manual sandbox from `test-fixtures/`. This is useful when you want to inspect a fixture by hand in VS Code instead of turning it into an automated test immediately.
 
 ```bash
-node out/apps/vscode-extension/tests/runIntegrationTest.js --manual general/conflict_11 #or any directory from test-fixtures.
-MERGENB_MANUAL_SANDBOX_DIR=/tmp/foo npm run test --manual general/conflict_11   # override sandbox path
+node out/apps/vscode-extension/tests/runIntegrationTest.js --manual general/conflict_11
+MERGENB_MANUAL_SANDBOX_DIR=/tmp/foo npm run test -- --manual general/conflict_11
 ```
 
-## Always compile before running
-
-```bash
-npm run compile && npm run compile-tests
-```
-
-`pretest:vscode`, `pretest:e2e`, and `pretest:pw` do this for you, but when you run the `node out/...` form directly, you own the compile step.
+The `--manual` argument accepts a fixture folder such as `general/conflict_11`, and the interactive `npm run test` TUI lets you pick from discovered fixtures without remembering the path.

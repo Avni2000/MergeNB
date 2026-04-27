@@ -8,65 +8,100 @@ description: Browser-level integration tests against the real resolver UI.
 
 # Playwright
 
-Lives in `packages/web/tests/`. Each spec boots a real web server, a temp-dir Git repo with a three-way merge conflict, and a Chromium page pointed at the resolver. The UI is exercised the same way a user would.
+Playwright specs live in `packages/web/tests/`. Each spec boots a real web server, creates a temp Git repo with a three-way notebook conflict, and drives a Chromium page against the resolver the same way a user would.
 
-## Running
+## What belongs here
+
+Use Playwright for resolver behavior: row rendering, conflict actions, history, settings-driven UI changes, output rendering, and notebook writes that can be proven from the browser-facing flow.
+
+If the behavior only exists when the extension host talks to VS Code APIs or the Git extension directly, move up to the [VS Code host](vscode-host.mdx) layer instead.
+
+
+## CLI commands
 
 ```bash
-npm run test:pw                 # headless
-npm run test:pw:headed          # watch the browser
-npm run test:pw:ui              # Playwright's inspector UI
-npm run test:pw:debug           # debug mode with pause
+npm run test:pw          # headless
+npm run test:pw:headed   # headed browser
+npm run test:pw:ui       # Playwright UI
+npm run test:pw:debug    # debug mode
+
+# Direct Playwright invocation
 npx playwright test <file>.spec.ts --reporter=line
 ```
 
-:::warning Compile before testing
-`npm run test` and its derivatives will pre-compile both the main code and test helpers, but if you're running tests directly with `npx` or with `node` or in an editor, remember to compile **both** first:
+## Compile behavior
+
+:::warning Compile before direct Playwright runs
+`npm run test:pw` and its variants already compile the repo through `pretest:pw`.
+
+If you run `npx playwright test` directly, compile both layers first:
 ```bash
-npm run compile           # builds the extension + packages
-npm run compile-tests     # tsc to out/ for the VS Code host
+npm run compile
+npm run compile-tests
 ```
 :::
 
-
-
-## Important Files
+## Key files
 
 | File | Purpose |
-|---|---|
+| --- | --- |
 | `playwright.config.ts` | Worker count, timeouts, global setup/teardown, reporters |
-| `packages/web/tests/fixtures.ts` | Playwright Test fixtures: merge repo, session, page |
+| `packages/web/tests/fixtures.ts` | Shared Playwright fixtures plus notebook-on-disk assertion helpers |
 | `packages/web/tests/globalSetup.ts` | Starts the web server once per run |
-| `packages/web/tests/globalTeardown.ts` | Stops it |
-| `packages/web/tests/*.spec.ts` | Current Specs |
+| `packages/web/tests/globalTeardown.ts` | Stops the shared web server |
+| `test-fixtures/shared/integrationUtils.ts` | Browser helpers for reading rows, editing cells, and collecting expected UI output |
+| `packages/web/tests/*.spec.ts` | Resolver UI specs |
 
-## Fixtures
+## Adding a new Playwright spec
 
-`fixtures.ts` exposes a `test` with custom fixtures:
+1. Add the spec under `packages/web/tests/` using `*.spec.ts`.
+2. Import `test` and `expect` from `./fixtures`.
+3. Build a conflict repo from a fixture triplet.
+4. Launch a resolver session with `conflictSession`.
+5. Drive the UI and assert both browser state and notebook state on disk.
 
-- Builds a temp Git repo from a `NotebookTriplet` (`base.ipynb`, `current.ipynb`, `incoming.ipynb`).
-- Opens a conflict session against the running web server.
-- Attaches a `page` already navigated to the session URL.
-- Teardown deletes the temp repo and closes the browser.
-
-Each spec declares what it wants:
+Typical shape:
 
 ```ts
-test('cell reorder preserves unmatched cells', async ({ conflictSession }) => {
-  // conflictSession.page is ready to drive
+import { test, expect } from './fixtures';
+
+test('my scenario', async ({ conflictRepo, conflictSession }) => {
+  const workspacePath = conflictRepo({
+    base: 'general/conflict_0/base.ipynb',
+    current: 'general/conflict_0/current.ipynb',
+    incoming: 'general/conflict_0/incoming.ipynb',
+  });
+
+  const { page, conflictFile } = await conflictSession(workspacePath);
+  // drive UI
+  // read notebook from disk
 });
 ```
 
-## Adding a new spec
+The `fixtures.ts` extension gives you the pieces you usually need:
 
-:::info Why is it called a spec?
-AFAIK ".spec.ts" and ".test.ts" are used somewhat interchangeably, and while migrating to the Playwright testing framework from a more manual setup, I chose ".spec.ts" to distinguish the new testing files vs. the old ones.
-:::
+- `conflictRepo`: creates a temp repo from `base/current/incoming` notebooks
+- `conflictSession`: opens the live resolver in Chromium
+- `applyAndReadNotebook`: clicks Apply and reads the resolved notebook from disk
+- `assertMatches`: compares notebook cells on disk to expected cells
 
-See the test files under `packages/web/tests/` for details. 
+## Settings and disk assertions
 
-In general, the Playwright suite focuses on UI-level integration tests of the resolver, while the `test:vscode` regression suite covers the extension's Git integration and resolver entry points. There is some overlap, but new tests should generally go in Playwright unless they require VS Code APIs or Git interactions that are hard to mock.
+Two repo-wide testing rules matter here:
 
-## Isolated config per worker
+1. Respect settings explicitly.
+   - Tests that depend on auto-resolve or UI toggles should use `writeSettingsFile(...)`.
+   - This is especially important for things like `ui.showBaseColumn`, `ui.hideNonConflictOutputs`, and auto-resolve behavior.
+2. Verify UI output against the notebook written to disk.
+   - `collectExpectedCellsFromUI(...)` in `test-fixtures/shared/integrationUtils.ts` is the usual starting point.
+   - After applying the resolution, use `assertNotebookMatches(...)` against the final notebook.
 
-`test-fixtures/shared/testRunnerShared.ts` provisions a per-worker `MERGENB_CONFIG_PATH` environment variable so parallel workers do not fight over the same settings file.
+Representative examples:
+
+- `packages/web/tests/perCellResolution.spec.ts`
+- `packages/web/tests/settingsMatrix.spec.ts`
+- `packages/web/tests/reorderUnmatchApplyDisk.spec.ts`
+
+## Parallel settings isolation
+
+The Playwright fixtures provision an isolated `MERGENB_CONFIG_PATH` per test worker so parallel runs do not fight over one shared config file. That isolation is why settings-focused specs can safely run in parallel.
