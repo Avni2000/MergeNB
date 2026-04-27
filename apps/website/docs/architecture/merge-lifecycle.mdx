@@ -74,12 +74,17 @@ else:
 
 There are 2 intentional exceptions and policy choices around structural changes:
 
-- **Reorder is handled separately from ordinary three-way content comparison.** Reordering is detected globally from the full set of `CellMapping` entries, not from a single row's `base/current/incoming` values in isolation.
-- **Reorder can still be surfaced as a conflict even when content itself is not conflicting.** This is an intentional UX choice: MergeNB prefers to make notebook structure visible and user-controlled rather than silently auto-merging cell movement.
-- **Why this is different from the ordinary three-way rule:** if reorder followed the same "only one side changed, so auto-merge it" logic, many notebooks would resolve automatically in ways that are technically valid but surprising to the user. For notebooks, cell order often carries real meaning.
-- **Add/delete cases are also a design choice, not a law of three-way merge.** MergeNB currently surfaces one-sided adds and delete-vs-keep situations as structural conflict rows instead of always auto-merging them away.
-- **Why surface structural rows at all:** the project biases toward preserving user control over notebook shape, not just notebook text. A structurally "safe" merge can still be the wrong UX if it hides that a cell was inserted, removed, or moved.
+#### Exception 1: Reorder
+
+- Reordering is detected globally from the full set of `CellMapping` entries, not from a single row's `base/current/incoming` values in isolation.
+- Reorder can still be surfaced as a conflict even when content itself is not conflicting; MergeNB prefers to make notebook structure visible and user-controlled rather than silently auto-merging cell movement.
+- **Why this differs from the ordinary three-way rule:** if reorder followed the same "only one side changed, so auto-merge it" logic, many notebooks would resolve automatically in ways that are technically valid but surprising to the user. For notebooks, cell order often carries real meaning.
 - **Where to see this behavior:** check `test-fixtures/edge-cases/reordered-cells/*` and open the fixture through the normal resolver flow.
+
+#### Exception 2: Add/Delete
+
+- MergeNB currently shows one-sided adds and delete-vs-keep situations as structural conflict rows instead of always auto-merging them away.
+- Git has no guidance on this, and this project biases toward preserving user control. A structurally "safe" merge can still be the wrong UX if it hides that a cell was inserted, removed, or moved.
 
 ### 5. Auto-resolution
 
@@ -111,7 +116,7 @@ Back in the VS Code extension, `buildResolvedNotebookFromRows` reconstructs the 
 
 1. For each resolved row, deep-clone the reference cell from the chosen branch, replace its source with the user's edited text, and optionally strip outputs.
 2. For non-conflict rows, apply the three-way rule (`selectNonConflictMergedCell`): if only one side diverged from base, take that side.
-- This could be cleaner, since we're computing which cell to take twice, but in reality, we need fallbacks, and row shapes can change. Applying the rule 2x works.
+    - The three-way rule is applied both during conflict detection and writeback to handle cases where row shapes change during user interaction.  
 3. Merge notebook-level metadata key by key using the same three-way logic, with kernel metadata optionally pinned to the current branch.
 4. Optionally renumber execution counts sequentially.
 
