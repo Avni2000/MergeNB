@@ -181,7 +181,7 @@
     "@vscode/markdown-it-katex": "^1.1.2",
     "dompurify": "^3.3.3",
     "immer": "^11.1.4",
-    "katex": "^0.16.44",
+    "katex": "^0.16.45",
     "knip": "^6.3.0",
     "markdown-it": "^14.1.1",
     "ws": "^8.20.0",
