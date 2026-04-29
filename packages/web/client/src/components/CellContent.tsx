@@ -15,8 +15,7 @@ import { IRenderMime, OutputModel, RenderMimeRegistry, standardRendererFactories
 import { Widget } from '@lumino/widgets';
 import DOMPurify from 'dompurify';
 import type { NotebookCell, CellOutput } from '../types';
-import { normalizeCellSource } from '../../../../core/src';
-import { diff as computeDiff } from '@codemirror/merge';
+import { computeDiffMarks, normalizeCellSource } from '../../../../core/src';
 import * as logger from '../../../../core/src';
 import type { Highlighter } from '@lezer/highlight';
 import { highlightCode } from '@lezer/highlight';
@@ -77,69 +76,6 @@ function getSyntaxTokens(
         logger.debug('[MergeNB] Failed to parse syntax tree for highlighting:', err);
         return tokens;
     }
-}
-
-/** Compute diff line- and inline-level marks (standalone, no CodeMirror state). */
-function computeDiffMarks(
-    source: string,
-    compareSource: string,
-    side: 'base' | 'current' | 'incoming',
-    diffMode: 'base' | 'conflict',
-): { lineClasses: Map<number, string>; inlineRanges: { from: number; to: number; classes: string }[] } {
-    const lineClasses = new Map<number, string>();
-    const inlineRanges: { from: number; to: number; classes: string }[] = [];
-    const changes = computeDiff(compareSource, source);
-
-    // Build line-start lookup (0-based line indices)
-    const lineStarts: number[] = [0];
-    for (let i = 0; i < source.length; i++) {
-        if (source[i] === '\n') lineStarts.push(i + 1);
-    }
-    const lineOfPos = (pos: number): number => {
-        let lo = 0, hi = lineStarts.length - 1;
-        while (lo < hi) {
-            const mid = (lo + hi + 1) >> 1;
-            if (lineStarts[mid] <= pos) lo = mid; else hi = mid - 1;
-        }
-        return lo;
-    };
-
-    for (const change of changes) {
-        if (change.fromB === change.toB) continue;
-
-        const changedText = source.slice(change.fromB, change.toB);
-        const isWhitespaceOnly = changedText.length > 0 && changedText.trim() === '';
-        const useConflictClass = diffMode === 'conflict' || isWhitespaceOnly;
-
-        const lineClass = useConflictClass
-            ? 'diff-line diff-line-conflict'
-            : side === 'current'
-                ? 'diff-line diff-line-current'
-                : side === 'base'
-                    ? 'diff-line diff-line-base'
-                    : 'diff-line diff-line-incoming';
-        const inlineClass = useConflictClass
-            ? 'diff-inline-conflict'
-            : side === 'current'
-                ? 'diff-inline-current'
-                : side === 'base'
-                    ? 'diff-inline-base'
-                    : 'diff-inline-incoming';
-
-        const firstLine = lineOfPos(change.fromB);
-        const lastLine = lineOfPos(Math.max(change.fromB, change.toB - 1));
-        for (let ln = firstLine; ln <= lastLine; ln++) lineClasses.set(ln, lineClass);
-
-        const aSlice = compareSource.slice(change.fromA, change.toA);
-        const bSlice = source.slice(change.fromB, change.toB);
-        for (const sub of computeDiff(aSlice, bSlice)) {
-            if (sub.fromB < sub.toB) {
-                inlineRanges.push({ from: change.fromB + sub.fromB, to: change.fromB + sub.toB, classes: inlineClass });
-            }
-        }
-    }
-
-    return { lineClasses, inlineRanges };
 }
 
 interface StaticSegment {
