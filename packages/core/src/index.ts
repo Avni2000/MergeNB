@@ -5,6 +5,8 @@ export * from './cellMatcher';
 
 export * from './conflictDetector';
 
+export * from './diffMarks';
+
 export * from './logger';
 
 export * from './notebookParser';

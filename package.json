@@ -179,6 +179,7 @@
     "@uiw/codemirror-theme-github": "^4.25.9",
     "@uiw/react-codemirror": "^4.25.9",
     "@vscode/markdown-it-katex": "^1.1.2",
+    "diff": "^9.0.0",
     "dompurify": "^3.3.3",
     "immer": "^11.1.4",
     "katex": "^0.16.44",
