@@ -147,11 +147,12 @@ jobs:
 
       # Upload artifacts
       - name: Upload Playwright artifacts
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ matrix.os }}-vscode-${{ matrix.vscode-version }}
           path: |
             playwright-test-results/
             playwright-report/
+          if-no-files-found: ignore
           retention-days: 7

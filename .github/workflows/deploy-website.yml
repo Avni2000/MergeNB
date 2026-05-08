@@ -2,6 +2,11 @@ name: Deploy Website
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - MergeNB Tests
+    types:
+      - completed
 
   push:
     branches:
@@ -11,6 +16,7 @@ on:
       - '.github/workflows/deploy-website.yml'
 
 permissions:
+  actions: read
   contents: read
   pages: write
   id-token: write
@@ -33,6 +39,13 @@ jobs:
 
       - run: npm ci
         working-directory: apps/website
+
+      - run: npm run sync:ci-report
+        working-directory: apps/website
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          MERGENB_SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
 
       - run: npm run build
         working-directory: apps/website

@@ -122,6 +122,11 @@ const config: Config = {
           position: 'left',
         },
         {
+          to: '/ci-report',
+          label: 'CI Report',
+          position: 'left',
+        },
+        {
           href: 'https://github.com/Avni2000/MergeNB',
           label: 'GitHub',
           position: 'right',
@@ -137,6 +142,7 @@ const config: Config = {
             {label: 'Docs', to: '/docs'},
             {label: 'Installation', to: '/docs/installation'},
             {label: 'Playground', to: '/playground'},
+            {label: 'CI Report', to: '/ci-report'},
           ],
         },
         {
