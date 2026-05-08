@@ -240,7 +240,12 @@ export function ConflictResolver({
     const enableUndoRedoHotkeys = conflict.enableUndoRedoHotkeys ?? true;
     const showBaseColumn = conflict.showBaseColumn ?? false;
     const showCellHeaders = conflict.showCellHeaders ?? false;
-    const isMac = useMemo(() => /Mac|iPod|iPhone|iPad/.test(navigator.platform), []);
+    const isMac = useMemo(() => {
+        if (typeof navigator === 'undefined') return false;
+        const platform = (navigator as Navigator & { userAgentData?: { platform: string } }).userAgentData?.platform;
+        if (platform === 'macOS') return true;
+        return /Mac|iPod|iPhone|iPad/.test(navigator.platform) || /Macintosh/.test(navigator.userAgent);
+    }, []);
     const undoShortcutLabel = isMac ? 'Cmd+Z' : 'Ctrl+Z';
     const redoShortcutLabel = isMac ? 'Cmd+Shift+Z' : 'Ctrl+Shift+Z';
     useEffect(() => {
