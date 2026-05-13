@@ -10,6 +10,9 @@ updates:
     open-pull-requests-limit: 10
     cooldown:
       default-days: 21
+    ignore:
+      - dependency-name: "@playwright/test"
+      - dependency-name: "@types/vscode"
     commit-message:
       prefix: "chore"
       include: "scope"
