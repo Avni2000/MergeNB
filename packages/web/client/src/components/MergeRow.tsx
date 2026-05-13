@@ -471,6 +471,7 @@ function MergeRowInner({
                 </div>
                 <div className="conflict-action-right">
                     <button
+                        title="Resolve by omitting this cell from the merged notebook"
                         className={`btn-resolve btn-delete ${resolutionState?.choice === 'delete' ? 'selected' : ''}`}
                         onClick={() => handleChoiceClick('delete')}
                     >
