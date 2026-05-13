@@ -168,7 +168,8 @@
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.58.2"
+    "typescript-eslint": "^8.58.2",
+    "knip": "^6.4.1"
   },
   "dependencies": {
     "@codemirror/language": "^6.12.3",
@@ -183,7 +184,6 @@
     "dompurify": "^3.4.0",
     "immer": "^11.1.4",
     "katex": "^0.16.45",
-    "knip": "^6.5.0",
     "markdown-it": "^14.1.1",
     "ws": "^8.20.0",
     "zustand": "^5.0.12"
