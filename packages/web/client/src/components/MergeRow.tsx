@@ -471,6 +471,7 @@ function MergeRowInner({
                 </div>
                 <div className="conflict-action-right">
                     <button
+                        title="Resolve by omitting this cell from the merged notebook"
                         className={`btn-resolve btn-delete ${resolutionState?.choice === 'delete' ? 'selected' : ''}`}
                         onClick={() => handleChoiceClick('delete')}
                     >
@@ -529,7 +530,10 @@ function MergeRowInner({
                                 showCellHeaders={showCellHeaders}
                             />
                         ) : (
-                            <div className="cell-placeholder cell-deleted">
+                            <div
+                                className="cell-placeholder cell-deleted"
+                                title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
+                            >
                                 <span className="placeholder-text">{getPlaceholderText('base')}</span>
                             </div>
                         )}
@@ -550,7 +554,10 @@ function MergeRowInner({
                             showCellHeaders={showCellHeaders}
                         />
                     ) : (
-                        <div className="cell-placeholder cell-deleted">
+                        <div
+                            className="cell-placeholder cell-deleted"
+                            title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
+                        >
                             <span className="placeholder-text">{getPlaceholderText('current')}</span>
                         </div>
                     )}
@@ -570,7 +577,10 @@ function MergeRowInner({
                             showCellHeaders={showCellHeaders}
                         />
                     ) : (
-                        <div className="cell-placeholder cell-deleted">
+                        <div
+                            className="cell-placeholder cell-deleted"
+                            title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
+                        >
                             <span className="placeholder-text">{getPlaceholderText('incoming')}</span>
                         </div>
                     )}

@@ -624,6 +624,7 @@ export function ConflictResolver({
                             </button>
                             <div className="history-menu" ref={historyMenuRef}>
                                 <button
+                                    title="View and jump to previous resolution states"
                                     className="btn btn-secondary history-toggle"
                                     onClick={() => setHistoryOpen(prev => !prev)}
                                     aria-expanded={historyOpen}
@@ -706,7 +707,7 @@ export function ConflictResolver({
                                         fontSize: 11,
                                         padding: '4px 8px'
                                     }}
-                                    title="Accept all base (original) changes"
+                                    title="Accept all base changes for remaining conflicts"
                                     onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('base'))}
                                     onClick={() => {
                                         if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
@@ -725,7 +726,7 @@ export function ConflictResolver({
                                     fontSize: 11,
                                     padding: '4px 8px',
                                 }}
-                                title="Accept all current (local) changes"
+                                title="Accept all current changes for remaining conflicts"
                                 onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('current'))}
                                 onClick={() => {
                                     if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
@@ -743,7 +744,7 @@ export function ConflictResolver({
                                     fontSize: 11,
                                     padding: '4px 8px'
                                 }}
-                                title="Accept all incoming (remote) changes"
+                                title="Accept all incoming changes for remaining conflicts"
                                 onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('incoming'))}
                                 onClick={() => {
                                     if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
@@ -770,6 +771,9 @@ export function ConflictResolver({
                             Mark as resolved (stage in Git)
                         </label>
                         <button
+                            title={allResolved ?
+                                "Write the merged notebook with your resolution choices"
+                                : "Resolve all conflicts before applying"}
                             className="btn btn-primary"
                             onMouseDown={handleResolveMouseDown}
                             onClick={handleResolve}
