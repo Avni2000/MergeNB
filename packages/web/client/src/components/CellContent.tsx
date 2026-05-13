@@ -198,19 +198,41 @@ function buildLineSegments(
     return result;
 }
 
+function getSearchRanges(
+    source: string,
+    query: string,
+    highlightClass: string,
+): { from: number; to: number; classes: string }[] {
+    if (!query) return [];
+    const q = query.toLowerCase();
+    const src = source.toLowerCase();
+    const ranges: { from: number; to: number; classes: string }[] = [];
+    let pos = 0;
+    while (pos < src.length) {
+        const idx = src.indexOf(q, pos);
+        if (idx === -1) break;
+        ranges.push({ from: idx, to: idx + q.length, classes: highlightClass });
+        pos = idx + q.length;
+    }
+    return ranges;
+}
+
 /** Build a static render plan with syntax highlighting and optional diff marks. */
 function buildStaticRender(
     source: string,
     syntaxTokens: { from: number; to: number; classes: string }[],
     lineClasses?: Map<number, string>,
     inlineRanges?: { from: number; to: number; classes: string }[],
+    searchRanges?: { from: number; to: number; classes: string }[],
 ): StaticRender {
     if (!source) return { kind: 'flat', segments: [] };
     const hasDiff = (lineClasses && lineClasses.size > 0) || (inlineRanges && inlineRanges.length > 0);
-    if (!hasDiff) return { kind: 'flat', segments: buildFlatSegments(source, syntaxTokens) };
+    const hasSearch = searchRanges && searchRanges.length > 0;
+    if (!hasDiff && !hasSearch) return { kind: 'flat', segments: buildFlatSegments(source, syntaxTokens) };
+    const allInline = [...(inlineRanges ?? []), ...(searchRanges ?? [])];
     return {
         kind: 'lines',
-        lines: buildLineSegments(source, syntaxTokens, lineClasses ?? new Map(), inlineRanges ?? []),
+        lines: buildLineSegments(source, syntaxTokens, lineClasses ?? new Map(), allInline),
     };
 }
 
@@ -262,6 +284,24 @@ function renderStaticToDom(render: StaticRender): DocumentFragment {
     return fragment;
 }
 
+function highlightPlainText(source: string, query: string | undefined, isActive: boolean): React.ReactNode {
+    if (!query) return source;
+    const cls = isActive ? 'search-highlight-active' : 'search-highlight';
+    const q = query.toLowerCase();
+    const src = source.toLowerCase();
+    const parts: React.ReactNode[] = [];
+    let pos = 0;
+    let key = 0;
+    while (pos < source.length) {
+        const idx = src.indexOf(q, pos);
+        if (idx === -1) { parts.push(source.slice(pos)); break; }
+        if (idx > pos) parts.push(source.slice(pos, idx));
+        parts.push(<span key={key++} className={cls}>{source.slice(idx, idx + q.length)}</span>);
+        pos = idx + q.length;
+    }
+    return parts;
+}
+
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
 const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
 const MAX_RENDERMIME_REGISTRY_CACHE_SIZE = 32;
@@ -277,6 +317,8 @@ interface CellContentProps {
     showCellHeaders?: boolean;
     languageExtensions?: Extension[];
     theme?: 'dark' | 'light';
+    searchQuery?: string;
+    isActiveSearchRow?: boolean;
 }
 const EMPTY_EXTENSIONS: Extension[] = [];
 function CellContentInner({
@@ -290,6 +332,8 @@ function CellContentInner({
     showCellHeaders = false,
     languageExtensions = EMPTY_EXTENSIONS,
     theme = 'light',
+    searchQuery,
+    isActiveSearchRow = false,
 }: CellContentProps): React.ReactElement {
     const renderMimeRegistry = useMemo(
         () => getRenderMimeRegistry(),
@@ -349,16 +393,20 @@ function CellContentInner({
                         langExtensions={cellType === 'markdown' ? EMPTY_EXTENSIONS : languageExtensions}
                         theme={theme}
                         isMarkdown={cellType === 'markdown'}
+                        searchQuery={searchQuery}
+                        isActiveSearchRow={isActiveSearchRow}
                     />
                 ) : cellType !== 'markdown' ? (
                     <StaticHighlightedCode
                         source={source}
                         langExtensions={languageExtensions}
                         theme={theme}
+                        searchQuery={searchQuery}
+                        isActiveSearchRow={isActiveSearchRow}
                     />
                 ) : (
                     // Markdown in conflict mode: plain pre (diff view takes over)
-                    <pre>{source}</pre>
+                    <pre>{highlightPlainText(source, searchQuery, isActiveSearchRow)}</pre>
                 )}
             </div>
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
@@ -489,16 +537,21 @@ export function MarkdownContent({ source, theme }: MarkdownContentProps): React.
 
 // ─── Static display components (replace CodeMirror read-only instances) ───────
 
-export function StaticHighlightedCode({ source, langExtensions, theme, className = 'cell-source-static' }: {
+export function StaticHighlightedCode({ source, langExtensions, theme, className = 'cell-source-static', searchQuery, isActiveSearchRow = false }: {
     source: string;
     langExtensions: Extension[];
     theme: 'dark' | 'light';
     className?: string;
+    searchQuery?: string;
+    isActiveSearchRow?: boolean;
 }): React.ReactElement {
     const nodes = useMemo(() => {
         const tokens = getSyntaxTokens(source, langExtensions, theme);
-        return renderStaticToReact(buildStaticRender(source, tokens));
-    }, [source, langExtensions, theme]);
+        const searchRanges = searchQuery
+            ? getSearchRanges(source, searchQuery, isActiveSearchRow ? 'search-highlight-active' : 'search-highlight')
+            : undefined;
+        return renderStaticToReact(buildStaticRender(source, tokens, undefined, undefined, searchRanges));
+    }, [source, langExtensions, theme, searchQuery, isActiveSearchRow]);
 
     return (
         <pre className={className}>
@@ -507,7 +560,7 @@ export function StaticHighlightedCode({ source, langExtensions, theme, className
     );
 }
 
-function StaticDiffContent({ source, compareSource, side, diffMode, langExtensions, theme, isMarkdown = false }: {
+function StaticDiffContent({ source, compareSource, side, diffMode, langExtensions, theme, isMarkdown = false, searchQuery, isActiveSearchRow = false }: {
     source: string;
     compareSource: string;
     side: 'base' | 'current' | 'incoming';
@@ -515,12 +568,17 @@ function StaticDiffContent({ source, compareSource, side, diffMode, langExtensio
     langExtensions: Extension[];
     theme: 'dark' | 'light';
     isMarkdown?: boolean;
+    searchQuery?: string;
+    isActiveSearchRow?: boolean;
 }): React.ReactElement {
     const nodes = useMemo(() => {
         const tokens = getSyntaxTokens(source, langExtensions, theme);
         const { lineClasses, inlineRanges } = computeDiffMarks(source, compareSource, side, diffMode);
-        return renderStaticToReact(buildStaticRender(source, tokens, lineClasses, inlineRanges));
-    }, [source, compareSource, side, diffMode, langExtensions, theme]);
+        const searchRanges = searchQuery
+            ? getSearchRanges(source, searchQuery, isActiveSearchRow ? 'search-highlight-active' : 'search-highlight')
+            : undefined;
+        return renderStaticToReact(buildStaticRender(source, tokens, lineClasses, inlineRanges, searchRanges));
+    }, [source, compareSource, side, diffMode, langExtensions, theme, searchQuery, isActiveSearchRow]);
 
     // Markdown cells don't need <code> wrapper - it's text content, not code
     return (

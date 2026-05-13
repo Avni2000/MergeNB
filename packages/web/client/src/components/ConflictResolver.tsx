@@ -1025,6 +1025,8 @@ export function ConflictResolver({
                                     }
                                     showBaseColumn={showBaseColumn}
                                     showCellHeaders={showCellHeaders}
+                                    searchQuery={searchQueryDebounced || undefined}
+                                    isActiveSearchRow={searchMatches[searchMatchIndex] === i}
                                     data-testid={
                                         conflictIdx >= 0
                                             ? `conflict-row-${conflictIdx}`

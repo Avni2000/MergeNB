@@ -743,6 +743,18 @@ ${bodySel} {
     display: block;
 }
 
+.search-highlight {
+    background: rgba(234, 179, 8, 0.3);
+    border-radius: 2px;
+    outline: 1px solid rgba(234, 179, 8, 0.4);
+}
+
+.search-highlight-active {
+    background: rgba(234, 179, 8, 0.65);
+    border-radius: 2px;
+    outline: 1px solid rgba(234, 179, 8, 0.9);
+}
+
 /* Static code uses @uiw/codemirror-theme-github HighlightStyle (see CellContent.tsx) */
 .cell-source-static code,
 .markdown-content pre.has-syntax-highlight code {

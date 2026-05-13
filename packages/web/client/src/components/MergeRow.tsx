@@ -36,6 +36,8 @@ interface MergeRowProps {
     showBaseColumn?: boolean;
     showCellHeaders?: boolean;
     theme?: 'dark' | 'light';
+    searchQuery?: string;
+    isActiveSearchRow?: boolean;
     'data-testid'?: string;
 }
 
@@ -65,6 +67,8 @@ function MergeRowInner({
     showBaseColumn = true,
     showCellHeaders = false,
     theme = 'light',
+    searchQuery,
+    isActiveSearchRow = false,
     'data-testid': testId,
 }: MergeRowProps): React.ReactElement {
     const isConflict = row.type === 'conflict';
@@ -269,6 +273,8 @@ function MergeRowInner({
                         theme={theme}
                         showOutputs={showOutputs}
                         showCellHeaders={showCellHeaders}
+                        searchQuery={searchQuery}
+                        isActiveSearchRow={isActiveSearchRow}
                     />
                 </div>
             </div>
@@ -528,6 +534,8 @@ function MergeRowInner({
                                 theme={theme}
                                 showOutputs={showOutputs}
                                 showCellHeaders={showCellHeaders}
+                                searchQuery={searchQuery}
+                                isActiveSearchRow={isActiveSearchRow}
                             />
                         ) : (
                             <div
@@ -552,6 +560,8 @@ function MergeRowInner({
                             theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
+                            searchQuery={searchQuery}
+                            isActiveSearchRow={isActiveSearchRow}
                         />
                     ) : (
                         <div
@@ -575,6 +585,8 @@ function MergeRowInner({
                             theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
+                            searchQuery={searchQuery}
+                            isActiveSearchRow={isActiveSearchRow}
                         />
                     ) : (
                         <div
