@@ -67,6 +67,11 @@ export function ConflictResolver({
     const pendingDestructiveActionRef = useRef<(() => void) | null>(null);
     const suppressApplyResolutionClickRef = useRef(false);
     const suppressGuardedClickRef = useRef(false);
+    const searchInputRef = useRef<HTMLInputElement>(null);
+    const [searchOpen, setSearchOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchQueryDebounced, setSearchQueryDebounced] = useState('');
+    const [searchMatchIndex, setSearchMatchIndex] = useState(0);
 
     const choices = useStore(resolverStore, state => state.choices);
     const editingConflicts = useStore(resolverStore, state => state.editingConflicts);
@@ -232,6 +237,26 @@ export function ConflictResolver({
     }, [kernelLanguage]);
 
     const conflictRows = useMemo(() => rows.filter(r => r.type === 'conflict'), [rows]);
+    
+    // Debounce the scan so typing quickly doesn't re-search on every keystroke.
+    useEffect(() => {
+        const id = setTimeout(() => setSearchQueryDebounced(searchQuery), 150);
+        return () => clearTimeout(id);
+    }, [searchQuery]);
+
+    // Scan all rows for cells whose normalized source contains the query.
+    // Keyed on the debounced value so large notebooks aren't scanned mid-word.
+    const searchMatches = useMemo(() => {
+        if (!searchQueryDebounced.trim()) return [];
+        const q = searchQueryDebounced.toLowerCase();
+        return rows.reduce<number[]>((acc, row, i) => {
+            const cells = [row.currentCell, row.incomingCell, row.baseCell].filter(Boolean);
+            if (cells.some(cell => normalizeCellSource(cell!.source).toLowerCase().includes(q))) {
+                acc.push(i);
+            }
+            return acc;
+        }, []);
+    }, [searchQueryDebounced, rows]);
     const totalConflicts = conflictRows.length;
     const resolvedCount = choices.size;
     const allResolved = resolvedCount === totalConflicts;
@@ -379,6 +404,58 @@ export function ConflictResolver({
             el?.removeEventListener('scroll', onScroll);
         };
     }, []);
+
+    // Reset to match 0 and jump there whenever the query produces a new result set.
+    // virtualizerRef is a plain ref so it's safe to call here without adding it to deps.
+    useEffect(() => {
+        setSearchMatchIndex(0);
+        if (searchMatches.length > 0) {
+            virtualizerRef.current?.scrollToIndex(searchMatches[0], { align: 'center' });
+        }
+    }, [searchMatches]);
+
+    // Intercept Ctrl/Cmd+F to open the custom find bar instead of the browser's native find.
+    // Escape closes it. Both branches are in one effect so the handler stays in sync with
+    // searchOpen without registering two separate listeners.
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+                e.preventDefault();
+                if (searchOpen) {
+                    searchInputRef.current?.select();
+                } else {
+                    setSearchOpen(true);
+                }
+            } else if (e.key === 'Escape' && searchOpen) {
+                setSearchOpen(false);
+                setSearchQuery('');
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [searchOpen]);
+
+    useEffect(() => {
+        if (searchOpen) {
+            searchInputRef.current?.focus();
+        }
+    }, [searchOpen]);
+
+    // Scroll the virtualizer to the target match row. scrollToIndex works on
+    // unmeasured items too — TanStack uses the estimated size as a fallback.
+    const goToNextMatch = useCallback(() => {
+        if (searchMatches.length === 0) return;
+        const next = (searchMatchIndex + 1) % searchMatches.length;
+        setSearchMatchIndex(next);
+        virtualizerRef.current?.scrollToIndex(searchMatches[next], { align: 'center' });
+    }, [searchMatches, searchMatchIndex]);
+
+    const goToPrevMatch = useCallback(() => {
+        if (searchMatches.length === 0) return;
+        const prev = (searchMatchIndex - 1 + searchMatches.length) % searchMatches.length;
+        setSearchMatchIndex(prev);
+        virtualizerRef.current?.scrollToIndex(searchMatches[prev], { align: 'center' });
+    }, [searchMatches, searchMatchIndex]);
 
     const applyResolutionNow = useCallback(() => {
         const {
@@ -799,6 +876,72 @@ export function ConflictResolver({
                     </div>
                 </div>
             </header>
+
+            {searchOpen && (
+                <div className="search-bar">
+                    <div className="search-input-wrapper">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>
+                            <circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.5"/>
+                            <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    e.shiftKey ? goToPrevMatch() : goToNextMatch();
+                                } else if (e.key === 'Escape') {
+                                    setSearchOpen(false);
+                                    setSearchQuery('');
+                                }
+                            }}
+                            placeholder="Find in cells…"
+                        />
+                        {searchQuery.trim() && (
+                            <span className={`search-match-count ${searchMatches.length > 0 ? 'has-results' : 'no-results'}`}>
+                                {searchMatches.length > 0
+                                    ? `${searchMatchIndex + 1} / ${searchMatches.length}`
+                                    : 'No results'}
+                            </span>
+                        )}
+                    </div>
+                    <div className="search-nav-btns">
+                        <button
+                            className="search-icon-btn"
+                            onClick={goToPrevMatch}
+                            disabled={searchMatches.length === 0}
+                            title="Previous match (Shift+Enter)"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                                <path d="M4 10L8 6L12 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        </button>
+                        <button
+                            className="search-icon-btn"
+                            onClick={goToNextMatch}
+                            disabled={searchMatches.length === 0}
+                            title="Next match (Enter)"
+                        >
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                                <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div className="search-divider" />
+                    <button
+                        className="search-close-btn"
+                        onClick={() => { setSearchOpen(false); setSearchQuery(''); }}
+                        title="Close (Escape)"
+                    >
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                            <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        </svg>
+                    </button>
+                </div>
+            )}
 
             <main className="main-content" ref={mainContentRef}>
                 {conflict.autoResolveResult &&
