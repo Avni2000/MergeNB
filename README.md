@@ -30,7 +30,7 @@
 
 ## Documentation
 
-**Find the docs site [here](https://avni2000.github.io/MergeNB/docs)**
+**Browse the [MergeNB documentation site](https://avni2000.github.io/MergeNB/docs).**
 
 ## Installation
 
