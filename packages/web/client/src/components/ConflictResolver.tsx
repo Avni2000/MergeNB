@@ -4,12 +4,10 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useVirtualizer, defaultRangeExtractor, type Range } from '@tanstack/react-virtual';
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
 import { createPortal } from 'react-dom';
-import { normalizeCellSource } from '../../../../core/src';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
@@ -61,9 +59,6 @@ export function ConflictResolver({
     } | null>(null);
     const historyMenuRef = useRef<HTMLDivElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
-    const isDraggingRef = useRef(false);
-    const dragRenderedIndicesRef = useRef<number[] | null>(null);
-    const pendingMeasureNodesRef = useRef<Set<HTMLElement>>(new Set());
     const pendingDestructiveActionRef = useRef<(() => void) | null>(null);
     const suppressApplyResolutionClickRef = useRef(false);
     const suppressGuardedClickRef = useRef(false);
@@ -126,13 +121,6 @@ export function ConflictResolver({
         pendingDestructiveActionRef.current = null;
         setDestructiveActionWarning(null);
 
-        // Scroll to the actively edited cell when keeping edits
-        if (activeEditingConflictIndex !== null) {
-            const rowIndex = rows.findIndex(row => row.conflictIndex === activeEditingConflictIndex);
-            if (rowIndex !== -1) {
-                virtualizerRef.current?.scrollToIndex(rowIndex, { align: 'center' });
-            }
-        }
     }, [activeEditingConflictIndex, rows]);
 
     const confirmDestructiveActionWarning = useCallback(() => {
@@ -295,91 +283,6 @@ export function ConflictResolver({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [enableUndoRedoHotkeys, isEditableTarget, isMac, redo, undo, guardEditedResolutions]);
 
-    useEffect(() => {
-        const el = mainContentRef.current;
-        let prevScrollTop = el?.scrollTop ?? 0;
-        let correcting = false;
-
-        const onDown = (event: MouseEvent) => {
-            if (event.button !== 0) return;
-            const target = event.target instanceof Element ? event.target : null;
-            if (
-                !target?.closest?.(
-                    '.cell-content, .cell-output-host, .cell-output-fallback, .resolved-content-input, .resolved-content-static, .markdown-content'
-                )
-            )
-                return;
-            isDraggingRef.current = true;
-            dragRenderedIndicesRef.current = null;
-            prevScrollTop = el?.scrollTop ?? 0;
-        };
-        const onUp = () => {
-            isDraggingRef.current = false;
-            prevScrollTop = el?.scrollTop ?? 0;
-
-            // If the user completed a drag-selection, keep the accumulated
-            // row indices pinned so the browser selection survives scrolling.
-            const sel = window.getSelection();
-            const hasSelection =
-                sel && !sel.isCollapsed && el?.contains(sel.anchorNode ?? null);
-            if (!hasSelection) {
-                dragRenderedIndicesRef.current = null;
-            }
-
-            const pending = pendingMeasureNodesRef.current;
-            if (pending.size > 0) {
-                for (const node of pending) {
-                    if (node.isConnected) {
-                        virtualizerRef.current.measureElement(node);
-                    }
-                }
-                pending.clear();
-            }
-        };
-
-        const onSelectionChange = () => {
-            if (isDraggingRef.current) return;
-            const sel = window.getSelection();
-            if (!sel || sel.isCollapsed || !el?.contains(sel.anchorNode ?? null)) {
-                dragRenderedIndicesRef.current = null;
-            }
-        };
-
-        const onScroll = () => {
-            if (!el || correcting) {
-                prevScrollTop = el?.scrollTop ?? 0;
-                return;
-            }
-            if (!isDraggingRef.current) {
-                prevScrollTop = el.scrollTop;
-                return;
-            }
-            const delta = el.scrollTop - prevScrollTop;
-            const MAX_DELTA = 200;
-            if (Math.abs(delta) > MAX_DELTA) {
-                correcting = true;
-                el.scrollTop = prevScrollTop + Math.sign(delta) * MAX_DELTA;
-                correcting = false;
-                prevScrollTop = el.scrollTop;
-            } else {
-                prevScrollTop = el.scrollTop;
-            }
-        };
-
-        window.addEventListener('mousedown', onDown);
-        window.addEventListener('mouseup', onUp);
-        window.addEventListener('blur', onUp);
-        document.addEventListener('selectionchange', onSelectionChange);
-        el?.addEventListener('scroll', onScroll);
-        return () => {
-            window.removeEventListener('mousedown', onDown);
-            window.removeEventListener('mouseup', onUp);
-            window.removeEventListener('blur', onUp);
-            document.removeEventListener('selectionchange', onSelectionChange);
-            el?.removeEventListener('scroll', onScroll);
-        };
-    }, []);
-
     const applyResolutionNow = useCallback(() => {
         const {
             rows: liveRows,
@@ -467,81 +370,6 @@ export function ConflictResolver({
     );
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
-    const getScrollElement = useCallback(() => mainContentRef.current, []);
-    // Precompute per-row height estimates once per rows change so estimateSize is O(1).
-    // This overestimates rather than underestimates — items are placed too far
-    // apart initially (harmless gaps) rather than overlapping (visible flicker).
-    const estimatedRowHeights = useMemo(() => {
-        return rows.map(row => {
-            const cells = [row.currentCell, row.incomingCell, row.baseCell].filter(
-                Boolean
-            );
-            const maxLines = Math.max(
-                ...cells.map(c => normalizeCellSource(c!.source).split('\n').length),
-                3
-            );
-            // 22px per line + 80px overhead (borders, headers, padding)
-            return Math.max(120, maxLines * 22 + 80);
-        });
-    }, [rows]);
-    const estimateRowSize = useCallback(
-        (index: number) => {
-            return estimatedRowHeights[index] ?? 200;
-        },
-        [estimatedRowHeights]
-    );
-
-    // During drag-select, never remove rows from the DOM — only accumulate.
-    // The browser anchors its selection to specific DOM nodes; if the
-    // virtualizer removes the selection-start node (scrolled out of the
-    // overscan window), the browser resets the selection and scroll position.
-    const dragSafeRangeExtractor = useCallback((range: Range) => {
-        const normal = defaultRangeExtractor(range);
-        const pinned = dragRenderedIndicesRef.current;
-
-        if (!isDraggingRef.current && !pinned) {
-            return normal;
-        }
-
-        if (!pinned) {
-            dragRenderedIndicesRef.current = [...normal];
-            return normal;
-        }
-
-        const merged = new Set([...pinned, ...normal]);
-        const result = Array.from(merged).sort((a, b) => a - b);
-        if (isDraggingRef.current) {
-            dragRenderedIndicesRef.current = result;
-        }
-        return result;
-    }, []);
-
-    const noVirtualize = useMemo(() => {
-        if (typeof window === 'undefined') return false;
-        return new URLSearchParams(window.location.search).has('noVirtualize');
-    }, []);
-
-    const rowVirtualizer = useVirtualizer({
-        count: rows.length,
-        getScrollElement,
-        estimateSize: estimateRowSize,
-        overscan: noVirtualize ? Infinity : 6,
-        rangeExtractor: dragSafeRangeExtractor,
-    });
-
-    const virtualRows = rowVirtualizer.getVirtualItems();
-    const virtualizerRef = useRef(rowVirtualizer);
-    virtualizerRef.current = rowVirtualizer;
-    const measureRef = useCallback((node: HTMLElement | null) => {
-        if (!node) return;
-        if (isDraggingRef.current) {
-            pendingMeasureNodesRef.current.add(node);
-            return;
-        }
-        pendingMeasureNodesRef.current.delete(node);
-        virtualizerRef.current.measureElement(node);
-    }, []);
-    const totalSize = rowVirtualizer.getTotalSize();
 
     const destructiveActionModal = destructiveActionWarning
         ? createPortal(
@@ -831,37 +659,16 @@ export function ConflictResolver({
                         </div>
                     )}
 
-                    <div
-                        style={{
-                            height: totalSize,
-                            position: 'relative',
-                        }}
-                    >
-                        {virtualRows.map((virtualRow) => {
-                            const i = virtualRow.index;
-                            const row = rows[i];
+                    <div>
+                        {rows.map((row, i) => {
                             const conflictIdx = row?.conflictIndex ?? -1;
                             const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
-
-                            if (!row) return null;
-
-                        return (
-                            <div
-                                key={virtualRow.key}
-                                // tanstack uses this attribute to associate DOM measurements
-                                //  with the correct virtualized item
-                                data-index={virtualRow.index}
-                                ref={measureRef}
-                                className="virtual-row"
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    transform: `translateY(${virtualRow.start}px)`,
-                                }}
-                            >
+                            const rowKey = conflictIdx >= 0
+                                ? `conflict-${conflictIdx}`
+                                : `identical-${row.baseCellIndex ?? 'x'}-${row.currentCellIndex ?? 'x'}-${row.incomingCellIndex ?? 'x'}`;
+                            return (
                                 <MergeRow
+                                    key={rowKey}
                                     row={row}
                                     rowIndex={i}
                                     languageExtensions={languageExtensions}
@@ -888,10 +695,9 @@ export function ConflictResolver({
                                             : `row-${i}`
                                     }
                                 />
-                            </div>
-                        );
-                    })}
-                </div>
+                            );
+                        })}
+                    </div>
             </main>
         </div>
     );

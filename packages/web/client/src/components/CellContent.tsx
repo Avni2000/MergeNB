@@ -277,6 +277,7 @@ interface CellContentProps {
     showCellHeaders?: boolean;
     languageExtensions?: Extension[];
     theme?: 'dark' | 'light';
+    isLightweight?: boolean;
 }
 const EMPTY_EXTENSIONS: Extension[] = [];
 function CellContentInner({
@@ -290,6 +291,7 @@ function CellContentInner({
     showCellHeaders = false,
     languageExtensions = EMPTY_EXTENSIONS,
     theme = 'light',
+    isLightweight = false,
 }: CellContentProps): React.ReactElement {
     const renderMimeRegistry = useMemo(
         () => getRenderMimeRegistry(),
@@ -339,6 +341,7 @@ function CellContentInner({
                     <MarkdownContent
                         source={source}
                         theme={theme}
+                        isLightweight={isLightweight}
                     />
                 ) : isConflict && compareCell ? (
                     <StaticDiffContent
@@ -349,12 +352,14 @@ function CellContentInner({
                         langExtensions={cellType === 'markdown' ? EMPTY_EXTENSIONS : languageExtensions}
                         theme={theme}
                         isMarkdown={cellType === 'markdown'}
+                        isLightweight={isLightweight}
                     />
                 ) : cellType !== 'markdown' ? (
                     <StaticHighlightedCode
                         source={source}
                         langExtensions={languageExtensions}
                         theme={theme}
+                        isLightweight={isLightweight}
                     />
                 ) : (
                     // Markdown in conflict mode: plain pre (diff view takes over)
@@ -365,6 +370,7 @@ function CellContentInner({
                 <CellOutputs
                     outputs={cell.outputs}
                     renderMimeRegistry={renderMimeRegistry}
+                    isLightweight={isLightweight}
                 />
             )}
         </div>
@@ -374,6 +380,7 @@ function CellContentInner({
 interface MarkdownContentProps {
     source: string;
     theme: 'dark' | 'light';
+    isLightweight?: boolean;
 }
 
 const markdownFenceLanguageSupportCache = new Map<string, Promise<Extension | null>>();
@@ -447,10 +454,11 @@ async function enhanceMarkdownCodeBlocks(host: HTMLElement, theme: 'dark' | 'lig
     }
 }
 
-export function MarkdownContent({ source, theme }: MarkdownContentProps): React.ReactElement {
+export function MarkdownContent({ source, theme, isLightweight = false }: MarkdownContentProps): React.ReactElement {
     const hostRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        if (isLightweight) return;
         const host = hostRef.current;
         if (!host || !host.isConnected) return;
 
@@ -482,32 +490,37 @@ export function MarkdownContent({ source, theme }: MarkdownContentProps): React.
         return () => {
             host.replaceChildren();
         };
-    }, [source, theme]);
+    }, [source, theme, isLightweight]);
 
+    if (isLightweight) {
+        return <pre className="markdown-source-lightweight">{source}</pre>;
+    }
     return <div className="markdown-content" ref={hostRef} />;
 }
 
 // ─── Static display components (replace CodeMirror read-only instances) ───────
 
-export function StaticHighlightedCode({ source, langExtensions, theme, className = 'cell-source-static' }: {
+export function StaticHighlightedCode({ source, langExtensions, theme, className = 'cell-source-static', isLightweight = false }: {
     source: string;
     langExtensions: Extension[];
     theme: 'dark' | 'light';
     className?: string;
+    isLightweight?: boolean;
 }): React.ReactElement {
     const nodes = useMemo(() => {
+        if (isLightweight) return null;
         const tokens = getSyntaxTokens(source, langExtensions, theme);
         return renderStaticToReact(buildStaticRender(source, tokens));
-    }, [source, langExtensions, theme]);
+    }, [source, langExtensions, theme, isLightweight]);
 
     return (
         <pre className={className}>
-            <code>{nodes}</code>
+            <code>{isLightweight ? source : nodes}</code>
         </pre>
     );
 }
 
-function StaticDiffContent({ source, compareSource, side, diffMode, langExtensions, theme, isMarkdown = false }: {
+function StaticDiffContent({ source, compareSource, side, diffMode, langExtensions, theme, isMarkdown = false, isLightweight = false }: {
     source: string;
     compareSource: string;
     side: 'base' | 'current' | 'incoming';
@@ -515,17 +528,21 @@ function StaticDiffContent({ source, compareSource, side, diffMode, langExtensio
     langExtensions: Extension[];
     theme: 'dark' | 'light';
     isMarkdown?: boolean;
+    isLightweight?: boolean;
 }): React.ReactElement {
     const nodes = useMemo(() => {
+        if (isLightweight) return null;
         const tokens = getSyntaxTokens(source, langExtensions, theme);
         const { lineClasses, inlineRanges } = computeDiffMarks(source, compareSource, side, diffMode);
         return renderStaticToReact(buildStaticRender(source, tokens, lineClasses, inlineRanges));
-    }, [source, compareSource, side, diffMode, langExtensions, theme]);
+    }, [source, compareSource, side, diffMode, langExtensions, theme, isLightweight]);
 
     // Markdown cells don't need <code> wrapper - it's text content, not code
     return (
         <pre className="cell-source-static">
-            {isMarkdown ? nodes : <code>{nodes}</code>}
+            {isMarkdown
+                ? (isLightweight ? source : nodes)
+                : <code>{isLightweight ? source : nodes}</code>}
         </pre>
     );
 }
@@ -533,9 +550,19 @@ function StaticDiffContent({ source, compareSource, side, diffMode, langExtensio
 interface CellOutputsProps {
     outputs: CellOutput[];
     renderMimeRegistry: RenderMimeRegistry;
+    isLightweight?: boolean;
 }
 
-function CellOutputs({ outputs, renderMimeRegistry }: CellOutputsProps): React.ReactElement {
+function CellOutputs({ outputs, renderMimeRegistry, isLightweight = false }: CellOutputsProps): React.ReactElement {
+    if (isLightweight) {
+        return (
+            <div className="cell-outputs">
+                {outputs.map((output, i) => (
+                    <pre key={i} className="cell-output-fallback">{getOutputTextFallback(output)}</pre>
+                ))}
+            </div>
+        );
+    }
     return (
         <div className="cell-outputs">
             {outputs.map((output, i) => (

@@ -41,6 +41,18 @@ interface MergeRowProps {
 
 const EMPTY_EXTENSIONS: Extension[] = [];
 
+// Test/diagnostic opt-out: `?noLightweight=1` forces every row to render at full
+// fidelity, regardless of viewport position. Read once at module load.
+const lightweightDisabled =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('noLightweight') === '1';
+
+// Initial-render heuristic: render the first N rows at full fidelity (covers small
+// notebooks and the initial viewport region of large ones); rest start lightweight
+// and get upgraded as IntersectionObserver fires. Avoids a full-fidelity render of
+// hundreds of off-screen rows on mount.
+const INITIAL_FULL_FIDELITY_ROW_BUDGET = 30;
+
 function renderViewportModal(modal: React.ReactElement): React.ReactElement {
     if (typeof document === 'undefined') {
         return modal;
@@ -96,8 +108,7 @@ function MergeRowInner({
         latestResolvedContentRef.current = resolutionState?.resolvedContent;
     }, [resolutionState?.resolvedContent]);
 
-    // TODO: test that this fully works; we will have to conditionally pass the noVirt prop in @fixtures to do it.
-    // Cleanup on unmount (e.g., when virtualized out of view): commit pending edits to prevent data loss.
+    // Cleanup on unmount: commit pending edits to prevent data loss.
     // Uses refs so the cleanup reads current values rather than stale closed-over ones — preventing
     // duplicate callbacks when deps change mid-lifecycle (e.g., isEditing flips false on blur autosave).
     useEffect(() => {
@@ -108,6 +119,30 @@ function MergeRowInner({
             }
         };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Lightweight off-viewport rendering: keep all rows in the DOM (so native Ctrl+F
+    // still hits every cell) but swap heavy content (markdown HTML, rich outputs) for
+    // plain text when the row is far from the viewport. Fires when the row enters or
+    // leaves an 800px buffer around the viewport.
+    const rowRef = useRef<HTMLDivElement>(null);
+    const [isNearViewport, setIsNearViewport] = useState(
+        () => lightweightDisabled || rowIndex < INITIAL_FULL_FIDELITY_ROW_BUDGET
+    );
+    useEffect(() => {
+        if (lightweightDisabled) return;
+        const el = rowRef.current;
+        if (!el) return;
+        // Observe relative to the actual scroll container (.main-content) rather
+        // than the document viewport, so header overlap and ancestor clipping
+        // don't skew intersection results.
+        const scrollRoot = el.closest('.main-content');
+        const observer = new IntersectionObserver(
+            ([entry]) => setIsNearViewport(entry.isIntersecting),
+            { root: scrollRoot, rootMargin: '800px 0px' }
+        );
+        observer.observe(el);
+        return () => observer.disconnect();
     }, []);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
@@ -226,6 +261,9 @@ function MergeRowInner({
         && row.conflictIndex !== undefined
         && !!row.currentCell && !!row.incomingCell;
 
+    // Lightweight when far from viewport AND not actively editing.
+    const isLightweight = !isNearViewport && !isEditing;
+
     // For identical rows, show a unified single cell
     if (!isConflict) {
         const cell = selectNonConflictMergedCell(row.baseCell, row.currentCell, row.incomingCell);
@@ -239,6 +277,7 @@ function MergeRowInner({
         ].filter(Boolean).join(' ');
         return (
             <div
+                ref={rowRef}
                 className={identicalClasses}
                 data-testid={testId}
                 data-raw-source={rawSource}
@@ -269,6 +308,7 @@ function MergeRowInner({
                         theme={theme}
                         showOutputs={showOutputs}
                         showCellHeaders={showCellHeaders}
+                        isLightweight={isLightweight}
                     />
                 </div>
             </div>
@@ -299,7 +339,7 @@ function MergeRowInner({
     if (resolutionState && conflictIndex >= 0) {
         if (resolutionState.choice === 'delete') {
             return (
-                <div className={rowClasses} data-testid={testId}>
+                <div ref={rowRef} className={rowClasses} data-testid={testId}>
                     <div className="resolved-row-wrapper">
                         <div className="resolved-row-chrome resolved-row-chrome--delete">
                             <div className="resolved-cell resolved-deleted">
@@ -329,7 +369,7 @@ function MergeRowInner({
         }
 
         return (
-            <div className={rowClasses} data-testid={testId}>
+            <div ref={rowRef} className={rowClasses} data-testid={testId}>
                 <div className="resolved-row-wrapper">
                     <div className={`resolved-row-chrome${justSaved ? ' just-saved' : ''}`}>
                         <div
@@ -429,6 +469,7 @@ function MergeRowInner({
                                         <MarkdownContent
                                             source={displayedResolvedContent}
                                             theme={theme}
+                                            isLightweight={isLightweight}
                                         />
                                     </div>
                                 ) : (
@@ -437,6 +478,7 @@ function MergeRowInner({
                                         langExtensions={languageExtensions}
                                         theme={theme}
                                         className="resolved-content-static"
+                                        isLightweight={isLightweight}
                                     />
                                 )
                             )}
@@ -450,7 +492,7 @@ function MergeRowInner({
     }
 
     return (
-        <div className={rowClasses} data-testid={testId}>
+        <div ref={rowRef} className={rowClasses} data-testid={testId}>
             {/* Top action bar - always present for conflicts */}
             <div className="conflict-action-bar" data-testid="conflict-action-bar">
                 <div className="conflict-action-left">
@@ -528,6 +570,7 @@ function MergeRowInner({
                                 theme={theme}
                                 showOutputs={showOutputs}
                                 showCellHeaders={showCellHeaders}
+                                isLightweight={isLightweight}
                             />
                         ) : (
                             <div
@@ -552,6 +595,7 @@ function MergeRowInner({
                             theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
+                            isLightweight={isLightweight}
                         />
                     ) : (
                         <div
@@ -575,6 +619,7 @@ function MergeRowInner({
                             theme={theme}
                             showOutputs={showOutputs}
                             showCellHeaders={showCellHeaders}
+                            isLightweight={isLightweight}
                         />
                     ) : (
                         <div

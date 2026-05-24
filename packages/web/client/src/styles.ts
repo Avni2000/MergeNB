@@ -392,7 +392,6 @@ ${bodySel} {
     flex: 1;
     padding: 16px;
     overflow-y: auto;
-    overflow-anchor: none;
 }
 
 /* Column labels (aligned with .main-content horizontal padding) */
@@ -431,6 +430,7 @@ ${bodySel} {
 /* Merge rows */
 .merge-row {
     margin-bottom: 0;
+    padding-bottom: 16px;
     border-radius: 6px;
     overflow: clip;
     position: relative;
@@ -629,6 +629,18 @@ ${bodySel} {
 /* Markdown cells in conflict mode: no <code> wrapper, so style the <pre> directly with UI font */
 .markdown-cell .cell-source-static {
     font-family: var(--font-ui);
+}
+
+/* Lightweight shadow: plain-text stand-in for markdown when row is far from viewport */
+.markdown-source-lightweight {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0;
+    padding: 4px 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text-primary);
 }
 
 /* Diff highlighting — applied as CodeMirror line decorations on .cm-line elements */
@@ -1310,10 +1322,6 @@ ${bodySel} {
 /* When a row is both conflict and unmatched, keep conflict styling */
 .merge-row.conflict-row.unmatched-row {
     background: transparent;
-}
-
-.virtual-row {
-    padding-bottom: 16px;
 }
 
 /* Cell placeholder (for deleted/not present cells) */

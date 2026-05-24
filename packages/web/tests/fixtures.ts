@@ -251,7 +251,7 @@ async function setupConflictResolverHeadless(
     const browser = await chromium.launch({ headless: options.headless ?? true });
     try {
         const page = await browser.newPage();
-        const testUrl = sessionUrl + '&noVirtualize=1';
+        const testUrl = sessionUrl + '&noLightweight=1';
         await page.goto(testUrl);
         await sleep(options.afterNavigateDelayMs ?? 3000);
 
