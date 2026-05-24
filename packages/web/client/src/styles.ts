@@ -392,7 +392,6 @@ ${bodySel} {
     flex: 1;
     padding: 16px;
     overflow-y: auto;
-    overflow-anchor: none;
 }
 
 /* Column labels (aligned with .main-content horizontal padding) */
