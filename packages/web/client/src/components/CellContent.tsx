@@ -338,14 +338,11 @@ function CellContentInner({
             )}
             <div className="cell-content">
                 {cellType === 'markdown' && !isConflict ? (
-                    isLightweight ? (
-                        <pre className="markdown-source-lightweight">{source}</pre>
-                    ) : (
-                        <MarkdownContent
-                            source={source}
-                            theme={theme}
-                        />
-                    )
+                    <MarkdownContent
+                        source={source}
+                        theme={theme}
+                        isLightweight={isLightweight}
+                    />
                 ) : isConflict && compareCell ? (
                     <StaticDiffContent
                         source={source}
@@ -560,11 +557,9 @@ function CellOutputs({ outputs, renderMimeRegistry, isLightweight = false }: Cel
     if (isLightweight) {
         return (
             <div className="cell-outputs">
-                {outputs.map((output, i) => {
-                    const text = getOutputTextFallback(output);
-                    if (text === '[Unsupported output]') return null;
-                    return <pre key={i} className="cell-output-fallback">{text}</pre>;
-                })}
+                {outputs.map((output, i) => (
+                    <pre key={i} className="cell-output-fallback">{getOutputTextFallback(output)}</pre>
+                ))}
             </div>
         );
     }
