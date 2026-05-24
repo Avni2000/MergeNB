@@ -41,6 +41,18 @@ interface MergeRowProps {
 
 const EMPTY_EXTENSIONS: Extension[] = [];
 
+// Test/diagnostic opt-out: `?noLightweight=1` forces every row to render at full
+// fidelity, regardless of viewport position. Read once at module load.
+const lightweightDisabled =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('noLightweight');
+
+// Initial-render heuristic: render the first N rows at full fidelity (covers small
+// notebooks and the initial viewport region of large ones); rest start lightweight
+// and get upgraded as IntersectionObserver fires. Avoids a full-fidelity render of
+// hundreds of off-screen rows on mount.
+const INITIAL_FULL_FIDELITY_ROW_BUDGET = 30;
+
 function renderViewportModal(modal: React.ReactElement): React.ReactElement {
     if (typeof document === 'undefined') {
         return modal;
@@ -109,18 +121,25 @@ function MergeRowInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // Shadow-DOM virtualization: keep all rows in the DOM (so native Ctrl+F works)
-    // but swap heavy content (markdown HTML, rich outputs) for plain text when far
-    // from the viewport. IntersectionObserver fires when the row enters/leaves the
-    // 800px buffer zone around the browser viewport.
+    // Lightweight off-viewport rendering: keep all rows in the DOM (so native Ctrl+F
+    // still hits every cell) but swap heavy content (markdown HTML, rich outputs) for
+    // plain text when the row is far from the viewport. Fires when the row enters or
+    // leaves an 800px buffer around the viewport.
     const rowRef = useRef<HTMLDivElement>(null);
-    const [isNearViewport, setIsNearViewport] = useState(true);
+    const [isNearViewport, setIsNearViewport] = useState(
+        () => lightweightDisabled || rowIndex < INITIAL_FULL_FIDELITY_ROW_BUDGET
+    );
     useEffect(() => {
+        if (lightweightDisabled) return;
         const el = rowRef.current;
         if (!el) return;
+        // Observe relative to the actual scroll container (.main-content) rather
+        // than the document viewport, so header overlap and ancestor clipping
+        // don't skew intersection results.
+        const scrollRoot = el.closest('.main-content');
         const observer = new IntersectionObserver(
             ([entry]) => setIsNearViewport(entry.isIntersecting),
-            { rootMargin: '800px 0px' }
+            { root: scrollRoot, rootMargin: '800px 0px' }
         );
         observer.observe(el);
         return () => observer.disconnect();
