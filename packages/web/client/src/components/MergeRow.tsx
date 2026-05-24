@@ -45,7 +45,7 @@ const EMPTY_EXTENSIONS: Extension[] = [];
 // fidelity, regardless of viewport position. Read once at module load.
 const lightweightDisabled =
     typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).has('noLightweight');
+    new URLSearchParams(window.location.search).get('noLightweight') === '1';
 
 // Initial-render heuristic: render the first N rows at full fidelity (covers small
 // notebooks and the initial viewport region of large ones); rest start lightweight
