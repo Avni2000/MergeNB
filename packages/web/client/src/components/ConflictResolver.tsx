@@ -663,9 +663,12 @@ export function ConflictResolver({
                         {rows.map((row, i) => {
                             const conflictIdx = row?.conflictIndex ?? -1;
                             const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+                            const rowKey = conflictIdx >= 0
+                                ? `conflict-${conflictIdx}`
+                                : `identical-${row.baseCellIndex ?? 'x'}-${row.currentCellIndex ?? 'x'}-${row.incomingCellIndex ?? 'x'}`;
                             return (
                                 <MergeRow
-                                    key={i}
+                                    key={rowKey}
                                     row={row}
                                     rowIndex={i}
                                     languageExtensions={languageExtensions}
