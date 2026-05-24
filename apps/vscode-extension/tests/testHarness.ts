@@ -138,7 +138,7 @@ export async function setupConflictResolver(
     try {
         const page = await browser.newPage();
 
-        const testUrl = sessionUrl;
+        const testUrl = sessionUrl + '&noLightweight=1';
         await page.goto(testUrl);
         await sleep(options.afterNavigateDelayMs ?? 3000);
 
@@ -303,7 +303,7 @@ async function setupConflictResolverHeadless(
     const browser = await chromium.launch({ headless: options.headless ?? true });
     try {
         const page = await browser.newPage();
-        const testUrl = sessionUrl;
+        const testUrl = sessionUrl + '&noLightweight=1';
         await page.goto(testUrl);
         await sleep(options.afterNavigateDelayMs ?? 3000);
 
