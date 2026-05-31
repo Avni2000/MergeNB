@@ -223,6 +223,32 @@ export function ConflictResolver({
     const totalConflicts = conflictRows.length;
     const resolvedCount = choices.size;
     const allResolved = resolvedCount === totalConflicts;
+    const unresolvedCount = totalConflicts - resolvedCount;
+
+    const handleNextConflict = useCallback(() => {
+        const container = mainContentRef.current;
+        if (!container) return;
+
+        const allConflictEls = Array.from(
+            container.querySelectorAll<HTMLElement>('[data-testid^="conflict-row-"]')
+        ).filter(el => {
+            const idx = parseInt((el.getAttribute('data-testid') ?? '').replace('conflict-row-', ''), 10);
+            return !isNaN(idx) && !choices.has(idx);
+        });
+
+        if (allConflictEls.length === 0) return;
+
+        const containerTop = container.getBoundingClientRect().top;
+        let currentIdx = -1;
+        for (let i = 0; i < allConflictEls.length; i++) {
+            if (allConflictEls[i].getBoundingClientRect().top - containerTop <= 40) {
+                currentIdx = i;
+            }
+        }
+
+        const nextIdx = (currentIdx + 1) % allConflictEls.length;
+        allConflictEls[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, [choices, mainContentRef]);
     const canUndo = history.index > 0;
     const canRedo = history.index < history.entries.length - 1;
     const enableUndoRedoHotkeys = conflict.enableUndoRedoHotkeys ?? true;
@@ -423,6 +449,14 @@ export function ConflictResolver({
                         <span className="conflict-counter">
                             {resolvedCount} / {totalConflicts} resolved
                         </span>
+                        <button
+                            className="btn btn-secondary"
+                            onClick={handleNextConflict}
+                            disabled={unresolvedCount === 0}
+                            title={unresolvedCount === 0 ? 'All conflicts resolved' : 'Scroll to next unresolved conflict'}
+                        >
+                            Next Conflict &#8595;
+                        </button>
                         <div className="header-group">
                                 <button
                                     className="btn btn-secondary"
