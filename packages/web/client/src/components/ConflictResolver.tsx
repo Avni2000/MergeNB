@@ -232,8 +232,8 @@ export function ConflictResolver({
         const allConflictEls = Array.from(
             container.querySelectorAll<HTMLElement>('[data-testid^="conflict-row-"]')
         ).filter(el => {
-            const idx = parseInt((el.getAttribute('data-testid') ?? '').replace('conflict-row-', ''), 10);
-            return !isNaN(idx) && !choices.has(idx);
+            const idx = Number.parseInt((el.dataset.testid ?? '').replace('conflict-row-', ''), 10);
+            return !Number.isNaN(idx) && !choices.has(idx);
         });
 
         if (allConflictEls.length === 0) return;
