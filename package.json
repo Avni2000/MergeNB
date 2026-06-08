@@ -180,11 +180,11 @@
     "@uiw/react-codemirror": "^4.25.9",
     "@vscode/markdown-it-katex": "^1.1.2",
     "diff": "^9.0.0",
-    "dompurify": "^3.4.2",
+    "dompurify": "^3.4.5",
     "immer": "^11.1.8",
-    "katex": "^0.16.45",
+    "katex": "^0.16.47",
     "markdown-it": "^14.1.1",
-    "ws": "^8.20.0",
+    "ws": "^8.20.1",
     "zustand": "^5.0.13"
   }
 }
