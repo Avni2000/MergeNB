@@ -14,7 +14,7 @@ import { createPortal } from 'react-dom';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
-import { CellContent, MarkdownContent, mergeNBEditorStructure, StaticHighlightedCode } from './CellContent';
+import { CellContent, CellSource, MarkdownContent, mergeNBEditorStructure } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import type { ResolutionState } from '../store/resolverStore';
@@ -52,13 +52,6 @@ const lightweightDisabled =
 // and get upgraded as IntersectionObserver fires. Avoids a full-fidelity render of
 // hundreds of off-screen rows on mount.
 const INITIAL_FULL_FIDELITY_ROW_BUDGET = 30;
-
-function renderViewportModal(modal: React.ReactElement): React.ReactElement {
-    if (typeof document === 'undefined') {
-        return modal;
-    }
-    return createPortal(modal, document.body);
-}
 
 function MergeRowInner({
     row,
@@ -122,15 +115,16 @@ function MergeRowInner({
     }, []);
 
     // Lightweight off-viewport rendering: keep all rows in the DOM (so native Ctrl+F
-    // still hits every cell) but swap heavy content (markdown HTML, rich outputs) for
-    // plain text when the row is far from the viewport. Fires when the row enters or
-    // leaves an 800px buffer around the viewport.
+    // still hits every cell) but start heavy content (markdown HTML, rich outputs) as
+    // plain text until the row first comes within an 800px buffer of the viewport.
+    // The upgrade is one-way: never swap DOM back out, so scrolling can't destroy an
+    // in-progress text selection anchored in an upgraded row.
     const rowRef = useRef<HTMLDivElement>(null);
     const [isNearViewport, setIsNearViewport] = useState(
         () => lightweightDisabled || rowIndex < INITIAL_FULL_FIDELITY_ROW_BUDGET
     );
     useEffect(() => {
-        if (lightweightDisabled) return;
+        if (lightweightDisabled || rowIndex < INITIAL_FULL_FIDELITY_ROW_BUDGET) return;
         const el = rowRef.current;
         if (!el) return;
         // Observe relative to the actual scroll container (.main-content) rather
@@ -138,11 +132,17 @@ function MergeRowInner({
         // don't skew intersection results.
         const scrollRoot = el.closest('.main-content');
         const observer = new IntersectionObserver(
-            ([entry]) => setIsNearViewport(entry.isIntersecting),
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    setIsNearViewport(true);
+                    observer.disconnect();
+                }
+            },
             { root: scrollRoot, rootMargin: '800px 0px' }
         );
         observer.observe(el);
         return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
@@ -211,6 +211,21 @@ function MergeRowInner({
         setDraftResolvedContent(value);
     };
 
+    // Leaving the editor autosaves the draft, unless focus moved to a control that
+    // manages the edit session itself (marked with data-editing-allow).
+    const handleEditorBlur = (event: { relatedTarget: EventTarget | null }) => {
+        if (suppressBlurEditGuardRef.current) {
+            suppressBlurEditGuardRef.current = false;
+            return;
+        }
+        const relatedTarget = event.relatedTarget as HTMLElement | null;
+        if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
+        onCommitContent(conflictIndex, draftResolvedContentRef.current);
+        onStopEditing(conflictIndex);
+        setJustSaved(true);
+        setTimeout(() => setJustSaved(false), 1000);
+    };
+
     const handleSaveEdits = () => {
         if (!resolutionState) return;
         suppressBlurEditGuardRef.current = true;
@@ -231,7 +246,7 @@ function MergeRowInner({
     };
 
     const undoWarningModal = showUndoWarning
-        ? renderViewportModal(
+        ? createPortal(
             <div className="warning-modal-overlay" data-testid="undo-warning-modal">
                 <div className="warning-modal">
                     <div className="warning-icon">⚠️</div>
@@ -246,7 +261,8 @@ function MergeRowInner({
                         </button>
                     </div>
                 </div>
-            </div>
+            </div>,
+            document.body
         )
         : null;
 
@@ -255,6 +271,20 @@ function MergeRowInner({
         ? row.currentCellIndex - base : undefined;
     const incomingDelta = (isReordered && base !== undefined && row.incomingCellIndex !== undefined)
         ? row.incomingCellIndex - base : undefined;
+    const reorderIndicator = isReordered ? (
+        <div className="reorder-indicator-bar" data-testid="reorder-indicator">
+            {currentDelta !== undefined && currentDelta !== 0 && (
+                <span className="reorder-delta current-delta">
+                    {currentDelta > 0 ? '↓' : '↑'} {Math.abs(currentDelta)}
+                </span>
+            )}
+            {incomingDelta !== undefined && incomingDelta !== 0 && (
+                <span className="reorder-delta incoming-delta">
+                    {incomingDelta > 0 ? '↓' : '↑'} {Math.abs(incomingDelta)}
+                </span>
+            )}
+        </div>
+    ) : null;
     const canUnmatch = isConflict
         && isReordered
         && !row.isUserUnmatched
@@ -284,20 +314,7 @@ function MergeRowInner({
                 data-cell-type={cellType}
                 data-cell={encodeURIComponent(cell ? JSON.stringify(cell) : '')}
             >
-                {isReordered && (
-                    <div className="reorder-indicator-bar" data-testid="reorder-indicator">
-                        {currentDelta !== undefined && currentDelta !== 0 && (
-                            <span className="reorder-delta current-delta">
-                                {currentDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(currentDelta)}
-                            </span>
-                        )}
-                        {incomingDelta !== undefined && incomingDelta !== 0 && (
-                            <span className="reorder-delta incoming-delta">
-                                {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
-                            </span>
-                        )}
-                    </div>
-                )}
+                {reorderIndicator}
                 <div className="readable-row-wrapper">
                     <CellContent
                         cell={cell}
@@ -418,69 +435,33 @@ function MergeRowInner({
                             </div>
                             {isEditing ? (
                                 <div data-editing-allow="true">
-                                    {resolvedCellType === 'markdown' ? (
-                                        <textarea
-                                            value={draftResolvedContent}
-                                            onChange={e => handleContentChange(e.target.value)}
-                                            placeholder="Enter cell content..."
-                                            className="resolved-content-input"
-                                            autoFocus={true}
-                                            onBlur={event => {
-                                                if (suppressBlurEditGuardRef.current) {
-                                                    suppressBlurEditGuardRef.current = false;
-                                                    return;
-                                                }
-                                                const relatedTarget = event.relatedTarget as HTMLElement | null;
-                                                if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
-                                                onCommitContent(conflictIndex, draftResolvedContentRef.current);
-                                                onStopEditing(conflictIndex);
-                                                setJustSaved(true);
-                                                setTimeout(() => setJustSaved(false), 1000);
-                                            }}
-                                        />
-                                    ) : (
-                                        <CodeMirror
-                                            value={draftResolvedContent}
-                                            onChange={handleContentChange}
-                                            extensions={editorExtensions}
-                                            placeholder="Enter cell content..."
-                                            className="resolved-content-input"
-                                            basicSetup={{ lineNumbers: false, foldGutter: false }}
-                                            theme={resolvedEditorTheme}
-                                            autoFocus={true}
-                                            onBlur={event => {
-                                                if (suppressBlurEditGuardRef.current) {
-                                                    suppressBlurEditGuardRef.current = false;
-                                                    return;
-                                                }
-                                                const relatedTarget = event.relatedTarget as HTMLElement | null;
-                                                if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
-                                                onCommitContent(conflictIndex, draftResolvedContentRef.current);
-                                                onStopEditing(conflictIndex);
-                                                setJustSaved(true);
-                                                setTimeout(() => setJustSaved(false), 1000);
-                                            }}
-                                        />
-                                    )}
+                                    <CodeMirror
+                                        value={draftResolvedContent}
+                                        onChange={handleContentChange}
+                                        extensions={editorExtensions}
+                                        placeholder="Enter cell content..."
+                                        className="resolved-content-input"
+                                        basicSetup={{ lineNumbers: false, foldGutter: false }}
+                                        theme={resolvedEditorTheme}
+                                        autoFocus={true}
+                                        onBlur={handleEditorBlur}
+                                    />
                                 </div>
-                            ) : (
-                                resolvedCellType === 'markdown' ? (
-                                    <div className="resolved-content-static">
-                                        <MarkdownContent
-                                            source={displayedResolvedContent}
-                                            theme={theme}
-                                            isLightweight={isLightweight}
-                                        />
-                                    </div>
-                                ) : (
-                                    <StaticHighlightedCode
+                            ) : resolvedCellType === 'markdown' ? (
+                                <div className="resolved-content-static">
+                                    <MarkdownContent
                                         source={displayedResolvedContent}
-                                        langExtensions={languageExtensions}
-                                        theme={theme}
-                                        className="resolved-content-static"
                                         isLightweight={isLightweight}
                                     />
-                                )
+                                </div>
+                            ) : (
+                                <CellSource
+                                    source={displayedResolvedContent}
+                                    langExtensions={languageExtensions}
+                                    theme={theme}
+                                    className="resolved-content-static"
+                                    isLightweight={isLightweight}
+                                />
                             )}
                         </div>
                     </div>
@@ -496,20 +477,7 @@ function MergeRowInner({
             {/* Top action bar - always present for conflicts */}
             <div className="conflict-action-bar" data-testid="conflict-action-bar">
                 <div className="conflict-action-left">
-                    {isReordered && !row.isUserUnmatched && (
-                        <div className="reorder-indicator-bar" data-testid="reorder-indicator">
-                            {currentDelta !== undefined && currentDelta !== 0 && (
-                                <span className="reorder-delta current-delta">
-                                    {currentDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(currentDelta)}
-                                </span>
-                            )}
-                            {incomingDelta !== undefined && incomingDelta !== 0 && (
-                                <span className="reorder-delta incoming-delta">
-                                    {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
-                                </span>
-                            )}
-                        </div>
-                    )}
+                    {!row.isUserUnmatched && reorderIndicator}
                 </div>
                 <div className="conflict-action-right">
                     <button

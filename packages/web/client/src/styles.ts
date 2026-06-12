@@ -621,8 +621,7 @@ ${bodySel} {
 }
 
 /* Static code uses @uiw/codemirror-theme-github HighlightStyle (see CellContent.tsx) */
-.cell-source-static code,
-.markdown-content pre.has-syntax-highlight code {
+.cell-source-static code {
     font-family: var(--font-code);
     font-weight: 400;
 }
@@ -1124,27 +1123,6 @@ ${bodySel} {
     border: 1px solid rgba(78, 201, 176, 0.4);
     border-radius: 4px;
     outline: none !important;
-}
-
-.resolved-cell.markdown-cell textarea.resolved-content-input {
-    width: 100%;
-    min-height: 120px;
-    padding: 10px 12px;
-    border: 1px solid rgba(78, 201, 176, 0.4);
-    border-left: 3px solid var(--accent-green);
-    border-radius: 4px;
-    outline: none !important;
-    resize: vertical;
-    background: var(--cell-surface);
-    color: var(--text-primary);
-    font-family: var(--font-ui);
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-.resolved-cell.markdown-cell textarea.resolved-content-input:focus {
-    border-color: var(--accent-green);
-    box-shadow: 0 0 0 2px rgba(78, 201, 176, 0.2);
 }
 
 .resolved-cell.markdown-cell .resolved-content-input .cm-editor {
