@@ -10,11 +10,11 @@
  */
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
 import { CellContent, CellSource, EMPTY_EXTENSIONS, MarkdownContent, mergeNBEditorStructure } from './CellContent';
+import { WarningModal } from './WarningModal';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import type { ResolutionState } from '../store/resolverStore';
@@ -243,26 +243,16 @@ function MergeRowInner({
         });
     };
 
-    const undoWarningModal = showUndoWarning
-        ? createPortal(
-            <div className="warning-modal-overlay" data-testid="undo-warning-modal">
-                <div className="warning-modal">
-                    <div className="warning-icon">⚠️</div>
-                    <h3>Discard edits and undo resolution?</h3>
-                    <p>You have edited the resolved content. Undoing this resolution will discard those changes.</p>
-                    <div className="warning-actions">
-                        <button className="btn-cancel" onClick={cancelUndoResolution}>
-                            Keep my edits
-                        </button>
-                        <button className="btn-confirm" onClick={confirmUndoResolution}>
-                            Undo resolution
-                        </button>
-                    </div>
-                </div>
-            </div>,
-            document.body
-        )
-        : null;
+    const undoWarningModal = showUndoWarning ? (
+        <WarningModal
+            title="Discard edits and undo resolution?"
+            message="You have edited the resolved content. Undoing this resolution will discard those changes."
+            confirmLabel="Undo resolution"
+            onConfirm={confirmUndoResolution}
+            onCancel={cancelUndoResolution}
+            testId="undo-warning-modal"
+        />
+    ) : null;
 
     const base = row.baseCellIndex;
     const currentDelta = (isReordered && base !== undefined && row.currentCellIndex !== undefined)

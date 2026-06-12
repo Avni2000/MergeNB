@@ -7,7 +7,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
-import { createPortal } from 'react-dom';
+import { WarningModal } from './WarningModal';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
@@ -396,37 +396,18 @@ export function ConflictResolver({
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
 
-    const destructiveActionModal = destructiveActionWarning
-        ? createPortal(
-            <div
-                className="warning-modal-overlay"
-                data-testid="destructive-action-warning-modal"
-                data-editing-allow="true"
-            >
-                <div className="warning-modal">
-                    <div className="warning-icon">⚠️</div>
-                    <h3>{destructiveActionWarning.title}</h3>
-                    <p>{destructiveActionWarning.message}</p>
-                    <div className="warning-actions">
-                        <button
-                            className="btn-cancel"
-                            onClick={dismissDestructiveActionWarning}
-                        >
-                            Keep my edits
-                        </button>
-                        <button
-                            className="btn-confirm"
-                            onClick={confirmDestructiveActionWarning}
-                            data-testid="destructive-action-warning-confirm"
-                        >
-                            {destructiveActionWarning.confirmLabel}
-                        </button>
-                    </div>
-                </div>
-            </div>,
-            document.body
-        )
-        : null;
+    const destructiveActionModal = destructiveActionWarning ? (
+        <WarningModal
+            title={destructiveActionWarning.title}
+            message={destructiveActionWarning.message}
+            confirmLabel={destructiveActionWarning.confirmLabel}
+            onConfirm={confirmDestructiveActionWarning}
+            onCancel={dismissDestructiveActionWarning}
+            testId="destructive-action-warning-modal"
+            confirmTestId="destructive-action-warning-confirm"
+            editingAllow
+        />
+    ) : null;
 
     return (
         <div className="app-container jp-Notebook">
