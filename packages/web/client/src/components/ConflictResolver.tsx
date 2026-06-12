@@ -171,6 +171,24 @@ export function ConflictResolver({
         [activeEditingConflictIndex]
     );
 
+    // Build the onMouseDown/onClick pair for a control that must defer to the
+    // active-editing guard: mousedown intercepts to prompt the user, and the
+    // click is discarded once (via the suppress ref) so the action doesn't
+    // double-fire after the prompt is shown.
+    const guardedClick = useCallback(
+        (action: () => void) => ({
+            onMouseDown: (event: React.MouseEvent) => mouseDownGuardActiveEditing(event, action),
+            onClick: () => {
+                if (suppressGuardedClickRef.current) {
+                    suppressGuardedClickRef.current = false;
+                    return;
+                }
+                action();
+            },
+        }),
+        [mouseDownGuardActiveEditing]
+    );
+
     const isEditableTarget = useCallback((target: EventTarget | null): boolean => {
         if (!target || !(target as HTMLElement).closest) return false;
         const element = target as HTMLElement;
@@ -443,11 +461,7 @@ export function ConflictResolver({
                         <div className="header-group">
                                 <button
                                     className="btn btn-secondary"
-                                    onMouseDown={e => mouseDownGuardActiveEditing(e, handleUndo)}
-                                    onClick={() => {
-                                        if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                        handleUndo();
-                                    }}
+                                    {...guardedClick(handleUndo)}
                                     disabled={!canUndo}
                                     data-testid="history-undo"
                                     title={`Undo (${undoShortcutLabel})`}
@@ -456,11 +470,7 @@ export function ConflictResolver({
                             </button>
                                 <button
                                     className="btn btn-secondary"
-                                    onMouseDown={e => mouseDownGuardActiveEditing(e, handleRedo)}
-                                    onClick={() => {
-                                        if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                        handleRedo();
-                                    }}
+                                    {...guardedClick(handleRedo)}
                                     disabled={!canRedo}
                                     data-testid="history-redo"
                                     title={`Redo (${redoShortcutLabel})`}
@@ -487,11 +497,7 @@ export function ConflictResolver({
                                         <div className="history-actions">
                                             <button
                                                 className="btn btn-secondary"
-                                                onMouseDown={e => mouseDownGuardActiveEditing(e, handleUndo)}
-                                                onClick={() => {
-                                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                                    handleUndo();
-                                                }}
+                                                {...guardedClick(handleUndo)}
                                                 disabled={!canUndo}
                                                 data-testid="history-panel-undo"
                                             >
@@ -499,11 +505,7 @@ export function ConflictResolver({
                                             </button>
                                             <button
                                                 className="btn btn-secondary"
-                                                onMouseDown={e => mouseDownGuardActiveEditing(e, handleRedo)}
-                                                onClick={() => {
-                                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                                    handleRedo();
-                                                }}
+                                                {...guardedClick(handleRedo)}
                                                 disabled={!canRedo}
                                                 data-testid="history-panel-redo"
                                             >
@@ -520,12 +522,7 @@ export function ConflictResolver({
                                                 role="button"
                                                 tabIndex={0}
                                                 aria-current={index === history.index ? 'true' : undefined}
-                                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => { handleJumpToHistory(index); setHistoryOpen(false); })}
-                                                onClick={() => {
-                                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                                    handleJumpToHistory(index);
-                                                    setHistoryOpen(false);
-                                                }}
+                                                {...guardedClick(() => { handleJumpToHistory(index); setHistoryOpen(false); })}
                                                 onKeyDown={event => {
                                                     if (event.key === 'Enter' || event.key === ' ') {
                                                         event.preventDefault();
@@ -553,11 +550,7 @@ export function ConflictResolver({
                                         padding: '4px 8px'
                                     }}
                                     title="Accept all base changes for remaining conflicts"
-                                    onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('base'))}
-                                    onClick={() => {
-                                        if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                        handleAcceptAll('base');
-                                    }}
+                                    {...guardedClick(() => handleAcceptAll('base'))}
                                 >
                                     All Base
                                 </button>
@@ -572,11 +565,7 @@ export function ConflictResolver({
                                     padding: '4px 8px',
                                 }}
                                 title="Accept all current changes for remaining conflicts"
-                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('current'))}
-                                onClick={() => {
-                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                    handleAcceptAll('current');
-                                }}
+                                {...guardedClick(() => handleAcceptAll('current'))}
                             >
                                 All Current
                             </button>
@@ -590,11 +579,7 @@ export function ConflictResolver({
                                     padding: '4px 8px'
                                 }}
                                 title="Accept all incoming changes for remaining conflicts"
-                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('incoming'))}
-                                onClick={() => {
-                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                    handleAcceptAll('incoming');
-                                }}
+                                {...guardedClick(() => handleAcceptAll('incoming'))}
                             >
                                 All Incoming
                             </button>
