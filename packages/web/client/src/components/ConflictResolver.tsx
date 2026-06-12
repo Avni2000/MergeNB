@@ -11,11 +11,11 @@ import { createPortal } from 'react-dom';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
-    NotebookCell,
 } from '../types';
 import { MergeRow } from './MergeRow';
 import {
     createResolverStore,
+    getCellForSide,
     type ResolutionState,
     type TakeAllChoice,
 } from '../store/resolverStore';
@@ -791,13 +791,4 @@ function inferTakeAllChoice(
     }
 
     return undefined;
-}
-
-function getCellForSide(
-    row: MergeRowType,
-    side: TakeAllChoice
-): NotebookCell | undefined {
-    if (side === 'base') return row.baseCell;
-    if (side === 'current') return row.currentCell;
-    return row.incomingCell;
 }

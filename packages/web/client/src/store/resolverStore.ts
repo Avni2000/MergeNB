@@ -127,7 +127,7 @@ function applySnapshot(state: ResolverStoreState, snapshot: ResolverSnapshot): v
     state.takeAllChoice = snapshot.takeAllChoice;
 }
 
-function getCellForSide(
+export function getCellForSide(
     row: MergeRowType,
     side: TakeAllChoice
 ): NotebookCell | undefined {
