@@ -40,6 +40,59 @@ const APPLY_RESOLUTION_WHILE_EDITING_WARNING = {
     message: 'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
 } as const;
 
+type GuardedHandlers = {
+    onMouseDown: (event: React.MouseEvent) => void;
+    onClick: () => void;
+};
+
+interface UndoRedoButtonsProps {
+    guardedClick: (action: () => void) => GuardedHandlers;
+    onUndo: () => void;
+    onRedo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
+    undoTestId: string;
+    redoTestId: string;
+    undoTitle?: string;
+    redoTitle?: string;
+}
+
+// Undo/Redo pair rendered identically in the toolbar and the history panel.
+function UndoRedoButtons({
+    guardedClick,
+    onUndo,
+    onRedo,
+    canUndo,
+    canRedo,
+    undoTestId,
+    redoTestId,
+    undoTitle,
+    redoTitle,
+}: UndoRedoButtonsProps): React.ReactElement {
+    return (
+        <>
+            <button
+                className="btn btn-secondary"
+                {...guardedClick(onUndo)}
+                disabled={!canUndo}
+                data-testid={undoTestId}
+                title={undoTitle}
+            >
+                Undo
+            </button>
+            <button
+                className="btn btn-secondary"
+                {...guardedClick(onRedo)}
+                disabled={!canRedo}
+                data-testid={redoTestId}
+                title={redoTitle}
+            >
+                Redo
+            </button>
+        </>
+    );
+}
+
 export function ConflictResolver({
     conflict,
     onResolve,
@@ -459,24 +512,17 @@ export function ConflictResolver({
                             Next Conflict &#8595;
                         </button>
                         <div className="header-group">
-                                <button
-                                    className="btn btn-secondary"
-                                    {...guardedClick(handleUndo)}
-                                    disabled={!canUndo}
-                                    data-testid="history-undo"
-                                    title={`Undo (${undoShortcutLabel})`}
-                            >
-                                Undo
-                            </button>
-                                <button
-                                    className="btn btn-secondary"
-                                    {...guardedClick(handleRedo)}
-                                    disabled={!canRedo}
-                                    data-testid="history-redo"
-                                    title={`Redo (${redoShortcutLabel})`}
-                            >
-                                Redo
-                            </button>
+                            <UndoRedoButtons
+                                guardedClick={guardedClick}
+                                onUndo={handleUndo}
+                                onRedo={handleRedo}
+                                canUndo={canUndo}
+                                canRedo={canRedo}
+                                undoTestId="history-undo"
+                                redoTestId="history-redo"
+                                undoTitle={`Undo (${undoShortcutLabel})`}
+                                redoTitle={`Redo (${redoShortcutLabel})`}
+                            />
                             <div className="history-menu" ref={historyMenuRef}>
                                 <button
                                     title="View and jump to previous resolution states"
@@ -495,22 +541,15 @@ export function ConflictResolver({
                                     <div className="history-header">
                                         <span className="history-title">History</span>
                                         <div className="history-actions">
-                                            <button
-                                                className="btn btn-secondary"
-                                                {...guardedClick(handleUndo)}
-                                                disabled={!canUndo}
-                                                data-testid="history-panel-undo"
-                                            >
-                                                Undo
-                                            </button>
-                                            <button
-                                                className="btn btn-secondary"
-                                                {...guardedClick(handleRedo)}
-                                                disabled={!canRedo}
-                                                data-testid="history-panel-redo"
-                                            >
-                                                Redo
-                                            </button>
+                                            <UndoRedoButtons
+                                                guardedClick={guardedClick}
+                                                onUndo={handleUndo}
+                                                onRedo={handleRedo}
+                                                canUndo={canUndo}
+                                                canRedo={canRedo}
+                                                undoTestId="history-panel-undo"
+                                                redoTestId="history-panel-redo"
+                                            />
                                         </div>
                                     </div>
                                     <ul className="history-list">
