@@ -460,6 +460,39 @@ function MergeRowInner({
         );
     }
 
+    // Per-side descriptors for the three diff columns. Base compares against the
+    // first available other side; current/incoming compare against each other
+    // (falling back to base) in conflict diff mode.
+    const columnSides = [
+        {
+            side: 'base' as const,
+            cell: row.baseCell,
+            cellIndex: row.baseCellIndex,
+            compareCell: row.currentCell || row.incomingCell,
+            diffMode: undefined as 'conflict' | undefined,
+        },
+        {
+            side: 'current' as const,
+            cell: row.currentCell,
+            cellIndex: row.currentCellIndex,
+            compareCell: row.incomingCell || row.baseCell,
+            diffMode: 'conflict' as const,
+        },
+        {
+            side: 'incoming' as const,
+            cell: row.incomingCell,
+            cellIndex: row.incomingCellIndex,
+            compareCell: row.currentCell || row.baseCell,
+            diffMode: 'conflict' as const,
+        },
+    ];
+
+    const resolutionSides = [
+        { side: 'base' as const, has: hasBase },
+        { side: 'current' as const, has: hasCurrent },
+        { side: 'incoming' as const, has: hasIncoming },
+    ];
+
     return (
         <div ref={rowRef} className={rowClasses} data-testid={testId}>
             {/* Top action bar - always present for conflicts */}
@@ -513,115 +546,52 @@ function MergeRowInner({
 
             {/* Three-way diff view */}
             <div className={`cell-columns${showBaseColumn ? '' : ' two-column'}`}>
-                {showBaseColumn && (
-                    <div className="cell-column base-column">
-                        {row.baseCell ? (
-                            <CellContent
-                                cell={row.baseCell}
-                                cellIndex={row.baseCellIndex}
-                                side="base"
-                                isConflict={true}
-                                compareCell={row.currentCell || row.incomingCell}
-                                languageExtensions={languageExtensions}
-                                theme={theme}
-                                showOutputs={showOutputs}
-                                showCellHeaders={showCellHeaders}
-                                isLightweight={isLightweight}
-                            />
-                        ) : (
-                            <div
-                                className="cell-placeholder cell-deleted"
-                                title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
-                            >
-                                <span className="placeholder-text">{getPlaceholderText('base')}</span>
-                            </div>
-                        )}
-                    </div>
-                )}
-                <div className="cell-column current-column">
-                    {row.currentCell ? (
-                        <CellContent
-                            cell={row.currentCell}
-                            cellIndex={row.currentCellIndex}
-                            side="current"
-                            isConflict={true}
-                            compareCell={row.incomingCell || row.baseCell}
-                            diffMode="conflict"
-                            languageExtensions={languageExtensions}
-                            theme={theme}
-                            showOutputs={showOutputs}
-                            showCellHeaders={showCellHeaders}
-                            isLightweight={isLightweight}
-                        />
-                    ) : (
-                        <div
-                            className="cell-placeholder cell-deleted"
-                            title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
-                        >
-                            <span className="placeholder-text">{getPlaceholderText('current')}</span>
+                {columnSides
+                    .filter(col => col.side !== 'base' || showBaseColumn)
+                    .map(col => (
+                        <div key={col.side} className={`cell-column ${col.side}-column`}>
+                            {col.cell ? (
+                                <CellContent
+                                    cell={col.cell}
+                                    cellIndex={col.cellIndex}
+                                    side={col.side}
+                                    isConflict={true}
+                                    compareCell={col.compareCell}
+                                    diffMode={col.diffMode}
+                                    languageExtensions={languageExtensions}
+                                    theme={theme}
+                                    showOutputs={showOutputs}
+                                    showCellHeaders={showCellHeaders}
+                                    isLightweight={isLightweight}
+                                />
+                            ) : (
+                                <div
+                                    className="cell-placeholder cell-deleted"
+                                    title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
+                                >
+                                    <span className="placeholder-text">{getPlaceholderText(col.side)}</span>
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
-                <div className="cell-column incoming-column">
-                    {row.incomingCell ? (
-                        <CellContent
-                            cell={row.incomingCell}
-                            cellIndex={row.incomingCellIndex}
-                            side="incoming"
-                            isConflict={true}
-                            compareCell={row.currentCell || row.baseCell}
-                            diffMode="conflict"
-                            languageExtensions={languageExtensions}
-                            theme={theme}
-                            showOutputs={showOutputs}
-                            showCellHeaders={showCellHeaders}
-                            isLightweight={isLightweight}
-                        />
-                    ) : (
-                        <div
-                            className="cell-placeholder cell-deleted"
-                            title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
-                        >
-                            <span className="placeholder-text">{getPlaceholderText('incoming')}</span>
-                        </div>
-                    )}
-                </div>
+                    ))}
             </div>
 
             {/* Resolution bar - select which branch to use as base */}
             <div className={`resolution-bar cell-columns${showBaseColumn && !row.isUserUnmatched ? '' : ' two-column'}`}>
-                {showBaseColumn && !row.isUserUnmatched && (
-                    <div className="cell-column base-column">
-                        {hasBase && (
-                            <button
-                                className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
-                                onClick={() => handleChoiceClick('base')}
-                            >
-                                Use Base
-                            </button>
-                        )}
-                    </div>
-                )}
-                <div className="cell-column current-column">
-                    {hasCurrent && (
-                        <button
-                            className={`btn-resolve btn-current ${resolutionState?.choice === 'current' ? 'selected' : ''}`}
-                            onClick={() => handleChoiceClick('current')}
-                        >
-                            Use Current
-                        </button>
-                    )}
-                </div>
-                <div className="cell-column incoming-column">
-                    {hasIncoming && (
-                        <button
-                            className={`btn-resolve btn-incoming ${resolutionState?.choice === 'incoming' ? 'selected' : ''}`}
-                            onClick={() => handleChoiceClick('incoming')}
-                        >
-                            Use Incoming
-                        </button>
-                    )}
-                </div>
+                {resolutionSides
+                    .filter(({ side }) => side !== 'base' || (showBaseColumn && !row.isUserUnmatched))
+                    .map(({ side, has }) => (
+                        <div key={side} className={`cell-column ${side}-column`}>
+                            {has && (
+                                <button
+                                    className={`btn-resolve btn-${side} ${resolutionState?.choice === side ? 'selected' : ''}`}
+                                    onClick={() => handleChoiceClick(side)}
+                                >
+                                    Use {side[0].toUpperCase() + side.slice(1)}
+                                </button>
+                            )}
+                        </div>
+                    ))}
             </div>
 
         </div>
