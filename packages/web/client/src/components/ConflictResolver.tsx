@@ -577,51 +577,19 @@ export function ConflictResolver({
                                 </div>
                             </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 6, marginRight: 12, paddingRight: 12, borderRight: '1px solid var(--border-color)' }}>
-                            {showBaseColumn && (
-                                <button
-                                    className="btn"
-                                    style={{
-                                        background: 'var(--base-bg)',
-                                        border: '1px solid var(--base-border)',
-                                        color: 'var(--text-primary)',
-                                        fontSize: 11,
-                                        padding: '4px 8px'
-                                    }}
-                                    title="Accept all base changes for remaining conflicts"
-                                    {...guardedClick(() => handleAcceptAll('base'))}
-                                >
-                                    All Base
-                                </button>
-                            )}
-                            <button
-                                className="btn"
-                                style={{
-                                    background: 'var(--current-bg)',
-                                    border: '1px solid var(--current-border)',
-                                    color: 'var(--text-primary)',
-                                    fontSize: 11,
-                                    padding: '4px 8px',
-                                }}
-                                title="Accept all current changes for remaining conflicts"
-                                {...guardedClick(() => handleAcceptAll('current'))}
-                            >
-                                All Current
-                            </button>
-                            <button
-                                className="btn"
-                                style={{
-                                    background: 'var(--incoming-bg)',
-                                    border: '1px solid var(--incoming-border)',
-                                    color: 'var(--text-primary)',
-                                    fontSize: 11,
-                                    padding: '4px 8px'
-                                }}
-                                title="Accept all incoming changes for remaining conflicts"
-                                {...guardedClick(() => handleAcceptAll('incoming'))}
-                            >
-                                All Incoming
-                            </button>
+                        <div className="take-all-group">
+                            {(['base', 'current', 'incoming'] as const)
+                                .filter(side => side !== 'base' || showBaseColumn)
+                                .map(side => (
+                                    <button
+                                        key={side}
+                                        className={`btn btn-take-all ${side}`}
+                                        title={`Accept all ${side} changes for remaining conflicts`}
+                                        {...guardedClick(() => handleAcceptAll(side))}
+                                    >
+                                        All {side[0].toUpperCase() + side.slice(1)}
+                                    </button>
+                                ))}
                         </div>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
                             <input

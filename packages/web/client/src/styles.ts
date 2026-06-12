@@ -388,6 +388,24 @@ ${bodySel} {
     background: #3c3c3c;
 }
 
+.take-all-group {
+    display: flex;
+    gap: 6px;
+    margin-right: 12px;
+    padding-right: 12px;
+    border-right: 1px solid var(--border-color);
+}
+
+.btn-take-all {
+    color: var(--text-primary);
+    font-size: 11px;
+    padding: 4px 8px;
+}
+
+.btn-take-all.base { background: var(--base-bg); border: 1px solid var(--base-border); }
+.btn-take-all.current { background: var(--current-bg); border: 1px solid var(--current-border); }
+.btn-take-all.incoming { background: var(--incoming-bg); border: 1px solid var(--incoming-border); }
+
 /* Main content */
 .main-content {
     flex: 1;
