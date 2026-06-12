@@ -45,7 +45,7 @@ if (typeof document !== 'undefined') {
 // Plain HTML (<pre><code>) with HighlightStyle classes (GitHub light/dark), mounted
 // via style-mod — same palette as the resolved CodeMirror editor, no duplicate CSS.
 
-/** Parse `source` with the given language extensions and return token spans. */
+/** Parse `source` with the given language extensions and return styled token spans, in document order. */
 function getSyntaxTokens(
     source: string,
     langExtensions: Extension[],
@@ -65,7 +65,7 @@ function getSyntaxTokens(
         let pos = 0;
         highlightCode(source, tree, highlighter,
             (text, classes) => {
-                tokens.push({ from: pos, to: pos + text.length, classes: classes || '' });
+                if (classes) tokens.push({ from: pos, to: pos + text.length, classes });
                 pos += text.length;
             },
             () => { pos++; }, // newline
@@ -101,15 +101,15 @@ function buildFlatSegments(source: string, tokens: { from: number; to: number; c
     let lastTo = 0;
     for (const t of tokens) {
         if (t.from > lastTo) parts.push({ text: source.slice(lastTo, t.from) });
-        const text = source.slice(t.from, t.to);
-        parts.push(t.classes ? { text, classes: t.classes } : { text });
+        parts.push({ text: source.slice(t.from, t.to), classes: t.classes });
         lastTo = t.to;
     }
     if (lastTo < source.length) parts.push({ text: source.slice(lastTo) });
     return parts;
 }
 
-/** Build line-wrapped spans with merged syntax + diff highlighting. */
+/** Build line-wrapped spans with merged syntax + diff highlighting.
+    Both `syntaxTokens` and `inlineRanges` arrive in document order. */
 function buildLineSegments(
     source: string,
     syntaxTokens: { from: number; to: number; classes: string }[],
@@ -117,8 +117,8 @@ function buildLineSegments(
     inlineRanges: { from: number; to: number; classes: string }[],
 ): StaticLine[] {
     const lines = source.split('\n');
-    const sortedSyntax = syntaxTokens.slice().sort((a, b) => a.from - b.from);
-    const sortedInline = inlineRanges.slice().sort((a, b) => a.from - b.from);
+    const sortedSyntax = syntaxTokens;
+    const sortedInline = inlineRanges;
     const result: StaticLine[] = [];
     let offset = 0;
     let syntaxIndex = 0;

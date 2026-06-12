@@ -120,8 +120,7 @@ export function ConflictResolver({
     const dismissDestructiveActionWarning = useCallback(() => {
         pendingDestructiveActionRef.current = null;
         setDestructiveActionWarning(null);
-
-    }, [activeEditingConflictIndex, rows]);
+    }, []);
 
     const confirmDestructiveActionWarning = useCallback(() => {
         const action = pendingDestructiveActionRef.current;
