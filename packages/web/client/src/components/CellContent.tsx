@@ -7,9 +7,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
-import { HighlightStyle, LanguageDescription, ensureSyntaxTree } from '@codemirror/language';
+import { HighlightStyle, ensureSyntaxTree } from '@codemirror/language';
 import { githubDarkStyle, githubLightStyle } from '@uiw/codemirror-theme-github';
-import { languages } from '@codemirror/language-data';
 import { StyleModule } from 'style-mod';
 import { IRenderMime, OutputModel, RenderMimeRegistry, standardRendererFactories } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
@@ -234,37 +233,7 @@ function renderStaticToReact(render: StaticRender): React.ReactNode {
     ));
 }
 
-function renderSegmentsToDom(parent: HTMLElement | DocumentFragment, segments: StaticSegment[]): void {
-    for (const segment of segments) {
-        if (segment.classes) {
-            const span = document.createElement('span');
-            span.className = segment.classes;
-            span.textContent = segment.text;
-            parent.appendChild(span);
-        } else {
-            parent.appendChild(document.createTextNode(segment.text));
-        }
-    }
-}
-
-function renderStaticToDom(render: StaticRender): DocumentFragment {
-    const fragment = document.createDocumentFragment();
-    if (render.kind === 'flat') {
-        renderSegmentsToDom(fragment, render.segments);
-        return fragment;
-    }
-    for (const line of render.lines) {
-        const span = document.createElement('span');
-        span.className = line.lineClass ? `source-line ${line.lineClass}` : 'source-line';
-        renderSegmentsToDom(span, line.segments);
-        fragment.appendChild(span);
-    }
-    return fragment;
-}
-
 type RenderMimeOutputValue = ConstructorParameters<typeof OutputModel>[0]['value'];
-const renderMimeRegistryCache = new Map<string, RenderMimeRegistry>();
-const MAX_RENDERMIME_REGISTRY_CACHE_SIZE = 32;
 
 interface CellContentProps {
     cell: NotebookCell | undefined;
@@ -293,10 +262,6 @@ function CellContentInner({
     theme = 'light',
     isLightweight = false,
 }: CellContentProps): React.ReactElement {
-    const renderMimeRegistry = useMemo(
-        () => getRenderMimeRegistry(),
-        []
-    );
     const encodedCell = useMemo(
         () => (cell ? encodeURIComponent(JSON.stringify(cell)) : ''),
         [cell]
@@ -340,36 +305,24 @@ function CellContentInner({
                 {cellType === 'markdown' && !isConflict ? (
                     <MarkdownContent
                         source={source}
-                        theme={theme}
                         isLightweight={isLightweight}
                     />
-                ) : isConflict && compareCell ? (
-                    <StaticDiffContent
+                ) : (
+                    <CellSource
                         source={source}
-                        compareSource={normalizeCellSource(compareCell.source)}
+                        compareSource={isConflict && compareCell ? normalizeCellSource(compareCell.source) : undefined}
                         side={side}
                         diffMode={diffMode}
-                        langExtensions={cellType === 'markdown' ? EMPTY_EXTENSIONS : languageExtensions}
+                        langExtensions={languageExtensions}
                         theme={theme}
                         isMarkdown={cellType === 'markdown'}
                         isLightweight={isLightweight}
                     />
-                ) : cellType !== 'markdown' ? (
-                    <StaticHighlightedCode
-                        source={source}
-                        langExtensions={languageExtensions}
-                        theme={theme}
-                        isLightweight={isLightweight}
-                    />
-                ) : (
-                    // Markdown in conflict mode: plain pre (diff view takes over)
-                    <pre>{source}</pre>
                 )}
             </div>
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
                 <CellOutputs
                     outputs={cell.outputs}
-                    renderMimeRegistry={renderMimeRegistry}
                     isLightweight={isLightweight}
                 />
             )}
@@ -379,93 +332,18 @@ function CellContentInner({
 
 interface MarkdownContentProps {
     source: string;
-    theme: 'dark' | 'light';
     isLightweight?: boolean;
 }
 
-const markdownFenceLanguageSupportCache = new Map<string, Promise<Extension | null>>();
-
-function getFenceLanguageTag(codeNode: HTMLElement): string | null {
-    for (const className of Array.from(codeNode.classList)) {
-        if (className.startsWith('language-')) {
-            return className.slice('language-'.length).trim().toLowerCase();
-        }
-        if (className.startsWith('lang-')) {
-            return className.slice('lang-'.length).trim().toLowerCase();
-        }
-    }
-    return null;
-}
-
-function loadFenceLanguageSupport(languageTag: string): Promise<Extension | null> {
-    const key = languageTag.trim().toLowerCase();
-    if (!key) return Promise.resolve(null);
-
-    const cached = markdownFenceLanguageSupportCache.get(key);
-    if (cached) return cached;
-
-    const supportPromise = (async () => {
-        const description =
-            LanguageDescription.matchLanguageName(languages, key, true) ??
-            LanguageDescription.matchFilename(languages, `file.${key}`);
-
-        if (!description) return null;
-        if (description.support) return description.support;
-
-        try {
-            return await description.load();
-        } catch (err) {
-            markdownFenceLanguageSupportCache.delete(key);
-            logger.warn('[MergeNB] Failed to load markdown fence language support:', err);
-            return null;
-        }
-    })();
-
-    markdownFenceLanguageSupportCache.set(key, supportPromise);
-    return supportPromise;
-}
-
-async function enhanceMarkdownCodeBlocks(host: HTMLElement, theme: 'dark' | 'light'): Promise<void> {
-    const codeNodes = Array.from(host.querySelectorAll('pre > code')) as HTMLElement[];
-    if (codeNodes.length === 0) return;
-
-    // Load all fence language bundles in parallel so the DOM replacements
-    // below happen in a single synchronous pass instead of one per await.
-    const languageSupports = await Promise.all(
-        codeNodes.map(node => {
-            const tag = getFenceLanguageTag(node);
-            return tag ? loadFenceLanguageSupport(tag) : Promise.resolve(null);
-        })
-    );
-
-    for (let i = 0; i < codeNodes.length; i++) {
-        const codeNode = codeNodes[i];
-        const preNode = codeNode.parentElement;
-        if (!preNode) continue;
-
-        const languageSupport = languageSupports[i];
-        if (!languageSupport) continue;
-
-        const source = codeNode.textContent ?? '';
-        const tokens = getSyntaxTokens(source, [languageSupport], theme);
-        const renderPlan = buildStaticRender(source, tokens);
-        codeNode.replaceChildren(renderStaticToDom(renderPlan));
-        preNode.classList.add('has-syntax-highlight');
-    }
-}
-
-export function MarkdownContent({ source, theme, isLightweight = false }: MarkdownContentProps): React.ReactElement {
+export function MarkdownContent({ source, isLightweight = false }: MarkdownContentProps): React.ReactElement {
     const hostRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (isLightweight) return;
         const host = hostRef.current;
-        if (!host || !host.isConnected) return;
+        if (!host) return;
 
-        host.replaceChildren();
-
-        const html = renderMarkdown(source);
-        host.innerHTML = html;
+        host.innerHTML = renderMarkdown(source);
 
         // Resolve local image/link URLs to notebook-asset endpoints
         const { sessionId, token } = getCurrentSessionCredentials();
@@ -481,16 +359,7 @@ export function MarkdownContent({ source, theme, isLightweight = false }: Markdo
                 anchor.setAttribute('href', buildNotebookAssetUrl(sessionId, token, normalizeLocalPath(href)));
             }
         });
-
-        void enhanceMarkdownCodeBlocks(host, theme)
-            .catch((err) => {
-                logger.warn('[MergeNB] Failed to highlight markdown fenced code blocks:', err);
-            });
-
-        return () => {
-            host.replaceChildren();
-        };
-    }, [source, theme, isLightweight]);
+    }, [source, isLightweight]);
 
     if (isLightweight) {
         return <pre className="markdown-source-lightweight">{source}</pre>;
@@ -498,62 +367,54 @@ export function MarkdownContent({ source, theme, isLightweight = false }: Markdo
     return <div className="markdown-content" ref={hostRef} />;
 }
 
-// ─── Static display components (replace CodeMirror read-only instances) ───────
+// ─── Static cell source (replaces CodeMirror read-only instances) ─────────────
 
-export function StaticHighlightedCode({ source, langExtensions, theme, className = 'cell-source-static', isLightweight = false }: {
+export function CellSource({
+    source,
+    langExtensions,
+    theme,
+    compareSource,
+    side = 'base',
+    diffMode = 'base',
+    isMarkdown = false,
+    className = 'cell-source-static',
+    isLightweight = false,
+}: {
     source: string;
     langExtensions: Extension[];
     theme: 'dark' | 'light';
+    /** When set, line/inline diff marks against this content are rendered. */
+    compareSource?: string;
+    side?: 'base' | 'current' | 'incoming';
+    diffMode?: 'base' | 'conflict';
+    isMarkdown?: boolean;
     className?: string;
     isLightweight?: boolean;
 }): React.ReactElement {
     const nodes = useMemo(() => {
         if (isLightweight) return null;
-        const tokens = getSyntaxTokens(source, langExtensions, theme);
-        return renderStaticToReact(buildStaticRender(source, tokens));
-    }, [source, langExtensions, theme, isLightweight]);
+        const tokens = getSyntaxTokens(source, isMarkdown ? [] : langExtensions, theme);
+        const marks = compareSource !== undefined
+            ? computeDiffMarks(source, compareSource, side, diffMode)
+            : undefined;
+        return renderStaticToReact(buildStaticRender(source, tokens, marks?.lineClasses, marks?.inlineRanges));
+    }, [source, compareSource, side, diffMode, langExtensions, theme, isMarkdown, isLightweight]);
 
+    const content = isLightweight ? source : nodes;
+    // Markdown cells don't need a <code> wrapper - it's text content, not code
     return (
         <pre className={className}>
-            <code>{isLightweight ? source : nodes}</code>
-        </pre>
-    );
-}
-
-function StaticDiffContent({ source, compareSource, side, diffMode, langExtensions, theme, isMarkdown = false, isLightweight = false }: {
-    source: string;
-    compareSource: string;
-    side: 'base' | 'current' | 'incoming';
-    diffMode: 'base' | 'conflict';
-    langExtensions: Extension[];
-    theme: 'dark' | 'light';
-    isMarkdown?: boolean;
-    isLightweight?: boolean;
-}): React.ReactElement {
-    const nodes = useMemo(() => {
-        if (isLightweight) return null;
-        const tokens = getSyntaxTokens(source, langExtensions, theme);
-        const { lineClasses, inlineRanges } = computeDiffMarks(source, compareSource, side, diffMode);
-        return renderStaticToReact(buildStaticRender(source, tokens, lineClasses, inlineRanges));
-    }, [source, compareSource, side, diffMode, langExtensions, theme, isLightweight]);
-
-    // Markdown cells don't need <code> wrapper - it's text content, not code
-    return (
-        <pre className="cell-source-static">
-            {isMarkdown
-                ? (isLightweight ? source : nodes)
-                : <code>{isLightweight ? source : nodes}</code>}
+            {isMarkdown ? content : <code>{content}</code>}
         </pre>
     );
 }
 
 interface CellOutputsProps {
     outputs: CellOutput[];
-    renderMimeRegistry: RenderMimeRegistry;
     isLightweight?: boolean;
 }
 
-function CellOutputs({ outputs, renderMimeRegistry, isLightweight = false }: CellOutputsProps): React.ReactElement {
+function CellOutputs({ outputs, isLightweight = false }: CellOutputsProps): React.ReactElement {
     if (isLightweight) {
         return (
             <div className="cell-outputs">
@@ -566,23 +427,13 @@ function CellOutputs({ outputs, renderMimeRegistry, isLightweight = false }: Cel
     return (
         <div className="cell-outputs">
             {outputs.map((output, i) => (
-                <RenderMimeOutput
-                    key={i}
-                    output={output}
-                    renderMimeRegistry={renderMimeRegistry}
-                />
+                <RenderMimeOutput key={i} output={output} />
             ))}
         </div>
     );
 }
 
-function RenderMimeOutput({
-    output,
-    renderMimeRegistry
-}: {
-    output: CellOutput;
-    renderMimeRegistry: RenderMimeRegistry;
-}): React.ReactElement {
+function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElement {
     const hostRef = useRef<HTMLDivElement>(null);
     const [fallback, setFallback] = useState<string | null>(null);
 
@@ -592,6 +443,7 @@ function RenderMimeOutput({
         host.replaceChildren();
         setFallback(null);
 
+        const renderMimeRegistry = getRenderMimeRegistry();
         let disposed = false;
         let renderer: ReturnType<RenderMimeRegistry['createRenderer']> | null = null;
         let model: OutputModel | null = null;
@@ -653,7 +505,7 @@ function RenderMimeOutput({
             model?.dispose();
             host.replaceChildren();
         };
-    }, [output, renderMimeRegistry]);
+    }, [output]);
 
     return (
         <div className="cell-output-item">
@@ -734,53 +586,19 @@ function getCurrentSessionCredentials(): { sessionId: string; token: string } {
     };
 }
 
+// Session credentials come from window.location and never change within a page,
+// so one registry serves the whole session.
+let renderMimeRegistry: RenderMimeRegistry | null = null;
+
 function getRenderMimeRegistry(): RenderMimeRegistry {
-    const { sessionId, token } = getCurrentSessionCredentials();
-    const cacheKey = `${sessionId}::${token}`;
-    const cached = renderMimeRegistryCache.get(cacheKey);
-    if (cached) {
-        renderMimeRegistryCache.delete(cacheKey);
-        renderMimeRegistryCache.set(cacheKey, cached);
-        return cached;
+    if (!renderMimeRegistry) {
+        const { sessionId, token } = getCurrentSessionCredentials();
+        renderMimeRegistry = new RenderMimeRegistry({
+            initialFactories: standardRendererFactories,
+            resolver: createNotebookAssetResolver(sessionId, token),
+        });
     }
-
-    const registry = new RenderMimeRegistry({
-        initialFactories: standardRendererFactories,
-        resolver: createNotebookAssetResolver(sessionId, token),
-    });
-
-    renderMimeRegistryCache.set(cacheKey, registry);
-    evictRenderMimeRegistryCacheEntries();
-    return registry;
-}
-
-function evictRenderMimeRegistryCacheEntries(): void {
-    while (renderMimeRegistryCache.size > MAX_RENDERMIME_REGISTRY_CACHE_SIZE) {
-        const leastRecentlyUsedKey = renderMimeRegistryCache.keys().next().value as string | undefined;
-        if (!leastRecentlyUsedKey) return;
-
-        const leastRecentlyUsedRegistry = renderMimeRegistryCache.get(leastRecentlyUsedKey);
-        renderMimeRegistryCache.delete(leastRecentlyUsedKey);
-        disposeRenderMimeRegistry(leastRecentlyUsedRegistry);
-    }
-}
-
-function disposeRenderMimeRegistry(registry: RenderMimeRegistry | undefined): void {
-    if (!registry) return;
-
-    const resolver = registry.resolver as (IRenderMime.IResolver & { dispose?: () => void }) | null;
-    try {
-        resolver?.dispose?.();
-    } catch (err) {
-        logger.warn('[MergeNB] Failed to dispose rendermime resolver:', err);
-    }
-
-    const disposableRegistry = registry as RenderMimeRegistry & { dispose?: () => void };
-    try {
-        disposableRegistry.dispose?.();
-    } catch (err) {
-        logger.warn('[MergeNB] Failed to dispose rendermime registry:', err);
-    }
+    return renderMimeRegistry;
 }
 
 function createNotebookAssetResolver(sessionId: string, token: string): IRenderMime.IResolver {
