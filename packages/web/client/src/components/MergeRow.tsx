@@ -14,7 +14,7 @@ import { createPortal } from 'react-dom';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
-import { CellContent, CellSource, MarkdownContent, mergeNBEditorStructure } from './CellContent';
+import { CellContent, CellSource, EMPTY_EXTENSIONS, MarkdownContent, mergeNBEditorStructure } from './CellContent';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import type { ResolutionState } from '../store/resolverStore';
@@ -38,8 +38,6 @@ interface MergeRowProps {
     theme?: 'dark' | 'light';
     'data-testid'?: string;
 }
-
-const EMPTY_EXTENSIONS: Extension[] = [];
 
 // Test/diagnostic opt-out: `?noLightweight=1` forces every row to render at full
 // fidelity, regardless of viewport position. Read once at module load.

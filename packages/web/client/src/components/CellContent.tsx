@@ -248,7 +248,7 @@ interface CellContentProps {
     theme?: 'dark' | 'light';
     isLightweight?: boolean;
 }
-const EMPTY_EXTENSIONS: Extension[] = [];
+export const EMPTY_EXTENSIONS: Extension[] = [];
 function CellContentInner({
     cell,
     cellIndex,
