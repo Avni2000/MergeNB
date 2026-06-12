@@ -33,6 +33,13 @@ interface ConflictResolverProps {
     onCancel: () => void;
 }
 
+// Shared title/message for the "a cell is still being edited" prompt shown when
+// applying a resolution. Only the confirm label differs between entry points.
+const APPLY_RESOLUTION_WHILE_EDITING_WARNING = {
+    title: 'Apply resolution now?',
+    message: 'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
+} as const;
+
 export function ConflictResolver({
     conflict,
     onResolve,
@@ -362,9 +369,7 @@ export function ConflictResolver({
         if (activeEditingConflictIndex !== null) {
             pendingDestructiveActionRef.current = applyResolutionNow;
             setDestructiveActionWarning({
-                title: 'Apply resolution now?',
-                message:
-                    'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
+                ...APPLY_RESOLUTION_WHILE_EDITING_WARNING,
                 confirmLabel: 'Apply resolution (without saving edits)',
             });
             return;
@@ -385,9 +390,7 @@ export function ConflictResolver({
             suppressApplyResolutionClickRef.current = true;
             pendingDestructiveActionRef.current = applyResolutionNow;
             setDestructiveActionWarning({
-                title: 'Apply resolution now?',
-                message:
-                    'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
+                ...APPLY_RESOLUTION_WHILE_EDITING_WARNING,
                 confirmLabel: 'Apply resolution',
             });
         },
