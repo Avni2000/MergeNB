@@ -10,6 +10,9 @@
 [![License: GPLv3.0](https://img.shields.io/badge/License-GPLv3.0-yellow.svg)](https://www.gnu.org/licenses/gpl-3.0)
 </div>
 
+> [!NOTE]
+> Promise to get back to this in the fall! I'm a bit busy at the moment, so I'm taking a break. Everything should still "work" but it won't be in active development for a bit. 
+
 
 ## Features
 
