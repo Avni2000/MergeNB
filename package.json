@@ -186,5 +186,10 @@
     "markdown-it": "^14.2.0",
     "ws": "^8.21.0",
     "zustand": "^5.0.14"
+  },
+  "allowScripts": {
+    "`@vscode/vsce-sign`@2.0.9": true,
+    "esbuild@0.28.0": true,
+    "keytar@7.9.0": true
   }
 }
