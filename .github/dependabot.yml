@@ -2,7 +2,13 @@ version: 2
 updates:
   # Enable version updates for npm
   - package-ecosystem: "npm"
-    directory: "/"
+    directories:
+      - "/"
+      - "/apps/vscode-extension"
+      - "/apps/website"
+      - "/packages/core"
+      - "/packages/web/client"
+      - "/packages/web/server"
     schedule:
       interval: "weekly"
       day: "monday"
