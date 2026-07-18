@@ -27,11 +27,6 @@ const config: Config = {
     },
   },
 
-  i18n: {
-    defaultLocale: 'en',
-    locales: ['en'],
-  },
-
   plugins: [
     require.resolve('docusaurus-plugin-image-zoom'),
     function ipynbLoader() {
@@ -64,7 +59,7 @@ const config: Config = {
     },
 
 
-    
+
   ],
 
   presets: [
