@@ -172,15 +172,15 @@
     "typescript-eslint": "^8.61.0"
   },
   "dependencies": {
-    "@codemirror/language": "^6.12.3",
+    "@codemirror/language": "^6.12.4",
     "@codemirror/language-data": "^6.5.2",
     "@codemirror/merge": "^6.12.2",
-    "@jupyterlab/rendermime": "^4.5.8",
+    "@jupyterlab/rendermime": "^4.6.0",
     "@uiw/codemirror-theme-github": "^4.25.10",
     "@uiw/react-codemirror": "^4.25.10",
     "@vscode/markdown-it-katex": "^1.1.2",
     "diff": "^9.0.0",
-    "dompurify": "^3.4.10",
+    "dompurify": "^3.4.11",
     "immer": "^11.1.8",
     "katex": "^0.17.0",
     "markdown-it": "^14.2.0",
