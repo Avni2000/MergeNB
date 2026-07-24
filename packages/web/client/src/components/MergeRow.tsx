@@ -10,11 +10,11 @@
  */
 
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
-import { CellContent, MarkdownContent, mergeNBEditorStructure, StaticHighlightedCode } from './CellContent';
+import { CellContent, CellSource, EMPTY_EXTENSIONS, MarkdownContent, mergeNBEditorStructure } from './CellContent';
+import { WarningModal } from './WarningModal';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import type { ResolutionState } from '../store/resolverStore';
@@ -39,8 +39,6 @@ interface MergeRowProps {
     'data-testid'?: string;
 }
 
-const EMPTY_EXTENSIONS: Extension[] = [];
-
 // Test/diagnostic opt-out: `?noLightweight=1` forces every row to render at full
 // fidelity, regardless of viewport position. Read once at module load.
 const lightweightDisabled =
@@ -52,13 +50,6 @@ const lightweightDisabled =
 // and get upgraded as IntersectionObserver fires. Avoids a full-fidelity render of
 // hundreds of off-screen rows on mount.
 const INITIAL_FULL_FIDELITY_ROW_BUDGET = 30;
-
-function renderViewportModal(modal: React.ReactElement): React.ReactElement {
-    if (typeof document === 'undefined') {
-        return modal;
-    }
-    return createPortal(modal, document.body);
-}
 
 function MergeRowInner({
     row,
@@ -122,15 +113,16 @@ function MergeRowInner({
     }, []);
 
     // Lightweight off-viewport rendering: keep all rows in the DOM (so native Ctrl+F
-    // still hits every cell) but swap heavy content (markdown HTML, rich outputs) for
-    // plain text when the row is far from the viewport. Fires when the row enters or
-    // leaves an 800px buffer around the viewport.
+    // still hits every cell) but start heavy content (markdown HTML, rich outputs) as
+    // plain text until the row first comes within an 800px buffer of the viewport.
+    // The upgrade is one-way: never swap DOM back out, so scrolling can't destroy an
+    // in-progress text selection anchored in an upgraded row.
     const rowRef = useRef<HTMLDivElement>(null);
     const [isNearViewport, setIsNearViewport] = useState(
         () => lightweightDisabled || rowIndex < INITIAL_FULL_FIDELITY_ROW_BUDGET
     );
     useEffect(() => {
-        if (lightweightDisabled) return;
+        if (lightweightDisabled || rowIndex < INITIAL_FULL_FIDELITY_ROW_BUDGET) return;
         const el = rowRef.current;
         if (!el) return;
         // Observe relative to the actual scroll container (.main-content) rather
@@ -138,11 +130,17 @@ function MergeRowInner({
         // don't skew intersection results.
         const scrollRoot = el.closest('.main-content');
         const observer = new IntersectionObserver(
-            ([entry]) => setIsNearViewport(entry.isIntersecting),
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    setIsNearViewport(true);
+                    observer.disconnect();
+                }
+            },
             { root: scrollRoot, rootMargin: '800px 0px' }
         );
         observer.observe(el);
         return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Memoize theme and extensions so @uiw/react-codemirror's internal useEffect
@@ -211,6 +209,21 @@ function MergeRowInner({
         setDraftResolvedContent(value);
     };
 
+    // Leaving the editor autosaves the draft, unless focus moved to a control that
+    // manages the edit session itself (marked with data-editing-allow).
+    const handleEditorBlur = (event: { relatedTarget: EventTarget | null }) => {
+        if (suppressBlurEditGuardRef.current) {
+            suppressBlurEditGuardRef.current = false;
+            return;
+        }
+        const relatedTarget = event.relatedTarget as HTMLElement | null;
+        if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
+        onCommitContent(conflictIndex, draftResolvedContentRef.current);
+        onStopEditing(conflictIndex);
+        setJustSaved(true);
+        setTimeout(() => setJustSaved(false), 1000);
+    };
+
     const handleSaveEdits = () => {
         if (!resolutionState) return;
         suppressBlurEditGuardRef.current = true;
@@ -230,31 +243,36 @@ function MergeRowInner({
         });
     };
 
-    const undoWarningModal = showUndoWarning
-        ? renderViewportModal(
-            <div className="warning-modal-overlay" data-testid="undo-warning-modal">
-                <div className="warning-modal">
-                    <div className="warning-icon">⚠️</div>
-                    <h3>Discard edits and undo resolution?</h3>
-                    <p>You have edited the resolved content. Undoing this resolution will discard those changes.</p>
-                    <div className="warning-actions">
-                        <button className="btn-cancel" onClick={cancelUndoResolution}>
-                            Keep my edits
-                        </button>
-                        <button className="btn-confirm" onClick={confirmUndoResolution}>
-                            Undo resolution
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )
-        : null;
+    const undoWarningModal = showUndoWarning ? (
+        <WarningModal
+            title="Discard edits and undo resolution?"
+            message="You have edited the resolved content. Undoing this resolution will discard those changes."
+            confirmLabel="Undo resolution"
+            onConfirm={confirmUndoResolution}
+            onCancel={cancelUndoResolution}
+            testId="undo-warning-modal"
+        />
+    ) : null;
 
     const base = row.baseCellIndex;
     const currentDelta = (isReordered && base !== undefined && row.currentCellIndex !== undefined)
         ? row.currentCellIndex - base : undefined;
     const incomingDelta = (isReordered && base !== undefined && row.incomingCellIndex !== undefined)
         ? row.incomingCellIndex - base : undefined;
+    const reorderIndicator = isReordered ? (
+        <div className="reorder-indicator-bar" data-testid="reorder-indicator">
+            {currentDelta !== undefined && currentDelta !== 0 && (
+                <span className="reorder-delta current-delta">
+                    {currentDelta > 0 ? '↓' : '↑'} {Math.abs(currentDelta)}
+                </span>
+            )}
+            {incomingDelta !== undefined && incomingDelta !== 0 && (
+                <span className="reorder-delta incoming-delta">
+                    {incomingDelta > 0 ? '↓' : '↑'} {Math.abs(incomingDelta)}
+                </span>
+            )}
+        </div>
+    ) : null;
     const canUnmatch = isConflict
         && isReordered
         && !row.isUserUnmatched
@@ -284,20 +302,7 @@ function MergeRowInner({
                 data-cell-type={cellType}
                 data-cell={encodeURIComponent(cell ? JSON.stringify(cell) : '')}
             >
-                {isReordered && (
-                    <div className="reorder-indicator-bar" data-testid="reorder-indicator">
-                        {currentDelta !== undefined && currentDelta !== 0 && (
-                            <span className="reorder-delta current-delta">
-                                {currentDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(currentDelta)}
-                            </span>
-                        )}
-                        {incomingDelta !== undefined && incomingDelta !== 0 && (
-                            <span className="reorder-delta incoming-delta">
-                                {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
-                            </span>
-                        )}
-                    </div>
-                )}
+                {reorderIndicator}
                 <div className="readable-row-wrapper">
                     <CellContent
                         cell={cell}
@@ -418,69 +423,33 @@ function MergeRowInner({
                             </div>
                             {isEditing ? (
                                 <div data-editing-allow="true">
-                                    {resolvedCellType === 'markdown' ? (
-                                        <textarea
-                                            value={draftResolvedContent}
-                                            onChange={e => handleContentChange(e.target.value)}
-                                            placeholder="Enter cell content..."
-                                            className="resolved-content-input"
-                                            autoFocus={true}
-                                            onBlur={event => {
-                                                if (suppressBlurEditGuardRef.current) {
-                                                    suppressBlurEditGuardRef.current = false;
-                                                    return;
-                                                }
-                                                const relatedTarget = event.relatedTarget as HTMLElement | null;
-                                                if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
-                                                onCommitContent(conflictIndex, draftResolvedContentRef.current);
-                                                onStopEditing(conflictIndex);
-                                                setJustSaved(true);
-                                                setTimeout(() => setJustSaved(false), 1000);
-                                            }}
-                                        />
-                                    ) : (
-                                        <CodeMirror
-                                            value={draftResolvedContent}
-                                            onChange={handleContentChange}
-                                            extensions={editorExtensions}
-                                            placeholder="Enter cell content..."
-                                            className="resolved-content-input"
-                                            basicSetup={{ lineNumbers: false, foldGutter: false }}
-                                            theme={resolvedEditorTheme}
-                                            autoFocus={true}
-                                            onBlur={event => {
-                                                if (suppressBlurEditGuardRef.current) {
-                                                    suppressBlurEditGuardRef.current = false;
-                                                    return;
-                                                }
-                                                const relatedTarget = event.relatedTarget as HTMLElement | null;
-                                                if (relatedTarget?.closest('[data-editing-allow="true"]')) return;
-                                                onCommitContent(conflictIndex, draftResolvedContentRef.current);
-                                                onStopEditing(conflictIndex);
-                                                setJustSaved(true);
-                                                setTimeout(() => setJustSaved(false), 1000);
-                                            }}
-                                        />
-                                    )}
+                                    <CodeMirror
+                                        value={draftResolvedContent}
+                                        onChange={handleContentChange}
+                                        extensions={editorExtensions}
+                                        placeholder="Enter cell content..."
+                                        className="resolved-content-input"
+                                        basicSetup={{ lineNumbers: false, foldGutter: false }}
+                                        theme={resolvedEditorTheme}
+                                        autoFocus={true}
+                                        onBlur={handleEditorBlur}
+                                    />
                                 </div>
-                            ) : (
-                                resolvedCellType === 'markdown' ? (
-                                    <div className="resolved-content-static">
-                                        <MarkdownContent
-                                            source={displayedResolvedContent}
-                                            theme={theme}
-                                            isLightweight={isLightweight}
-                                        />
-                                    </div>
-                                ) : (
-                                    <StaticHighlightedCode
+                            ) : resolvedCellType === 'markdown' ? (
+                                <div className="resolved-content-static">
+                                    <MarkdownContent
                                         source={displayedResolvedContent}
-                                        langExtensions={languageExtensions}
-                                        theme={theme}
-                                        className="resolved-content-static"
                                         isLightweight={isLightweight}
                                     />
-                                )
+                                </div>
+                            ) : (
+                                <CellSource
+                                    source={displayedResolvedContent}
+                                    langExtensions={languageExtensions}
+                                    theme={theme}
+                                    className="resolved-content-static"
+                                    isLightweight={isLightweight}
+                                />
                             )}
                         </div>
                     </div>
@@ -491,25 +460,45 @@ function MergeRowInner({
         );
     }
 
+    // Per-side descriptors for the three diff columns. Base compares against the
+    // first available other side; current/incoming compare against each other
+    // (falling back to base) in conflict diff mode.
+    const columnSides = [
+        {
+            side: 'base' as const,
+            cell: row.baseCell,
+            cellIndex: row.baseCellIndex,
+            compareCell: row.currentCell || row.incomingCell,
+            diffMode: undefined as 'conflict' | undefined,
+        },
+        {
+            side: 'current' as const,
+            cell: row.currentCell,
+            cellIndex: row.currentCellIndex,
+            compareCell: row.incomingCell || row.baseCell,
+            diffMode: 'conflict' as const,
+        },
+        {
+            side: 'incoming' as const,
+            cell: row.incomingCell,
+            cellIndex: row.incomingCellIndex,
+            compareCell: row.currentCell || row.baseCell,
+            diffMode: 'conflict' as const,
+        },
+    ];
+
+    const resolutionSides = [
+        { side: 'base' as const, has: hasBase },
+        { side: 'current' as const, has: hasCurrent },
+        { side: 'incoming' as const, has: hasIncoming },
+    ];
+
     return (
         <div ref={rowRef} className={rowClasses} data-testid={testId}>
             {/* Top action bar - always present for conflicts */}
             <div className="conflict-action-bar" data-testid="conflict-action-bar">
                 <div className="conflict-action-left">
-                    {isReordered && !row.isUserUnmatched && (
-                        <div className="reorder-indicator-bar" data-testid="reorder-indicator">
-                            {currentDelta !== undefined && currentDelta !== 0 && (
-                                <span className="reorder-delta current-delta">
-                                    {currentDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(currentDelta)}
-                                </span>
-                            )}
-                            {incomingDelta !== undefined && incomingDelta !== 0 && (
-                                <span className="reorder-delta incoming-delta">
-                                    {incomingDelta > 0 ? '\u2193' : '\u2191'} {Math.abs(incomingDelta)}
-                                </span>
-                            )}
-                        </div>
-                    )}
+                    {!row.isUserUnmatched && reorderIndicator}
                 </div>
                 <div className="conflict-action-right">
                     <button
@@ -557,115 +546,52 @@ function MergeRowInner({
 
             {/* Three-way diff view */}
             <div className={`cell-columns${showBaseColumn ? '' : ' two-column'}`}>
-                {showBaseColumn && (
-                    <div className="cell-column base-column">
-                        {row.baseCell ? (
-                            <CellContent
-                                cell={row.baseCell}
-                                cellIndex={row.baseCellIndex}
-                                side="base"
-                                isConflict={true}
-                                compareCell={row.currentCell || row.incomingCell}
-                                languageExtensions={languageExtensions}
-                                theme={theme}
-                                showOutputs={showOutputs}
-                                showCellHeaders={showCellHeaders}
-                                isLightweight={isLightweight}
-                            />
-                        ) : (
-                            <div
-                                className="cell-placeholder cell-deleted"
-                                title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
-                            >
-                                <span className="placeholder-text">{getPlaceholderText('base')}</span>
-                            </div>
-                        )}
-                    </div>
-                )}
-                <div className="cell-column current-column">
-                    {row.currentCell ? (
-                        <CellContent
-                            cell={row.currentCell}
-                            cellIndex={row.currentCellIndex}
-                            side="current"
-                            isConflict={true}
-                            compareCell={row.incomingCell || row.baseCell}
-                            diffMode="conflict"
-                            languageExtensions={languageExtensions}
-                            theme={theme}
-                            showOutputs={showOutputs}
-                            showCellHeaders={showCellHeaders}
-                            isLightweight={isLightweight}
-                        />
-                    ) : (
-                        <div
-                            className="cell-placeholder cell-deleted"
-                            title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
-                        >
-                            <span className="placeholder-text">{getPlaceholderText('current')}</span>
+                {columnSides
+                    .filter(col => col.side !== 'base' || showBaseColumn)
+                    .map(col => (
+                        <div key={col.side} className={`cell-column ${col.side}-column`}>
+                            {col.cell ? (
+                                <CellContent
+                                    cell={col.cell}
+                                    cellIndex={col.cellIndex}
+                                    side={col.side}
+                                    isConflict={true}
+                                    compareCell={col.compareCell}
+                                    diffMode={col.diffMode}
+                                    languageExtensions={languageExtensions}
+                                    theme={theme}
+                                    showOutputs={showOutputs}
+                                    showCellHeaders={showCellHeaders}
+                                    isLightweight={isLightweight}
+                                />
+                            ) : (
+                                <div
+                                    className="cell-placeholder cell-deleted"
+                                    title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
+                                >
+                                    <span className="placeholder-text">{getPlaceholderText(col.side)}</span>
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
-                <div className="cell-column incoming-column">
-                    {row.incomingCell ? (
-                        <CellContent
-                            cell={row.incomingCell}
-                            cellIndex={row.incomingCellIndex}
-                            side="incoming"
-                            isConflict={true}
-                            compareCell={row.currentCell || row.baseCell}
-                            diffMode="conflict"
-                            languageExtensions={languageExtensions}
-                            theme={theme}
-                            showOutputs={showOutputs}
-                            showCellHeaders={showCellHeaders}
-                            isLightweight={isLightweight}
-                        />
-                    ) : (
-                        <div
-                            className="cell-placeholder cell-deleted"
-                            title={row.isUnmatched ? "This branch has no cell here — the cell exists only in the other column(s)" : undefined}
-                        >
-                            <span className="placeholder-text">{getPlaceholderText('incoming')}</span>
-                        </div>
-                    )}
-                </div>
+                    ))}
             </div>
 
             {/* Resolution bar - select which branch to use as base */}
             <div className={`resolution-bar cell-columns${showBaseColumn && !row.isUserUnmatched ? '' : ' two-column'}`}>
-                {showBaseColumn && !row.isUserUnmatched && (
-                    <div className="cell-column base-column">
-                        {hasBase && (
-                            <button
-                                className={`btn-resolve btn-base ${resolutionState?.choice === 'base' ? 'selected' : ''}`}
-                                onClick={() => handleChoiceClick('base')}
-                            >
-                                Use Base
-                            </button>
-                        )}
-                    </div>
-                )}
-                <div className="cell-column current-column">
-                    {hasCurrent && (
-                        <button
-                            className={`btn-resolve btn-current ${resolutionState?.choice === 'current' ? 'selected' : ''}`}
-                            onClick={() => handleChoiceClick('current')}
-                        >
-                            Use Current
-                        </button>
-                    )}
-                </div>
-                <div className="cell-column incoming-column">
-                    {hasIncoming && (
-                        <button
-                            className={`btn-resolve btn-incoming ${resolutionState?.choice === 'incoming' ? 'selected' : ''}`}
-                            onClick={() => handleChoiceClick('incoming')}
-                        >
-                            Use Incoming
-                        </button>
-                    )}
-                </div>
+                {resolutionSides
+                    .filter(({ side }) => side !== 'base' || (showBaseColumn && !row.isUserUnmatched))
+                    .map(({ side, has }) => (
+                        <div key={side} className={`cell-column ${side}-column`}>
+                            {has && (
+                                <button
+                                    className={`btn-resolve btn-${side} ${resolutionState?.choice === side ? 'selected' : ''}`}
+                                    onClick={() => handleChoiceClick(side)}
+                                >
+                                    Use {side[0].toUpperCase() + side.slice(1)}
+                                </button>
+                            )}
+                        </div>
+                    ))}
             </div>
 
         </div>

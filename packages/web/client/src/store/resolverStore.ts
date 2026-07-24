@@ -127,7 +127,15 @@ function applySnapshot(state: ResolverStoreState, snapshot: ResolverSnapshot): v
     state.takeAllChoice = snapshot.takeAllChoice;
 }
 
-function getCellForSide(
+// Move to an existing history entry: restore its snapshot, exit any edit session,
+// and point the index at it. Callers guard bounds/no-op before calling.
+function goToHistoryIndex(state: ResolverStoreState, targetIndex: number): void {
+    applySnapshot(state, state.history.entries[targetIndex].snapshot);
+    state.editingConflicts.clear();
+    state.history.index = targetIndex;
+}
+
+export function getCellForSide(
     row: MergeRowType,
     side: TakeAllChoice
 ): NotebookCell | undefined {
@@ -233,10 +241,7 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
             jumpToHistory: (targetIndex: number) => set(state => {
                 if (targetIndex === state.history.index) return;
                 if (targetIndex < 0 || targetIndex >= state.history.entries.length) return;
-                const targetSnapshot = state.history.entries[targetIndex].snapshot;
-                applySnapshot(state, targetSnapshot);
-                state.editingConflicts.clear();
-                state.history.index = targetIndex;
+                goToHistoryIndex(state, targetIndex);
             }),
             unmatchRow: (rowIndex: number) => set(state => {
                 const row = state.rows[rowIndex];
@@ -344,19 +349,11 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
             }),
             undo: () => set(state => {
                 if (state.history.index === 0) return;
-                const nextIndex = state.history.index - 1;
-                const targetSnapshot = state.history.entries[nextIndex].snapshot;
-                applySnapshot(state, targetSnapshot);
-                state.editingConflicts.clear();
-                state.history.index = nextIndex;
+                goToHistoryIndex(state, state.history.index - 1);
             }),
             redo: () => set(state => {
                 if (state.history.index >= state.history.entries.length - 1) return;
-                const nextIndex = state.history.index + 1;
-                const targetSnapshot = state.history.entries[nextIndex].snapshot;
-                applySnapshot(state, targetSnapshot);
-                state.editingConflicts.clear();
-                state.history.index = nextIndex;
+                goToHistoryIndex(state, state.history.index + 1);
             }),
         }))
     );

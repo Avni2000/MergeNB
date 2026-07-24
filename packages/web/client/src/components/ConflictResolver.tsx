@@ -7,15 +7,15 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { useStore } from 'zustand';
-import { createPortal } from 'react-dom';
+import { WarningModal } from './WarningModal';
 import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
-    NotebookCell,
 } from '../types';
 import { MergeRow } from './MergeRow';
 import {
     createResolverStore,
+    getCellForSide,
     type ResolutionState,
     type TakeAllChoice,
 } from '../store/resolverStore';
@@ -31,6 +31,66 @@ interface ConflictResolverProps {
         semanticChoice?: 'base' | 'current' | 'incoming'
     ) => void;
     onCancel: () => void;
+}
+
+// Shared title/message for the "a cell is still being edited" prompt shown when
+// applying a resolution. Only the confirm label differs between entry points.
+const APPLY_RESOLUTION_WHILE_EDITING_WARNING = {
+    title: 'Apply resolution now?',
+    message: 'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
+} as const;
+
+type GuardedHandlers = {
+    onMouseDown: (event: React.MouseEvent) => void;
+    onClick: () => void;
+};
+
+interface UndoRedoButtonsProps {
+    guardedClick: (action: () => void) => GuardedHandlers;
+    onUndo: () => void;
+    onRedo: () => void;
+    canUndo: boolean;
+    canRedo: boolean;
+    undoTestId: string;
+    redoTestId: string;
+    undoTitle?: string;
+    redoTitle?: string;
+}
+
+// Undo/Redo pair rendered identically in the toolbar and the history panel.
+function UndoRedoButtons({
+    guardedClick,
+    onUndo,
+    onRedo,
+    canUndo,
+    canRedo,
+    undoTestId,
+    redoTestId,
+    undoTitle,
+    redoTitle,
+}: UndoRedoButtonsProps): React.ReactElement {
+    return (
+        <>
+            <button
+                className="btn btn-secondary"
+                {...guardedClick(onUndo)}
+                disabled={!canUndo}
+                data-testid={undoTestId}
+                title={undoTitle}
+            >
+                Undo
+            </button>
+            <button
+                className="btn btn-secondary"
+                {...guardedClick(onRedo)}
+                disabled={!canRedo}
+                data-testid={redoTestId}
+                title={redoTitle}
+            >
+                Redo
+            </button>
+        </>
+    );
 }
 
 export function ConflictResolver({
@@ -120,8 +180,7 @@ export function ConflictResolver({
     const dismissDestructiveActionWarning = useCallback(() => {
         pendingDestructiveActionRef.current = null;
         setDestructiveActionWarning(null);
-
-    }, [activeEditingConflictIndex, rows]);
+    }, []);
 
     const confirmDestructiveActionWarning = useCallback(() => {
         const action = pendingDestructiveActionRef.current;
@@ -163,6 +222,24 @@ export function ConflictResolver({
             });
         },
         [activeEditingConflictIndex]
+    );
+
+    // Build the onMouseDown/onClick pair for a control that must defer to the
+    // active-editing guard: mousedown intercepts to prompt the user, and the
+    // click is discarded once (via the suppress ref) so the action doesn't
+    // double-fire after the prompt is shown.
+    const guardedClick = useCallback(
+        (action: () => void) => ({
+            onMouseDown: (event: React.MouseEvent) => mouseDownGuardActiveEditing(event, action),
+            onClick: () => {
+                if (suppressGuardedClickRef.current) {
+                    suppressGuardedClickRef.current = false;
+                    return;
+                }
+                action();
+            },
+        }),
+        [mouseDownGuardActiveEditing]
     );
 
     const isEditableTarget = useCallback((target: EventTarget | null): boolean => {
@@ -363,9 +440,7 @@ export function ConflictResolver({
         if (activeEditingConflictIndex !== null) {
             pendingDestructiveActionRef.current = applyResolutionNow;
             setDestructiveActionWarning({
-                title: 'Apply resolution now?',
-                message:
-                    'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
+                ...APPLY_RESOLUTION_WHILE_EDITING_WARNING,
                 confirmLabel: 'Apply resolution (without saving edits)',
             });
             return;
@@ -386,9 +461,7 @@ export function ConflictResolver({
             suppressApplyResolutionClickRef.current = true;
             pendingDestructiveActionRef.current = applyResolutionNow;
             setDestructiveActionWarning({
-                title: 'Apply resolution now?',
-                message:
-                    'A cell is still in edit mode. Apply the current saved content, or keep editing first.',
+                ...APPLY_RESOLUTION_WHILE_EDITING_WARNING,
                 confirmLabel: 'Apply resolution',
             });
         },
@@ -397,37 +470,18 @@ export function ConflictResolver({
 
     const fileName = conflict.filePath.split('/').pop() || 'notebook.ipynb';
 
-    const destructiveActionModal = destructiveActionWarning
-        ? createPortal(
-            <div
-                className="warning-modal-overlay"
-                data-testid="destructive-action-warning-modal"
-                data-editing-allow="true"
-            >
-                <div className="warning-modal">
-                    <div className="warning-icon">⚠️</div>
-                    <h3>{destructiveActionWarning.title}</h3>
-                    <p>{destructiveActionWarning.message}</p>
-                    <div className="warning-actions">
-                        <button
-                            className="btn-cancel"
-                            onClick={dismissDestructiveActionWarning}
-                        >
-                            Keep my edits
-                        </button>
-                        <button
-                            className="btn-confirm"
-                            onClick={confirmDestructiveActionWarning}
-                            data-testid="destructive-action-warning-confirm"
-                        >
-                            {destructiveActionWarning.confirmLabel}
-                        </button>
-                    </div>
-                </div>
-            </div>,
-            document.body
-        )
-        : null;
+    const destructiveActionModal = destructiveActionWarning ? (
+        <WarningModal
+            title={destructiveActionWarning.title}
+            message={destructiveActionWarning.message}
+            confirmLabel={destructiveActionWarning.confirmLabel}
+            onConfirm={confirmDestructiveActionWarning}
+            onCancel={dismissDestructiveActionWarning}
+            testId="destructive-action-warning-modal"
+            confirmTestId="destructive-action-warning-confirm"
+            editingAllow
+        />
+    ) : null;
 
     return (
         <div className="app-container jp-Notebook">
@@ -458,32 +512,17 @@ export function ConflictResolver({
                             Next Conflict &#8595;
                         </button>
                         <div className="header-group">
-                                <button
-                                    className="btn btn-secondary"
-                                    onMouseDown={e => mouseDownGuardActiveEditing(e, handleUndo)}
-                                    onClick={() => {
-                                        if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                        handleUndo();
-                                    }}
-                                    disabled={!canUndo}
-                                    data-testid="history-undo"
-                                    title={`Undo (${undoShortcutLabel})`}
-                            >
-                                Undo
-                            </button>
-                                <button
-                                    className="btn btn-secondary"
-                                    onMouseDown={e => mouseDownGuardActiveEditing(e, handleRedo)}
-                                    onClick={() => {
-                                        if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                        handleRedo();
-                                    }}
-                                    disabled={!canRedo}
-                                    data-testid="history-redo"
-                                    title={`Redo (${redoShortcutLabel})`}
-                            >
-                                Redo
-                            </button>
+                            <UndoRedoButtons
+                                guardedClick={guardedClick}
+                                onUndo={handleUndo}
+                                onRedo={handleRedo}
+                                canUndo={canUndo}
+                                canRedo={canRedo}
+                                undoTestId="history-undo"
+                                redoTestId="history-redo"
+                                undoTitle={`Undo (${undoShortcutLabel})`}
+                                redoTitle={`Redo (${redoShortcutLabel})`}
+                            />
                             <div className="history-menu" ref={historyMenuRef}>
                                 <button
                                     title="View and jump to previous resolution states"
@@ -502,30 +541,15 @@ export function ConflictResolver({
                                     <div className="history-header">
                                         <span className="history-title">History</span>
                                         <div className="history-actions">
-                                            <button
-                                                className="btn btn-secondary"
-                                                onMouseDown={e => mouseDownGuardActiveEditing(e, handleUndo)}
-                                                onClick={() => {
-                                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                                    handleUndo();
-                                                }}
-                                                disabled={!canUndo}
-                                                data-testid="history-panel-undo"
-                                            >
-                                                Undo
-                                            </button>
-                                            <button
-                                                className="btn btn-secondary"
-                                                onMouseDown={e => mouseDownGuardActiveEditing(e, handleRedo)}
-                                                onClick={() => {
-                                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                                    handleRedo();
-                                                }}
-                                                disabled={!canRedo}
-                                                data-testid="history-panel-redo"
-                                            >
-                                                Redo
-                                            </button>
+                                            <UndoRedoButtons
+                                                guardedClick={guardedClick}
+                                                onUndo={handleUndo}
+                                                onRedo={handleRedo}
+                                                canUndo={canUndo}
+                                                canRedo={canRedo}
+                                                undoTestId="history-panel-undo"
+                                                redoTestId="history-panel-redo"
+                                            />
                                         </div>
                                     </div>
                                     <ul className="history-list">
@@ -537,12 +561,7 @@ export function ConflictResolver({
                                                 role="button"
                                                 tabIndex={0}
                                                 aria-current={index === history.index ? 'true' : undefined}
-                                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => { handleJumpToHistory(index); setHistoryOpen(false); })}
-                                                onClick={() => {
-                                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                                    handleJumpToHistory(index);
-                                                    setHistoryOpen(false);
-                                                }}
+                                                {...guardedClick(() => { handleJumpToHistory(index); setHistoryOpen(false); })}
                                                 onKeyDown={event => {
                                                     if (event.key === 'Enter' || event.key === ' ') {
                                                         event.preventDefault();
@@ -558,63 +577,19 @@ export function ConflictResolver({
                                 </div>
                             </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 6, marginRight: 12, paddingRight: 12, borderRight: '1px solid var(--border-color)' }}>
-                            {showBaseColumn && (
-                                <button
-                                    className="btn"
-                                    style={{
-                                        background: 'var(--base-bg)',
-                                        border: '1px solid var(--base-border)',
-                                        color: 'var(--text-primary)',
-                                        fontSize: 11,
-                                        padding: '4px 8px'
-                                    }}
-                                    title="Accept all base changes for remaining conflicts"
-                                    onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('base'))}
-                                    onClick={() => {
-                                        if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                        handleAcceptAll('base');
-                                    }}
-                                >
-                                    All Base
-                                </button>
-                            )}
-                            <button
-                                className="btn"
-                                style={{
-                                    background: 'var(--current-bg)',
-                                    border: '1px solid var(--current-border)',
-                                    color: 'var(--text-primary)',
-                                    fontSize: 11,
-                                    padding: '4px 8px',
-                                }}
-                                title="Accept all current changes for remaining conflicts"
-                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('current'))}
-                                onClick={() => {
-                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                    handleAcceptAll('current');
-                                }}
-                            >
-                                All Current
-                            </button>
-                            <button
-                                className="btn"
-                                style={{
-                                    background: 'var(--incoming-bg)',
-                                    border: '1px solid var(--incoming-border)',
-                                    color: 'var(--text-primary)',
-                                    fontSize: 11,
-                                    padding: '4px 8px'
-                                }}
-                                title="Accept all incoming changes for remaining conflicts"
-                                onMouseDown={e => mouseDownGuardActiveEditing(e, () => handleAcceptAll('incoming'))}
-                                onClick={() => {
-                                    if (suppressGuardedClickRef.current) { suppressGuardedClickRef.current = false; return; }
-                                    handleAcceptAll('incoming');
-                                }}
-                            >
-                                All Incoming
-                            </button>
+                        <div className="take-all-group">
+                            {(['base', 'current', 'incoming'] as const)
+                                .filter(side => side !== 'base' || showBaseColumn)
+                                .map(side => (
+                                    <button
+                                        key={side}
+                                        className={`btn btn-take-all ${side}`}
+                                        title={`Accept all ${side} changes for remaining conflicts`}
+                                        {...guardedClick(() => handleAcceptAll(side))}
+                                    >
+                                        All {side[0].toUpperCase() + side.slice(1)}
+                                    </button>
+                                ))}
                         </div>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
                             <input
@@ -792,13 +767,4 @@ function inferTakeAllChoice(
     }
 
     return undefined;
-}
-
-function getCellForSide(
-    row: MergeRowType,
-    side: TakeAllChoice
-): NotebookCell | undefined {
-    if (side === 'base') return row.baseCell;
-    if (side === 'current') return row.currentCell;
-    return row.incomingCell;
 }
