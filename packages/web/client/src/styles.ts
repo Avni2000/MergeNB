@@ -99,7 +99,7 @@ html, body {
     return `
 ${rootSel} {
     --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-    
+
     /* Code Font: Inherit VS Code's Editor font, fall back to standard monospace */
     --font-code: "JetBrains Mono", "SF Mono", Monaco, Menlo, Consolas, "Ubuntu Mono", "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;
 
@@ -270,35 +270,39 @@ ${bodySel} {
     border-radius: 12px;
 }
 
-/* History panel */
+/* History sidebar */
 .history-panel {
+    display: flex;
+    flex-direction: column;
     background: var(--bg-secondary);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 0;
+    border-left: 1px solid var(--border-color);
+    color: var(--text-primary);
 }
 
 .history-menu {
     position: relative;
 }
 
+/* Slides in from the right edge and spans the full viewport height. */
 .history-dropdown {
-    position: absolute;
-    top: calc(100% + 8px);
+    position: fixed;
+    top: 0;
     right: 0;
-    width: 320px;
+    bottom: 0;
+    width: 20vw;
+    min-width: 260px;
+    max-width: 90vw;
     z-index: 200;
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
-    opacity: 0;
-    transform: translateY(-6px);
+    box-shadow: -12px 0 28px rgba(0, 0, 0, 0.35);
+    transform: translateX(100%);
+    visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.15s ease, transform 0.15s ease;
+    transition: transform 0.2s ease, visibility 0.2s ease;
 }
 
 .history-dropdown.open {
-    opacity: 1;
-    transform: translateY(0);
+    transform: translateX(0);
+    visibility: visible;
     pointer-events: auto;
 }
 
@@ -306,7 +310,10 @@ ${bodySel} {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 8px;
+    gap: 8px;
+    flex: 0 0 auto;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color);
 }
 
 .history-title {
@@ -317,37 +324,77 @@ ${bodySel} {
     font-weight: 600;
 }
 
+.history-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.history-close:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
 .history-actions {
     display: flex;
-    gap: 8px;
+    gap: 6px;
+    flex: 0 0 auto;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.history-actions .btn {
+    flex: 1;
 }
 
 .history-list {
     list-style: none;
+    margin: 0;
+    padding: 10px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    max-height: 120px;
+    gap: 4px;
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .history-item {
     font-size: 12px;
-    padding: 6px 8px;
+    padding: 7px 10px;
     border-radius: 4px;
-    background: var(--bg-tertiary);
+    border-left: 2px solid transparent;
+    background: transparent;
     color: var(--text-primary);
     cursor: pointer;
     transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .history-item:hover {
-    background: #3a3a3a;
+    background: var(--bg-tertiary);
+}
+
+.history-item:focus-visible {
+    outline: 1px solid var(--accent-blue);
+    outline-offset: -1px;
 }
 
 .history-item.current {
-    border: 1px solid var(--accent-blue);
+    border-left-color: var(--accent-blue);
     background: rgba(0, 122, 204, 0.15);
+    font-weight: 600;
 }
 
 .history-item.future {
