@@ -289,7 +289,8 @@ ${bodySel} {
     top: 0;
     right: 0;
     bottom: 0;
-    width: 320px;
+    width: 20vw;
+    min-width: 260px;
     max-width: 90vw;
     z-index: 200;
     box-shadow: -12px 0 28px rgba(0, 0, 0, 0.35);

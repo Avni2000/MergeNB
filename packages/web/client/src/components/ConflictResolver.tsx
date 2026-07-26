@@ -118,6 +118,7 @@ export function ConflictResolver({
         confirmLabel: string;
     } | null>(null);
     const historyMenuRef = useRef<HTMLDivElement>(null);
+    const historyToggleRef = useRef<HTMLButtonElement>(null);
     const mainContentRef = useRef<HTMLDivElement>(null);
     const pendingDestructiveActionRef = useRef<(() => void) | null>(null);
     const suppressApplyResolutionClickRef = useRef(false);
@@ -525,6 +526,7 @@ export function ConflictResolver({
                             />
                             <div className="history-menu" ref={historyMenuRef}>
                                 <button
+                                    ref={historyToggleRef}
                                     title="View and jump to previous resolution states"
                                     className="btn btn-secondary history-toggle"
                                     onClick={() => setHistoryOpen(prev => !prev)}
@@ -542,7 +544,10 @@ export function ConflictResolver({
                                         <span className="history-title">History</span>
                                         <button
                                             className="history-close"
-                                            onClick={() => setHistoryOpen(false)}
+                                            onClick={() => {
+                                                setHistoryOpen(false);
+                                                historyToggleRef.current?.focus();
+                                            }}
                                             aria-label="Close history"
                                             title="Close history"
                                             data-testid="history-close"
