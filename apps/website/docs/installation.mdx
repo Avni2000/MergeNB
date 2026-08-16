@@ -12,7 +12,7 @@ MergeNB is currently only available as a VS Code extension. You can install it f
 
 ### Compatibility note
 
-:::warning nbdime
+:::warning[nbdime]
 MergeNB does not coexist with [`nbdime`](https://nbdime.readthedocs.io/) in the same merge flow.
 If both are active, you can end up with merge artifacts that MergeNB cannot reliably parse.
 Pick one notebook merge strategy per repo. 
@@ -29,7 +29,7 @@ MergeNB will guard against nbdime configs and give you a way to disable nbdime.
 3. Open the Command Palette (`Ctrl+Shift+P` or `Cmd+Shift+P`) and run **Extensions: Install from VSIX...**
 4. Select the downloaded file.
 
-:::info VS Code Marketplace
+:::info[VS Code Marketplace]
 A VS Code Marketplace listing is in the works!
 :::
 
@@ -64,6 +64,6 @@ npm run compile && code --extensionDevelopmentPath=. --new-window <folder to ope
 ```
    - There's also a `launch` configuration in VS Code that does this for you, as well as hot-reloading on file changes, but it's never worked for me.
 
-:::info testing
+:::info[Testing]
 See more in [Testing](./testing/index.mdx), since I've already created a TUI testing framework for this purpose.
 :::

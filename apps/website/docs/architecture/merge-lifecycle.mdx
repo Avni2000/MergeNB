@@ -33,7 +33,7 @@ For a `UU` conflict, `gitIntegration.getThreeWayVersions` reads three blobs from
 
 Each blob is raw notebook JSON. `parseNotebook` in core validates the structure and returns typed `Notebook` objects.
 
-:::info Tip
+:::info[Tip]
 Run `git show :1:<path>.ipynb > base.ipynb; git show :2:<path>.ipynb > current.ipynb; git show :3:<path>.ipynb > incoming.ipynb` to see the notebooks the extension works with.
 :::
 

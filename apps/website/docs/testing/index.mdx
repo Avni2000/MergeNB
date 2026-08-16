@@ -42,7 +42,7 @@ npm run test:e2e
 
 ## Compile behavior
 
-:::warning Compile before using direct runners
+:::warning[Compile before using direct runners]
 The npm test scripts already run `compile` and `compile-tests` through their `pretest:*` hooks.
 
 If you run `node out/...`, `npx playwright test`, or editor-integrated test commands directly, compile both layers first:
@@ -86,7 +86,7 @@ Running `npm run test` with no flags opens the interactive TUI for the same mode
 
 ## Adding a new test
 
-:::info testing efficiency
+:::info[Testing Efficiency]
 VS Code tests:
 1.  are *significantly* more computationally expensive than playwright, and causes the CI to take much longer
 2.  have *terrible* logging in comparison to playwright tests, and cannot be parallelized unlike playwright. 
