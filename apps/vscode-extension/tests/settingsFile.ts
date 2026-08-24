@@ -18,7 +18,8 @@ type SettingKey =
     | 'ui.showCellHeaders'
     | 'ui.enableUndoRedoHotkeys'
     | 'ui.showBaseColumn'
-    | 'ui.theme';
+    | 'ui.theme'
+    | 'security.trustContent';
 
 export type SettingsState = Partial<Record<SettingKey, boolean | Theme>>;
 

@@ -10,6 +10,6 @@
  */
 
 
-export { getWebServer } from './webServer';
+export { getWebServer, isContentTrusted } from './webServer';
 
 export * from './webTypes';

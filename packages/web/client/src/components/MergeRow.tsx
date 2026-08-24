@@ -36,6 +36,7 @@ interface MergeRowProps {
     showBaseColumn?: boolean;
     showCellHeaders?: boolean;
     theme?: 'dark' | 'light';
+    isTrusted?: boolean;
     'data-testid'?: string;
 }
 
@@ -68,6 +69,7 @@ function MergeRowInner({
     showBaseColumn = true,
     showCellHeaders = false,
     theme = 'light',
+    isTrusted = false,
     'data-testid': testId,
 }: MergeRowProps): React.ReactElement {
     const isConflict = row.type === 'conflict';
@@ -311,6 +313,7 @@ function MergeRowInner({
                         isConflict={false}
                         languageExtensions={languageExtensions}
                         theme={theme}
+                        isTrusted={isTrusted}
                         showOutputs={showOutputs}
                         showCellHeaders={showCellHeaders}
                         isLightweight={isLightweight}
@@ -560,6 +563,7 @@ function MergeRowInner({
                                     diffMode={col.diffMode}
                                     languageExtensions={languageExtensions}
                                     theme={theme}
+                                    isTrusted={isTrusted}
                                     showOutputs={showOutputs}
                                     showCellHeaders={showCellHeaders}
                                     isLightweight={isLightweight}

@@ -57,6 +57,7 @@ const ALL_OFF: MergeNBSettings = {
     enableUndoRedoHotkeys: true,
     showBaseColumn: true,
     theme: 'dark',
+    trustContent: true,
 };
 
 function settingsWith(overrides: Partial<MergeNBSettings>): MergeNBSettings {
