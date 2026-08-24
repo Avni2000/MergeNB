@@ -1,0 +1,37 @@
+---
+title: Security
+description: Steps taken to maximize user security when resolving conflicts within a browser environment 
+---
+
+# Security
+
+We're interested in essentially dynamically setting security based off whether or not the user trusts the files they're resolving.
+
+That is, in 99% of cases, users won't write malicious code in their own notebooks, but what about the 1% of the time where it's a beginner opening a random file? Maybe we don't allow arbitrary HTML in the markdown in that case, and set stricter CSP (Content Security Policy).
+
+A really easy way to quantify trust is with VS Code's [Workspace Trust](https://code.visualstudio.com/api/extension-guides/workspace-trust) where if the user trusts a given folder, we can be a lot more lax with how much content we block within a notebook.
+
+I'm also a big fan of allowing users a reasonable amount of customizability, so there exists a setting, `security.trustContent` which defaults to whether or not the workspace is trusted. It can be manually turned off, but BOTH `security.trustContent` and workspace trust must be enabled for the lax policy to be implemented from the extension side of things.
+
+## Lax Policy
+
+Applied when `workspace.isTrusted **AND** security.trustContent` is true.
+
+- CSP is set to `default-src 'self' https:` such that scripts, styles, images, fonts, and websockets can load from any `https:` origin. 
+- Markdown HTML skips DOMPurify entirely, so embedded `<script>` tags and event-handler attributes render as authored
+- Cell outputs are rendered with rendermime's `trusted: true` for every mimetype
+    - e.g. `text/html` outputs can run inline scripts
+    - SVG outputs skip DOMPurify sanitization before being handed to rendermime
+
+## Strict Policy
+
+Applied whenever workspace trust **OR** `security.trustContent` is off.
+
+- The CSP is set to `'self'` plus an explicit allowlist for the necessary Google Fonts (`fonts.googleapis.com` / `fonts.gstatic.com`)
+- Markdown HTML is sanitized with `DOMPurify.sanitize()`, which strips `<script>`, event-handler attributes, `javascript:` URIs
+- Only `image/svg+xml` cell outputs are marked trusted for rendermime; everything else (`text/html`, etc.) renders untrusted, so embedded scripts don't execute
+    - SVG outputs are sanitized with DOMPurify's `svg` profile before rendering
+
+:::info[Issues with either policy?]
+Feel free to make a github issue for this; there's no really good precedent for these choices, but they seemed reasonable to me.
+:::

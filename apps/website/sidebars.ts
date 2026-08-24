@@ -1,4 +1,4 @@
-import type {SidebarsConfig} from '@docusaurus/plugin-content-docs';
+import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 
 const sidebars: SidebarsConfig = {
   docsSidebar: [
@@ -9,7 +9,7 @@ const sidebars: SidebarsConfig = {
       label: 'Testing',
       collapsible: true,
       collapsed: true,
-      link: {type: 'doc', id: 'testing/index'},
+      link: { type: 'doc', id: 'testing/index' },
       items: [
         'testing/playwright',
         'testing/vscode-host',
@@ -20,11 +20,12 @@ const sidebars: SidebarsConfig = {
       label: 'Architecture',
       collapsible: true,
       collapsed: true,
-      link: {type: 'doc', id: 'architecture/index'},
+      link: { type: 'doc', id: 'architecture/index' },
       items: [
         'architecture/merge-lifecycle',
         'architecture/state-management-and-ipc',
         'architecture/design-philosophy',
+        'architecture/security-headers',
       ],
     },
     'settings',

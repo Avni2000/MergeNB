@@ -38,6 +38,14 @@ All four fire before the UI opens. A banner at the top of the resolver lists wha
 | `mergeNB.ui.showBaseColumn` | `false` | Shows the base column in the 3-way view (defaults on in headless/test mode) |
 | `mergeNB.ui.enableUndoRedoHotkeys` | `true` | Enables `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` inside the resolver |
 
+## Security
+
+| Setting | Default | Effect |
+|---|---|---|
+| `mergeNB.security.trustContent` | `true` | Renders notebook-authored content (markdown HTML, rich cell outputs) as trusted, but only inside a workspace you've already granted [Workspace Trust](https://code.visualstudio.com/docs/editor/workspace-trust) to. |
+
+See the docs at `Architecture/Security` for more information.
+
 ## Config file shape
 
 Example:
@@ -55,6 +63,9 @@ Example:
     "showCellHeaders": false,
     "hideNonConflictOutputs": false,
     "enableUndoRedoHotkeys": true
+  },
+  "security": {
+    "trustContent": true
   }
 }
 ```
