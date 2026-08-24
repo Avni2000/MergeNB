@@ -20,7 +20,6 @@ import { randomBytes, randomUUID } from 'crypto';
 import WebSocket, { WebSocketServer } from 'ws';
 import * as logger from '../../../core/src';
 import type { WebConflictData } from './webTypes';
-import { workspace } from 'vscode';
 // VSCode is optional - only needed for openExternal
 let vscode: typeof import('vscode') | undefined;
 try {
@@ -45,8 +44,9 @@ interface UriLike {
  * @see /apps/website/docs/architecture/security-headers.mdx
  */
 export function isContentTrusted(): boolean {
-    if (!workspace.isTrusted) return false;
-    return workspace.getConfiguration('mergeNB').get<boolean>('security.trustContent') ?? true;
+    if (!vscode?.workspace.isTrusted) return false;
+    // default trust if no vscode available (playwright)
+    return vscode.workspace.getConfiguration('mergeNB').get<boolean>('security.trustContent') ?? true;
 }
 
 interface WebServerOptions {
