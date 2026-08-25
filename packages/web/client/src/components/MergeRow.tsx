@@ -442,6 +442,7 @@ function MergeRowInner({
                                 <div className="resolved-content-static">
                                     <MarkdownContent
                                         source={displayedResolvedContent}
+                                        isTrusted={isTrusted}
                                         isLightweight={isLightweight}
                                     />
                                 </div>

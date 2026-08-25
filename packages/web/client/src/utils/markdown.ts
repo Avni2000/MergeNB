@@ -21,9 +21,10 @@ const md = MarkdownIt({
  * Render markdown source to HTML.
  *
  * Sanitizes the output with DOMPurify to prevent XSS, unless `isTrusted` is set - a
- * trusted session (workspace trust AND the mergeNB.security.trustContent setting, see
- * isContentTrusted() in packages/web/server/src/webServer.ts) skips sanitization
- * entirely, so markdown-embedded scripts and event handlers run as authored.
+ * trusted session (workspace trust AND the mergeNB.security.trustContent setting,
+ * resolved in resolver.ts and threaded via WebConflictData.isTrusted) skips
+ * sanitization entirely, so markdown-embedded scripts and event handlers run as
+ * authored.
  */
 export function renderMarkdown(source: string, isTrusted: boolean = false): string {
     try {

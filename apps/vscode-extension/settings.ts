@@ -13,7 +13,8 @@
  * - showBaseColumn: Show base branch column in 3-column view (default: false, true in headless/testing)
  * - theme: UI theme selection ('dark' | 'light', default: 'dark')
  * - trustContent: Render notebook-authored HTML/markdown/outputs as trusted, combined
- *   with VS Code workspace trust by the host (default: true)
+ *   with VS Code workspace trust by the host (default: tracks workspace trust - true
+ *   if the workspace is trusted, false otherwise; true in headless/testing)
  *
  * These reduce manual conflict resolution for common non-semantic differences.
  */
@@ -167,7 +168,11 @@ export function getSettings(): MergeNBSettings {
         return { ...DEFAULT_SETTINGS, ...fileOverrides };
     }
 
-    const defaults: MergeNBSettings = { ...DEFAULT_SETTINGS, showBaseColumn: false };
+    // trustContent's own default tracks workspace trust (true if the workspace is
+    // trusted, false otherwise) rather than a fixed value, so users who never touch
+    // the setting get strict rendering in untrusted workspaces without having to
+    // opt in. Explicit config-file or VS Code settings values below still win.
+    const defaults: MergeNBSettings = { ...DEFAULT_SETTINGS, showBaseColumn: false, trustContent: vscode.workspace.isTrusted };
 
     const config = vscode.workspace.getConfiguration('mergeNB');
     const mergedDefaults = { ...defaults, ...fileOverrides };

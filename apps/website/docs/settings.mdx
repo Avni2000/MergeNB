@@ -42,7 +42,7 @@ All four fire before the UI opens. A banner at the top of the resolver lists wha
 
 | Setting | Default | Effect |
 |---|---|---|
-| `mergeNB.security.trustContent` | `true` | Renders notebook-authored content (markdown HTML, rich cell outputs) as trusted, but only inside a workspace you've already granted [Workspace Trust](https://code.visualstudio.com/docs/editor/workspace-trust) to. |
+| `mergeNB.security.trustContent` | tracks [Workspace Trust](https://code.visualstudio.com/docs/editor/workspace-trust) | Renders notebook-authored content (markdown HTML, rich cell outputs) as trusted, but only inside a workspace you've already granted Workspace Trust to. Defaults to `true` when the workspace is trusted and `false` otherwise; set it explicitly to override that. |
 
 See the docs at `Architecture/Security` for more information.
 

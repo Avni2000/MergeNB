@@ -11,13 +11,15 @@ That is, in 99% of cases, users won't write malicious code in their own notebook
 
 A really easy way to quantify trust is with VS Code's [Workspace Trust](https://code.visualstudio.com/api/extension-guides/workspace-trust) where if the user trusts a given folder, we can be a lot more lax with how much content we block within a notebook.
 
-I'm also a big fan of allowing users a reasonable amount of customizability, so there exists a setting, `security.trustContent` which defaults to whether or not the workspace is trusted. It can be manually turned off, but BOTH `security.trustContent` and workspace trust must be enabled for the lax policy to be implemented from the extension side of things.
+I'm also a big fan of allowing users a reasonable amount of customizability, so there exists a setting, `security.trustContent` which defaults to whether the workspace is trusted (`true` in a trusted workspace, `false` otherwise).
+
+It can be manually turned off, but BOTH `security.trustContent` and workspace trust must be enabled for the lax policy to be implemented from the extension side of things.
 
 ## Lax Policy
 
 Applied when `workspace.isTrusted **AND** security.trustContent` is true.
 
-- CSP is set to `default-src 'self' https:` such that scripts, styles, images, fonts, and websockets can load from any `https:` origin. 
+- CSP is set to `default-src 'self' https:` such that scripts, styles, images, fonts, and websockets can load from any `https:` origin. `script-src` and `style-src` also allow `'unsafe-inline'`, so inline `<script>` tags and event-handler attributes execute.
 - Markdown HTML skips DOMPurify entirely, so embedded `<script>` tags and event-handler attributes render as authored
 - Cell outputs are rendered with rendermime's `trusted: true` for every mimetype
     - e.g. `text/html` outputs can run inline scripts

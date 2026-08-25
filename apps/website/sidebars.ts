@@ -25,7 +25,7 @@ const sidebars: SidebarsConfig = {
         'architecture/merge-lifecycle',
         'architecture/state-management-and-ipc',
         'architecture/design-philosophy',
-        'architecture/security-headers',
+        'architecture/security',
       ],
     },
     'settings',

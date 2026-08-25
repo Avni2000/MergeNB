@@ -39,8 +39,9 @@ export interface UnifiedConflict {
     /** UI theme ('dark' | 'light') */
     theme?: 'dark' | 'light';
     /** Whether notebook-authored content should render as trusted. Combines VS Code
-     *  workspace trust with the mergeNB.security.trustContent setting - see
-     *  isContentTrusted() in packages/web/server/src/webServer.ts. */
+     *  workspace trust with the mergeNB.security.trustContent setting - resolved
+     *  once per session (see resolver.ts) and passed to openSession() in
+     *  packages/web/server/src/webServer.ts. */
     isTrusted?: boolean;
 }
 
@@ -90,7 +91,7 @@ export interface WebConflictData {
     // UI theme
     theme?: 'dark' | 'light';
 
-    /** Whether notebook-authored content should render as trusted (see isContentTrusted in web/server) */
+    /** Whether notebook-authored content should render as trusted (resolved in resolver.ts, see webServer.ts openSession()) */
     isTrusted?: boolean;
 }
 
