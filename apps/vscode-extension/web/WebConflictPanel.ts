@@ -82,7 +82,8 @@ export class WebConflictPanel {
             this._sessionId,
             (message: unknown) => this._handleMessage(message),
             this._conflict?.theme ?? 'light',
-            this._conflict?.filePath
+            this._conflict?.filePath,
+            this._conflict?.isTrusted ?? false
         ).then(({ connectionPromise }) => {
             return connectionPromise;
         }).then(() => {

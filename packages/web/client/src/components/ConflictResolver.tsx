@@ -696,6 +696,7 @@ export function ConflictResolver({
                                     rowIndex={i}
                                     languageExtensions={languageExtensions}
                                     theme={conflict.theme ?? 'light'}
+                                    isTrusted={conflict.isTrusted ?? false}
                                     resolutionState={resolutionState}
                                     isEditing={
                                         conflictIdx >= 0 && editingConflicts.has(conflictIdx)

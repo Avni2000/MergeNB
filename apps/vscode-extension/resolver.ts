@@ -249,7 +249,8 @@ export class NotebookConflictResolver {
             showCellHeaders: settings.showCellHeaders,
             enableUndoRedoHotkeys: settings.enableUndoRedoHotkeys,
             showBaseColumn: settings.showBaseColumn,
-            theme: settings.theme
+            theme: settings.theme,
+            isTrusted: vscode.workspace.isTrusted && settings.trustContent
         };
 
         const resolutionCallback = async (resolution: UnifiedResolution): Promise<void> => {

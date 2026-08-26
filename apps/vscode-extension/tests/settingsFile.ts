@@ -18,7 +18,8 @@ type SettingKey =
     | 'ui.showCellHeaders'
     | 'ui.enableUndoRedoHotkeys'
     | 'ui.showBaseColumn'
-    | 'ui.theme';
+    | 'ui.theme'
+    | 'security.trustContent';
 
 export type SettingsState = Partial<Record<SettingKey, boolean | Theme>>;
 
@@ -84,6 +85,9 @@ function applySettings(
     const ui = (next.ui && typeof next.ui === 'object')
         ? { ...(next.ui as Record<string, unknown>) }
         : {};
+    const security = (next.security && typeof next.security === 'object')
+        ? { ...(next.security as Record<string, unknown>) }
+        : {};
 
     for (const [key, value] of Object.entries(settings)) {
         if (value === undefined) continue;
@@ -98,6 +102,11 @@ function applySettings(
             ui[prop] = value;
             continue;
         }
+        if (key.startsWith('security.')) {
+            const prop = key.replace('security.', '');
+            security[prop] = value;
+            continue;
+        }
     }
 
     if (Object.keys(autoResolve).length > 0) {
@@ -105,6 +114,9 @@ function applySettings(
     }
     if (Object.keys(ui).length > 0) {
         next.ui = ui;
+    }
+    if (Object.keys(security).length > 0) {
+        next.security = security;
     }
 
     return next;

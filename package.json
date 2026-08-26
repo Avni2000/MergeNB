@@ -121,6 +121,11 @@
           ],
           "default": "dark",
           "description": "Visual theme for the conflict resolution UI. 'light' provides a light, beige theme inspired by the MergeNB logo. 'dark' provides an inverse dark theme."
+        },
+        "mergeNB.security.trustContent": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Render notebook-authored content (markdown HTML, rich cell outputs like `text/html`) as trusted, allowing embedded scripts to run and external resources to load. This only takes effect inside a workspace you've already granted [Workspace Trust](https://code.visualstudio.com/docs/editor/workspace-trust) to - trusting the workspace does not by itself relax rendering. When left unset, this follows Workspace Trust automatically (enabled in a trusted workspace, disabled otherwise); VS Code's settings UI always shows `true` here since it can't display a dynamic default. Set this explicitly to override that."
         }
       }
     }
@@ -191,5 +196,10 @@
     "`@vscode/vsce-sign`@2.0.9": true,
     "esbuild@0.28.0": true,
     "keytar@7.9.0": true
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited"
+    }
   }
 }

@@ -12,7 +12,10 @@
  * - enableUndoRedoHotkeys: Enable Ctrl+Z / Ctrl+Shift+Z in web UI (default: true)
  * - showBaseColumn: Show base branch column in 3-column view (default: false, true in headless/testing)
  * - theme: UI theme selection ('dark' | 'light', default: 'dark')
- * 
+ * - trustContent: Render notebook-authored HTML/markdown/outputs as trusted, combined
+ *   with VS Code workspace trust by the host (default: tracks workspace trust - true
+ *   if the workspace is trusted, false otherwise; true in headless/testing)
+ *
  * These reduce manual conflict resolution for common non-semantic differences.
  */
 
@@ -42,7 +45,8 @@ const DEFAULT_SETTINGS: MergeNBSettings = {
     showCellHeaders: false,
     enableUndoRedoHotkeys: true,
     showBaseColumn: true,
-    theme: 'dark'
+    theme: 'dark',
+    trustContent: true
 };
 
 const CONFIG_ENV_VAR = 'MERGENB_CONFIG_PATH';
@@ -100,6 +104,9 @@ function readConfigFileSettings(): Partial<MergeNBSettings> {
     const ui = (data.ui && typeof data.ui === 'object')
         ? data.ui as Record<string, unknown>
         : {};
+    const security = (data.security && typeof data.security === 'object')
+        ? data.security as Record<string, unknown>
+        : {};
 
     const result: Partial<MergeNBSettings> = {};
 
@@ -140,6 +147,9 @@ function readConfigFileSettings(): Partial<MergeNBSettings> {
     const theme = pickTheme('ui.theme', ui.theme);
     if (theme) result.theme = theme;
 
+    const trustContent = pickBoolean('security.trustContent', security.trustContent);
+    if (trustContent !== undefined) result.trustContent = trustContent;
+
     return result;
 }
 
@@ -158,7 +168,11 @@ export function getSettings(): MergeNBSettings {
         return { ...DEFAULT_SETTINGS, ...fileOverrides };
     }
 
-    const defaults: MergeNBSettings = { ...DEFAULT_SETTINGS, showBaseColumn: false };
+    // trustContent's own default tracks workspace trust (true if the workspace is
+    // trusted, false otherwise) rather than a fixed value, so users who never touch
+    // the setting get strict rendering in untrusted workspaces without having to
+    // opt in. Explicit config-file or VS Code settings values below still win.
+    const defaults: MergeNBSettings = { ...DEFAULT_SETTINGS, showBaseColumn: false, trustContent: vscode.workspace.isTrusted };
 
     const config = vscode.workspace.getConfiguration('mergeNB');
     const mergedDefaults = { ...defaults, ...fileOverrides };
@@ -182,5 +196,6 @@ export function getSettings(): MergeNBSettings {
         enableUndoRedoHotkeys: resolveConfigValue<boolean>('ui.enableUndoRedoHotkeys', mergedDefaults.enableUndoRedoHotkeys),
         showBaseColumn: resolveConfigValue<boolean>('ui.showBaseColumn', mergedDefaults.showBaseColumn),
         theme: resolveConfigValue<'dark' | 'light'>('ui.theme', mergedDefaults.theme),
+        trustContent: resolveConfigValue<boolean>('security.trustContent', mergedDefaults.trustContent),
     };
 }
