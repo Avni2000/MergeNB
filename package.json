@@ -125,7 +125,7 @@
         "mergeNB.security.trustContent": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "Render notebook-authored content (markdown HTML, rich cell outputs like `text/html`) as trusted, allowing embedded scripts to run and external resources to load. This only takes effect inside a workspace you've already granted [Workspace Trust](https://code.visualstudio.com/docs/editor/workspace-trust) to - trusting the workspace does not by itself relax rendering. When left unset, this follows Workspace Trust automatically (enabled in a trusted workspace, disabled otherwise); VS Code's settings UI always shows `true` here since it can't display a dynamic default. Set this explicitly to override that - for example, turn it off to keep strict sanitization even in a trusted workspace if you frequently resolve conflicts against notebooks from branches you haven't reviewed."
+          "markdownDescription": "Render notebook-authored content (markdown HTML, rich cell outputs like `text/html`) as trusted, allowing embedded scripts to run and external resources to load. This only takes effect inside a workspace you've already granted [Workspace Trust](https://code.visualstudio.com/docs/editor/workspace-trust) to - trusting the workspace does not by itself relax rendering. When left unset, this follows Workspace Trust automatically (enabled in a trusted workspace, disabled otherwise); VS Code's settings UI always shows `true` here since it can't display a dynamic default. Set this explicitly to override that."
         }
       }
     }

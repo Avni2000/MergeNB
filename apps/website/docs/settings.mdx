@@ -15,7 +15,7 @@ MergeNB reads settings from the following sources, in order of precedence:
 3. A config file at `~/.config/mergenb/config.json` (respects `XDG_CONFIG_HOME` and `%APPDATA%`)
 4. Hardcoded defaults in `apps/vscode-extension/settings.ts`
 
-The `MERGENB_CONFIG_PATH` environment variable overrides path resolution entirely, which is how the Playwright suite runs with isolated configs in parallel.
+The `MERGENB_CONFIG_PATH` environment variable overrides path resolution entirely, which, incidentally, is how the Playwright suite runs with isolated configs in parallel.
 
 ## Auto-resolution
 
@@ -42,11 +42,11 @@ All four fire before the UI opens. A banner at the top of the resolver lists wha
 
 | Setting | Default | Effect |
 |---|---|---|
-| `mergeNB.security.trustContent` | tracks [Workspace Trust](https://code.visualstudio.com/docs/editor/workspace-trust) | Renders notebook-authored content (markdown HTML, rich cell outputs) as trusted, but only inside a workspace you've already granted Workspace Trust to. Defaults to `true` when the workspace is trusted and `false` otherwise; set it explicitly to override that. |
+| `mergeNB.security.trustContent` | tracks [Workspace Trust](https://code.visualstudio.com/docs/editor/workspace-trust) | Renders notebook-authored content (markdown HTML, rich cell outputs) as trusted, but only inside a workspace you've already granted Workspace Trust to. Defaults to `true` when the workspace is trusted and `false` otherwise. <p/> **Setting it explicitly to `true` still requires Workspace Trust, while setting it to `false` preserves strict rendering even in a trusted workspace.** |
 
 See the docs at `Architecture/Security` for more information.
 
-## Config file shape
+## Config File
 
 Example:
 ```json
@@ -70,4 +70,4 @@ Example:
 }
 ```
 
-Unknown keys are ignored. Partial files are fine and anything missing falls back to the built-in default for that scope.
+Where unknown keys are ignored, and partial files use the defaults above.
