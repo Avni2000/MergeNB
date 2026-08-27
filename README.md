@@ -5,35 +5,33 @@
 **An intuitive merge conflict resolver built for Jupyter notebooks in VS Code.**
 
 [![MergeNB Tests](https://github.com/Avni2000/MergeNB/actions/workflows/all-tests.yml/badge.svg)](https://github.com/Avni2000/MergeNB/actions/workflows/all-tests.yml)
-[![Version](https://img.shields.io/badge/version-0.1.1-blue.svg)](https://github.com/Avni2000/MergeNB)
+[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/Avni2000/MergeNB)
 [![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.80.0-007ACC.svg)](https://code.visualstudio.com/)
 [![License: GPLv3.0](https://img.shields.io/badge/License-GPLv3.0-yellow.svg)](https://www.gnu.org/licenses/gpl-3.0)
 </div>
 
-> [!NOTE]
-> Promise to get back to this in the fall! I'm a bit busy at the moment, so I'm taking a break. Everything should still "work" but it won't be in active development for a bit. 
+## Background
 
+Merge conflicts are hard, and Jupyter Notebooks' JSON backend makes them inordinately worse. Alternatives like [Marimo](https://github.com/marimo-team/marimo) and converting back and forth through [Jupytext](https://jupytext.org/) have emerged over the years to sidestep the problem by moving away from `.ipynb` entirely.
+
+MergeNB takes a different approach, much like [nbdime](https://github.com/jupyter/nbdime). That is, instead of changing your notebook format, it gives you a web-based GUI purpose-built for resolving Jupyter Notebook merge conflicts cell-by-cell.
 
 ## Features
 
-**Conflict Resolution UI**: Side-by-side 2-way and 3-way diff views with intra-cell conflict highlighting.
-
-**Reordered Cell Handling**: Uses the Hungarian Algorithm on a semantic distance cost matrix to optimally match cells across reorderings.
-
-**All MIME Types Supported**: Renders HTML, LaTeX, images, SVG plots, and more using the same engine as JupyterLab.
-
-**Auto-Resolution**: Automatically resolves common conflict classes like mismatched execution counts, kernel versions, and whitespace diffs.
-
-**Configurable**: Customize auto-resolution rules, UI themes, and hotkeys via [MergeNB settings](https://avni2000.github.io/MergeNB/docs/settings).
-
-**Undo/Redo**: Full action history with a panel to jump to any prior state of the resolver.
-
-**Syntax Highlighting**: [CodeMirror](https://codemirror.net/)-powered highlighting for Python, Scala, R, Julia, and any other Jupyter-supported language.
-
+* Side-by-side 2-way and 3-way diff view, with intra-cell conflict highlighting
+* A powerful, well-researched cell matching algorithm
+* Full JupyterLab rendering engine which fully supports HTML, LaTeX, images, SVG plots, and other MIME types
+* Auto-resolution for common conflict types like execution counts, kernel versions, whitespace
+* Configurable resolution rules, UI themes, and hotkeys (see [settings](https://avni2000.github.io/MergeNB/docs/settings))
+* Full undo/redo history with a panel to jump to any prior resolver state
+* [CodeMirror](https://codemirror.net/) syntax highlighting for Python, Scala, R, Julia, and other Jupyter kernels
+* Support for MacOS, Windows, and Linux
 
 ## Documentation
 
 **Browse the [MergeNB documentation site](https://avni2000.github.io/MergeNB/docs).**
+
+Developers may find the testing and architecture portions particularly useful.
 
 ## Installation
 
@@ -54,8 +52,6 @@ See complete [installation instructions on the docs site](https://avni2000.githu
 - ID: `merge-nb.findConflicts`
 - Also available from notebook context actions and status bar when applicable.
 
-<!-- [Screenshot: Command Palette showing "MergeNB: Find Notebooks with Merge Conflicts"] -->
-
 ### 2) Resolve in MergeNB UI
 
 Typical flow:
@@ -68,11 +64,7 @@ Typical flow:
 6. Apply resolution and return to VS Code
 
 
-### Screenshots and Demos:
-
-![Demo Walkthrough Gif](readme-assets/demo_walkthrough.gif)
-
-
+### Screenshots:
 
 <div>
     <div>
@@ -86,30 +78,6 @@ Typical flow:
 ## Configuration
 
 The [settings page within the docs site](https://avni2000.github.io/MergeNB/docs/settings) is a great resource for this.
-
-## How MergeNB Resolves Conflicts
-
-When multiple branches edit the same notebook file and then get merged, Git detects conflicts at the file level. However, since `.ipynb` files are JSON documents, Git's line-based diff/merge can produce conflicts that are difficult to interpret and resolve manually.
-
-MergeNB applies three-way logic on matched notebook entities (`source`, `metadata`, `outputs`, `execution_count`). 
-
-Here, we define `BASE` as the common ancestor version, `CURRENT` as the current branch version, and `INCOMING` as the incoming branch version to merge into current. The resolution logic for each entity is as follows:
-
-```text
-if CURRENT == BASE == INCOMING:
-        result = any of them (all identical)
-elif CURRENT == INCOMING:
-        result = CURRENT  (both sides made same change, or didn't change)
-elif CURRENT == BASE:
-        result = INCOMING  (only INCOMING changed)
-elif INCOMING == BASE:
-        result = CURRENT   (only CURRENT changed)
-else:
-        CONFLICT  (all three differ)
-```
-
-I compiled all of my notes about this into one document at [docs/architecture](https://avni2000.github.io/MergeNB/docs/architecture/merge-lifecycle)
-
 
 ## Development
 
