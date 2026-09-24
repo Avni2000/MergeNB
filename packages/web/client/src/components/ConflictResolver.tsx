@@ -71,23 +71,25 @@ function UndoRedoButtons({
 }: UndoRedoButtonsProps): React.ReactElement {
     return (
         <>
+            {/* Undo Icon */}
             <button
-                className="btn btn-secondary"
+                className="btn btn-secondary btn-icon"
                 {...guardedClick(onUndo)}
                 disabled={!canUndo}
                 data-testid={undoTestId}
                 title={undoTitle}
             >
-                Undo
+                ↶
             </button>
+            {/* Redo Icon */}
             <button
-                className="btn btn-secondary"
+                className="btn btn-secondary btn-icon"
                 {...guardedClick(onRedo)}
                 disabled={!canRedo}
                 data-testid={redoTestId}
                 title={redoTitle}
             >
-                Redo
+                ↷
             </button>
         </>
     );
@@ -504,13 +506,14 @@ export function ConflictResolver({
                         <span className="conflict-counter">
                             {resolvedCount} / {totalConflicts} resolved
                         </span>
+                        {/* Next Conflict Icon */}
                         <button
-                            className="btn btn-secondary"
+                            className="btn btn-secondary btn-icon"
                             onClick={handleNextConflict}
                             disabled={unresolvedCount === 0}
                             title={unresolvedCount === 0 ? 'All conflicts resolved' : 'Scroll to next unresolved conflict'}
                         >
-                            Next Conflict &#8595;
+                            ⭣
                         </button>
                         <div className="header-group">
                             <UndoRedoButtons
@@ -597,7 +600,7 @@ export function ConflictResolver({
                                 .map(side => (
                                     <button
                                         key={side}
-                                        className={`btn btn-take-all ${side}`}
+                                        className={`btn btn-side btn-${side}`}
                                         title={`Accept all ${side} changes for remaining conflicts`}
                                         {...guardedClick(() => handleAcceptAll(side))}
                                     >
@@ -682,45 +685,45 @@ export function ConflictResolver({
                         </div>
                     )}
 
-                    <div>
-                        {rows.map((row, i) => {
-                            const conflictIdx = row?.conflictIndex ?? -1;
-                            const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
-                            const rowKey = conflictIdx >= 0
-                                ? `conflict-${conflictIdx}`
-                                : `identical-${row.baseCellIndex ?? 'x'}-${row.currentCellIndex ?? 'x'}-${row.incomingCellIndex ?? 'x'}`;
-                            return (
-                                <MergeRow
-                                    key={rowKey}
-                                    row={row}
-                                    rowIndex={i}
-                                    languageExtensions={languageExtensions}
-                                    theme={conflict.theme ?? 'light'}
-                                    resolutionState={resolutionState}
-                                    isEditing={
-                                        conflictIdx >= 0 && editingConflicts.has(conflictIdx)
-                                    }
-                                    onSelectChoice={handleSelectChoice}
-                                    onCommitContent={handleCommitContent}
-                                    onStartEditing={handleStartEditing}
-                                    onStopEditing={handleStopEditing}
-                                    onClearChoice={handleClearChoice}
-                                    onUnmatchRow={unmatchRow}
-                                    onRematchRows={rematchRows}
-                                    showOutputs={
-                                        !conflict.hideNonConflictOutputs || row.type === 'conflict'
-                                    }
-                                    showBaseColumn={showBaseColumn}
-                                    showCellHeaders={showCellHeaders}
-                                    data-testid={
-                                        conflictIdx >= 0
-                                            ? `conflict-row-${conflictIdx}`
-                                            : `row-${i}`
-                                    }
-                                />
-                            );
-                        })}
-                    </div>
+                <div>
+                    {rows.map((row, i) => {
+                        const conflictIdx = row?.conflictIndex ?? -1;
+                        const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
+                        const rowKey = conflictIdx >= 0
+                            ? `conflict-${conflictIdx}`
+                            : `identical-${row.baseCellIndex ?? 'x'}-${row.currentCellIndex ?? 'x'}-${row.incomingCellIndex ?? 'x'}`;
+                        return (
+                            <MergeRow
+                                key={rowKey}
+                                row={row}
+                                rowIndex={i}
+                                languageExtensions={languageExtensions}
+                                theme={conflict.theme ?? 'light'}
+                                resolutionState={resolutionState}
+                                isEditing={
+                                    conflictIdx >= 0 && editingConflicts.has(conflictIdx)
+                                }
+                                onSelectChoice={handleSelectChoice}
+                                onCommitContent={handleCommitContent}
+                                onStartEditing={handleStartEditing}
+                                onStopEditing={handleStopEditing}
+                                onClearChoice={handleClearChoice}
+                                onUnmatchRow={unmatchRow}
+                                onRematchRows={rematchRows}
+                                showOutputs={
+                                    !conflict.hideNonConflictOutputs || row.type === 'conflict'
+                                }
+                                showBaseColumn={showBaseColumn}
+                                showCellHeaders={showCellHeaders}
+                                data-testid={
+                                    conflictIdx >= 0
+                                        ? `conflict-row-${conflictIdx}`
+                                        : `row-${i}`
+                                }
+                            />
+                        );
+                    })}
+                </div>
             </main>
         </div>
     );

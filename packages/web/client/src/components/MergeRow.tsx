@@ -501,7 +501,7 @@ function MergeRowInner({
                 <div className="conflict-action-right">
                     <button
                         title="Resolve by omitting this cell from the merged notebook"
-                        className={`btn-resolve btn-delete ${resolutionState?.choice === 'delete' ? 'selected' : ''}`}
+                        className={`btn btn-choice btn-delete ${resolutionState?.choice === 'delete' ? 'selected' : ''}`}
                         onClick={() => handleChoiceClick('delete')}
                     >
                         Delete Cell
@@ -581,7 +581,7 @@ function MergeRowInner({
                         <div key={side} className={`cell-column ${side}-column`}>
                             {has && (
                                 <button
-                                    className={`btn-resolve btn-${side} ${resolutionState?.choice === side ? 'selected' : ''}`}
+                                    className={`btn btn-choice btn-side btn-${side} ${resolutionState?.choice === side ? 'selected' : ''}`}
                                     onClick={() => handleChoiceClick(side)}
                                 >
                                     Use {side[0].toUpperCase() + side.slice(1)}

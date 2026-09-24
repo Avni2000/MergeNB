@@ -462,11 +462,19 @@ ${bodySel} {
 /* Buttons */
 .btn {
     padding: 6px 14px;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 4px;
     font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s, opacity 0.15s;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, filter 0.15s, opacity 0.15s;
+}
+
+.btn-icon {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: 0 0 0.5px currentColor;
 }
 
 .btn:disabled {
@@ -502,15 +510,36 @@ ${bodySel} {
     border-right: 1px solid var(--border-color);
 }
 
-.btn-take-all {
+.btn-side {
     color: var(--text-primary);
-    font-size: 11px;
-    padding: 4px 8px;
 }
 
-.btn-take-all.base { background: var(--base-bg); border: 1px solid var(--base-border); }
-.btn-take-all.current { background: var(--current-bg); border: 1px solid var(--current-border); }
-.btn-take-all.incoming { background: var(--incoming-bg); border: 1px solid var(--incoming-border); }
+.btn-side.btn-base {
+    background: var(--base-bg);
+    border-color: var(--base-border);
+}
+
+.btn-side.btn-current {
+    background: var(--current-bg);
+    border-color: var(--current-border);
+}
+
+.btn-side.btn-incoming {
+    background: var(--incoming-bg);
+    border-color: var(--incoming-border);
+}
+
+.btn-side:hover:not(:disabled) {
+    filter: brightness(1.2);
+}
+
+.header-right > .btn,
+.header-group > .btn,
+.history-menu > .btn,
+.take-all-group > .btn {
+    box-sizing: border-box;
+    height: 40px;
+}
 
 /* Main content */
 .main-content {
@@ -699,39 +728,7 @@ ${bodySel} {
     align-items: center;
 }
 
-.btn-resolve {
-    padding: 6px 16px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: all 0.15s;
-}
-
-.btn-resolve.btn-base {
-    background: var(--base-bg);
-    border-color: var(--base-border);
-    color: var(--text-primary);
-}
-
-.btn-resolve.btn-current {
-    background: var(--current-bg);
-    border-color: var(--current-border);
-    color: var(--text-primary);
-}
-
-.btn-resolve.btn-incoming {
-    background: var(--incoming-bg);
-    border-color: var(--incoming-border);
-    color: var(--text-primary);
-}
-
-.btn-resolve:hover {
-    filter: brightness(1.2);
-}
-
-.btn-resolve.selected {
+.btn-choice.selected {
     box-shadow: 0 0 0 2px var(--accent-blue);
 }
 

@@ -143,7 +143,7 @@ test.describe('Reorder Unmatch/Rematch', () => {
             expect(rematchBtnCount).toBeGreaterThan(0);
 
             // Unmatch should only produce current-only and incoming-only rows
-            const unmatchedBaseButtons = userUnmatchedRows.locator('.btn-resolve.btn-base');
+            const unmatchedBaseButtons = userUnmatchedRows.locator('.btn-choice.btn-base');
             const baseButtonCount = await unmatchedBaseButtons.count();
             const baseColumnCount = await userUnmatchedRows.locator('.base-column').count();
             expect(baseButtonCount).toBe(0);
@@ -163,7 +163,7 @@ test.describe('Reorder Unmatch/Rematch', () => {
             await firstSplitRow.scrollIntoViewIfNeeded();
 
             // Find which button is available (the split row only has one side)
-            const availableBtn = firstSplitRow.locator('.btn-resolve').first();
+            const availableBtn = firstSplitRow.locator('.btn-choice').first();
             await availableBtn.click();
             await firstSplitRow.locator('.resolved-cell').waitFor({ timeout: 5000 });
             logger.info('  \u2713 Split row resolved');
@@ -247,10 +247,10 @@ test.describe('Reorder Unmatch/Rematch', () => {
             const conflictRowCount = await conflictRows.count();
             expect(conflictRowCount).toBe(3);
 
-            const selectors: Array<'.btn-resolve.btn-current' | '.btn-resolve.btn-incoming'> = [
-                '.btn-resolve.btn-current',  // Alpha row
-                '.btn-resolve.btn-incoming', // Beta row
-                '.btn-resolve.btn-current',  // Gamma row
+            const selectors: Array<'.btn-choice.btn-current' | '.btn-choice.btn-incoming'> = [
+                '.btn-choice.btn-current',  // Alpha row
+                '.btn-choice.btn-incoming', // Beta row
+                '.btn-choice.btn-current',  // Gamma row
             ];
 
             for (let i = 0; i < selectors.length; i++) {

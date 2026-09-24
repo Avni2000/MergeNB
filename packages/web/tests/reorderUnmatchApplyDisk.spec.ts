@@ -89,7 +89,7 @@ test.describe('Reorder Unmatch Apply Disk', () => {
             const splitRowBaseColumns = await userUnmatchedRows.locator('.base-column').count();
             expect(splitRowBaseColumns).toBe(unmatchedRowCount);
 
-            const splitRowBaseButtons = await userUnmatchedRows.locator('.btn-resolve.btn-base').count();
+            const splitRowBaseButtons = await userUnmatchedRows.locator('.btn-choice.btn-base').count();
             expect(splitRowBaseButtons).toBe(0);
 
             const splitRowBasePlaceholders = await userUnmatchedRows.locator('.base-column .placeholder-text').allTextContents();
