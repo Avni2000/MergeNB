@@ -462,28 +462,26 @@ function MergeRowInner({
 
     // Per-side descriptors for the three diff columns. Base compares against the
     // first available other side; current/incoming compare against each other
-    // (falling back to base) in conflict diff mode.
+    // (falling back to base). Each side's diff highlighting uses that side's
+    // own color identity (see diffMarks.ts).
     const columnSides = [
         {
             side: 'base' as const,
             cell: row.baseCell,
             cellIndex: row.baseCellIndex,
             compareCell: row.currentCell || row.incomingCell,
-            diffMode: undefined as 'conflict' | undefined,
         },
         {
             side: 'current' as const,
             cell: row.currentCell,
             cellIndex: row.currentCellIndex,
             compareCell: row.incomingCell || row.baseCell,
-            diffMode: 'conflict' as const,
         },
         {
             side: 'incoming' as const,
             cell: row.incomingCell,
             cellIndex: row.incomingCellIndex,
             compareCell: row.currentCell || row.baseCell,
-            diffMode: 'conflict' as const,
         },
     ];
 
@@ -557,7 +555,6 @@ function MergeRowInner({
                                     side={col.side}
                                     isConflict={true}
                                     compareCell={col.compareCell}
-                                    diffMode={col.diffMode}
                                     languageExtensions={languageExtensions}
                                     theme={theme}
                                     showOutputs={showOutputs}
