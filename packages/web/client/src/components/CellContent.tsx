@@ -241,7 +241,6 @@ interface CellContentProps {
     side: 'base' | 'current' | 'incoming';
     isConflict?: boolean;
     compareCell?: NotebookCell;
-    diffMode?: 'base' | 'conflict';
     showOutputs?: boolean;
     showCellHeaders?: boolean;
     languageExtensions?: Extension[];
@@ -256,7 +255,6 @@ function CellContentInner({
     side,
     isConflict = false,
     compareCell,
-    diffMode = 'base',
     showOutputs = true,
     showCellHeaders = false,
     languageExtensions = EMPTY_EXTENSIONS,
@@ -315,7 +313,6 @@ function CellContentInner({
                         source={source}
                         compareSource={isConflict && compareCell ? normalizeCellSource(compareCell.source) : undefined}
                         side={side}
-                        diffMode={diffMode}
                         langExtensions={languageExtensions}
                         theme={theme}
                         isMarkdown={cellType === 'markdown'}
@@ -380,7 +377,6 @@ export function CellSource({
     theme,
     compareSource,
     side = 'base',
-    diffMode = 'base',
     isMarkdown = false,
     className = 'cell-source-static',
     isLightweight = false,
@@ -391,7 +387,6 @@ export function CellSource({
     /** When set, line/inline diff marks against this content are rendered. */
     compareSource?: string;
     side?: 'base' | 'current' | 'incoming';
-    diffMode?: 'base' | 'conflict';
     isMarkdown?: boolean;
     className?: string;
     isLightweight?: boolean;
@@ -400,10 +395,10 @@ export function CellSource({
         if (isLightweight) return null;
         const tokens = getSyntaxTokens(source, isMarkdown ? [] : langExtensions, theme);
         const marks = compareSource !== undefined
-            ? computeDiffMarks(source, compareSource, side, diffMode)
+            ? computeDiffMarks(source, compareSource, side)
             : undefined;
         return renderStaticToReact(buildStaticRender(source, tokens, marks?.lineClasses, marks?.inlineRanges));
-    }, [source, compareSource, side, diffMode, langExtensions, theme, isMarkdown, isLightweight]);
+    }, [source, compareSource, side, langExtensions, theme, isMarkdown, isLightweight]);
 
     const content = isLightweight ? source : nodes;
     // Markdown cells don't need a <code> wrapper - it's text content, not code
@@ -459,7 +454,7 @@ function RenderMimeOutput({ output, isTrusted }: { output: CellOutput; isTrusted
 
             const untrustedModel = new OutputModel({
                 value: normalizedOutput,
-                trusted: false,
+                trusted: true,
             });
 
             const preferredMimeType = renderMimeRegistry.preferredMimeType(untrustedModel.data, 'any');
