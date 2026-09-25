@@ -148,6 +148,7 @@ export interface MergeNBSettings {
     enableUndoRedoHotkeys: boolean;
     showBaseColumn: boolean;
     theme: 'dark' | 'light';
+    trustContent: boolean;
 }
 
 /**

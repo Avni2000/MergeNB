@@ -20,7 +20,6 @@ import { randomBytes, randomUUID } from 'crypto';
 import WebSocket, { WebSocketServer } from 'ws';
 import * as logger from '../../../core/src';
 import type { WebConflictData } from './webTypes';
-
 // VSCode is optional - only needed for openExternal
 let vscode: typeof import('vscode') | undefined;
 try {
@@ -33,6 +32,23 @@ try {
 interface UriLike {
     fsPath: string;
 }
+
+/**
+ * Whether notebook-authored content (markdown HTML, rich cell outputs) should be
+ * treated as trusted. Requires BOTH VS Code workspace trust AND the
+ * mergeNB.security.trustContent setting - trusting the workspace folder doesn't
+ * necessarily mean trusting the content of every incoming branch being merged, so
+ * the setting lets a user opt out of relaxed rendering even inside a trusted
+ * workspace.
+ *
+ * The extension resolves this once per session (honoring config-file overrides
+ * via `getSettings()`) and passes it to `openSession()`, which is the single
+ * source of truth threaded both to the browser client via
+ * `WebConflictData.isTrusted` and to the server's CSP response headers below -
+ * this module has no VS Code settings access of its own, so it never
+ * re-derives trust independently.
+ * @see /apps/website/docs/architecture/security.mdx
+ */
 
 interface WebServerOptions {
     port?: number;
@@ -51,6 +67,8 @@ interface SessionData {
     theme: 'dark' | 'light';
     notebookFilePath?: string;
     onMessage: (message: unknown) => void;
+    /** Resolved content-trust decision for this session; see openSession(). */
+    isTrusted: boolean;
 }
 
 /**
@@ -65,27 +83,27 @@ interface SessionData {
  */
 class ConflictResolverWebServer {
     private static instance: ConflictResolverWebServer | undefined;
-    
+
     private httpServer: http.Server | undefined;
     private wss: WebSocketServer | undefined;
     private port: number = 0;
     private host: string = '127.0.0.1';
-    
+
     // Active WebSocket connections by session ID
     private connections: Map<string, WebSocket> = new Map();
-    
+
     // Session data by session ID (includes conflict data and message handlers)
     private sessions: Map<string, SessionData> = new Map();
-    
+
     // Pending connection promises (waiting for browser to connect)
     private pendingConnections: Map<string, PendingConnection> = new Map();
-    
+
     // Extension URI for resolving static assets
     private extensionUri: UriLike | undefined;
     private latestSessionUrl: string | undefined;
     private testMode: boolean = false;
 
-    private constructor() {}
+    private constructor() { }
 
     /**
      * Get or create the singleton instance.
@@ -96,7 +114,7 @@ class ConflictResolverWebServer {
         }
         return ConflictResolverWebServer.instance;
     }
- 
+
     /**
      * Set the extension URI for resolving static assets.
      */
@@ -133,7 +151,7 @@ class ConflictResolverWebServer {
             });
 
             this.wss = new WebSocketServer({ server: this.httpServer });
-            
+
             this.wss.on('connection', (ws: WebSocket, req: http.IncomingMessage) => {
                 this.handleWebSocketConnection(ws, req);
             });
@@ -144,7 +162,7 @@ class ConflictResolverWebServer {
 
             // Use port 0 to get an available port
             const preferredPort = options.port || 0;
-            
+
             this.httpServer.listen(preferredPort, this.host, () => {
                 const address = this.httpServer!.address();
                 if (address && typeof address === 'object') {
@@ -173,7 +191,7 @@ class ConflictResolverWebServer {
         }
         this.connections.clear();
         this.sessions.clear();
-        
+
         // Reject all pending connections
         for (const pending of this.pendingConnections.values()) {
             clearTimeout(pending.timeout);
@@ -241,13 +259,18 @@ class ConflictResolverWebServer {
      *
      * @param sessionId - Unique identifier for this session
      * @param onMessage - Callback for handling messages from the browser
+     * @param isTrusted - Resolved content-trust decision for this session (workspace
+     *   trust AND security.trustContent, honoring config-file overrides). Drives
+     *   both the CSP response headers here and WebConflictData.isTrusted in the
+     *   browser, so callers must pass the same value used for the conflict data.
      * @returns Object with sessionUrl and connectionPromise
      */
     public async openSession(
         sessionId: string,
         onMessage: (message: unknown) => void,
         theme: 'dark' | 'light' = 'light',
-        notebookFilePath?: string
+        notebookFilePath?: string,
+        isTrusted: boolean = false
     ): Promise<{ sessionUrl: string; connectionPromise: Promise<WebSocket> }> {
         const sessionToken = this.generateSecret();
 
@@ -256,7 +279,8 @@ class ConflictResolverWebServer {
             sessionToken,
             theme,
             notebookFilePath,
-            onMessage
+            onMessage,
+            isTrusted
         });
 
         // Create a pending connection promise
@@ -324,7 +348,7 @@ class ConflictResolverWebServer {
             this.connections.delete(sessionId);
         }
         this.sessions.delete(sessionId);
-        
+
         const pending = this.pendingConnections.get(sessionId);
         if (pending) {
             clearTimeout(pending.timeout);
@@ -337,11 +361,24 @@ class ConflictResolverWebServer {
 
     /**
      * Set baseline security headers on every response.
+     *
+     * `trusted` must come from the requesting session's already-resolved
+     * `isTrusted` (see openSession()) rather than being re-derived here, so the
+     * CSP always matches the trust decision threaded to the browser via
+     * WebConflictData.isTrusted.
+     * @see /apps/website/docs/architecture/security.mdx
      */
-    private setSecurityHeaders(res: http.ServerResponse): void {
+    private setSecurityHeaders(res: http.ServerResponse, trusted: boolean): void {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('X-Frame-Options', 'DENY');
-        res.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; frame-ancestors 'none'");
+
+        // 'unsafe-inline' on script-src mirrors the trusted-content contract: trusted
+        // Markdown HTML and text/html cell outputs render authored <script> tags and
+        // event-handler attributes as-is (no DOMPurify), so the CSP must permit them.
+        const trustedCsp = "default-src 'self' https:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https: ws: wss:; frame-ancestors 'none'";
+        const restrictedCsp = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' ws: wss:; frame-ancestors 'none'";
+        res.setHeader('Content-Security-Policy', trusted ? trustedCsp : restrictedCsp);
+
         res.setHeader('Referrer-Policy', 'no-referrer');
         res.setHeader('Cache-Control', 'no-store');
     }
@@ -350,12 +387,15 @@ class ConflictResolverWebServer {
      * Handle HTTP requests.
      */
     private handleHttpRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
-        this.setSecurityHeaders(res);
-
         const url = new URL(req.url || '/', `http://${req.headers.host}`);
         const pathname = url.pathname;
         const sessionId = url.searchParams.get('session');
         const sessionToken = url.searchParams.get('token');
+        const session = sessionId ? this.sessions.get(sessionId) : undefined;
+        // Only trust the session's CSP once the token proves the caller actually owns it.
+        const authenticated = !!(session && sessionToken && sessionToken === session.sessionToken);
+        this.setSecurityHeaders(res, authenticated && session!.isTrusted);
+
         const origin = req.headers.origin;
         const expectedOrigin = `http://${this.host}:${this.port}`;
 
@@ -375,11 +415,9 @@ class ConflictResolverWebServer {
 
         if (pathname === '/' || pathname === '/index.html') {
             // Serve minimal HTML shell that loads the React app
-            const session = sessionId ? this.sessions.get(sessionId) : undefined;
-            
-            if (session && sessionToken && sessionToken === session.sessionToken) {
+            if (authenticated) {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(this.getHtmlShell(session.theme));
+                res.end(this.getHtmlShell(session!.theme));
             } else {
                 res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
                 res.end(`<!DOCTYPE html>
@@ -411,8 +449,8 @@ class ConflictResolverWebServer {
             this.serveNotebookAsset(url, res);
         } else if (pathname === '/health') {
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-                status: 'ok', 
+            res.end(JSON.stringify({
+                status: 'ok',
                 port: this.port,
                 activeSessions: this.sessions.size,
                 activeConnections: this.connections.size
@@ -431,7 +469,7 @@ class ConflictResolverWebServer {
      */
     private serveStaticFile(res: http.ServerResponse, pathname: string): void {
         const fileName = pathname.replace(/^\//, '');
-        
+
         // Reject pathnames containing ".." to prevent directory traversal
         if (fileName.includes('..')) {
             logger.warn(`[MergeNB Web] Rejected path with ".." traversal: ${pathname}`);
@@ -443,7 +481,7 @@ class ConflictResolverWebServer {
         const baseDir = this.extensionUri
             ? path.join(this.extensionUri.fsPath, 'dist', 'web')
             : path.join(__dirname, '..', '..', 'dist', 'web');
-        
+
         const filePath = path.join(baseDir, fileName);
 
         // Resolve both paths to absolute paths and verify the file is within the base directory
@@ -657,7 +695,7 @@ class ConflictResolverWebServer {
             try {
                 const message = JSON.parse(data.toString());
                 logger.debug(`[MergeNB Web] Received message from session ${sessionId}:`, message.command || message.type);
-                
+
                 if (session?.onMessage) {
                     session.onMessage(message);
                 }

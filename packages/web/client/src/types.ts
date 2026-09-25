@@ -75,6 +75,7 @@ export interface UnifiedConflictData {
     enableUndoRedoHotkeys?: boolean;
     showBaseColumn?: boolean;
     theme?: 'dark' | 'light';
+    isTrusted?: boolean;
 }
 
 /**

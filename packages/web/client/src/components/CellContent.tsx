@@ -245,6 +245,7 @@ interface CellContentProps {
     showCellHeaders?: boolean;
     languageExtensions?: Extension[];
     theme?: 'dark' | 'light';
+    isTrusted?: boolean;
     isLightweight?: boolean;
 }
 export const EMPTY_EXTENSIONS: Extension[] = [];
@@ -258,6 +259,7 @@ function CellContentInner({
     showCellHeaders = false,
     languageExtensions = EMPTY_EXTENSIONS,
     theme = 'light',
+    isTrusted = false,
     isLightweight = false,
 }: CellContentProps): React.ReactElement {
     const encodedCell = useMemo(
@@ -303,6 +305,7 @@ function CellContentInner({
                 {cellType === 'markdown' && !isConflict ? (
                     <MarkdownContent
                         source={source}
+                        isTrusted={isTrusted}
                         isLightweight={isLightweight}
                     />
                 ) : (
@@ -320,6 +323,7 @@ function CellContentInner({
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
                 <CellOutputs
                     outputs={cell.outputs}
+                    isTrusted={isTrusted}
                     isLightweight={isLightweight}
                 />
             )}
@@ -329,10 +333,11 @@ function CellContentInner({
 
 interface MarkdownContentProps {
     source: string;
+    isTrusted?: boolean;
     isLightweight?: boolean;
 }
 
-export function MarkdownContent({ source, isLightweight = false }: MarkdownContentProps): React.ReactElement {
+export function MarkdownContent({ source, isTrusted = false, isLightweight = false }: MarkdownContentProps): React.ReactElement {
     const hostRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -340,7 +345,7 @@ export function MarkdownContent({ source, isLightweight = false }: MarkdownConte
         const host = hostRef.current;
         if (!host) return;
 
-        host.innerHTML = renderMarkdown(source);
+        host.innerHTML = renderMarkdown(source, isTrusted);
 
         // Resolve local image/link URLs to notebook-asset endpoints
         const { sessionId, token } = getCurrentSessionCredentials();
@@ -356,7 +361,7 @@ export function MarkdownContent({ source, isLightweight = false }: MarkdownConte
                 anchor.setAttribute('href', buildNotebookAssetUrl(sessionId, token, normalizeLocalPath(href)));
             }
         });
-    }, [source, isLightweight]);
+    }, [source, isTrusted, isLightweight]);
 
     if (isLightweight) {
         return <pre className="markdown-source-lightweight">{source}</pre>;
@@ -406,10 +411,11 @@ export function CellSource({
 
 interface CellOutputsProps {
     outputs: CellOutput[];
+    isTrusted?: boolean;
     isLightweight?: boolean;
 }
 
-function CellOutputs({ outputs, isLightweight = false }: CellOutputsProps): React.ReactElement {
+function CellOutputs({ outputs, isTrusted = false, isLightweight = false }: CellOutputsProps): React.ReactElement {
     if (isLightweight) {
         return (
             <div className="cell-outputs">
@@ -422,13 +428,13 @@ function CellOutputs({ outputs, isLightweight = false }: CellOutputsProps): Reac
     return (
         <div className="cell-outputs">
             {outputs.map((output, i) => (
-                <RenderMimeOutput key={i} output={output} />
+                <RenderMimeOutput key={i} output={output} isTrusted={isTrusted} />
             ))}
         </div>
     );
 }
 
-function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElement {
+function RenderMimeOutput({ output, isTrusted }: { output: CellOutput; isTrusted: boolean }): React.ReactElement {
     const hostRef = useRef<HTMLDivElement>(null);
     const [fallback, setFallback] = useState<string | null>(null);
 
@@ -444,7 +450,7 @@ function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElemen
         let model: OutputModel | null = null;
 
         try {
-            const normalizedOutput = normalizeOutputForRenderMime(output) as RenderMimeOutputValue;
+            const normalizedOutput = normalizeOutputForRenderMime(output, isTrusted) as RenderMimeOutputValue;
 
             const untrustedModel = new OutputModel({
                 value: normalizedOutput,
@@ -458,11 +464,20 @@ function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElemen
                 return;
             }
 
-            untrustedModel.dispose();
-            model = new OutputModel({
-                value: normalizedOutput,
-                trusted: true,
-            });
+            const trusted = shouldTrustOutputMimeType(preferredMimeType, isTrusted);
+            if (trusted) {
+                // Jupyter's HTML renderer evaluates inline scripts for trusted output.
+                // Outside a trusted session, only SVG is trusted (to avoid rendermime's
+                // "Cannot display an untrusted SVG" fallback) - HTML and other rich
+                // outputs stay untrusted so embedded scripts don't run.
+                untrustedModel.dispose();
+                model = new OutputModel({
+                    value: normalizedOutput,
+                    trusted: true,
+                });
+            } else {
+                model = untrustedModel;
+            }
 
             renderer = renderMimeRegistry.createRenderer(preferredMimeType);
 
@@ -492,7 +507,7 @@ function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElemen
             model?.dispose();
             host.replaceChildren();
         };
-    }, [output]);
+    }, [output, isTrusted]);
 
     return (
         <div className="cell-output-item">
@@ -502,7 +517,7 @@ function RenderMimeOutput({ output }: { output: CellOutput }): React.ReactElemen
     );
 }
 
-function normalizeOutputForRenderMime(output: CellOutput): Record<string, unknown> {
+function normalizeOutputForRenderMime(output: CellOutput, isTrusted: boolean): Record<string, unknown> {
     const normalizedOutput = { ...(output as unknown as Record<string, unknown>) };
 
     if (output.text !== undefined) {
@@ -513,7 +528,9 @@ function normalizeOutputForRenderMime(output: CellOutput): Record<string, unknow
         const normalizedData: Record<string, unknown> = {};
         for (const [mimeType, value] of Object.entries(output.data)) {
             let normalizedValue = normalizeMimeValue(value);
-            if (mimeType === 'image/svg+xml' && typeof normalizedValue === 'string') {
+            // Trusted sessions skip sanitization entirely so rendermime's own trusted
+            // renderer runs the SVG (and its embedded scripts, if any) as authored.
+            if (mimeType === 'image/svg+xml' && typeof normalizedValue === 'string' && !isTrusted) {
                 normalizedValue = DOMPurify.sanitize(normalizedValue, { USE_PROFILES: { svg: true } });
             }
             normalizedData[mimeType] = normalizedValue;
@@ -558,6 +575,14 @@ function getOutputTextFallback(output: CellOutput): string {
     }
 
     return '[Unsupported output]';
+}
+
+function shouldTrustOutputMimeType(mimeType: string, isTrusted: boolean): boolean {
+    // Untrusted sessions only trust SVG (needed for rendermime's SVG renderer to run at
+    // all). Trusted sessions extend that to every mimetype, mirroring classic Jupyter's
+    // per-notebook trust model - rich outputs (text/html, etc.) may run embedded scripts.
+    if (isTrusted) return true;
+    return mimeType === 'image/svg+xml';
 }
 
 function getCurrentSessionCredentials(): { sessionId: string; token: string } {
