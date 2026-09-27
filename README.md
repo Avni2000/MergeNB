@@ -4,11 +4,10 @@
 
 **An intuitive merge conflict resolver built for Jupyter notebooks in VS Code.**
 
-[![MergeNB Tests (Ubuntu)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-ubuntu.yml/badge.svg)](https://github.com/Avni2000/MergeNB/actions//tests-ubuntu.yml)
-[![MergeNB Tests (macOS)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-macos.yml/badge.svg)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-macos.yml)
-[![MergeNB Tests (Windows)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-windows.yml/badge.svg)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-windows.yml)
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/Avni2000/MergeNB)
-[![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.80.0-007ACC.svg)](https://code.visualstudio.com/)
+[![Ubuntu](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-ubuntu.yml?branch=main&label=Ubuntu)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-ubuntu.yml)
+[![macOS](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-macos.yml?branch=main&label=macOS)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-macos.yml)
+[![Windows](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-windows.yml?branch=main&label=Windows)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-windows.yml)
+[![Version](https://img.shields.io/github/v/release/Avni2000/MergeNB?label=version&color=blue)](https://github.com/Avni2000/MergeNB/releases)
 [![License: GPLv3.0](https://img.shields.io/badge/License-GPLv3.0-yellow.svg)](https://www.gnu.org/licenses/gpl-3.0)
 </div>
 
