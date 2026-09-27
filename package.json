@@ -25,15 +25,9 @@
     "commands": [
       {
         "command": "merge-nb.findConflicts",
-        "title": "Find Notebooks with Merge Conflicts",
-        "category": "MergeNB",
-        "icon": "$(git-merge)"
-      },
-      {
-        "command": "merge-nb.resolveCurrentFile",
         "title": "Resolve Merge Conflicts",
         "category": "MergeNB",
-        "icon": "$(warning)"
+        "icon": "$(git-merge)"
       }
     ],
     "menus": {
@@ -47,7 +41,7 @@
       "editor/title": [
         {
           "when": "resourceExtname == .ipynb && mergeNB.hasConflicts",
-          "command": "merge-nb.resolveCurrentFile",
+          "command": "merge-nb.findConflicts",
           "group": "navigation"
         }
       ],
@@ -55,10 +49,6 @@
         {
           "command": "merge-nb.findConflicts",
           "when": "true"
-        },
-        {
-          "command": "merge-nb.resolveCurrentFile",
-          "when": "resourceExtname == .ipynb && mergeNB.hasConflicts"
         }
       ]
     },

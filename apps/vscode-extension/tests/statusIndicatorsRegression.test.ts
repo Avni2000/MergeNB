@@ -18,6 +18,8 @@ interface StatusBarState {
     visible: boolean;
     text?: string;
     command?: string;
+    color?: string;
+    backgroundColor?: unknown;
 }
 
 interface FileDecorationState {
@@ -121,6 +123,18 @@ export async function run(): Promise<void> {
     ensureHasUnmergedConflict(workspacePath, 'at startup');
     const startupIndicators = await waitForIndicatorState(conflictFile, true, 'startup conflict');
     assert(startupIndicators.decoration.badge === '⚠', `Expected warning badge, got ${startupIndicators.decoration.badge}`);
+    assert(startupIndicators.statusBar.command === 'merge-nb.findConflicts', 'Status bar must use the unified resolver command');
+
+    const extension = vscode.extensions.getExtension('Avni2000.merge-nb')
+        ?? vscode.extensions.all.find(ext => ext.packageJSON.name === 'merge-nb');
+    assert(extension, 'MergeNB extension must be installed');
+    const commands = extension.packageJSON.contributes.commands;
+    assert(commands.length === 1, 'MergeNB must contribute only one resolver command');
+    assert(commands[0].command === 'merge-nb.findConflicts' && commands[0].title === 'Resolve Merge Conflicts',
+        'The unified command must be named Resolve Merge Conflicts');
+    const registeredCommands = await vscode.commands.getCommands(true);
+    assert(!registeredCommands.includes('merge-nb.resolveCurrentFile'), 'Old active-file command must be removed');
+    assert(!registeredCommands.includes('merge-nb.pickConflictFromStatusBar'), 'Old status bar picker command must be removed');
 
     // Resolve with git add: indicators should disappear.
     git(workspacePath, ['add', 'conflict.ipynb']);
