@@ -1,26 +1,22 @@
-/**
- * @file fixtures.ts
- * @description Playwright Test fixtures for MergeNB integration tests.
- *
- * Provides reusable fixtures for:
- * - Creating merge conflict repos from notebook triplets
- * - Setting up the conflict resolver UI session
- * - Applying resolutions and verifying notebooks
- *
- * These fixtures replace the manual setup/teardown patterns from the
- * old testHarness.ts `run()` export pattern.
- */
+/** Playwright fixtures that own isolated settings, temporary repos, and browser cleanup. */
 
 import { test as base, type Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { createMergeConflictRepo, cleanup as cleanupRepo } from '../../../test-fixtures/shared/repoSetup';
-import { type ExpectedCell } from '../../../test-fixtures/shared/testHelpers';
-import { prepareIsolatedConfigPath, cleanupIsolatedConfigPath } from '../../../test-fixtures/shared/testRunnerShared';
-import { setupConflictResolverHeadless, type ConflictSession } from '../../../test-fixtures/harness/conflictSession';
-import { applyResolutionAndReadNotebook, assertNotebookMatches, type ApplyOptions, type NotebookMatchOptions } from '../../../test-fixtures/harness/notebook';
-export { applyResolutionAndReadNotebook, assertNotebookMatches, buildExpectedCellsFromNotebook, readNotebookFixtureFromRepo } from '../../../test-fixtures/harness/notebook';
+import { createMergeConflictRepo, cleanup as cleanupRepo } from '../shared/repoSetup';
+import { type ExpectedCell } from '../shared/testHelpers';
+import {
+    applyResolutionAndReadNotebook,
+    assertNotebookMatches,
+    type ApplyOptions,
+    type NotebookMatchOptions,
+} from './notebook';
+import { setupConflictResolverHeadless, type ConflictSession } from './conflictSession';
+import {
+    prepareIsolatedConfigPath,
+    cleanupIsolatedConfigPath,
+} from '../shared/testRunnerShared';
 
 interface NotebookTriplet {
     base: string;
@@ -28,14 +24,12 @@ interface NotebookTriplet {
     incoming: string;
 }
 
-// ─── Core Fixture Functions ─────────────────────────────────────────────────
-
 /**
  * Create a merge conflict repository from a notebook triplet.
  * Returns the workspace path for use in tests.
  */
 function createConflictRepo(notebooks: NotebookTriplet): string {
-    const testDir = path.resolve(__dirname, '../../../test-fixtures');
+    const testDir = path.resolve(__dirname, '..');
     const baseFile = path.resolve(testDir, notebooks.base);
     const currentFile = path.resolve(testDir, notebooks.current);
     const incomingFile = path.resolve(testDir, notebooks.incoming);
@@ -86,7 +80,7 @@ interface MergeNBFixtures {
  * 
  * Usage:
  * ```ts
- * import { test, expect } from './fixtures';
+ * import { test, expect } from '../../../test-fixtures/harness/playwright';
  * 
  * test('my test', async ({ conflictRepo, conflictSession }) => {
  *     const workspacePath = conflictRepo({
@@ -140,7 +134,7 @@ export const test = base.extend<MergeNBFixtures>({
             workspacePath: string,
             options?: { headless?: boolean }
         ): Promise<ConflictSession> => {
-            const session = await setupConflictResolverHeadless(workspacePath, path.resolve(__dirname, '../../..'), options);
+            const session = await setupConflictResolverHeadless(workspacePath, path.resolve(__dirname, '../..'), options);
             sessions.push(session);
             return session;
         };

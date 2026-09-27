@@ -11,7 +11,7 @@
  * 5. Expect warnings only when a destructive action discards edited content
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
 import {
     enterResolvedEditMode,
     fillResolvedEditor,

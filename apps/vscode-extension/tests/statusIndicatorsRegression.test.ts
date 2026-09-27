@@ -10,7 +10,7 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { readTestConfig } from './testHarness';
+import { readTestConfig } from '../../../test-fixtures/harness/vscode';
 import { git, gitAllowFailure, hasUnmergedConflict } from './gitTestUtils';
 import * as logger from '../../../packages/core/src';
 

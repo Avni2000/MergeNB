@@ -9,7 +9,7 @@
  * settings flow correctly from VS Code config through to the React UI.
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
 import type { Locator, Page } from 'playwright';
 import {
     applyAutoResolutions,
