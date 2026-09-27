@@ -3,12 +3,12 @@ name: Deploy Website
 on:
   workflow_dispatch:
 
-  push:
-    branches:
-      - main
-    paths:
-      - 'apps/website/**'
-      - '.github/workflows/deploy-website.yml'
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'apps/website/**'
+  #     - '.github/workflows/deploy-website.yml'
 
 permissions:
   contents: read
