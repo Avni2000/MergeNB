@@ -3,7 +3,7 @@
  * @description Compute line-level and inline word-level diff marks for two
  * versions of a cell source, independent of any rendering layer.
  *
- * Strategy (industry-standard two-pass diff):
+ * Strategy:
  *   1. `diffLines` to find which lines were added/removed — drives line
  *      background classes.
  *   2. `diffWordsWithSpace` between paired removed/added line hunks — drives
@@ -17,7 +17,6 @@
 import { diffLines, diffWordsWithSpace } from 'diff';
 
 export type DiffSide = 'base' | 'current' | 'incoming';
-export type DiffMode = 'base' | 'conflict';
 
 export interface InlineDiffRange {
     from: number;
@@ -52,7 +51,6 @@ export function computeDiffMarks(
     source: string,
     compareSource: string,
     side: DiffSide,
-    diffMode: DiffMode,
 ): DiffMarks {
     const lineClasses = new Map<number, string>();
     const inlineRanges: InlineDiffRange[] = [];
@@ -76,8 +74,7 @@ export function computeDiffMarks(
             const hunkEnd = bOffset + hunk.value.length;
 
             const isWhitespaceOnly = hunk.value.length > 0 && hunk.value.trim() === '';
-            const useConflict = diffMode === 'conflict' || isWhitespaceOnly;
-            const { lineClass, inlineClass } = useConflict ? CONFLICT_CLASSES : sideClasses;
+            const { lineClass, inlineClass } = isWhitespaceOnly ? CONFLICT_CLASSES : sideClasses;
 
             const firstLine = lineOfPos(hunkStart);
             const lastLine = lineOfPos(Math.max(hunkStart, hunkEnd - 1));

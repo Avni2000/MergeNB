@@ -28,17 +28,40 @@ function getStyles(theme: 'dark' | 'light' = 'light', scope?: string): string {
         accentBlue: '#569cd6',
         accentGreen: '#4ec9b0',
         accentForest: '#2d8a6c', // Forest green for resolved cells
-        currentBg: 'rgba(86, 156, 214, 0.45)',
-        currentBorder: '#569cd6',
-        currentRgb: '86, 156, 214',
-        incomingBg: 'rgba(78, 201, 176, 0.45)',
-        incomingBorder: '#4ec9b0',
-        incomingRgb: '78, 201, 176',
+        // current/incoming share the cyan/periwinkle identity used everywhere else
+        // (gutter bars, logo) rather than the old VSCode blue/green — blue-vs-green
+        // reads as "correct answer vs. wrong answer," which is a bias this system
+        // is meant to avoid.
+        currentBg: 'rgba(95, 180, 199, 0.45)',
+        currentBorder: '#5FB4C7',
+        currentRgb: '95, 180, 199',
+        incomingBg: 'rgba(139, 146, 232, 0.45)',
+        incomingBorder: '#8B92E8',
+        incomingRgb: '139, 146, 232',
         baseBg: 'rgba(133, 133, 133, 0.35)',
         baseBorder: '#555555',
-        diffAdd: 'rgba(78, 201, 176, 0.20)',
         diffRemove: 'rgba(217, 54, 21, 0.33)',
-        diffChange: 'rgba(86, 156, 214, 0.15)',
+        // Diff highlighting: each side keeps its own color identity (cyan/periwinkle)
+        // at two tint strengths — line (whole-line wash) and token (stronger, word-level).
+        // A left-edge accent bar on the line gives a non-color cue for CVD accessibility.
+        // Line-tint alpha floors around 0.15 on this dark surface — lower reads as invisible.
+        diffCurrentLine: 'rgba(95, 180, 199, 0.15)',
+        diffCurrentToken: 'rgba(95, 180, 199, 0.24)',
+        diffCurrentAccent: '#5FB4C7',
+        diffIncomingLine: 'rgba(139, 146, 232, 0.15)',
+        diffIncomingToken: 'rgba(139, 146, 232, 0.24)',
+        diffIncomingAccent: '#8B92E8',
+        diffBaseLine: 'rgba(170, 170, 170, 0.15)',
+        diffBaseToken: 'rgba(170, 170, 170, 0.22)',
+        diffBaseAccent: '#9a9a9a',
+        // "Attention" (amber): flags otherwise-invisible whitespace-only changes.
+        // Red is reserved for destructive actions (delete) and true errors (stderr).
+        diffAttentionLine: 'rgba(227, 166, 76, 0.15)',
+        diffAttentionToken: 'rgba(227, 166, 76, 0.24)',
+        diffAttentionAccent: '#E3A64C',
+        conflictRowBorder: 'rgba(227, 166, 76, 0.6)',
+        actionAccent: '#8B92E8',
+        actionAccentHover: '#A5ABF0',
         cellSurface: 'rgba(45, 45, 48, 0.90)',
         cellSurfaceSoft: 'rgba(45, 45, 48, 0.70)',
         cellPlaceholderBg: 'rgba(45, 45, 48, 0.55)',
@@ -50,7 +73,7 @@ function getStyles(theme: 'dark' | 'light' = 'light', scope?: string): string {
         logoBlendMode: 'normal',
     } : {
         // LIGHT theme - inspired by MergeNB logo
-        bgPrimary: '#f1ece3',
+        bgPrimary: '#FFFFFF',
         bgSecondary: '#ebe3d8',
         bgTertiary: '#e2d8ca',
         bgQuarternary: '#ebe3d8b7',
@@ -69,14 +92,36 @@ function getStyles(theme: 'dark' | 'light' = 'light', scope?: string): string {
         incomingRgb: '159, 168, 221',
         baseBg: 'rgba(128, 128, 128, 0.38)',
         baseBorder: '#8b7f70',
-        diffAdd: 'rgba(195, 201, 242, 0.4)',
         diffRemove: 'rgba(217, 54, 21, 0.33)',
-        diffChange: 'rgba(255, 193, 7, 0.35)',
-        cellSurface: 'rgba(226, 216, 202, 0.78)',
-        cellSurfaceSoft: 'rgba(226, 216, 202, 0.62)',
-        cellPlaceholderBg: 'rgba(226, 216, 202, 0.48)',
-        outputBg: 'rgba(226, 216, 202, 0.66)',
-        bodyBackground: '#EAE2D5',
+        // Diff highlighting: each side keeps its own color identity (cyan/periwinkle,
+        // matching the logo and the column headers) at two tint strengths — line
+        // (whole-line wash) and token (stronger, word-level). A left-edge accent bar
+        // on the line gives a non-color cue for CVD accessibility.
+        diffCurrentLine: '#E7F3F6',
+        diffCurrentToken: '#C3E2EA',
+        diffCurrentAccent: '#2E7D91',
+        diffIncomingLine: '#EEEFFB',
+        diffIncomingToken: '#D4D8F6',
+        diffIncomingAccent: '#4E56B8',
+        diffBaseLine: 'rgba(139, 127, 112, 0.12)',
+        diffBaseToken: 'rgba(139, 127, 112, 0.24)',
+        diffBaseAccent: '#8b7f70',
+        // "Attention" (amber): flags otherwise-invisible whitespace-only changes and
+        // unresolved rows — a warning state, not an error state. Red is reserved for
+        // destructive actions (delete) and true errors (stderr).
+        diffAttentionLine: 'rgba(180, 116, 24, 0.10)',
+        diffAttentionToken: 'rgba(180, 116, 24, 0.22)',
+        diffAttentionAccent: '#B47418',
+        conflictRowBorder: 'rgba(180, 116, 24, 0.55)',
+        actionAccent: '#4E56B8',
+        actionAccentHover: '#3D449E',
+        // Cell surfaces are white so they read as cards against the cream canvas
+        // (canvas #F6F4EF -> cell #FFFFFF -> tint), instead of blending into it.
+        cellSurface: '#FFFFFF',
+        cellSurfaceSoft: '#F7F6F2',
+        cellPlaceholderBg: '#F1EFE9',
+        outputBg: '#F5F3EE',
+        bodyBackground: '#F6F4EF',
         bodyBackgroundImage: LIGHT_GRID_GRADIENT,
         logoLeft: '#A4D4DE',
         logoRight: '#C3C9F2',
@@ -122,9 +167,22 @@ ${rootSel} {
     --incoming-rgb: ${colors.incomingRgb};
     --base-bg: ${colors.baseBg};
     --base-border: ${colors.baseBorder};
-    --diff-add: ${colors.diffAdd};
     --diff-remove: ${colors.diffRemove};
-    --diff-change: ${colors.diffChange};
+    --diff-current-line: ${colors.diffCurrentLine};
+    --diff-current-token: ${colors.diffCurrentToken};
+    --diff-current-accent: ${colors.diffCurrentAccent};
+    --diff-incoming-line: ${colors.diffIncomingLine};
+    --diff-incoming-token: ${colors.diffIncomingToken};
+    --diff-incoming-accent: ${colors.diffIncomingAccent};
+    --diff-base-line: ${colors.diffBaseLine};
+    --diff-base-token: ${colors.diffBaseToken};
+    --diff-base-accent: ${colors.diffBaseAccent};
+    --diff-attention-line: ${colors.diffAttentionLine};
+    --diff-attention-token: ${colors.diffAttentionToken};
+    --diff-attention-accent: ${colors.diffAttentionAccent};
+    --conflict-row-border: ${colors.conflictRowBorder};
+    --action-accent: ${colors.actionAccent};
+    --action-accent-hover: ${colors.actionAccentHover};
     --cell-surface: ${colors.cellSurface};
     --cell-surface-soft: ${colors.cellSurfaceSoft};
     --cell-placeholder-bg: ${colors.cellPlaceholderBg};
@@ -404,11 +462,19 @@ ${bodySel} {
 /* Buttons */
 .btn {
     padding: 6px 14px;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 4px;
     font-size: 13px;
+    font-weight: 500;
     cursor: pointer;
-    transition: background 0.15s, opacity 0.15s;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, filter 0.15s, opacity 0.15s;
+}
+
+.btn-icon {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: 0 0 0.5px currentColor;
 }
 
 .btn:disabled {
@@ -417,12 +483,13 @@ ${bodySel} {
 }
 
 .btn-primary {
-    background: var(--accent-blue);
+    background: var(--action-accent);
     color: white;
+    font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) {
-    background: #1a8ad4;
+    background: var(--action-accent-hover);
 }
 
 .btn-secondary {
@@ -443,15 +510,36 @@ ${bodySel} {
     border-right: 1px solid var(--border-color);
 }
 
-.btn-take-all {
+.btn-side {
     color: var(--text-primary);
-    font-size: 11px;
-    padding: 4px 8px;
 }
 
-.btn-take-all.base { background: var(--base-bg); border: 1px solid var(--base-border); }
-.btn-take-all.current { background: var(--current-bg); border: 1px solid var(--current-border); }
-.btn-take-all.incoming { background: var(--incoming-bg); border: 1px solid var(--incoming-border); }
+.btn-side.btn-base {
+    background: var(--base-bg);
+    border-color: var(--base-border);
+}
+
+.btn-side.btn-current {
+    background: var(--current-bg);
+    border-color: var(--current-border);
+}
+
+.btn-side.btn-incoming {
+    background: var(--incoming-bg);
+    border-color: var(--incoming-border);
+}
+
+.btn-side:hover:not(:disabled) {
+    filter: brightness(1.2);
+}
+
+.header-right > .btn,
+.header-group > .btn,
+.history-menu > .btn,
+.take-all-group > .btn {
+    box-sizing: border-box;
+    height: 40px;
+}
 
 /* Main content */
 .main-content {
@@ -502,15 +590,11 @@ ${bodySel} {
     position: relative;
 }
 
-/* Conflict row - consolidated styling: subtle red background with
-   a consistent 3px border on top/right/bottom and a 4px left accent */
+/* Conflict row - unresolved is the default state of every row in this view,
+   so it doesn't need a full frame competing for attention: a left edge is
+   enough, and amber (not red — red is reserved for destructive actions). */
 .merge-row.conflict-row {
-    background: rgba(244, 135, 113, 0.05);
-    border-top: 3px solid rgba(244, 135, 113, 0.6);
-    border-right: 3px solid rgba(244, 135, 113, 0.6);
-    border-bottom: 3px solid rgba(244, 135, 113, 0.6);
-    border-left: 4px solid rgba(244, 135, 113, 0.6);
-    border-radius: 6px;
+    border-left: 3px solid var(--conflict-row-border);
 }
 
 .merge-row.identical-row {
@@ -644,39 +728,7 @@ ${bodySel} {
     align-items: center;
 }
 
-.btn-resolve {
-    padding: 6px 16px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: all 0.15s;
-}
-
-.btn-resolve.btn-base {
-    background: var(--base-bg);
-    border-color: var(--base-border);
-    color: var(--text-primary);
-}
-
-.btn-resolve.btn-current {
-    background: var(--current-bg);
-    border-color: var(--current-border);
-    color: var(--text-primary);
-}
-
-.btn-resolve.btn-incoming {
-    background: var(--incoming-bg);
-    border-color: var(--incoming-border);
-    color: var(--text-primary);
-}
-
-.btn-resolve:hover {
-    filter: brightness(1.2);
-}
-
-.btn-resolve.selected {
+.btn-choice.selected {
     box-shadow: 0 0 0 2px var(--accent-blue);
 }
 
@@ -708,17 +760,33 @@ ${bodySel} {
     color: var(--text-primary);
 }
 
-/* Diff highlighting — applied as CodeMirror line decorations on .cm-line elements */
-.diff-line.diff-line-conflict {
-    background: var(--diff-remove);
+/* Diff highlighting — line-level wash. Each side keeps its own color identity
+   (cyan/periwinkle); the left accent bar is a non-color cue so the two tints
+   stay distinguishable under color-vision deficiency, not just by lightness. */
+.diff-line.diff-line-base {
+    background: var(--diff-base-line);
+    border-left: 3px solid var(--diff-base-accent);
+    padding-left: 3px;
 }
 
 .diff-line.diff-line-current {
-    background: var(--diff-add);
+    background: var(--diff-current-line);
+    border-left: 3px solid var(--diff-current-accent);
+    padding-left: 3px;
 }
 
 .diff-line.diff-line-incoming {
-    background: rgba(86, 156, 214, 0.28);
+    background: var(--diff-incoming-line);
+    border-left: 3px solid var(--diff-incoming-accent);
+    padding-left: 3px;
+}
+
+/* Attention: otherwise-invisible whitespace-only changes. Amber, not red —
+   red is reserved for destructive actions and true errors. */
+.diff-line.diff-line-conflict {
+    background: var(--diff-attention-line);
+    border-left: 3px solid var(--diff-attention-accent);
+    padding-left: 3px;
 }
 
 /* Cell outputs */
@@ -1401,18 +1469,25 @@ ${bodySel} {
     font-weight: 600;
 }
 
-/* Inline diff highlighting — applied as CodeMirror mark decorations.
-   No color override so syntax highlighting colours show through. */
-.diff-inline-conflict {
-    background: var(--diff-remove);
+/* Inline (token/word) diff highlighting — a stronger tint than the line-level
+   wash above so a specific changed word (e.g. learning_rate -> learning_size)
+   is findable at a glance. No color override so syntax highlighting shows
+   through. */
+.diff-inline-base {
+    background: var(--diff-base-token);
 }
 
 .diff-inline-current {
-    background: var(--diff-add);
+    background: var(--diff-current-token);
 }
 
 .diff-inline-incoming {
-    background: rgba(86, 156, 214, 0.35);
+    background: var(--diff-incoming-token);
+}
+
+/* Attention: otherwise-invisible whitespace-only changes. */
+.diff-inline-conflict {
+    background: var(--diff-attention-token);
 }
 
 /* Reordered row — subtle left border only */

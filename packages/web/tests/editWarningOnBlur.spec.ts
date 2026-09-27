@@ -50,7 +50,7 @@ test.describe('Edit Warning on Blur', () => {
             await firstConflict.scrollIntoViewIfNeeded();
 
             // Pick first available resolution button (current, incoming, or base)
-            const resolveBtn = firstConflict.locator('.btn-resolve.btn-current, .btn-resolve.btn-incoming, .btn-resolve.btn-base').first();
+            const resolveBtn = firstConflict.locator('.btn-choice.btn-current, .btn-choice.btn-incoming, .btn-choice.btn-base').first();
             await resolveBtn.waitFor({ timeout: 10000 });
             await resolveBtn.click();
 
@@ -102,7 +102,7 @@ test.describe('Edit Warning on Blur', () => {
 
             for (const row of [firstConflict, secondConflict]) {
                 await row.scrollIntoViewIfNeeded();
-                const resolveBtn = row.locator('.btn-resolve.btn-current, .btn-resolve.btn-incoming, .btn-resolve.btn-base').first();
+                const resolveBtn = row.locator('.btn-choice.btn-current, .btn-choice.btn-incoming, .btn-choice.btn-base').first();
                 await resolveBtn.waitFor({ timeout: 10000 });
                 await resolveBtn.click();
                 await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
@@ -147,7 +147,7 @@ test.describe('Edit Warning on Blur', () => {
 
             for (const row of [firstConflict, secondConflict]) {
                 await row.scrollIntoViewIfNeeded();
-                const resolveBtn = row.locator('.btn-resolve.btn-current, .btn-resolve.btn-incoming, .btn-resolve.btn-base').first();
+                const resolveBtn = row.locator('.btn-choice.btn-current, .btn-choice.btn-incoming, .btn-choice.btn-base').first();
                 await resolveBtn.waitFor({ timeout: 10000 });
                 await resolveBtn.click();
                 await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
@@ -198,7 +198,7 @@ test.describe('Edit Warning on Blur', () => {
             const firstConflict = page.locator('.merge-row.conflict-row').first();
             await firstConflict.scrollIntoViewIfNeeded();
 
-            const resolveBtn = firstConflict.locator('.btn-resolve.btn-current, .btn-resolve.btn-incoming, .btn-resolve.btn-base').first();
+            const resolveBtn = firstConflict.locator('.btn-choice.btn-current, .btn-choice.btn-incoming, .btn-choice.btn-base').first();
             await resolveBtn.waitFor({ timeout: 10000 });
             await resolveBtn.click();
             await firstConflict.locator('.resolved-cell').waitFor({ timeout: 5000 });
