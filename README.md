@@ -4,10 +4,13 @@
 
 **An intuitive merge conflict resolver built for Jupyter notebooks in VS Code.**
 
-[![MergeNB Tests](https://github.com/Avni2000/MergeNB/actions/workflows/all-tests.yml/badge.svg)](https://github.com/Avni2000/MergeNB/actions/workflows/all-tests.yml)
-[![Version](https://img.shields.io/badge/version-0.4.0-blue.svg)](https://github.com/Avni2000/MergeNB)
-[![VS Code](https://img.shields.io/badge/VS%20Code-%5E1.80.0-007ACC.svg)](https://code.visualstudio.com/)
-[![License: GPLv3.0](https://img.shields.io/badge/License-GPLv3.0-yellow.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Ubuntu](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-ubuntu.yml?branch=main&label=Ubuntu&style=for-the-badge)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-ubuntu.yml)
+[![macOS](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-macos.yml?branch=main&label=macOS&style=for-the-badge)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-macos.yml)
+[![Windows](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-windows.yml?branch=main&label=Windows&style=for-the-badge)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-windows.yml)
+
+[![Version](https://img.shields.io/github/v/release/Avni2000/MergeNB?label=version&color=blue&style=for-the-badge)](https://github.com/Avni2000/MergeNB/releases)
+[![License: GPLv3.0](https://img.shields.io/badge/License-GPLv3.0-yellow.svg?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0)
+
 </div>
 
 ## Background
@@ -20,19 +23,36 @@ MergeNB takes a different approach, much like [nbdime](https://github.com/jupyte
     <img src="readme-assets/light-theme.png" alt="Light theme" width="45%" />
     <img src="readme-assets/dark-theme.png" alt="Dark theme" width="45%" />
 </div>
-*Fig. MergeNB resolver across light and dark themes*
-
+<div align="center">
+<em> Fig. MergeNB resolver across light and dark themes</em>
+</div>
 
 ## Features
 
+### Basics
+
 * Side-by-side 2-way and 3-way diff view, with intra-cell conflict highlighting.
-* A powerful, well-researched [cell matching algorithm](https://en.wikipedia.org/wiki/Hungarian_algorithm).
 * [JupyterLab's](https://www.npmjs.com/package/@jupyterlab/rendermime) rendering engine which fully supports HTML, LaTeX, images, SVG plots, and other MIME types.
-* Auto-resolution for common conflict types like execution counts, kernel versions, whitespace.
-* Configurable resolution rules and UI preferences.
-* Full undo/redo history with a panel to jump to any prior resolver state.
 * [CodeMirror](https://codemirror.net/) syntax highlighting for Python, Scala, R, Julia, and other [supported Jupyter kernels](https://github.com/jupyter/jupyter/wiki/Jupyter-kernels).
 * Support for MacOS, Windows, and Linux!
+
+
+### Nice to haves:
+
+* Configurable resolution rules and UI preferences.
+* Full undo/redo history with a panel to jump to any prior resolver state.
+
+- [Cell matching](https://en.wikipedia.org/wiki/Hungarian_algorithm) across branches, even when cells move.
+
+<p align="center">
+  <img src="readme-assets/cell-reordering.png" alt="Smart resolution algorithm" height="300px" />
+</p>
+
+- Configurable auto-resolution for execution counts, kernel versions, outputs, and whitespace.
+
+<p align="center">
+  <img src="readme-assets/auto-resolution.png" alt="Kernel version, execution count, output, and whitespace conflicts are auto handled" height="300px" />
+</p>
 
 
 ## Installation
@@ -75,7 +95,7 @@ We optionally auto-resolve a few conflicts:
 | `mergeNB.autoResolve.stripOutputs`   | `true`  | Clears cell outputs during merge                               |
 | `mergeNB.autoResolve.whitespace`     | `true`  | Drops trailing-whitespace and CRLF-only diffs silently         |
 
-## UI
+### UI
 
 UI preferences:
 
@@ -87,7 +107,7 @@ UI preferences:
 | `mergeNB.ui.showBaseColumn`         | `false`  | Shows the base column in the 3-way view (defaults on in headless/test mode) |
 | `mergeNB.ui.enableUndoRedoHotkeys`  | `true`   | Enables `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` inside the resolver             |
 
-## Security
+### Security
 
 | Setting                         | Default                                                                                                      | Effect                                                                                                                                         |
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
