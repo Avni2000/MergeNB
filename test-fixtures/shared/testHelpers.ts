@@ -165,16 +165,21 @@ export function validateNotebookStructure(notebook: any): void {
 }
 
 /**
- * Wait for the conflict file to be written (mtime within last 10 seconds).
+ * Wait for a fresh file write, or a recent write when no initial mtime is supplied.
  * Returns true if confirmed, false otherwise.
  */
-export async function waitForFileWrite(filePath: string, fs: typeof import('fs'), timeoutMs = 10000): Promise<boolean> {
+export async function waitForFileWrite(
+    filePath: string,
+    fs: typeof import('fs'),
+    timeoutMs = 10000,
+    initialMtime?: number
+): Promise<boolean> {
     const maxAttempts = Math.ceil(timeoutMs / 500);
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         await new Promise(r => setTimeout(r, 500));
         try {
             const stat = fs.statSync(filePath);
-            if (Date.now() - stat.mtimeMs < 10000) {
+            if (initialMtime === undefined ? Date.now() - stat.mtimeMs < 10000 : stat.mtimeMs > initialMtime) {
                 return true;
             }
         } catch { /* continue */ }
