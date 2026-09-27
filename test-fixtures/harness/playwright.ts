@@ -12,6 +12,7 @@ import {
     type ApplyOptions,
     type NotebookMatchOptions,
 } from './notebook';
+import { getWebServer } from '../../packages/web/server/src'
 import { setupConflictResolverHeadless, type ConflictSession } from './conflictSession';
 import {
     prepareIsolatedConfigPath,
@@ -95,7 +96,7 @@ interface MergeNBFixtures {
  */
 export const test = base.extend<MergeNBFixtures>({
     mergeNBIsolatedConfig: [
-        async ({}, use) => {
+        async ({ }, use) => {
             const { configRoot, configPath } = prepareIsolatedConfigPath(`pw-${randomUUID()}`);
             const previous = process.env.MERGENB_CONFIG_PATH;
             process.env.MERGENB_CONFIG_PATH = configPath;
@@ -110,7 +111,7 @@ export const test = base.extend<MergeNBFixtures>({
         { auto: true },
     ],
 
-    conflictRepo: async ({}, use) => {
+    conflictRepo: async ({ }, use) => {
         const createdRepos: string[] = [];
 
         const createRepo = (notebooks: NotebookTriplet): string => {
@@ -127,7 +128,7 @@ export const test = base.extend<MergeNBFixtures>({
         }
     },
 
-    conflictSession: async ({}, use) => {
+    conflictSession: async ({ }, use) => {
         const sessions: ConflictSession[] = [];
 
         const createSession = async (
@@ -146,17 +147,20 @@ export const test = base.extend<MergeNBFixtures>({
             try {
                 await session.page.close();
             } catch { /* ignore */ }
+            finally {
+                getWebServer().closeSession(session.sessionId);
+            }
             try {
                 await session.browser.close();
             } catch { /* ignore */ }
         }
     },
 
-    applyAndReadNotebook: async ({}, use) => {
+    applyAndReadNotebook: async ({ }, use) => {
         await use(applyResolutionAndReadNotebook);
     },
 
-    assertMatches: async ({}, use) => {
+    assertMatches: async ({ }, use) => {
         await use(assertNotebookMatches);
     },
 });
