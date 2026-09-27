@@ -4,43 +4,58 @@
 
 **An intuitive merge conflict resolver built for Jupyter notebooks in VS Code.**
 
-[![Ubuntu](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-ubuntu.yml?branch=main&label=Ubuntu)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-ubuntu.yml)
-[![macOS](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-macos.yml?branch=main&label=macOS)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-macos.yml)
-[![Windows](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-windows.yml?branch=main&label=Windows)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-windows.yml)
-[![Version](https://img.shields.io/github/v/release/Avni2000/MergeNB?label=version&color=blue)](https://github.com/Avni2000/MergeNB/releases)
-[![License: GPLv3.0](https://img.shields.io/badge/License-GPLv3.0-yellow.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Ubuntu](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-ubuntu.yml?branch=main&label=Ubuntu&style=for-the-badge)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-ubuntu.yml)
+[![macOS](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-macos.yml?branch=main&label=macOS&style=for-the-badge)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-macos.yml)
+[![Windows](https://img.shields.io/github/actions/workflow/status/Avni2000/MergeNB/tests-windows.yml?branch=main&label=Windows&style=for-the-badge)](https://github.com/Avni2000/MergeNB/actions/workflows/tests-windows.yml)
+
+[![Version](https://img.shields.io/github/v/release/Avni2000/MergeNB?label=version&color=blue&style=for-the-badge)](https://github.com/Avni2000/MergeNB/releases)
+[![License: GPLv3.0](https://img.shields.io/badge/License-GPLv3.0-yellow.svg?style=for-the-badge)](https://www.gnu.org/licenses/gpl-3.0)
+
 </div>
 
-> [!NOTE]
-> Promise to get back to this in the fall! I'm a bit busy at the moment, so I'm taking a break. Everything should still "work" but it won't be in active development for a bit. 
+## Background
 
+Merge conflicts are hard, and Jupyter Notebooks' JSON backend makes them inordinately worse. Alternatives like [Marimo](https://github.com/marimo-team/marimo) and converting back and forth through [Jupytext](https://jupytext.org/) have emerged over the years to sidestep the problem by moving away from `.ipynb` entirely.
+
+MergeNB takes a different approach, much like [nbdime](https://github.com/jupyter/nbdime). That is, instead of changing your notebook format, it gives you a web-based GUI purpose-built for resolving Jupyter Notebook merge conflicts cell-by-cell. I have plans to make MergeNB available across a variety of platforms, including as a plain git mergetool (like nbdime), hence the web is the easiest, most universal way to accomplish this.
+
+<div>
+    <img src="readme-assets/light-theme.png" alt="Light theme" width="45%" />
+    <img src="readme-assets/dark-theme.png" alt="Dark theme" width="45%" />
+</div>
+<div align="center">
+<em> Fig. MergeNB resolver across light and dark themes</em>
+</div>
 
 ## Features
 
-**Conflict Resolution UI**: Side-by-side 2-way and 3-way diff views with intra-cell conflict highlighting.
+### Basics
 
-**Reordered Cell Handling**: Uses the Hungarian Algorithm on a semantic distance cost matrix to optimally match cells across reorderings.
-
-**All MIME Types Supported**: Renders HTML, LaTeX, images, SVG plots, and more using the same engine as JupyterLab.
-
-**Auto-Resolution**: Automatically resolves common conflict classes like mismatched execution counts, kernel versions, and whitespace diffs.
-
-**Configurable**: Customize auto-resolution rules, UI themes, and hotkeys via [MergeNB settings](https://avni2000.github.io/MergeNB/docs/settings).
-
-**Undo/Redo**: Full action history with a panel to jump to any prior state of the resolver.
-
-**Syntax Highlighting**: [CodeMirror](https://codemirror.net/)-powered highlighting for Python, Scala, R, Julia, and any other Jupyter-supported language.
+* Side-by-side 2-way and 3-way diff view, with intra-cell conflict highlighting.
+* [JupyterLab's](https://www.npmjs.com/package/@jupyterlab/rendermime) rendering engine which fully supports HTML, LaTeX, images, SVG plots, and other MIME types.
+* [CodeMirror](https://codemirror.net/) syntax highlighting for Python, Scala, R, Julia, and other [supported Jupyter kernels](https://github.com/jupyter/jupyter/wiki/Jupyter-kernels).
+* Support for MacOS, Windows, and Linux!
 
 
-## Documentation
+### Nice to haves:
 
-**Browse the [MergeNB documentation site](https://avni2000.github.io/MergeNB/docs).**
+* Configurable resolution rules and UI preferences.
+* Full undo/redo history with a panel to jump to any prior resolver state.
+
+- [Cell matching](https://en.wikipedia.org/wiki/Hungarian_algorithm) across branches, even when cells move.
+
+<p align="center">
+  <img src="readme-assets/cell-reordering.png" alt="Smart resolution algorithm" height="300px" />
+</p>
+
+- Configurable auto-resolution for execution counts, kernel versions, outputs, and whitespace.
+
+<p align="center">
+  <img src="readme-assets/auto-resolution.png" alt="Kernel version, execution count, output, and whitespace conflicts are auto handled" height="300px" />
+</p>
+
 
 ## Installation
-
-See complete [installation instructions on the docs site](https://avni2000.github.io/MergeNB/docs/installation) 
-
-**TL;DR:**
 
 1. Check out the Release page for the last stable version - [MergeNB Releases](https://github.com/Avni2000/MergeNB/releases) - and install the `.vsix` file from there.
 
@@ -49,79 +64,51 @@ See complete [installation instructions on the docs site](https://avni2000.githu
 
 ## Quick start
 
-### 1) Open conflicted notebooks
+### 1. Open conflicted notebooks
 
-- Command: `MergeNB: Find Notebooks with Merge Conflicts`
+- Command: `MergeNB: Resolve Merge Conflicts`
 - ID: `merge-nb.findConflicts`
-- Also available from notebook context actions and status bar when applicable.
+- Also available from right clicking conflicted file and status bar if applicable.
 
-<!-- [Screenshot: Command Palette showing "MergeNB: Find Notebooks with Merge Conflicts"] -->
-
-### 2) Resolve in MergeNB UI
+### 2. Resolve in MergeNB UI
 
 Typical flow:
 
-1. See git merge conflicts within a notebook
-2. Launch MergeNB command
-3. Review each conflict row
-4. Choose `base`, `current`, `incoming`, or `delete` per conflict
-5. Optionally edit or delete the resolved source text
-6. Apply resolution and return to VS Code
+1. Review each conflict row
+2. Choose `base`, `current`, `incoming`, or `delete` per conflict
+3. Optionally edit or delete the resolved source text
+4. Apply resolution and return to VS Code
 
-
-### Screenshots and Demos:
-
-![Demo Walkthrough Gif](readme-assets/demo_walkthrough.gif)
-
-
-
-<div>
-    <div>
-        <img src="readme-assets/light-theme.png" alt="Light theme" />
-    </div>
-    <div>
-        <img src="readme-assets/dark-theme.png" alt="Dark theme" />
-    </div>
-</div>
 
 ## Configuration
 
-The [settings page within the docs site](https://avni2000.github.io/MergeNB/docs/settings) is a great resource for this.
+MergeNB settings are split up into 3 main types
 
-## How MergeNB Resolves Conflicts
+### Auto-resolution
 
-When multiple branches edit the same notebook file and then get merged, Git detects conflicts at the file level. However, since `.ipynb` files are JSON documents, Git's line-based diff/merge can produce conflicts that are difficult to interpret and resolve manually.
+We optionally auto-resolve a few conflicts:
 
-MergeNB applies three-way logic on matched notebook entities (`source`, `metadata`, `outputs`, `execution_count`). 
+| Setting                              | Default | Effect                                                         |
+| ------------------------------------ | ------- | -------------------------------------------------------------- |
+| `mergeNB.autoResolve.executionCount` | `true`  | Sets conflicting `execution_count` to `null` instead of asking |
+| `mergeNB.autoResolve.kernelVersion`  | `true`  | Uses current branch's kernel and `language_info.version`       |
+| `mergeNB.autoResolve.stripOutputs`   | `true`  | Clears cell outputs during merge                               |
+| `mergeNB.autoResolve.whitespace`     | `true`  | Drops trailing-whitespace and CRLF-only diffs silently         |
 
-Here, we define `BASE` as the common ancestor version, `CURRENT` as the current branch version, and `INCOMING` as the incoming branch version to merge into current. The resolution logic for each entity is as follows:
+### UI
 
-```text
-if CURRENT == BASE == INCOMING:
-        result = any of them (all identical)
-elif CURRENT == INCOMING:
-        result = CURRENT  (both sides made same change, or didn't change)
-elif CURRENT == BASE:
-        result = INCOMING  (only INCOMING changed)
-elif INCOMING == BASE:
-        result = CURRENT   (only CURRENT changed)
-else:
-        CONFLICT  (all three differ)
-```
+UI preferences:
 
-I compiled all of my notes about this into one document at [docs/architecture](https://avni2000.github.io/MergeNB/docs/architecture/merge-lifecycle)
+| Setting                             | Default  | Effect                                                                      |
+| ----------------------------------- | -------- | --------------------------------------------------------------------------- |
+| `mergeNB.ui.theme`                  | `"dark"` | Resolver theme. `"light"` uses a beige palette sourced from the logo.       |
+| `mergeNB.ui.hideNonConflictOutputs` | `false`  | Hides outputs for rows without conflicts                                    |
+| `mergeNB.ui.showCellHeaders`        | `false`  | Shows cell type, execution count, and cell index in row headers             |
+| `mergeNB.ui.showBaseColumn`         | `false`  | Shows the base column in the 3-way view (defaults on in headless/test mode) |
+| `mergeNB.ui.enableUndoRedoHotkeys`  | `true`   | Enables `Ctrl/Cmd+Z` and `Ctrl/Cmd+Shift+Z` inside the resolver             |
 
+### Security
 
-## Development
-
-See [Installation](https://avni2000.github.io/MergeNB/docs/installation) for building MergeNB locally.
-
-See [Testing](https://avni2000.github.io/MergeNB/docs/testing) to ensure your changes are properly covered.
-
-## Contributing
-
-Issues and PRs are absolutely welcome.
-
-## License
-
-GPLv3.0 - See [LICENSE](https://github.com/Avni2000/MergeNB/blob/main/LICENSE).
+| Setting                         | Default                                                                                                      | Effect                                                                                                                                         |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mergeNB.security.trustContent` | `true` in [trusted workspaces](https://code.visualstudio.com/docs/editor/workspace-trust), `false` otherwise | Trusts notebook-authored HTML, Markdown, and rich outputs only when Workspace Trust is enabled. Set to `false` to always use strict rendering. |
