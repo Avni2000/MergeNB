@@ -454,7 +454,7 @@ function RenderMimeOutput({ output, isTrusted }: { output: CellOutput; isTrusted
 
             const untrustedModel = new OutputModel({
                 value: normalizedOutput,
-                trusted: true,
+                trusted: false,
             });
 
             const preferredMimeType = renderMimeRegistry.preferredMimeType(untrustedModel.data, 'any');
