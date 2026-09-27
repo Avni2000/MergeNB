@@ -5,7 +5,7 @@ inputs:
     description: VS Code version to test.
     default: stable
   playwright-version:
-    description: Playwright override for legacy VS Code runtimes.
+    description: Playwright version (default or legacy version 1.44.0).
     default: default
 runs:
   using: composite
@@ -38,15 +38,14 @@ runs:
       uses: actions/cache@v6.1.0
       with:
         path: node_modules
-        key: ${{ runner.os }}-modules-vscode-${{ inputs.vscode-version }}-pw-${{ inputs.playwright-version }}-${{ hashFiles('package-lock.json') }}
+        key: ${{ runner.os }}-modules-ignore-scripts-vscode-${{ inputs.vscode-version }}-pw-${{ inputs.playwright-version }}-${{ hashFiles('package-lock.json') }}
         restore-keys: |
-          ${{ runner.os }}-modules-vscode-${{ inputs.vscode-version }}-pw-${{ inputs.playwright-version }}-
-          ${{ runner.os }}-modules-
+          ${{ runner.os }}-modules-ignore-scripts-vscode-${{ inputs.vscode-version }}-pw-${{ inputs.playwright-version }}-
 
     - name: Install npm deps
       if: steps.node-modules-cache.outputs.cache-hit != 'true'
       shell: bash
-      run: npm ci
+      run: npm ci --ignore-scripts
 
     - name: Override Playwright for legacy VS Code runtime
       if: inputs.playwright-version != 'default'
@@ -54,13 +53,12 @@ runs:
       env:
         PLAYWRIGHT_VERSION: ${{ inputs.playwright-version }}
       run: |
-        if [[ ! "$PLAYWRIGHT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-          echo "Invalid Playwright version: $PLAYWRIGHT_VERSION" >&2
+        if [[ "$PLAYWRIGHT_VERSION" != "1.44.0" ]]; then
+          echo "Unsupported Playwright version: $PLAYWRIGHT_VERSION" >&2
           exit 1
         fi
-        npm install --no-save --no-package-lock \
-          "@playwright/test@$PLAYWRIGHT_VERSION" \
-          "playwright@$PLAYWRIGHT_VERSION"
+        npm install --ignore-scripts --save-exact \
+          @playwright/test@1.44.0 playwright@1.44.0
 
     - name: Build
       shell: bash
@@ -68,7 +66,7 @@ runs:
 
     - name: Package extension as .vsix
       shell: bash
-      run: npm exec vsce package
+      run: node node_modules/@vscode/vsce/vsce package
 
     - name: Cache Playwright browsers
       id: playwright-cache
@@ -90,21 +88,20 @@ runs:
           ${{ runner.os }}-vscode-${{ inputs.vscode-version }}-
           ${{ runner.os }}-vscode-
 
-    # Install Playwright - canonical pattern
     - name: Install Playwright browsers and deps (Linux - cache miss)
       if: runner.os == 'Linux' && steps.playwright-cache.outputs.cache-hit != 'true'
       shell: bash
-      run: npx playwright install --with-deps
+      run: node node_modules/playwright/cli.js install --with-deps
 
     - name: Install Playwright OS deps only (Linux - cache hit)
       if: runner.os == 'Linux' && steps.playwright-cache.outputs.cache-hit == 'true'
       shell: bash
-      run: npx playwright install-deps
+      run: node node_modules/playwright/cli.js install-deps
 
     - name: Install Playwright browsers (Windows and macOS - cache miss)
       if: runner.os != 'Linux' && steps.playwright-cache.outputs.cache-hit != 'true'
       shell: bash
-      run: npx playwright install
+      run: node node_modules/playwright/cli.js install
 
     # Run tests
     - name: Run VS Code integration tests under Xvfb

@@ -1,4 +1,4 @@
-name: MergeNB Tests (Ubuntu)
+name: MergeNB Tests (Ubuntu 22.04, VS Code 1.80)
 on:
   pull_request:
   push:
@@ -7,13 +7,16 @@ permissions:
   contents: read
 jobs:
   integration:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
-      VSCODE_VERSION: stable
+      VSCODE_VERSION: '1.80.0'
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.0
 
       - name: Run MergeNB tests
         uses: ./.github/actions/run-tests
+        with:
+          vscode-version: '1.80.0'
+          playwright-version: '1.44.0'
