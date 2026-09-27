@@ -51,7 +51,8 @@ npm run compile-tests
 | `apps/vscode-extension/tests/runIntegrationTest.ts` | Shared CLI/TUI runner for host tests, E2E, and manual sandboxes |
 | `apps/vscode-extension/tests/vscodeRegression.test.ts` | Batches the extension-host regression tests into one VS Code launch |
 | `apps/vscode-extension/tests/e2eResolution.test.ts` | Full-stack resolution test inside the extension host |
-| `apps/vscode-extension/tests/testHarness.ts` | Opens the conflict resolver and validates notebooks written to disk |
+| `test-fixtures/harness/vscode.ts` | Reads runner config and opens the conflict resolver in VS Code |
+| `test-fixtures/harness/notebook.ts` | Applies resolutions and compares UI expectations with notebooks on disk |
 | `apps/vscode-extension/tests/settingsFile.ts` | Writes test-specific MergeNB settings |
 | `apps/vscode-extension/tests/gitTestUtils.ts` | Shared Git helpers for host-side assertions |
 

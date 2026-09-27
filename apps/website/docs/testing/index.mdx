@@ -78,8 +78,9 @@ Running `npm run test` with no flags opens the interactive TUI for the same mode
 | File | Purpose |
 | --- | --- |
 | `apps/vscode-extension/tests/runIntegrationTest.ts` | Shared CLI/TUI runner for Playwright, VS Code host, E2E, and manual sandboxes |
-| `packages/web/tests/fixtures.ts` | Playwright fixtures for conflict repos, resolver sessions, and disk assertions |
-| `apps/vscode-extension/tests/testHarness.ts` | VS Code host helpers for launching the resolver and validating written notebooks |
+| `test-fixtures/harness/playwright.ts` | Playwright fixtures for isolated settings, conflict repos, and resolver sessions |
+| `test-fixtures/harness/vscode.ts` | VS Code host config and resolver startup |
+| `test-fixtures/harness/notebook.ts` | Applies resolutions and compares UI expectations with notebooks on disk |
 | `apps/vscode-extension/tests/e2eResolution.test.ts` | Full-stack resolution test inside the VS Code extension host |
 | `test-fixtures/shared/integrationUtils.ts` | Shared browser helpers, including UI-to-disk expectation builders |
 | `test-fixtures/shared/repoSetup.ts` | Temp merge-conflict repo creation from notebook triplets |
