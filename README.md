@@ -19,7 +19,7 @@ Merge conflicts are hard, and Jupyter Notebooks' JSON backend makes them inordin
 
 MergeNB takes a different approach, much like [nbdime](https://github.com/jupyter/nbdime). That is, instead of changing your notebook format, it gives you a web-based GUI purpose-built for resolving Jupyter Notebook merge conflicts cell-by-cell. I have plans to make MergeNB available across a variety of platforms, including as a plain git mergetool (like nbdime), hence the web is the easiest, most universal way to accomplish this.
 
-<div>
+<div align=center>
     <img src="readme-assets/light-theme.png" alt="Light theme" width="45%" />
     <img src="readme-assets/dark-theme.png" alt="Dark theme" width="45%" />
 </div>
