@@ -1,0 +1,120 @@
+name: Run MergeNB tests
+description: Build, package, and test MergeNB on the current runner.
+inputs:
+  vscode-version:
+    description: VS Code version to test.
+    default: stable
+  playwright-version:
+    description: Playwright override for legacy VS Code runtimes.
+    default: default
+runs:
+  using: composite
+  steps:
+    - name: Use Node.js
+      uses: actions/setup-node@v6.4.0
+      with:
+        node-version: 22
+
+    - name: Install apt deps (Xvfb)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y xvfb
+
+    - name: Get npm cache directory
+      id: npm-cache-dir
+      shell: bash
+      run: echo "dir=$(npm config get cache)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache npm deps
+      uses: actions/cache@v6.1.0
+      with:
+        path: ${{ steps.npm-cache-dir.outputs.dir }}
+        key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-npm-
+
+    - name: Cache node_modules
+      id: node-modules-cache
+      uses: actions/cache@v6.1.0
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-modules-vscode-${{ inputs.vscode-version }}-pw-${{ inputs.playwright-version }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-modules-vscode-${{ inputs.vscode-version }}-pw-${{ inputs.playwright-version }}-
+          ${{ runner.os }}-modules-
+
+    - name: Install npm deps
+      if: steps.node-modules-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    - name: Override Playwright for legacy VS Code runtime
+      if: inputs.playwright-version != 'default'
+      shell: bash
+      run: npm install --no-save --no-package-lock @playwright/test@${{ inputs.playwright-version }} playwright@${{ inputs.playwright-version }}
+
+    - name: Build
+      shell: bash
+      run: npm run compile && npm run compile-tests
+
+    - name: Package extension as .vsix
+      shell: bash
+      run: npm exec vsce package
+
+    - name: Cache Playwright browsers
+      id: playwright-cache
+      uses: actions/cache@v6.1.0
+      with:
+        path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+        key: ${{ runner.os }}-playwright-${{ inputs.playwright-version }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-playwright-${{ inputs.playwright-version }}-
+          ${{ runner.os }}-playwright-
+
+    # Cache VS Code test resources
+    - name: Cache VS Code test resources
+      uses: actions/cache@v6.1.0
+      with:
+        path: .vscode-test
+        key: ${{ runner.os }}-vscode-${{ inputs.vscode-version }}-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-vscode-${{ inputs.vscode-version }}-
+          ${{ runner.os }}-vscode-
+
+    # Install Playwright - canonical pattern
+    - name: Install Playwright browsers and deps (Linux - cache miss)
+      if: runner.os == 'Linux' && steps.playwright-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npx playwright install --with-deps
+
+    - name: Install Playwright OS deps only (Linux - cache hit)
+      if: runner.os == 'Linux' && steps.playwright-cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: npx playwright install-deps
+
+    - name: Install Playwright browsers (Windows and macOS - cache miss)
+      if: runner.os != 'Linux' && steps.playwright-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: npx playwright install
+
+    # Run tests
+    - name: Run VS Code integration tests under Xvfb
+      if: runner.os == 'Linux'
+      shell: bash
+      run: xvfb-run -a npm run test:all
+
+    - name: Run VS Code integration tests
+      if: runner.os == 'Windows' || runner.os == 'macOS'
+      shell: bash
+      run: npm run test:all
+
+    # Upload artifacts
+    - name: Upload Playwright artifacts
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: playwright-report-${{ runner.os }}-vscode-${{ inputs.vscode-version }}
+        path: |
+          playwright-test-results/
+          playwright-report/
+        retention-days: 7

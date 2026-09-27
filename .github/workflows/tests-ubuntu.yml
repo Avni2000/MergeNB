@@ -1,0 +1,29 @@
+name: MergeNB Tests (Ubuntu)
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  integration:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            vscode-version: stable
+            playwright-version: default
+          - os: ubuntu-22.04
+            vscode-version: '1.80.0'
+            playwright-version: '1.44.0'
+    runs-on: ${{ matrix.os }}
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
+      VSCODE_VERSION: ${{ matrix.vscode-version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+
+      - name: Run MergeNB tests
+        uses: ./.github/actions/run-tests
+        with:
+          vscode-version: ${{ matrix.vscode-version }}
+          playwright-version: ${{ matrix.playwright-version }}
