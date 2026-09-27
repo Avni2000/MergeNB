@@ -51,7 +51,7 @@ MergeNB takes a different approach, much like [nbdime](https://github.com/jupyte
 - Configurable auto-resolution for execution counts, kernel versions, outputs, and whitespace.
 
 <p align="center">
-  <img src="readme-assets/auto-resolution.png" alt="Kernel version, execution count, output, and whitespace conflicts are auto handled" height="300px" />
+  <img src="readme-assets/auto-resolution.png" alt="Kernel version, execution count, output, and whitespace conflicts are auto handled" height="500px" />
 </p>
 
 
