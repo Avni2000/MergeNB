@@ -6,7 +6,9 @@
 import { execFileSync } from 'child_process';
 
 export function git(cwd: string, args: string[], input?: string): string {
-    return execFileSync('git', args, {
+    // status assertions shouldn't lock index
+    const commandArgs = args[0] === 'status' ? ['--no-optional-locks', ...args] : args;
+    return execFileSync('git', commandArgs, {
         cwd,
         encoding: 'utf8',
         input,

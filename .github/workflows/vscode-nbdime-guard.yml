@@ -32,7 +32,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
       - name: Install npm deps
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Install nbdime
         run: |

@@ -42,7 +42,7 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Configure git
         run: |
@@ -64,7 +64,7 @@ jobs:
           sed -i "s|img.shields.io/badge/version-.*-blue.svg|img.shields.io/badge/version-${VERSION}-blue.svg|" README.md
 
       - name: Update package-lock.json
-        run: npm install --package-lock-only
+        run: npm install --package-lock-only --ignore-scripts
 
       - name: Generate changelog
         env:
@@ -116,7 +116,7 @@ jobs:
 
 
       - name: Build .vsix
-        run: npx @vscode/vsce package
+        run: node node_modules/@vscode/vsce/vsce package
         
       - name: Commit and tag
         run: |

@@ -393,8 +393,8 @@ async function showUnsupportedMergeToolGuidance(
             const terminal = vscode.window.createTerminal({ name: 'MergeNB notebook config fix', cwd: error.gitRoot });
             terminal.show(true);
             // Safety: avoid executing commands on paste; keep them commented out.  
-            const safeLines = terminalCommands.map((line) => (line.startsWith('#') ? line : `# ${line}`));  
-            terminal.sendText(safeLines.join('\n'), false);  
+            const safeLines = terminalCommands.map((line) => (line.startsWith('#') ? line : `# ${line}`));
+            terminal.sendText(safeLines.join('\n'), false);
         }
         return false;
     }
@@ -840,7 +840,8 @@ async function queryUnmergedFilesFromGitCli(gitRoot: string): Promise<GitFileSta
     try {
         const { stdout } = await execFileAsync(
             'git',
-            ['status', '--porcelain', '-z', '--untracked-files=no'],
+            // --no-optional locks prevents git from interfering with concurrency stuff when calling git status
+            ['--no-optional-locks', 'status', '--porcelain', '-z', '--untracked-files=no'],
             { cwd: gitRoot, encoding: 'utf8' }
         );
         const statusOutput = typeof stdout === 'string' ? stdout : String(stdout);
