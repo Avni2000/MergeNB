@@ -8,8 +8,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { test, expect } from './fixtures';
-import { applyResolutionAndReadNotebook } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
+import { applyResolutionAndReadNotebook } from '../../../test-fixtures/harness/notebook';
 import { getCellSource, validateNotebookStructure } from '../../../test-fixtures/shared/testHelpers';
 import * as logger from '../../core/src';
 

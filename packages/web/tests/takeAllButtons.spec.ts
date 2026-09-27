@@ -7,7 +7,7 @@
  */
 
 import { execFileSync } from 'child_process';
-import { test, expect } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
 import * as logger from '../../core/src';
 import {
     getCellSource,
@@ -35,7 +35,7 @@ import {
     buildExpectedCellsFromNotebook,
     assertNotebookMatches,
     applyResolutionAndReadNotebook,
-} from './fixtures';
+} from '../../../test-fixtures/harness/notebook';
 import type { Page } from 'playwright';
 
 // ─── Test Variants ──────────────────────────────────────────────────────────

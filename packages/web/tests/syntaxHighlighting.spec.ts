@@ -4,7 +4,7 @@
  * with CodeMirror syntax highlighting for Python cells.
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
 import * as logger from '../../core/src';
 import {
     readSettingsFileSnapshot,

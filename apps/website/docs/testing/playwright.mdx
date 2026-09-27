@@ -46,7 +46,8 @@ npm run compile-tests
 | File | Purpose |
 | --- | --- |
 | `playwright.config.ts` | Worker count, timeouts, global setup/teardown, reporters |
-| `packages/web/tests/fixtures.ts` | Shared Playwright fixtures plus notebook-on-disk assertion helpers |
+| `test-fixtures/harness/playwright.ts` | Playwright fixtures for isolated settings, temporary repos, and sessions |
+| `test-fixtures/harness/notebook.ts` | Applies resolutions and compares UI expectations with notebooks on disk |
 | `packages/web/tests/globalSetup.ts` | Starts the web server once per run |
 | `packages/web/tests/globalTeardown.ts` | Stops the shared web server |
 | `test-fixtures/shared/integrationUtils.ts` | Browser helpers for reading rows, editing cells, and collecting expected UI output |
@@ -55,7 +56,7 @@ npm run compile-tests
 ## Adding a new Playwright spec
 
 1. Add the spec under `packages/web/tests/` using `*.spec.ts`.
-2. Import `test` and `expect` from `./fixtures`.
+2. Import `test` and `expect` from `../../../test-fixtures/harness/playwright`.
 3. Build a conflict repo from a fixture triplet.
 4. Launch a resolver session with `conflictSession`.
 5. Drive the UI and assert both browser state and notebook state on disk.
@@ -63,7 +64,7 @@ npm run compile-tests
 Typical shape:
 
 ```ts
-import { test, expect } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
 
 test('my scenario', async ({ conflictRepo, conflictSession }) => {
   const workspacePath = conflictRepo({
@@ -78,7 +79,7 @@ test('my scenario', async ({ conflictRepo, conflictSession }) => {
 });
 ```
 
-The `fixtures.ts` extension gives you the pieces you usually need:
+The `harness/playwright.ts` fixtures gives you the pieces you usually need:
 
 - `conflictRepo`: creates a temp repo from `base/current/incoming` notebooks
 - `conflictSession`: opens the live resolver in Chromium

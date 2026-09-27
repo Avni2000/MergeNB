@@ -7,7 +7,7 @@
  * current/incoming choices, with optional deletion, then verifies the written notebook.
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
 import * as logger from '../../core/src';
 import {
     validateNotebookStructure,
@@ -26,10 +26,7 @@ import {
     saveResolvedEdits,
     type ConflictChoice,
 } from '../../../test-fixtures/shared/integrationUtils';
-import {
-    applyResolutionAndReadNotebook,
-    assertNotebookMatches,
-} from './fixtures';
+import { applyResolutionAndReadNotebook, assertNotebookMatches } from '../../../test-fixtures/harness/notebook';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,

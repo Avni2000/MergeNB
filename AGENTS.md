@@ -46,8 +46,10 @@ node out/apps/vscode-extension/tests/runIntegrationTest.js --playwright # Direct
 - `test-fixtures/shared/repoSetup.ts` - Git merge-conflict repo creation
 - `test-fixtures/shared/integrationUtils.ts` - Playwright helpers for conflict UI interaction
 - `apps/vscode-extension/tests/runIntegrationTest.ts` - CLI + TUI runner
-- `apps/vscode-extension/tests/testHarness.ts` - VS Code extension host setup, browser automation
-- `packages/web/tests/fixtures.ts` - Playwright Test fixtures
+- `test-fixtures/harness/` - Shared test harness, organized by responsibility (see `README.md`)
+- `test-fixtures/harness/vscode.ts` - VS Code extension host setup
+- `test-fixtures/harness/playwright.ts` - Playwright Test fixtures
+- `test-fixtures/harness/notebook.ts` - Resolution application and UI-to-disk notebook assertions
 
 ### Notebook Fixtures Available:
 

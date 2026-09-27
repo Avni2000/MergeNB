@@ -8,7 +8,7 @@ import {
     NotebookConflictResolver,
     setResolverPromptTestHooks,
 } from '../resolver';
-import { readTestConfig } from './testHarness';
+import { readTestConfig } from '../../../test-fixtures/harness/vscode';
 import { git, gitAllowFailure, hashBlob, assertNoUnmergedConflict } from './gitTestUtils';
 import * as logger from '../../../packages/core/src';
 

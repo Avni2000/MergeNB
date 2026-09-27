@@ -29,12 +29,8 @@ import {
     saveResolvedEdits,
     type ConflictChoice,
 } from '../../../test-fixtures/shared/integrationUtils';
-import {
-    readTestConfig,
-    setupConflictResolver,
-    applyResolutionAndReadNotebook,
-    assertNotebookMatches,
-} from './testHarness';
+import { readTestConfig, setupConflictResolver } from '../../../test-fixtures/harness/vscode';
+import { applyResolutionAndReadNotebook, assertNotebookMatches } from '../../../test-fixtures/harness/notebook';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,
