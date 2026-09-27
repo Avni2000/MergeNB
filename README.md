@@ -24,7 +24,7 @@ MergeNB takes a different approach, much like [nbdime](https://github.com/jupyte
     <img src="readme-assets/dark-theme.png" alt="Dark theme" width="45%" />
 </div>
 <div align="center">
-<em> Fig. MergeNB resolver across light and dark themes</em>
+<em> Fig. 1. MergeNB resolver across light and dark themes</em>
 </div>
 
 ## Features
@@ -42,16 +42,22 @@ MergeNB takes a different approach, much like [nbdime](https://github.com/jupyte
 * Configurable resolution rules and UI preferences.
 * Full undo/redo history with a panel to jump to any prior resolver state.
 
-- [Cell matching](https://en.wikipedia.org/wiki/Hungarian_algorithm) across branches, even when cells move.
+- [Cell matching](https://en.wikipedia.org/wiki/Hungarian_algorithm) across branches, even when cells move:
 
 <p align="center">
   <img src="readme-assets/cell-reordering.png" alt="Smart resolution algorithm" height="300px" />
+  <br/>
+<em>Fig. 2. The conflict resolver GUI when a cell is moved across branches</em>
 </p>
 
-- Configurable auto-resolution for execution counts, kernel versions, outputs, and whitespace.
+
+- Configurable auto-resolution for execution counts, kernel versions, outputs, and whitespace:
+<br/>
 
 <p align="center">
   <img src="readme-assets/auto-resolution.png" alt="Kernel version, execution count, output, and whitespace conflicts are auto handled" height="500px" />
+  <br/>
+  <em>Fig. 3. MergeNB optionally removing noisy conflicts</em>
 </p>
 
 
