@@ -51,7 +51,16 @@ runs:
     - name: Override Playwright for legacy VS Code runtime
       if: inputs.playwright-version != 'default'
       shell: bash
-      run: npm install --no-save --no-package-lock @playwright/test@${{ inputs.playwright-version }} playwright@${{ inputs.playwright-version }}
+      env:
+        PLAYWRIGHT_VERSION: ${{ inputs.playwright-version }}
+      run: |
+        if [[ ! "$PLAYWRIGHT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Invalid Playwright version: $PLAYWRIGHT_VERSION" >&2
+          exit 1
+        fi
+        npm install --no-save --no-package-lock \
+          "@playwright/test@$PLAYWRIGHT_VERSION" \
+          "playwright@$PLAYWRIGHT_VERSION"
 
     - name: Build
       shell: bash
