@@ -13,7 +13,7 @@ jobs:
       VSCODE_VERSION: '1.80.0'
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@v7.0.1
 
       - name: Run MergeNB tests
         uses: ./.github/actions/run-tests
