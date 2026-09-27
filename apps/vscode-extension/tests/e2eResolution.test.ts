@@ -10,6 +10,8 @@
  * matches what was displayed in the UI.
  */
 
+import * as path from 'path';
+import * as vscode from 'vscode';
 import * as logger from '../../../packages/core/src';
 import * as gitIntegration from '../gitIntegration';
 import {
@@ -29,12 +31,9 @@ import {
     saveResolvedEdits,
     type ConflictChoice,
 } from '../../../test-fixtures/shared/integrationUtils';
-import {
-    readTestConfig,
-    setupConflictResolver,
-    applyResolutionAndReadNotebook,
-    assertNotebookMatches,
-} from './testHarness';
+import { openConflictResolverPage } from '../../../test-fixtures/harness/browser';
+import { readTestConfig, setupConflictResolver } from '../../../test-fixtures/harness/vscode';
+import { applyResolutionAndReadNotebook, assertNotebookMatches } from '../../../test-fixtures/harness/notebook';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,
@@ -84,6 +83,41 @@ export async function run(): Promise<void> {
         // Always refresh the unmerged files snapshot before running the test
         logger.info('[E2E] Refreshing unmerged files snapshot...');
         await gitIntegration.refreshUnmergedFilesSnapshot(workspacePath);
+
+        // A status bar click must open the only conflict even with no active notebook.
+        await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+        const statusBar = await vscode.commands.executeCommand<{ command?: string }>('merge-nb.getStatusBarState');
+        if (statusBar?.command !== 'merge-nb.findConflicts') {
+            throw new Error('Status bar must invoke the unified resolver command');
+        }
+        const openWithoutPicker = async (command: string, target?: vscode.Uri): Promise<void> => {
+            const previousUrl = await vscode.commands.executeCommand<string>('merge-nb.getLatestWebSessionUrl');
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            try {
+                await Promise.race([
+                    vscode.commands.executeCommand(command, target),
+                    new Promise<never>((_, reject) => {
+                        timer = setTimeout(() => reject(new Error('Single conflict must open without a file picker')), 15000);
+                    }),
+                ]);
+            } finally {
+                clearTimeout(timer);
+            }
+            const sessionUrl = await vscode.commands.executeCommand<string>('merge-nb.getLatestWebSessionUrl');
+            if (!sessionUrl || sessionUrl === previousUrl) {
+                throw new Error('Resolver command must open a new notebook session');
+            }
+            const opened = await openConflictResolverPage(sessionUrl);
+            try {
+                await opened.page.locator('.merge-row.conflict-row').first().waitFor({ timeout: 15000 });
+            } finally {
+                await opened.browser.close();
+            }
+        };
+        await openWithoutPicker(statusBar.command);
+
+        // Explorer/editor actions must honor the passed notebook URI.
+        await openWithoutPicker('merge-nb.findConflicts', vscode.Uri.file(path.join(workspacePath, 'conflict.ipynb')));
 
         // This is the critical step that exercises the web server + WebSocket.
         // If `ws` is not bundled, this will fail with a runtime error.

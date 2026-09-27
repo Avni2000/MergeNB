@@ -7,7 +7,7 @@
  */
 
 import type { Locator } from 'playwright';
-import { test, expect } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
 import * as logger from '../../core/src';
 import {
     clickHistoryUndo,

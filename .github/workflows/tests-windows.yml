@@ -1,0 +1,19 @@
+name: MergeNB Tests (Windows)
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: windows-latest
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
+      VSCODE_VERSION: stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.0
+
+      - name: Run MergeNB tests
+        uses: ./.github/actions/run-tests

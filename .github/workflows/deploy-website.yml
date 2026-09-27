@@ -3,12 +3,12 @@ name: Deploy Website
 on:
   workflow_dispatch:
 
-  push:
-    branches:
-      - main
-    paths:
-      - 'apps/website/**'
-      - '.github/workflows/deploy-website.yml'
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'apps/website/**'
+  #     - '.github/workflows/deploy-website.yml'
 
 permissions:
   contents: read
@@ -31,7 +31,7 @@ jobs:
 
       - uses: actions/configure-pages@v6
 
-      - run: npm ci
+      - run: npm ci --ignore-scripts
         working-directory: apps/website
 
       - run: npm run build

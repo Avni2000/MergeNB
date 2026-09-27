@@ -35,7 +35,7 @@ let lastResolvedDetails: {
 
 // Event emitter to trigger decoration refresh
 const decorationChangeEmitter = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
-const statusBarConflictPickerCommand = 'merge-nb.pickConflictFromStatusBar';
+const resolveConflictsCommand = 'merge-nb.findConflicts';
 const conflictContextKey = 'mergeNB.hasConflicts';
 
 type ConflictQuickPickItem = vscode.QuickPickItem & { uri: vscode.Uri };
@@ -151,9 +151,9 @@ async function updateStatusBar(): Promise<void> {
 
 	const conflictLabel = conflictCount === 1 ? '1 conflict' : `${conflictCount} conflicts`;
 	statusBarItem.text = `$(git-merge) MergeNB: ${conflictLabel}`;
-	statusBarItem.tooltip = `Select a conflicted notebook to resolve (${conflictCount} .ipynb merge conflict${conflictCount === 1 ? '' : 's'} found)`;
-	statusBarItem.command = statusBarConflictPickerCommand;
-	statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+	statusBarItem.tooltip = `Resolve notebook merge conflicts (${conflictCount} .ipynb merge conflict${conflictCount === 1 ? '' : 's'} found)`;
+	statusBarItem.command = resolveConflictsCommand;
+	statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
 	statusBarItem.show();
 	statusBarVisible = true;
 }
@@ -294,12 +294,14 @@ export function activate(context: vscode.ExtensionContext) {
 		})
 	);
 
-	// Command: Find all notebooks with conflicts (semantic / Git unmerged status)
+	// One command for the palette, status bar, Explorer, and editor title.
 	context.subscriptions.push(
-		vscode.commands.registerCommand('merge-nb.findConflicts', async () => {
+		vscode.commands.registerCommand(resolveConflictsCommand, async (targetUri?: vscode.Uri) => {
 			logger.debug('[Extension] merge-nb.findConflicts command triggered');
-			// First check if current notebook has conflicts
-			const activeUri = getActiveNotebookFileUri();
+			// Context menus pass the selected resource; otherwise prefer the active notebook.
+			const activeUri = targetUri instanceof vscode.Uri && targetUri.scheme === 'file' && targetUri.fsPath.endsWith('.ipynb')
+				? targetUri
+				: getActiveNotebookFileUri();
 			logger.debug(`[Extension] Active URI: ${activeUri?.fsPath}`);
 			if (activeUri) {
 				logger.debug(`[Extension] Checking if ${activeUri.fsPath} is unmerged...`);
@@ -350,54 +352,6 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(
-		vscode.commands.registerCommand(statusBarConflictPickerCommand, async () => {
-			const files = await resolver.findNotebooksWithConflicts();
-			if (files.length === 0) {
-				vscode.window.showInformationMessage('No notebooks with merge conflicts found in workspace.');
-				void updateStatusBar();
-				return;
-			}
-
-			const pickedUri = await pickNotebookConflict(
-				files,
-				`Select notebook to resolve (${files.length} conflict${files.length === 1 ? '' : 's'})`,
-				getActiveNotebookFileUri()
-			);
-			if (!pickedUri) {
-				return;
-			}
-
-			if (!(await ensureSupportedMergeTool(pickedUri.fsPath))) {
-				return;
-			}
-
-			await resolver.resolveConflicts(pickedUri);
-		})
-	);
-
-	context.subscriptions.push(
-		vscode.commands.registerCommand('merge-nb.resolveCurrentFile', async () => {
-			const activeUri = getActiveNotebookFileUri();
-			if (!activeUri) {
-				vscode.window.showInformationMessage('Open a conflicted .ipynb file to resolve it.');
-				return;
-			}
-
-			const isUnmerged = await gitIntegration.isUnmergedFile(activeUri.fsPath);
-			if (!isUnmerged) {
-				vscode.window.showInformationMessage('No merge conflicts found in the active notebook.');
-				return;
-			}
-
-			if (!(await ensureSupportedMergeTool(activeUri.fsPath))) {
-				return;
-			}
-
-			await resolver.resolveConflicts(activeUri);
-		})
-	);
-
-	context.subscriptions.push(
 		vscode.commands.registerCommand('merge-nb.getLastResolutionDetails', () => {
 			return lastResolvedDetails;
 		})
@@ -425,7 +379,9 @@ export function activate(context: vscode.ExtensionContext) {
 				return {
 					visible: statusBarVisible,
 					text: statusBarItem.text,
-					command: statusBarItem.command
+					command: statusBarItem.command,
+					color: statusBarItem.color,
+					backgroundColor: statusBarItem.backgroundColor
 				};
 			})
 		);

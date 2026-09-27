@@ -11,8 +11,10 @@
  * 5. Expect warnings only when a destructive action discards edited content
  */
 
-import { test, expect } from './fixtures';
+import type { Locator, Page } from '@playwright/test';
+import { test as base, expect } from '../../../test-fixtures/harness/playwright';
 import {
+    collectExpectedCellsFromUI,
     enterResolvedEditMode,
     fillResolvedEditor,
 } from '../../../test-fixtures/shared/integrationUtils';
@@ -21,6 +23,11 @@ import {
     restoreSettingsFileSnapshot,
     writeSettingsFile,
 } from '../../../apps/vscode-extension/tests/settingsFile';
+import type { ConflictSession } from '../../../test-fixtures/harness/conflictSession';
+import {
+    applyResolutionAndReadNotebook,
+    assertNotebookMatches,
+} from '../../../test-fixtures/harness/notebook';
 
 const CONFLICT_2_FIXTURES = {
     base: 'general/conflict_2/base.ipynb',
@@ -28,200 +35,157 @@ const CONFLICT_2_FIXTURES = {
     incoming: 'general/conflict_2/incoming.ipynb',
 };
 
+const test = base.extend<{ editSession: ConflictSession }>({
+    editSession: async ({ conflictRepo, conflictSession }, use) => {
+        const settingsSnapshot = readSettingsFileSnapshot();
+        try {
+            writeSettingsFile({
+                'autoResolve.executionCount': false,
+                'autoResolve.stripOutputs': false,
+                'autoResolve.whitespace': false,
+            });
+            const workspacePath = conflictRepo(CONFLICT_2_FIXTURES);
+            await use(await conflictSession(workspacePath));
+        } finally {
+            restoreSettingsFileSnapshot(settingsSnapshot);
+        }
+    },
+});
+
+async function resolveRow(row: Locator): Promise<void> {
+    await row.scrollIntoViewIfNeeded();
+    const resolveButton = row.locator('.btn-choice.btn-current, .btn-choice.btn-incoming, .btn-choice.btn-base').first();
+    await resolveButton.waitFor({ timeout: 10000 });
+    await resolveButton.click();
+    await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
+}
+
+async function resolveFirstRows(page: Page, count = 1): Promise<Locator[]> {
+    const conflictRows = page.locator('.merge-row.conflict-row');
+    await conflictRows.first().waitFor({ timeout: 10000 });
+    expect(await conflictRows.count()).toBeGreaterThanOrEqual(count);
+
+    const rows = Array.from({ length: count }, (_, index) => conflictRows.nth(index));
+    for (const row of rows) {
+        await resolveRow(row);
+    }
+    return rows;
+}
+
+async function assertUIMatchesDisk(session: ConflictSession): Promise<void> {
+    const { page, conflictFile } = session;
+    await page.locator('.header-title').click();
+    const conflictRows = page.locator('.merge-row.conflict-row');
+    for (const row of await conflictRows.all()) {
+        if (await row.locator('.resolved-cell').count() === 0) {
+            await resolveRow(row);
+        }
+    }
+    const expectedCells = await collectExpectedCellsFromUI(page, {
+        resolveConflictChoice: async row => ({
+            choice: 'current',
+            chosenCellType: await row.getAttribute('data-cell-type') || 'code',
+        }),
+    });
+    const notebook = await applyResolutionAndReadNotebook(page, conflictFile);
+    assertNotebookMatches(expectedCells, notebook);
+}
+
 test.describe('Edit Warning on Blur', () => {
-    test('clicking outside autosaves the draft and exits edit mode', async ({ conflictRepo, conflictSession }) => {
-        const settingsSnapshot = readSettingsFileSnapshot();
+    test('clicking outside autosaves the draft and exits edit mode', async ({ editSession }) => {
+        const { page } = editSession;
 
-        try {
-            writeSettingsFile({
-                'autoResolve.executionCount': false,
-                'autoResolve.stripOutputs': false,
-                'autoResolve.whitespace': false,
-            });
+        const [firstConflict] = await resolveFirstRows(page);
 
-            const workspacePath = conflictRepo(CONFLICT_2_FIXTURES);
+        // Enter edit mode
+        const editor = await enterResolvedEditMode(firstConflict);
+        await fillResolvedEditor(editor, 'autosaved blur edit');
 
-            const session = await conflictSession(workspacePath);
-            const { page } = session;
+        // Verify the editor is visible
+        await expect(editor).toBeVisible();
 
-            // Resolve the first conflict by clicking whichever branch button is available
-            const conflictRows = page.locator('.merge-row.conflict-row');
-            const firstConflict = conflictRows.first();
-            await firstConflict.scrollIntoViewIfNeeded();
+        // Click outside the editor — on the header, which is well outside the resolved cell
+        await page.locator('.header-title').click();
 
-            // Pick first available resolution button (current, incoming, or base)
-            const resolveBtn = firstConflict.locator('.btn-choice.btn-current, .btn-choice.btn-incoming, .btn-choice.btn-base').first();
-            await resolveBtn.waitFor({ timeout: 10000 });
-            await resolveBtn.click();
+        // Blur should autosave and return to the static resolved view without a modal.
+        await expect(firstConflict.locator('[data-testid="edit-warning-modal"]')).toHaveCount(0);
+        const staticPre = firstConflict.locator('.resolved-content-static');
+        await staticPre.waitFor({ timeout: 5000 });
+        await expect(staticPre).toContainText('autosaved blur edit');
 
-            // Wait for the resolved cell to appear
-            await firstConflict.locator('.resolved-cell').waitFor({ timeout: 5000 });
-
-            // Enter edit mode
-            const editor = await enterResolvedEditMode(firstConflict);
-            await fillResolvedEditor(editor, 'autosaved blur edit');
-
-            // Verify the editor is visible
-            await expect(editor).toBeVisible();
-
-            // Click outside the editor — on the header, which is well outside the resolved cell
-            await page.locator('.header-title').click();
-
-            // Blur should autosave and return to the static resolved view without a modal.
-            await expect(firstConflict.locator('[data-testid="edit-warning-modal"]')).toHaveCount(0);
-            const staticPre = firstConflict.locator('.resolved-content-static');
-            await staticPre.waitFor({ timeout: 5000 });
-            await expect(staticPre).toContainText('autosaved blur edit');
-
-        } finally {
-            restoreSettingsFileSnapshot(settingsSnapshot);
-        }
+        await assertUIMatchesDisk(editSession);
     });
 
-    test('clicking another row action autosaves the first editor and opens the next one', async ({ conflictRepo, conflictSession }) => {
-        const settingsSnapshot = readSettingsFileSnapshot();
+    test('clicking another row action autosaves the first editor and opens the next one', async ({ editSession }) => {
+        const { page } = editSession;
 
-        try {
-            writeSettingsFile({
-                'autoResolve.executionCount': false,
-                'autoResolve.stripOutputs': false,
-                'autoResolve.whitespace': false,
-            });
+        const [firstConflict, secondConflict] = await resolveFirstRows(page, 2);
 
-            const workspacePath = conflictRepo(CONFLICT_2_FIXTURES);
+        const editor = await enterResolvedEditMode(firstConflict);
+        await fillResolvedEditor(editor, 'autosaved before switching rows');
 
-            const session = await conflictSession(workspacePath);
-            const { page } = session;
+        const secondEditButton = secondConflict.locator('[data-testid="edit-button"]');
+        await secondEditButton.click();
 
-            const conflictRows = page.locator('.merge-row.conflict-row');
-            const firstConflict = conflictRows.first();
-            const secondConflict = conflictRows.nth(1);
+        await expect(firstConflict.locator('.resolved-content-static')).toContainText('autosaved before switching rows');
+        await expect(firstConflict.locator('.resolved-content-input')).toHaveCount(0);
+        await expect(secondConflict.locator('.resolved-content-input')).toBeVisible({ timeout: 5000 });
 
-            await conflictRows.first().waitFor({ timeout: 10000 });
-            expect(await conflictRows.count()).toBeGreaterThan(1);
-
-            for (const row of [firstConflict, secondConflict]) {
-                await row.scrollIntoViewIfNeeded();
-                const resolveBtn = row.locator('.btn-choice.btn-current, .btn-choice.btn-incoming, .btn-choice.btn-base').first();
-                await resolveBtn.waitFor({ timeout: 10000 });
-                await resolveBtn.click();
-                await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
-            }
-
-            const editor = await enterResolvedEditMode(firstConflict);
-            await fillResolvedEditor(editor, 'autosaved before switching rows');
-
-            const secondEditButton = secondConflict.locator('[data-testid="edit-button"]');
-            await secondEditButton.click();
-
-            await expect(firstConflict.locator('.resolved-content-static')).toContainText('autosaved before switching rows');
-            await expect(firstConflict.locator('.resolved-content-input')).toHaveCount(0);
-            await expect(secondConflict.locator('.resolved-content-input')).toBeVisible({ timeout: 5000 });
-
-        } finally {
-            restoreSettingsFileSnapshot(settingsSnapshot);
-        }
+        await assertUIMatchesDisk(editSession);
     });
 
-    test('blur no longer disables other row actions behind a modal', async ({ conflictRepo, conflictSession }) => {
-        const settingsSnapshot = readSettingsFileSnapshot();
+    test('blur no longer disables other row actions behind a modal', async ({ editSession }) => {
+        const { page } = editSession;
 
-        try {
-            writeSettingsFile({
-                'autoResolve.executionCount': false,
-                'autoResolve.stripOutputs': false,
-                'autoResolve.whitespace': false,
-            });
+        const [firstConflict, secondConflict] = await resolveFirstRows(page, 2);
 
-            const workspacePath = conflictRepo(CONFLICT_2_FIXTURES);
+        const firstEditor = await enterResolvedEditMode(firstConflict);
+        await expect(firstEditor).toBeVisible();
 
-            const session = await conflictSession(workspacePath);
-            const { page } = session;
+        await fillResolvedEditor(firstEditor, 'autosave and continue');
 
-            const conflictRows = page.locator('.merge-row.conflict-row');
-            const firstConflict = conflictRows.first();
-            const secondConflict = conflictRows.nth(1);
+        const firstUndoButton = firstConflict.locator('button:has-text("Undo resolution")');
+        const secondEditButton = secondConflict.locator('[data-testid="edit-button"]');
+        const secondUndoButton = secondConflict.locator('button:has-text("Undo resolution")');
 
-            await conflictRows.first().waitFor({ timeout: 10000 });
-            expect(await conflictRows.count()).toBeGreaterThan(1);
+        await expect(firstUndoButton).toBeEnabled();
+        await expect(secondEditButton).toBeEnabled();
+        await expect(secondUndoButton).toBeEnabled();
 
-            for (const row of [firstConflict, secondConflict]) {
-                await row.scrollIntoViewIfNeeded();
-                const resolveBtn = row.locator('.btn-choice.btn-current, .btn-choice.btn-incoming, .btn-choice.btn-base').first();
-                await resolveBtn.waitFor({ timeout: 10000 });
-                await resolveBtn.click();
-                await row.locator('.resolved-cell').waitFor({ timeout: 5000 });
-            }
+        await page.locator('.header-title').click();
 
-            const firstEditor = await enterResolvedEditMode(firstConflict);
-            await expect(firstEditor).toBeVisible();
+        await expect(page.locator('[data-testid="edit-warning-modal"]')).toHaveCount(0);
+        await expect(firstConflict.locator('.resolved-content-static')).toContainText('autosave and continue');
+        await expect(secondConflict.locator('.resolved-content-input')).toHaveCount(0);
+        await expect(page.locator('[data-testid="undo-warning-modal"]')).toHaveCount(0);
 
-            await fillResolvedEditor(firstEditor, 'autosave and continue');
-
-            const firstUndoButton = firstConflict.locator('button:has-text("Undo resolution")');
-            const secondEditButton = secondConflict.locator('[data-testid="edit-button"]');
-            const secondUndoButton = secondConflict.locator('button:has-text("Undo resolution")');
-
-            await expect(firstUndoButton).toBeEnabled();
-            await expect(secondEditButton).toBeEnabled();
-            await expect(secondUndoButton).toBeEnabled();
-
-            await page.locator('.header-title').click();
-
-            await expect(page.locator('[data-testid="edit-warning-modal"]')).toHaveCount(0);
-            await expect(firstConflict.locator('.resolved-content-static')).toContainText('autosave and continue');
-            await expect(secondConflict.locator('.resolved-content-input')).toHaveCount(0);
-            await expect(page.locator('[data-testid="undo-warning-modal"]')).toHaveCount(0);
-
-            await secondEditButton.click();
-            await expect(secondConflict.locator('.resolved-content-input')).toBeVisible({ timeout: 5000 });
-        } finally {
-            restoreSettingsFileSnapshot(settingsSnapshot);
-        }
+        await secondEditButton.click();
+        await expect(secondConflict.locator('.resolved-content-input')).toBeVisible({ timeout: 5000 });
+        await assertUIMatchesDisk(editSession);
     });
 
-    test('undo resolution warns before discarding edited resolved content', async ({ conflictRepo, conflictSession }) => {
-        const settingsSnapshot = readSettingsFileSnapshot();
+    test('undo resolution warns before discarding edited resolved content', async ({ editSession }) => {
+        const { page } = editSession;
 
-        try {
-            writeSettingsFile({
-                'autoResolve.executionCount': false,
-                'autoResolve.stripOutputs': false,
-                'autoResolve.whitespace': false,
-            });
+        const [firstConflict] = await resolveFirstRows(page);
 
-            const workspacePath = conflictRepo(CONFLICT_2_FIXTURES);
+        const editor = await enterResolvedEditMode(firstConflict);
+        await fillResolvedEditor(editor, 'edited resolved content');
 
-            const session = await conflictSession(workspacePath);
-            const { page } = session;
+        await firstConflict.locator('button:has-text("Undo resolution")').click();
 
-            const firstConflict = page.locator('.merge-row.conflict-row').first();
-            await firstConflict.scrollIntoViewIfNeeded();
+        const warningModal = page.locator('.warning-modal');
+        await expect(warningModal).toBeVisible({ timeout: 3000 });
+        await expect(warningModal.locator('h3')).toHaveText('Discard edits and undo resolution?');
+        await expect(warningModal.locator('p')).toContainText('Undoing this resolution will discard those changes.');
 
-            const resolveBtn = firstConflict.locator('.btn-choice.btn-current, .btn-choice.btn-incoming, .btn-choice.btn-base').first();
-            await resolveBtn.waitFor({ timeout: 10000 });
-            await resolveBtn.click();
-            await firstConflict.locator('.resolved-cell').waitFor({ timeout: 5000 });
+        await warningModal.locator('button:has-text("Keep my edits")').click();
+        await expect(warningModal).not.toBeVisible();
+        await expect(firstConflict.locator('.resolved-content-static')).toBeVisible();
 
-            const editor = await enterResolvedEditMode(firstConflict);
-            await fillResolvedEditor(editor, 'edited resolved content');
-
-            await firstConflict.locator('button:has-text("Undo resolution")').click();
-
-            const warningModal = page.locator('.warning-modal');
-            await expect(warningModal).toBeVisible({ timeout: 3000 });
-            await expect(warningModal.locator('h3')).toHaveText('Discard edits and undo resolution?');
-            await expect(warningModal.locator('p')).toContainText('Undoing this resolution will discard those changes.');
-
-            await warningModal.locator('button:has-text("Keep my edits")').click();
-            await expect(warningModal).not.toBeVisible();
-            await expect(firstConflict.locator('.resolved-content-static')).toBeVisible();
-
-            await firstConflict.locator('button:has-text("Undo resolution")').click();
-            await warningModal.locator('button:has-text("Undo resolution")').click();
-            await firstConflict.locator('.resolved-cell').waitFor({ state: 'detached', timeout: 5000 });
-        } finally {
-            restoreSettingsFileSnapshot(settingsSnapshot);
-        }
+        await firstConflict.locator('button:has-text("Undo resolution")').click();
+        await warningModal.locator('button:has-text("Undo resolution")').click();
+        await firstConflict.locator('.resolved-cell').waitFor({ state: 'detached', timeout: 5000 });
+        await assertUIMatchesDisk(editSession);
     });
 });

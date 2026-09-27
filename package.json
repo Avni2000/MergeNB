@@ -25,15 +25,9 @@
     "commands": [
       {
         "command": "merge-nb.findConflicts",
-        "title": "Find Notebooks with Merge Conflicts",
-        "category": "MergeNB",
-        "icon": "$(git-merge)"
-      },
-      {
-        "command": "merge-nb.resolveCurrentFile",
         "title": "Resolve Merge Conflicts",
         "category": "MergeNB",
-        "icon": "$(warning)"
+        "icon": "$(git-merge)"
       }
     ],
     "menus": {
@@ -47,7 +41,7 @@
       "editor/title": [
         {
           "when": "resourceExtname == .ipynb && mergeNB.hasConflicts",
-          "command": "merge-nb.resolveCurrentFile",
+          "command": "merge-nb.findConflicts",
           "group": "navigation"
         }
       ],
@@ -55,10 +49,6 @@
         {
           "command": "merge-nb.findConflicts",
           "when": "true"
-        },
-        {
-          "command": "merge-nb.resolveCurrentFile",
-          "when": "resourceExtname == .ipynb && mergeNB.hasConflicts"
         }
       ]
     },
@@ -180,17 +170,17 @@
     "@codemirror/language": "^6.12.4",
     "@codemirror/language-data": "^6.5.2",
     "@codemirror/merge": "^6.12.2",
-    "@jupyterlab/rendermime": "^4.6.2",
+    "@jupyterlab/rendermime": "^4.6.3",
     "@uiw/codemirror-theme-github": "^4.25.11",
     "@uiw/react-codemirror": "^4.25.11",
     "@vscode/markdown-it-katex": "^1.1.2",
     "diff": "^9.0.0",
-    "dompurify": "^3.4.12",
-    "immer": "^11.1.15",
-    "katex": "^0.18.1",
-    "markdown-it": "^14.3.0",
-    "ws": "^8.21.1",
-    "zustand": "^5.0.14"
+    "dompurify": "^3.4.13",
+    "immer": "^11.1.17",
+    "katex": "^0.18.4",
+    "markdown-it": "^15.0.0",
+    "ws": "^8.21.3",
+    "zustand": "^5.0.15"
   },
   "allowScripts": {
     "`@vscode/vsce-sign`@2.0.9": true,

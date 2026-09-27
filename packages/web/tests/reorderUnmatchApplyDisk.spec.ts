@@ -3,7 +3,7 @@
  * @description Playwright Test for unmatch -> resolve -> apply disk output.
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
 import * as logger from '../../core/src';
 import {
     verifyAllConflictsMatchSide,
@@ -15,7 +15,7 @@ import {
     assertNotebookMatches,
     buildExpectedCellsFromNotebook,
     readNotebookFixtureFromRepo,
-} from './fixtures';
+} from '../../../test-fixtures/harness/notebook';
 import { validateNotebookStructure } from '../../../test-fixtures/shared/testHelpers';
 import {
     readSettingsFileSnapshot,

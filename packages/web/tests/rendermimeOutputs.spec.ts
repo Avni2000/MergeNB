@@ -6,7 +6,7 @@
  * unsupported MIME data uses the plain-text fallback.
  */
 
-import { test, expect } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
 import type { Locator, Page } from 'playwright';
 import * as logger from '../../core/src';
 import {

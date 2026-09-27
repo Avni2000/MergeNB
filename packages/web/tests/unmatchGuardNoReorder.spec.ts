@@ -6,7 +6,7 @@
  */
 
 import type { Page } from 'playwright';
-import { test, expect } from './fixtures';
+import { test, expect } from '../../../test-fixtures/harness/playwright';
 import { waitForResolvedCount } from '../../../test-fixtures/shared/integrationUtils';
 import * as logger from '../../core/src';
 import {
