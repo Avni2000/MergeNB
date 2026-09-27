@@ -13,31 +13,16 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { chromium, type Browser, type Page } from 'playwright';
+import type { Page } from 'playwright';
 import * as logger from '../../../packages/core/src';
-import * as gitIntegration from '../gitIntegration';
+import { configContext } from '../settings';
 import {
-    detectSemanticConflicts,
-    applyAutoResolutions,
-    buildResolvedNotebookFromRows,
-    serializeNotebook,
-} from '../../../packages/core/src';
-import { getSettings, configContext } from '../settings';
-import { getWebServer } from '../../../packages/web/server/src';
-import {
-    toWebConflictData,
-    type BrowserToExtensionMessage,
-    type UnifiedConflict,
-} from '../../../packages/web/server/src';
-import {
-    type ExpectedCell,
-    type TestConfig,
-    getCellSource,
-    waitForServer,
-    waitForSessionUrl,
-    waitForFileWrite,
+    type ExpectedCell, type TestConfig, getCellSource,
+    waitForServer, waitForSessionUrl, waitForFileWrite,
 } from '../../../test-fixtures/shared/testHelpers';
 import { ensureCheckboxChecked } from '../../../test-fixtures/shared/integrationUtils';
+import { setupConflictResolverHeadless, type ConflictSession as SharedConflictSession } from '../../../test-fixtures/harness/conflictSession';
+import { openConflictResolverPage, sleep } from '../../../test-fixtures/harness/browser';
 
 // Optional vscode import for headless test support.
 let vscode: typeof import('vscode') | undefined;
@@ -47,15 +32,8 @@ try {
     // Running in headless mode (tests) - vscode not available
 }
 
-interface ConflictSession {
+interface ConflictSession extends SharedConflictSession {
     config: TestConfig;
-    workspacePath: string;
-    conflictFile: string;
-    serverPort: number;
-    sessionId: string;
-    sessionUrl: string;
-    browser: Browser;
-    page: Page;
 }
 
 interface SetupOptions {
@@ -80,10 +58,6 @@ interface NotebookMatchOptions {
     logCounts?: boolean;
 }
 
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 /** Read the test config JSON written to disk by the runner before VS Code launched. */
 export function readTestConfig(): TestConfig {
     const ctx = configContext.getStore();
@@ -106,7 +80,10 @@ export async function setupConflictResolver(
     options: SetupOptions = {}
 ): Promise<ConflictSession> {
     if (!vscode) {
-        return setupConflictResolverHeadless(config, options);
+        const session = await setupConflictResolverHeadless(
+            config.workspacePath, path.resolve(__dirname, '../../../..'), options
+        );
+        return { ...session, config };
     }
 
     const workspacePath = config.workspacePath;
@@ -134,211 +111,8 @@ export async function setupConflictResolver(
     const sessionId = new URL(sessionUrl).searchParams.get('session') || 'unknown';
     logger.info(`Session created: ${sessionId}`);
 
-    const browser = await chromium.launch({ headless: options.headless ?? true });
-    try {
-        const page = await browser.newPage();
-
-        const testUrl = sessionUrl + '&noLightweight=1';
-        await page.goto(testUrl);
-        await sleep(options.afterNavigateDelayMs ?? 3000);
-
-        await page.waitForSelector('.header-title', { timeout: 15000 });
-        const title = await page.locator('.header-title').textContent();
-        if (title?.trim() !== 'MergeNB') {
-            throw new Error(`Expected header 'MergeNB', got '${title}'`);
-        }
-
-        await sleep(options.postHeaderDelayMs ?? 1000);
-
-        return {
-            config,
-            workspacePath,
-            conflictFile,
-            serverPort,
-            sessionId,
-            sessionUrl,
-            browser,
-            page,
-        };
-    } catch (err) {
-        await browser.close();
-        throw err;
-    }
-}
-
-async function setupConflictResolverHeadless(
-    config: TestConfig,
-    options: SetupOptions = {}
-): Promise<ConflictSession> {
-    const workspacePath = config.workspacePath;
-    const conflictFile = path.join(workspacePath, 'conflict.ipynb');
-
-    const semanticConflict = await detectSemanticConflicts(conflictFile, {
-        getThreeWayVersions: gitIntegration.getThreeWayVersions,
-        getCurrentBranch: gitIntegration.getCurrentBranch,
-        getMergeBranch: gitIntegration.getMergeBranch,
-    });
-    if (!semanticConflict) {
-        throw new Error('No semantic conflicts detected (headless mode).');
-    }
-
-    const settings = getSettings();
-    const autoResolveResult = applyAutoResolutions(semanticConflict, settings);
-
-    if (autoResolveResult.remainingConflicts.length === 0) {
-        throw new Error('No remaining conflicts after auto-resolve (headless mode).');
-    }
-
-    const filteredSemanticConflict = {
-        ...semanticConflict,
-        semanticConflicts: autoResolveResult.remainingConflicts,
-    };
-
-    const unifiedConflict: UnifiedConflict = {
-        filePath: conflictFile,
-        type: 'semantic',
-        semanticConflict: filteredSemanticConflict,
-        autoResolveResult,
-        hideNonConflictOutputs: settings.hideNonConflictOutputs,
-        showCellHeaders: settings.showCellHeaders,
-        enableUndoRedoHotkeys: settings.enableUndoRedoHotkeys,
-        showBaseColumn: settings.showBaseColumn,
-        theme: settings.theme,
-    };
-
-    const server = getWebServer();
-    server.setTestMode(true);
-    server.setExtensionUri({ fsPath: path.resolve(__dirname, '../../../..') });
-
-    if (!server.isRunning()) {
-        await server.start();
-    }
-
-    const sessionId = server.generateSessionId();
-    const conflictVersion = 1;
-    const sendConflictData = (): void => {
-        const data = toWebConflictData(unifiedConflict, `${sessionId}:v${conflictVersion}`);
-        server.sendConflictData(sessionId, data);
-    };
-
-    const handleResolution = async (
-        message: Extract<BrowserToExtensionMessage, { command: 'resolve' }>
-    ): Promise<void> => {
-        try {
-            const markAsResolved = message.markAsResolved ?? false;
-            const shouldRenumber = message.renumberExecutionCounts ?? false;
-            const resolvedNotebook = buildResolvedNotebookFromRows({
-                semanticConflict: filteredSemanticConflict,
-                resolvedRows: message.resolvedRows,
-                autoResolveResult,
-                settings,
-                shouldRenumber,
-                preferredSideHint: message.semanticChoice,
-            });
-
-            fs.writeFileSync(conflictFile, serializeNotebook(resolvedNotebook), 'utf8');
-            if (markAsResolved) {
-                const staged = await gitIntegration.stageFile(conflictFile);
-                if (!staged) {
-                    throw new Error(`Failed to stage ${path.basename(conflictFile)}`);
-                }
-            }
-
-            server.sendMessage(sessionId, {
-                type: 'resolution-success',
-                message: 'Conflicts resolved successfully!',
-            });
-            await sleep(500);
-            server.closeSession(sessionId);
-        } catch (error) {
-            server.sendMessage(sessionId, {
-                type: 'resolution-error',
-                message: `Failed to apply resolutions: ${error}`,
-            });
-        }
-    };
-
-    const handleMessage = (message: unknown): void => {
-        // Validate message structure before casting to avoid undefined property access
-        if (!message || typeof message !== 'object') {
-            logger.error('[TestHarness] Invalid message format (not an object):', message);
-            return;
-        }
-        const msg = message as BrowserToExtensionMessage;
-        if (typeof msg.command !== 'string') {
-            logger.error('[TestHarness] Invalid message format (no command property):', message);
-            return;
-        }
-        switch (msg.command) {
-            case 'ready':
-                sendConflictData();
-                break;
-            case 'resolve':
-                if ('resolvedRows' in msg) {
-                    void handleResolution(msg as Extract<BrowserToExtensionMessage, { command: 'resolve' }>)
-                        .catch(err => {
-                            logger.error('[TestHarness] Resolution handler failed:', err);
-                            server.sendMessage(sessionId, {
-                                type: 'resolution-error',
-                                message: `Resolution handler error: ${err}`,
-                            });
-                        });
-                } else {
-                    logger.error('[TestHarness] Resolve message missing resolvedRows');
-                }
-                break;
-            case 'cancel':
-                server.closeSession(sessionId);
-                break;
-        }
-    };
-
-    const { sessionUrl, connectionPromise } = await server.openSession(
-        sessionId,
-        handleMessage,
-        unifiedConflict.theme ?? 'light',
-        unifiedConflict.filePath
-    );
-
-    const browser = await chromium.launch({ headless: options.headless ?? true });
-    try {
-        const page = await browser.newPage();
-        const testUrl = sessionUrl + '&noLightweight=1';
-        await page.goto(testUrl);
-        await sleep(options.afterNavigateDelayMs ?? 3000);
-
-        await page.waitForSelector('.header-title', { timeout: 15000 });
-        const title = await page.locator('.header-title').textContent();
-        if (title?.trim() !== 'MergeNB') {
-            throw new Error(`Expected header 'MergeNB', got '${title}'`);
-        }
-
-        // Wait for browser 'ready' message with timeout to prevent infinite hang
-        const connectionTimeoutMs = 30000;
-        await Promise.race([
-            connectionPromise,
-            new Promise<void>((_, reject) =>
-                setTimeout(() => reject(new Error(`Browser connection timeout after ${connectionTimeoutMs}ms`)), connectionTimeoutMs)
-            ),
-        ]);
-
-        await sleep(options.postHeaderDelayMs ?? 1000);
-
-        return {
-            config,
-            workspacePath,
-            conflictFile,
-            serverPort: server.getPort(),
-            sessionId,
-            sessionUrl,
-            browser,
-            page,
-        };
-    } catch (err) {
-        server.closeSession(sessionId);
-        await browser.close();
-        throw err;
-    }
+    const { browser, page } = await openConflictResolverPage(sessionUrl, options);
+    return { config, workspacePath, conflictFile, serverPort, sessionId, sessionUrl, browser, page };
 }
 
 /**
