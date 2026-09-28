@@ -11,6 +11,27 @@ import * as logger from './logger';
 
 export type PreferredSide = 'base' | 'current' | 'incoming';
 
+export function applyAutoResolveCellPatches(
+    cell: NotebookCell,
+    row: Pick<ResolvedRow, 'baseCellIndex' | 'currentCellIndex' | 'incomingCellIndex'>,
+    autoResolveResult?: AutoResolveResult
+): NotebookCell {
+    const resolved = JSON.parse(JSON.stringify(cell)) as NotebookCell;
+    const indexKeys = ['baseCellIndex', 'currentCellIndex', 'incomingCellIndex'] as const;
+    for (const patch of autoResolveResult?.cellPatches ?? []) {
+        const sharedIndex = indexKeys.some(key =>
+            patch[key] !== undefined && patch[key] === row[key]
+        );
+        const mismatchedIndex = indexKeys.some(key =>
+            patch[key] !== undefined && row[key] !== undefined && patch[key] !== row[key]
+        );
+        if (sharedIndex && !mismatchedIndex) {
+            Object.assign(resolved, JSON.parse(JSON.stringify(patch.changes)));
+        }
+    }
+    return resolved;
+}
+
 interface BuildResolvedNotebookOptions {
     semanticConflict: NotebookSemanticConflict;
     resolvedRows: ResolvedRow[];
@@ -154,8 +175,6 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
     const baseNotebook = semanticConflict.base;
     const currentNotebook = semanticConflict.current;
     const incomingNotebook = semanticConflict.incoming;
-    const autoResolvedNotebook = autoResolveResult?.resolvedNotebook;
-
     if (!currentNotebook && !incomingNotebook && !baseNotebook) {
         throw new Error('Cannot apply resolutions: no notebook versions available.');
     }
@@ -181,12 +200,6 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
     for (const row of rowsForResolution) {
         const { baseCell, currentCell, incomingCell, resolution: res } = row;
 
-        const currentCellFromAutoResolve = (
-            row.currentCellIndex !== undefined &&
-            autoResolvedNotebook?.cells?.[row.currentCellIndex]
-        ) ? autoResolvedNotebook.cells[row.currentCellIndex] : undefined;
-        const currentCellForFallback = currentCellFromAutoResolve || currentCell;
-
         let cellToUse: NotebookCell | undefined;
 
         if (res) {
@@ -199,7 +212,7 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
                     referenceCell = baseCell;
                     break;
                 case 'current':
-                    referenceCell = currentCellForFallback;
+                    referenceCell = currentCell;
                     break;
                 case 'incoming':
                     referenceCell = incomingCell;
@@ -219,31 +232,23 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
             cellToUse = JSON.parse(JSON.stringify(referenceCell)) as NotebookCell;
             cellToUse.cell_type = cellType;
             cellToUse.source = sourceToCellFormat(resolvedContent);
-
-            if (cellType === 'code') {
-                if (settings.stripOutputs) {
-                    (cellToUse as any).execution_count = null;
-                    (cellToUse as any).outputs = [];
-                }
-                // else: outputs/execution_count already preserved from the deep clone
-            }
         } else if (preferredSide) {
             if (preferredSide === 'base') cellToUse = baseCell;
-            else if (preferredSide === 'current') cellToUse = currentCellForFallback;
+            else if (preferredSide === 'current') cellToUse = currentCell;
             else if (preferredSide === 'incoming') cellToUse = incomingCell;
         } else {
-            cellToUse = selectNonConflictMergedCell(baseCell, currentCellForFallback, incomingCell);
+            cellToUse = selectNonConflictMergedCell(baseCell, currentCell, incomingCell);
         }
 
         if (cellToUse) {
-            resolvedCells.push(JSON.parse(JSON.stringify(cellToUse)));
+            resolvedCells.push(applyAutoResolveCellPatches(cellToUse, row, autoResolveResult));
         }
     }
 
     const templateNotebook = currentNotebook || incomingNotebook || baseNotebook!;
     const mergedMetadata = mergeNotebookMetadata(
         baseNotebook?.metadata as any,
-        (autoResolvedNotebook || currentNotebook)?.metadata as any,
+        currentNotebook?.metadata as any,
         incomingNotebook?.metadata as any,
         { preferKernelFromCurrent: settings.autoResolveKernelVersion }
     );

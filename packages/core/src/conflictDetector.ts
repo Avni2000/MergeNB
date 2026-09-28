@@ -35,8 +35,13 @@ export interface AutoResolveResult {
     autoResolvedCount: number;
     /** Description of what was auto-resolved */
     autoResolvedDescriptions: string[];
-    /** The notebook with auto-resolutions applied */
-    resolvedNotebook: Notebook;
+    /** Sparse cell changes to apply after choosing merged cell content */
+    cellPatches: Array<{
+        baseCellIndex?: number;
+        currentCellIndex?: number;
+        incomingCellIndex?: number;
+        changes: Partial<Pick<NotebookCell, 'execution_count' | 'outputs'>>;
+    }>;
     /** Whether kernel metadata was auto-resolved */
     kernelAutoResolved: boolean;
 }
@@ -347,47 +352,47 @@ export function applyAutoResolutions(
     semanticConflict: NotebookSemanticConflict,
     settings: MergeNBSettings
 ): AutoResolveResult {
-    const effectiveSettings = settings;
     const remainingConflicts: SemanticConflict[] = [];
     const autoResolvedDescriptions: string[] = [];
     let autoResolvedCount = 0;
     let kernelAutoResolved = false;
 
-    // Start with a deep copy of the current notebook as our resolved version
-    const resolvedNotebook: Notebook = semanticConflict.current 
-        ? JSON.parse(JSON.stringify(semanticConflict.current))
-        : JSON.parse(JSON.stringify(semanticConflict.incoming!));
-
-    const resolvedFromCurrent = Boolean(semanticConflict.current);
-    const getResolvedCellIndex = (conflict: SemanticConflict): number | undefined => {
-        if (resolvedFromCurrent) {
-            return conflict.currentCellIndex ?? conflict.incomingCellIndex;
-        }
-        return conflict.incomingCellIndex ?? conflict.currentCellIndex;
+    const cellPatches: AutoResolveResult['cellPatches'] = [];
+    const findPatch = (conflict: SemanticConflict) => cellPatches.find(patch =>
+        patch.baseCellIndex === conflict.baseCellIndex &&
+        patch.currentCellIndex === conflict.currentCellIndex &&
+        patch.incomingCellIndex === conflict.incomingCellIndex
+    );
+    const patchCell = (
+        conflict: SemanticConflict,
+        changes: AutoResolveResult['cellPatches'][number]['changes']
+    ): void => {
+        const indices = {
+            baseCellIndex: conflict.baseCellIndex,
+            currentCellIndex: conflict.currentCellIndex,
+            incomingCellIndex: conflict.incomingCellIndex,
+        };
+        const existing = findPatch(conflict);
+        if (existing) Object.assign(existing.changes, changes);
+        else cellPatches.push({ ...indices, changes });
     };
-
-    // Track cell indices that had auto-resolutions applied
-    const autoResolvedCellIndices = new Set<number>();
+    const cellNumber = (conflict: SemanticConflict): number =>
+        (conflict.currentCellIndex ?? conflict.incomingCellIndex ?? conflict.baseCellIndex ?? 0) + 1;
 
     for (const conflict of semanticConflict.semanticConflicts) {
         let autoResolved = false;
 
         // Auto-resolve execution count differences
-        if (conflict.type === 'execution-count-changed' && effectiveSettings.autoResolveExecutionCount) {
-            const resolvedCellIndex = getResolvedCellIndex(conflict);
-            // Set execution_count to null on the resolved cell
-            if (resolvedCellIndex !== undefined && resolvedNotebook.cells[resolvedCellIndex]) {
-                resolvedNotebook.cells[resolvedCellIndex].execution_count = null;
-                autoResolvedCellIndices.add(resolvedCellIndex);
-            }
+        if (conflict.type === 'execution-count-changed' && settings.autoResolveExecutionCount) {
+            patchCell(conflict, { execution_count: null });
             autoResolved = true;
             autoResolvedCount++;
-            autoResolvedDescriptions.push(`Execution count set to null (cell ${(resolvedCellIndex ?? 0) + 1})`);
+            autoResolvedDescriptions.push(`Execution count set to null (cell ${cellNumber(conflict)})`);
         }
 
         // Auto-resolve outputs-changed conflicts when stripOutputs is enabled
         // Only if the source code is identical (pure output difference)
-        if (conflict.type === 'outputs-changed' && effectiveSettings.stripOutputs) {
+        if (conflict.type === 'outputs-changed' && settings.stripOutputs) {
             const currentSource = conflict.currentContent?.source;
             const incomingSource = conflict.incomingContent?.source;
             
@@ -396,23 +401,18 @@ export function applyAutoResolutions(
             
             // If source is identical, this is purely an output difference - auto-resolve
             if (currentSourceStr === incomingSourceStr) {
-                const resolvedCellIndex = getResolvedCellIndex(conflict);
-                if (resolvedCellIndex !== undefined && resolvedNotebook.cells[resolvedCellIndex]) {
-                    resolvedNotebook.cells[resolvedCellIndex].outputs = [];
-                    // Only null execution_count if autoResolveExecutionCount is also enabled
-                    if (effectiveSettings.autoResolveExecutionCount) {
-                        resolvedNotebook.cells[resolvedCellIndex].execution_count = null;
-                    }
-                    autoResolvedCellIndices.add(resolvedCellIndex);
-                }
+                patchCell(conflict, {
+                    outputs: [],
+                    ...(settings.autoResolveExecutionCount ? { execution_count: null } : {}),
+                });
                 autoResolved = true;
                 autoResolvedCount++;
-                autoResolvedDescriptions.push(`Outputs cleared (cell ${(resolvedCellIndex ?? 0) + 1})`);
+                autoResolvedDescriptions.push(`Outputs cleared (cell ${cellNumber(conflict)})`);
             }
         }
 
         // Auto-resolve whitespace-only differences when enabled
-        if (!autoResolved && effectiveSettings.autoResolveWhitespace) {
+        if (!autoResolved && settings.autoResolveWhitespace) {
             if (conflict.type === 'cell-modified') {
                 const currentSource = conflict.currentContent?.source;
                 const incomingSource = conflict.incomingContent?.source;
@@ -423,8 +423,7 @@ export function applyAutoResolutions(
                 if (isWhitespaceOnlyDifference(currentSourceStr, incomingSourceStr)) {
                     autoResolved = true;
                     autoResolvedCount++;
-                    const resolvedCellIndex = getResolvedCellIndex(conflict) ?? 0;
-                    autoResolvedDescriptions.push(`Whitespace-only change resolved (cell ${resolvedCellIndex + 1})`);
+                    autoResolvedDescriptions.push(`Whitespace-only change resolved (cell ${cellNumber(conflict)})`);
                 }
             }
 
@@ -439,8 +438,7 @@ export function applyAutoResolutions(
                 if (isWhitespaceOnlyDifference(currentSource, incomingSource)) {
                     autoResolved = true;
                     autoResolvedCount++;
-                    const resolvedCellIndex = getResolvedCellIndex(conflict) ?? 0;
-                    autoResolvedDescriptions.push(`Whitespace-only added cell resolved (cell ${resolvedCellIndex + 1})`);
+                    autoResolvedDescriptions.push(`Whitespace-only added cell resolved (cell ${cellNumber(conflict)})`);
                 }
             }
         }
@@ -466,7 +464,7 @@ export function applyAutoResolutions(
         (currentKernelStr !== baseKernelStr &&  // and current differs from base
             incomingKernelStr !== baseKernelStr)) { // and incoming differs from base
         // Kernel version differs. Handle based on autoResolveKernelVersion setting.
-        if (effectiveSettings.autoResolveKernelVersion) {
+        if (settings.autoResolveKernelVersion) {
             kernelAutoResolved = true;
             autoResolvedCount++;
             autoResolvedDescriptions.push('Kernel version: using current version');
@@ -489,7 +487,7 @@ export function applyAutoResolutions(
         (currentLangStr !== baseLangStr && // and current differs from base
              incomingLangStr !== baseLangStr)) { // and incoming differs from base
         // Language version differs. Handle based on autoResolveKernelVersion setting.
-        if (effectiveSettings.autoResolveKernelVersion) {
+        if (settings.autoResolveKernelVersion) {
             if (!kernelAutoResolved) {
                 autoResolvedCount++;
                 kernelAutoResolved = true;
@@ -502,19 +500,17 @@ export function applyAutoResolutions(
     
 
     // Strip outputs from any remaining conflicted cells if enabled
-    if (effectiveSettings.stripOutputs) {
+    if (settings.stripOutputs) {
         // For remaining conflicts that weren't auto-resolved, still strip outputs
         for (const conflict of remainingConflicts) {
-            const resolvedCellIndex = getResolvedCellIndex(conflict);
-            if (resolvedCellIndex !== undefined && !autoResolvedCellIndices.has(resolvedCellIndex)) {
-                const cell = resolvedNotebook.cells[resolvedCellIndex];
-                if (cell && cell.cell_type === 'code' && cell.outputs && cell.outputs.length > 0) {
-                    cell.outputs = [];
-                    if (effectiveSettings.autoResolveExecutionCount) {
-                        cell.execution_count = null;
-                    }
-                    autoResolvedDescriptions.push(`Outputs stripped (cell ${resolvedCellIndex + 1})`);
-                }
+            const cells = [conflict.baseContent, conflict.currentContent, conflict.incomingContent];
+            const hasOutputs = cells.some(cell => cell?.cell_type === 'code' && cell.outputs?.length);
+            if (hasOutputs && findPatch(conflict)?.changes.outputs === undefined) {
+                patchCell(conflict, {
+                    outputs: [],
+                    ...(settings.autoResolveExecutionCount ? { execution_count: null } : {}),
+                });
+                autoResolvedDescriptions.push(`Outputs stripped (cell ${cellNumber(conflict)})`);
             }
         }
     }
@@ -523,7 +519,7 @@ export function applyAutoResolutions(
         remainingConflicts,
         autoResolvedCount,
         autoResolvedDescriptions,
-        resolvedNotebook,
+        cellPatches,
         kernelAutoResolved
     };
 }
