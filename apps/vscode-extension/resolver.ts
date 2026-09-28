@@ -20,6 +20,7 @@ import {
     serializeNotebook,
     renumberExecutionCounts,
     buildResolvedNotebookFromRows,
+    sortByPosition,
     type AutoResolveResult,
     type PreferredSide,
     type NotebookSemanticConflict,
@@ -211,11 +212,30 @@ export class NotebookConflictResolver {
         // (for example, both sides made the same reorder).
         if (autoResolveResult.remainingConflicts.length === 0) {
             const shouldRenumber = await this.pickRenumberExecutionCounts();
+            const resolvedRows = sortByPosition(
+                semanticConflict.cellMappings.map(mapping => ({
+                    baseCell: mapping.baseCell,
+                    currentCell: mapping.currentCell,
+                    incomingCell: mapping.incomingCell,
+                    baseCellIndex: mapping.baseIndex,
+                    currentCellIndex: mapping.currentIndex,
+                    incomingCellIndex: mapping.incomingIndex,
+                })),
+                row => ({
+                    anchor: row.currentCellIndex ?? row.incomingCellIndex ?? row.baseCellIndex ?? 0,
+                    current: row.currentCellIndex,
+                    incoming: row.incomingCellIndex,
+                    base: row.baseCellIndex,
+                })
+            );
 
-            let finalNotebook = autoResolveResult.resolvedNotebook;
-            if (shouldRenumber) {
-                finalNotebook = renumberExecutionCounts(finalNotebook);
-            }
+            const finalNotebook = buildResolvedNotebookFromRows({
+                semanticConflict,
+                resolvedRows,
+                autoResolveResult,
+                settings,
+                shouldRenumber,
+            });
 
             await this.saveResolvedNotebook(uri, finalNotebook, true);
             onDidResolveConflictWithDetails.fire({

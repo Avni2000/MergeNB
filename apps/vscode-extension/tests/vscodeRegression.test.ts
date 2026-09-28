@@ -18,6 +18,7 @@ import { run as runStatusIndicators } from './statusIndicatorsRegression.test';
 import { run as runUnmergedStatusMatrix } from './unmergedStatusMatrix.test';
 import { run as runDuUdPickOne } from './duUdPickOneRegression.test';
 import { run as runAuUaPickOne } from './auUaPickOneRegression.test';
+import { run as runAutoResolveUnified } from './autoResolveUnifiedRegression.test';
 import { run as runLogicRegression } from './logicRegression.test';
 
 
@@ -26,5 +27,6 @@ export async function run(): Promise<void> {
     await runUnmergedStatusMatrix();
     await runDuUdPickOne();
     await runAuUaPickOne();
+    await runAutoResolveUnified();
     await runLogicRegression();
 }
