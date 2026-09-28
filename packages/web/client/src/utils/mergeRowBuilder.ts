@@ -1,4 +1,9 @@
-import { sortByPosition, detectReordering, type Notebook } from '../../../../core/src';
+import {
+    applyAutoResolveCellPatches,
+    sortByPosition,
+    detectReordering,
+    type AutoResolveResult,
+} from '../../../../core/src';
 import type {
     MergeRow as MergeRowType,
     NotebookSemanticConflict,
@@ -27,7 +32,7 @@ function sortMergeRowsByPosition(rows: MergeRowType[]): MergeRowType[] {
 
 export function buildMergeRowsFromSemantic(
     conflict: NotebookSemanticConflict,
-    currentNotebookOverride?: Notebook
+    autoResolveResult?: AutoResolveResult
 ): MergeRowType[] {
     const rows: MergeRowType[] = [];
     const conflictMap = new Map<string, { conflict: SemanticConflict; index: number }>();
@@ -49,9 +54,15 @@ export function buildMergeRowsFromSemantic(
         const baseCell = mapping.baseIndex !== undefined && conflict.base
             ? conflict.base.cells[mapping.baseIndex]
             : undefined;
-        const currentSource = currentNotebookOverride || conflict.current;
-        const currentCell = mapping.currentIndex !== undefined && currentSource
-            ? currentSource.cells[mapping.currentIndex]
+        const rawCurrentCell = mapping.currentIndex !== undefined && conflict.current
+            ? conflict.current.cells[mapping.currentIndex]
+            : undefined;
+        const currentCell = rawCurrentCell
+            ? applyAutoResolveCellPatches(rawCurrentCell, {
+                baseCellIndex: mapping.baseIndex,
+                currentCellIndex: mapping.currentIndex,
+                incomingCellIndex: mapping.incomingIndex,
+            }, autoResolveResult)
             : undefined;
         const incomingCell = mapping.incomingIndex !== undefined && conflict.incoming
             ? conflict.incoming.cells[mapping.incomingIndex]

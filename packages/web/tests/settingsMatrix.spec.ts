@@ -64,6 +64,13 @@ function settingsWith(overrides: Partial<MergeNBSettings>): MergeNBSettings {
     return { ...ALL_OFF, ...overrides };
 }
 
+function cellChanges(
+    result: ReturnType<typeof applyAutoResolutions>,
+    currentCellIndex: number = 0
+): Partial<NotebookCell> {
+    return result.cellPatches.find(patch => patch.currentCellIndex === currentCellIndex)?.changes ?? {};
+}
+
 function makeNotebook(
     cells: NotebookCell[],
     metadata?: Notebook['metadata']
@@ -282,8 +289,7 @@ test.describe('Settings Matrix - Backend Logic', () => {
             autoResolveExecutionCount: false,
         }));
 
-        const resolvedCell = result.resolvedNotebook.cells[0];
-        expect(resolvedCell.execution_count).not.toBeNull();
+        expect(cellChanges(result).execution_count).toBeUndefined();
         logger.info('  pass: A3');
     });
 
@@ -325,7 +331,7 @@ test.describe('Settings Matrix - Backend Logic', () => {
         }));
 
         expect(result.remainingConflicts.length).toBe(1);
-        expect(result.resolvedNotebook.cells[0].outputs).toEqual([]);
+        expect(cellChanges(result).outputs).toEqual([]);
         logger.info('  pass: A4');
     });
 
@@ -363,7 +369,7 @@ test.describe('Settings Matrix - Backend Logic', () => {
         }));
         expect(on.autoResolvedCount).toBe(1);
         expect(on.remainingConflicts.length).toBe(0);
-        expect(on.resolvedNotebook.cells[0].execution_count).toBeNull();
+        expect(cellChanges(on).execution_count).toBeNull();
 
         // OFF: remains as conflict
         const off = applyAutoResolutions(conflict, settingsWith({
@@ -633,16 +639,16 @@ test.describe('Settings Matrix - Backend Logic', () => {
             stripOutputs: true,
             autoResolveExecutionCount: true,
         }));
-        expect(resultOn.resolvedNotebook.cells[0].outputs).toEqual([]);
-        expect(resultOn.resolvedNotebook.cells[0].execution_count).toBeNull();
+        expect(cellChanges(resultOn).outputs).toEqual([]);
+        expect(cellChanges(resultOn).execution_count).toBeNull();
 
         // stripOutputs on, autoResolveExecutionCount off: only outputs stripped
         const resultOff = applyAutoResolutions(conflict, settingsWith({
             stripOutputs: true,
             autoResolveExecutionCount: false,
         }));
-        expect(resultOff.resolvedNotebook.cells[0].outputs).toEqual([]);
-        expect(resultOff.resolvedNotebook.cells[0].execution_count).not.toBeNull();
+        expect(cellChanges(resultOff).outputs).toEqual([]);
+        expect(cellChanges(resultOff).execution_count).toBeUndefined();
         logger.info('  pass: A11');
     });
 });
