@@ -4,8 +4,10 @@
  */
 
 import { test, expect } from '../../../test-fixtures/harness/playwright';
+import * as fs from 'fs';
 import * as logger from '../../core/src';
 import {
+    getResolvedContentValue,
     verifyAllConflictsMatchSide,
     waitForAllConflictsResolved,
     waitForResolvedCount,
@@ -16,7 +18,10 @@ import {
     buildExpectedCellsFromNotebook,
     readNotebookFixtureFromRepo,
 } from '../../../test-fixtures/harness/notebook';
-import { validateNotebookStructure } from '../../../test-fixtures/shared/testHelpers';
+import { getCellSource, validateNotebookStructure } from '../../../test-fixtures/shared/testHelpers';
+import { applyAutoResolutions, detectSemanticConflicts } from '../../core/src';
+import * as gitIntegration from '../../../apps/vscode-extension/gitIntegration';
+import { getSettings } from '../../../apps/vscode-extension/settings';
 import {
     readSettingsFileSnapshot,
     restoreSettingsFileSnapshot,
@@ -32,6 +37,68 @@ function withRowIndex<T extends { rowIndex: number }>(cell: T, rowIndex: number)
 // ─── Test Definitions ───────────────────────────────────────────────────────
 
 test.describe('Reorder Unmatch Apply Disk', () => {
+    for (const { stripOutputs, autoResolveExecutionCount } of [
+        { stripOutputs: true, autoResolveExecutionCount: false },
+        { stripOutputs: false, autoResolveExecutionCount: false },
+        { stripOutputs: true, autoResolveExecutionCount: true },
+    ]) {
+        test(`Resolve reordered code cell (stripOutputs=${stripOutputs}, executionCount=${autoResolveExecutionCount})`, async ({ conflictRepo, conflictSession }, testInfo) => {
+            writeSettingsFile({
+                'autoResolve.stripOutputs': stripOutputs,
+                'autoResolve.executionCount': autoResolveExecutionCount,
+            });
+            const notebookPath = (side: string): string => {
+                const notebook = readNotebookFixtureFromRepo(`edge-cases/reordered-cells/${side}.ipynb`);
+                // Isolate the reorder: Beta must not get an execution-count patch.
+                notebook.cells.find((cell: any) => cell.id === 'cell-beta').execution_count = 1;
+                // Gamma exercises the existing execution-count patch path.
+                if (side === 'base') notebook.cells.find((cell: any) => cell.id === 'cell-gamma').execution_count = 1;
+                const filePath = testInfo.outputPath(`${side}.ipynb`);
+                fs.writeFileSync(filePath, JSON.stringify(notebook));
+                return filePath;
+            };
+            const workspacePath = conflictRepo({
+                base: notebookPath('base'),
+                current: notebookPath('current'),
+                incoming: notebookPath('incoming'),
+            });
+            const { page, conflictFile } = await conflictSession(workspacePath);
+            const semanticConflict = await detectSemanticConflicts(conflictFile, gitIntegration);
+            expect(semanticConflict).toBeTruthy();
+            const autoResolveResult = applyAutoResolutions(semanticConflict!, getSettings());
+            const betaPatch = autoResolveResult.cellPatches.find(patch => patch.baseCellIndex === 2);
+            expect(betaPatch).toBeUndefined();
+
+            const betaRow = page.locator('.merge-row.conflict-row').filter({ hasText: "print('beta')" });
+            await expect(betaRow).toHaveClass(/reordered-row/);
+            await expect(betaRow.locator('.current-column .cell-outputs')).toBeVisible();
+            await page.locator('button:has-text("All Current")').click();
+            await waitForAllConflictsResolved(page);
+            const uiSource = await getResolvedContentValue(betaRow);
+            await page.locator('label:has-text("Renumber execution counts") input[type="checkbox"]').uncheck();
+
+            const written = await applyResolutionAndReadNotebook(page, conflictFile);
+            const betaCell = written.cells.find((cell: any) => cell.id === 'cell-beta');
+            const currentBeta = readNotebookFixtureFromRepo('edge-cases/reordered-cells/current.ipynb').cells[1];
+            expect(getCellSource(betaCell)).toBe(uiSource);
+            expect(betaCell).toEqual({
+                ...currentBeta,
+                outputs: stripOutputs ? [] : currentBeta.outputs,
+                execution_count: autoResolveExecutionCount ? null : currentBeta.execution_count,
+            });
+            if (autoResolveExecutionCount) {
+                const gammaPatch = autoResolveResult.cellPatches.find(patch => patch.baseCellIndex === 3);
+                expect(gammaPatch?.changes).toEqual({ execution_count: null });
+                const currentGamma = readNotebookFixtureFromRepo('edge-cases/reordered-cells/current.ipynb').cells[3];
+                expect(written.cells.find((cell: any) => cell.id === 'cell-gamma')).toEqual({
+                    ...currentGamma,
+                    execution_count: null,
+                });
+            }
+            validateNotebookStructure(written);
+        });
+    }
+
     test('Unmatch reordered cells, resolve, and verify notebook written to disk', async ({ conflictRepo, conflictSession }) => {
         logger.info('Starting MergeNB Reorder Unmatch -> Apply Integration Test...');
 

@@ -14,9 +14,11 @@ export type PreferredSide = 'base' | 'current' | 'incoming';
 export function applyAutoResolveCellPatches(
     cell: NotebookCell,
     row: Pick<ResolvedRow, 'baseCellIndex' | 'currentCellIndex' | 'incomingCellIndex'>,
-    autoResolveResult?: AutoResolveResult
+    autoResolveResult?: AutoResolveResult,
+    fallbackChanges?: AutoResolveResult['cellPatches'][number]['changes']
 ): NotebookCell {
     const resolved = JSON.parse(JSON.stringify(cell)) as NotebookCell;
+    let hasApplicablePatch = false;
     const indexKeys = ['baseCellIndex', 'currentCellIndex', 'incomingCellIndex'] as const;
     for (const patch of autoResolveResult?.cellPatches ?? []) {
         const sharedIndex = indexKeys.some(key =>
@@ -27,7 +29,11 @@ export function applyAutoResolveCellPatches(
         );
         if (sharedIndex && !mismatchedIndex) {
             Object.assign(resolved, JSON.parse(JSON.stringify(patch.changes)));
+            hasApplicablePatch = true;
         }
+    }
+    if (!hasApplicablePatch && fallbackChanges) {
+        Object.assign(resolved, JSON.parse(JSON.stringify(fallbackChanges)));
     }
     return resolved;
 }
@@ -241,7 +247,12 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
         }
 
         if (cellToUse) {
-            resolvedCells.push(applyAutoResolveCellPatches(cellToUse, row, autoResolveResult));
+            // Reorder conflicts can be resolved manually without a cell patch.
+            // Keep existing patches authoritative when they do apply.
+            const fallbackChanges = res && cellToUse.cell_type === 'code' && settings.stripOutputs
+                ? { outputs: [], ...(settings.autoResolveExecutionCount ? { execution_count: null } : {}) }
+                : undefined;
+            resolvedCells.push(applyAutoResolveCellPatches(cellToUse, row, autoResolveResult, fallbackChanges));
         }
     }
 
