@@ -11,6 +11,7 @@
  */
 
 import { Notebook } from './types';
+import { validateNotebook } from './notebookValidation';
 
 /**
  * Parse a Jupyter notebook from JSON string.
@@ -19,21 +20,15 @@ import { Notebook } from './types';
 export function parseNotebook(content: string): Notebook {
     const parsed = JSON.parse(content);
 
-    // Validate basic structure
-    if (!parsed.cells || !Array.isArray(parsed.cells)) {
-        throw new Error('Invalid notebook: missing cells array');
-    }
-    if (typeof parsed.nbformat !== 'number') {
-        throw new Error('Invalid notebook: missing nbformat');
-    }
-
-    return parsed as Notebook;
+    validateNotebook(parsed, false);
+    return parsed;
 }
 
 /**
  * Serialize a notebook back to JSON string with proper formatting.
  */
 export function serializeNotebook(notebook: Notebook): string {
+    validateNotebook(notebook);
     return JSON.stringify(notebook, null, 1);
 }
 

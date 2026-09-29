@@ -21,3 +21,7 @@ export * from './semanticResolution';
 export * from './cellMerge';
 export * from './fieldMerge';
 export * from './notebookFields';
+export * from './notebookValidation';
+export * from './cellIds';
+export * from './resolvedCell';
+export { inferPreferredSide } from './resolutionOrder';

@@ -20,7 +20,7 @@ for (const autoKernel of [false, true]) {
         await expect(page.getByRole('button', { name: 'Apply Resolution', exact: true })).toBeDisabled();
         await page.locator('[data-testid="history-redo"]').click();
 
-        const fields = JSON.parse((await page.locator('.notebook-fields').getAttribute('data-notebook-fields'))!);
+        const fields = JSON.parse((await page.locator('[data-notebook-fields]').getAttribute('data-notebook-fields'))!);
         expect(fields.metadata.language_info.version).toBe(autoKernel ? '3.10' : '3.11');
         expect(fields.metadata.custom).toEqual({ left: 1, right: 2 });
         expect(fields.metadata).not.toHaveProperty('deleted');

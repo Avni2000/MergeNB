@@ -4,7 +4,8 @@ export type MimeBundle = Record<string, unknown>;
 
 export interface NotebookCell {
     cell_type: string;
-    source: string | string[];
+    /** Future cell types may use another representation instead of source. */
+    source?: string | string[];
     metadata: Record<string, unknown>;
     execution_count?: number | null;
     outputs?: CellOutput[];
@@ -29,12 +30,14 @@ export interface CellOutput {
 export interface NotebookMetadata {
     kernelspec?: {
         display_name: string;
-        language: string;
+        language?: string;
+        [key: string]: unknown;
         name: string;
     };
     language_info?: {
         name: string;
         version?: string;
+        [key: string]: unknown;
     };
     [key: string]: unknown;
 }

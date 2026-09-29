@@ -49,10 +49,6 @@ export async function setupConflictResolverHeadless(
     const settings = getSettings();
     const autoResolveResult = applyAutoResolutions(semanticConflict, settings);
 
-    if (autoResolveResult.remainingConflicts.length === 0 && autoResolveResult.notebookConflicts.length === 0) {
-        throw new Error('No remaining conflicts after auto-resolve.');
-    }
-
     const filteredSemanticConflict = {
         ...semanticConflict,
         semanticConflicts: autoResolveResult.remainingConflicts,

@@ -11,7 +11,7 @@ import { HighlightStyle, ensureSyntaxTree } from '@codemirror/language';
 import { githubDarkStyle, githubLightStyle } from '@uiw/codemirror-theme-github';
 import { StyleModule } from 'style-mod';
 import type { NotebookCell } from '../types';
-import { computeDiffMarks, normalizeCellSource } from '../../../../core/src';
+import { computeDiffMarks, normalizeCellSource, isKnownCellType } from '../../../../core/src';
 import * as logger from '../../../../core/src';
 import type { Highlighter } from '@lezer/highlight';
 import { highlightCode } from '@lezer/highlight';
@@ -299,7 +299,7 @@ function CellContentInner({
                 </div>
             )}
             <div className="cell-content">
-                {cellType === 'markdown' && !isConflict ? (
+                {!isKnownCellType(cellType) ? <pre>{JSON.stringify(cell, null, 2)}</pre> : cellType === 'markdown' && !isConflict ? (
                     <MarkdownContent
                         source={source}
                         attachments={cell.attachments}

@@ -209,7 +209,7 @@ export class NotebookConflictResolver {
         // If no manual conflicts remain, save and return. This also handles
         // unmerged notebooks whose branches already agree semantically
         // (for example, both sides made the same reorder).
-        if (autoResolveResult.remainingConflicts.length === 0 && autoResolveResult.notebookConflicts.length === 0) {
+        if (autoResolveResult.remainingConflicts.length === 0 && autoResolveResult.notebookConflicts.length === 0 && autoResolveResult.assignedCellIds.length === 0) {
             const shouldRenumber = await this.pickRenumberExecutionCounts();
 
             let finalNotebook = autoResolveResult.resolvedNotebook;

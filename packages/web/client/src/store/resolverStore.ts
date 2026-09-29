@@ -17,7 +17,7 @@ export interface ResolutionState {
 
 export type TakeAllChoice = 'base' | 'current' | 'incoming';
 
-interface ResolverSnapshot {
+export interface ResolverSnapshot {
     choices: Map<number, ResolutionState>;
     notebookChoices: FieldResolutions;
     rows: MergeRowType[];

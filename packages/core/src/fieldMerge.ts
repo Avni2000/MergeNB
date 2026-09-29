@@ -1,4 +1,4 @@
-import { stableStringify } from './notebookUtils';
+import { stableStringify, isDictionary } from './json';
 
 export type FieldChoice = 'base' | 'current' | 'incoming';
 export type FieldResolutions = Record<string, FieldChoice>;
@@ -14,10 +14,6 @@ interface MergeOptions {
     atomic?: (path: string[]) => boolean;
     equal?: (left: unknown, right: unknown, path: string[]) => boolean;
     choices?: FieldResolutions;
-}
-
-export function isDictionary(value: unknown): value is Record<string, unknown> {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** Missing keys use undefined; JSON null and empty containers remain distinct. */

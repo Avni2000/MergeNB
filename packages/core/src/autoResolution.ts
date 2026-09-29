@@ -1,4 +1,6 @@
 import type { NotebookSemanticConflict, SemanticConflict, Notebook, MergeNBSettings } from './types';
+import { assignedCellIds } from './cellIds';
+import { normalizeCellSource } from './notebookUtils';
 import { mergeNotebookFields } from './notebookFields';
 import type { FieldConflict } from './fieldMerge';
 import { buildResolvedNotebookFromRows } from './semanticResolution';
@@ -26,6 +28,7 @@ export interface AutoResolveResult {
     currentNotebook: Notebook;
     notebookConflicts: FieldConflict[];
     settings: MergeNBSettings;
+    assignedCellIds: string[];
     /** Whether kernel metadata was auto-resolved */
     kernelAutoResolved: boolean;
 }
@@ -120,12 +123,8 @@ export function applyAutoResolutions(
             }
 
             if (!autoResolved && conflict.type === 'cell-added' && conflict.currentContent && conflict.incomingContent) {
-                const currentSource = Array.isArray(conflict.currentContent.source)
-                    ? conflict.currentContent.source.join('')
-                    : conflict.currentContent.source;
-                const incomingSource = Array.isArray(conflict.incomingContent.source)
-                    ? conflict.incomingContent.source.join('')
-                    : conflict.incomingContent.source;
+                const currentSource = normalizeCellSource(conflict.currentContent.source);
+                const incomingSource = normalizeCellSource(conflict.incomingContent.source);
 
                 if (isWhitespaceOnlyDifference(currentSource, incomingSource)) {
                     autoResolved = true;
@@ -192,6 +191,7 @@ export function applyAutoResolutions(
         resolvedNotebook: mergedNotebook,
         currentNotebook,
         notebookConflicts: fields.conflicts,
+        assignedCellIds: assignedCellIds(mergedNotebook, [semanticConflict.base, semanticConflict.current, semanticConflict.incoming]),
         settings,
         kernelAutoResolved
     };

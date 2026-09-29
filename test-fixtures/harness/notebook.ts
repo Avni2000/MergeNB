@@ -2,6 +2,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { isDeepStrictEqual } from 'util';
 import type { Page } from 'playwright';
 import * as logger from '../../packages/core/src';
 import { type ExpectedCell, getCellSource, waitForFileWrite } from '../shared/testHelpers';
@@ -47,16 +48,21 @@ export async function applyResolutionAndReadNotebook(
         try { return fs.statSync(conflictFile).mtimeMs; } catch { return 0; }
     })();
 
+    const previewJson = await page.locator('[data-resolved-notebook]').getAttribute('data-resolved-notebook');
+    if (!previewJson) throw new Error('The UI must expose the complete resolved notebook before applying.');
+    const preview = JSON.parse(previewJson);
     await applyButton.click();
     await sleep(options.postClickDelayMs ?? 3000);
 
     const fileWritten = await waitForFileWrite(conflictFile, fs, options.writeTimeoutMs, initialMtime);
     if (!fileWritten) {
-        logger.info('Warning: Could not confirm file write, proceeding anyway');
+        throw new Error('Resolution did not write the notebook.');
     }
 
     const notebookContent = fs.readFileSync(conflictFile, 'utf8');
-    return JSON.parse(notebookContent);
+    const notebook = JSON.parse(notebookContent);
+    if (!isDeepStrictEqual(notebook, preview)) throw new Error('The notebook written to disk differs from the complete UI preview.');
+    return notebook;
 }
 
 /**
@@ -112,6 +118,7 @@ export function assertNotebookMatches(
         const expected = expectedNonDeleted[i];
         const actual = resolvedNotebook.cells[i];
         const actualSource = getCellSource(actual);
+        const renumberedCount = expected.cellType === 'code' && expected.hasOutputs ? nextExecutionCount++ : null;
 
         if (expected.source !== actualSource) {
             sourceMismatches++;
@@ -136,15 +143,11 @@ export function assertNotebookMatches(
 
         if (expected.outputs !== undefined) {
             const actualOutputs = (actual as any).outputs || [];
-            // Strip execution_count from execute_result outputs before comparing —
-            // renumberExecutionCounts() updates that field on the disk copy, but the
-            // expected snapshot captured from the UI still carries the original value.
-            // Cell-level execution_count is already verified separately above.
-            const stripExecCount = (outs: any[]) =>
-                outs.map(o => o.output_type === 'execute_result'
-                    ? (({ execution_count: _ec, ...rest }) => rest)(o)
-                    : o);
-            if (JSON.stringify(stripExecCount(expected.outputs)) !== JSON.stringify(stripExecCount(actualOutputs))) {
+            const expectedOutputs = expected.outputs.map(output =>
+                options.renumberEnabled && output.output_type === 'execute_result'
+                    ? { ...output, execution_count: renumberedCount }
+                    : output);
+            if (!isDeepStrictEqual(expectedOutputs, actualOutputs)) {
                 outputMismatches++;
                 logger.info(`Outputs mismatch at cell ${i}:`);
                 logger.info(`  Expected: ${JSON.stringify(expected.outputs).substring(0, 100)}...`);
@@ -154,7 +157,7 @@ export function assertNotebookMatches(
 
         if (options.compareExecutionCounts && expected.cellType === 'code') {
             const expectedExecutionCount = options.renumberEnabled
-                ? (expected.hasOutputs ? nextExecutionCount++ : null)
+                ? renumberedCount
                 : (expected.execution_count ?? null);
             const actualExecutionCount = actual.execution_count ?? null;
             if (expectedExecutionCount !== actualExecutionCount) {

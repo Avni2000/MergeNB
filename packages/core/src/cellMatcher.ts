@@ -10,7 +10,7 @@
 
 import { NotebookCell, Notebook, CellMapping } from './types';
 import { sortByPosition } from './positionUtils';
-import { stableStringify } from './notebookUtils';
+import { stableStringify, normalizeCellSource } from './notebookUtils';
 
 const CODE_CONTENT_WEIGHT = 0.5;
 const CODE_CONTEXT_WEIGHT = 0.2;
@@ -26,7 +26,7 @@ const CONTEXT_PREVIEW_LEN = 60;
 // ============================================================================
 
 function getCellSource(cell: NotebookCell): string {
-    return Array.isArray(cell.source) ? cell.source.join('') : cell.source;
+    return normalizeCellSource(cell.source);
 }
 
 function findLongestMatch(

@@ -16,13 +16,14 @@ import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
 import { MarkdownContent } from './MarkdownContent';
 import { CellContent, CellSource, EMPTY_EXTENSIONS, mergeNBEditorStructure } from './CellContent';
 import { WarningModal } from './WarningModal';
-import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
+import { normalizeCellSource, selectNonConflictMergedCell, isKnownCellType } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
 import type { ResolutionState } from '../store/resolverStore';
 
 interface MergeRowProps {
     row: MergeRowType;
     rowIndex: number;
+    preferredSide?: 'base' | 'current' | 'incoming';
     languageExtensions?: Extension[];
     resolutionState?: ResolutionState;
     isEditing?: boolean;
@@ -56,6 +57,7 @@ const INITIAL_FULL_FIDELITY_ROW_BUDGET = 30;
 function MergeRowInner({
     row,
     rowIndex,
+    preferredSide,
     languageExtensions = EMPTY_EXTENSIONS,
     resolutionState,
     isEditing = false,
@@ -287,7 +289,10 @@ function MergeRowInner({
 
     // For identical rows, show a unified single cell
     if (!isConflict) {
-        const cell = selectNonConflictMergedCell(row.baseCell, row.currentCell, row.incomingCell);
+        const cell = preferredSide === 'base' ? row.baseCell
+            : preferredSide === 'current' ? row.currentCell
+            : preferredSide === 'incoming' ? row.incomingCell
+            : selectNonConflictMergedCell(row.baseCell, row.currentCell, row.incomingCell);
         // Compute raw source for testing - this is what will become the cell source in the resolved notebook
         const rawSource = cell ? normalizeCellSource(cell.source) : '';
         const cellType = cell?.cell_type || 'code';
@@ -404,7 +409,7 @@ function MergeRowInner({
                                         Save edits
                                     </button>
                                 )}
-                                {!isEditing && (
+                                {!isEditing && resolvedCellType && isKnownCellType(resolvedCellType) && (
                                     <button
                                         className="btn btn-resolved-edit"
                                         onClick={() => onStartEditing(conflictIndex)}
@@ -439,6 +444,8 @@ function MergeRowInner({
                                         onBlur={handleEditorBlur}
                                     />
                                 </div>
+                            ) : resolvedCellType && !isKnownCellType(resolvedCellType) ? (
+                                <pre>{JSON.stringify(resolutionState.choice === 'base' ? row.baseCell : resolutionState.choice === 'current' ? row.currentCell : row.incomingCell, null, 2)}</pre>
                             ) : resolvedCellType === 'markdown' ? (
                                 <div className="resolved-content-static">
                                     <MarkdownContent

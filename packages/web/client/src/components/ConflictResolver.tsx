@@ -10,15 +10,15 @@ import { useStore } from 'zustand';
 import { WarningModal } from './WarningModal';
 import type {
     UnifiedConflictData,
-    MergeRow as MergeRowType,
 } from '../types';
+import { useResolutionPreview } from '../hooks/useResolutionPreview';
+import { resolvedRowsFromState } from '../utils/resolvedRows';
+import { ResolutionPreview } from './ResolutionPreview';
 import { NotebookFields } from './NotebookFields';
-import type { FieldResolutions } from '../../../../core/src';
+import { inferPreferredSide, type FieldResolutions } from '../../../../core/src';
 import { MergeRow } from './MergeRow';
 import {
     createResolverStore,
-    getCellForSide,
-    type ResolutionState,
     type TakeAllChoice,
 } from '../store/resolverStore';
 import { buildMergeRowsFromSemantic } from '../utils/mergeRowBuilder';
@@ -136,6 +136,7 @@ export function ConflictResolver({
     const rows = useStore(resolverStore, state => state.rows);
     const markAsResolved = useStore(resolverStore, state => state.markAsResolved);
     const renumberExecutionCounts = useStore(resolverStore, state => state.renumberExecutionCounts);
+    const takeAllChoice = useStore(resolverStore, state => state.takeAllChoice);
     const history = useStore(resolverStore, state => state.history);
 
     const handleSelectChoice = useStore(resolverStore, state => state.selectChoice);
@@ -309,6 +310,10 @@ export function ConflictResolver({
     const resolvedCount = choices.size + Object.keys(notebookChoices).length;
     const allResolved = resolvedCount === totalConflicts;
     const unresolvedCount = totalConflicts - resolvedCount;
+    const preferredSide = inferPreferredSide(resolvedRowsFromState({ rows, choices }), takeAllChoice);
+    const preview = useResolutionPreview(conflict, {
+        rows, choices, notebookChoices, takeAllChoice, markAsResolved, renumberExecutionCounts,
+    }, allResolved);
 
     const handleNextConflict = useCallback(() => {
         const container = mainContentRef.current;
@@ -403,40 +408,12 @@ export function ConflictResolver({
             markAsResolved: liveMarkAsResolved,
             renumberExecutionCounts: liveRenumberExecutionCounts,
         } = resolverStore.getState();
-        // Build resolved rows - this is the source of truth for reconstruction
-        const resolvedRows: import('../types').ResolvedRow[] = liveRows.map(
-            row => {
-                const conflictIdx = row.conflictIndex ?? -1;
-                const resolutionState =
-                    conflictIdx >= 0 ? liveChoices.get(conflictIdx) : undefined;
-
-                return {
-                    baseCell: row.baseCell,
-                    currentCell: row.currentCell,
-                    incomingCell: row.incomingCell,
-                    baseCellIndex: row.baseCellIndex,
-                    currentCellIndex: row.currentCellIndex,
-                    incomingCellIndex: row.incomingCellIndex,
-                    resolution: resolutionState
-                        ? {
-                            choice: resolutionState.choice,
-                            resolvedContent: resolutionState.resolvedContent,
-                        }
-                        : undefined,
-                };
-            }
-        );
-
-        const semanticChoice =
-            liveTakeAllChoice &&
-                isTakeAllChoiceConsistent(liveRows, liveChoices, liveTakeAllChoice, true)
-                ? liveTakeAllChoice
-                : inferTakeAllChoice(liveRows, liveChoices);
+        const resolvedRows = resolvedRowsFromState({ rows: liveRows, choices: liveChoices });
         onResolve(
             liveMarkAsResolved,
             liveRenumberExecutionCounts,
             resolvedRows,
-            semanticChoice,
+            liveTakeAllChoice,
             liveNotebookChoices
         );
     }, [onResolve, resolverStore]);
@@ -638,7 +615,7 @@ export function ConflictResolver({
                             className="btn btn-primary"
                             onMouseDown={handleResolveMouseDown}
                             onClick={handleResolve}
-                            disabled={!allResolved}
+                            disabled={!allResolved || !!preview.error}
                         >
                             Apply Resolution
                         </button>
@@ -701,6 +678,7 @@ export function ConflictResolver({
                         showBase={showBaseColumn}
                         onSelect={selectNotebookField}
                     />}
+                    <ResolutionPreview {...preview} original={conflict.semanticConflict} />
                     {rows.map((row, i) => {
                         const conflictIdx = row?.conflictIndex ?? -1;
                         const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;
@@ -711,6 +689,7 @@ export function ConflictResolver({
                             <MergeRow
                                 key={rowKey}
                                 row={row}
+                                preferredSide={preferredSide}
                                 rowIndex={i}
                                 languageExtensions={languageExtensions}
                                 theme={conflict.theme ?? 'light'}
@@ -743,61 +722,4 @@ export function ConflictResolver({
             </main>
         </div>
     );
-}
-
-function isTakeAllChoiceConsistent(
-    rows: MergeRowType[],
-    choices: Map<number, ResolutionState>,
-    side: TakeAllChoice,
-    allowSingleConflict: boolean
-): boolean {
-    const conflictRows = rows.filter(
-        (row): row is MergeRowType & { conflictIndex: number } =>
-            row.type === 'conflict' && row.conflictIndex !== undefined
-    );
-
-    if (conflictRows.length === 0) {
-        return false;
-    }
-
-    // Without explicit "Take All" intent, single-conflict notebooks can produce
-    // false positives from ordinary per-row selections.
-    if (!allowSingleConflict && conflictRows.length <= 1) {
-        return false;
-    }
-
-    let sawSideChoice = false;
-    for (const row of conflictRows) {
-        const choice = choices.get(row.conflictIndex)?.choice;
-        if (!choice) {
-            return false;
-        }
-        const sideCell = getCellForSide(row, side);
-        if (choice === side) {
-            if (!sideCell) return false;
-            sawSideChoice = true;
-            continue;
-        }
-        if (choice === 'delete') {
-            if (sideCell) return false;
-            continue;
-        }
-        return false;
-    }
-
-    return sawSideChoice;
-}
-
-function inferTakeAllChoice(
-    rows: MergeRowType[],
-    choices: Map<number, ResolutionState>
-): TakeAllChoice | undefined {
-    const candidateSides: TakeAllChoice[] = ['base', 'current', 'incoming'];
-    for (const side of candidateSides) {
-        if (isTakeAllChoiceConsistent(rows, choices, side, false)) {
-            return side;
-        }
-    }
-
-    return undefined;
 }
