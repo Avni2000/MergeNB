@@ -49,7 +49,7 @@ export async function setupConflictResolverHeadless(
     const settings = getSettings();
     const autoResolveResult = applyAutoResolutions(semanticConflict, settings);
 
-    if (autoResolveResult.remainingConflicts.length === 0) {
+    if (autoResolveResult.remainingConflicts.length === 0 && autoResolveResult.notebookConflicts.length === 0) {
         throw new Error('No remaining conflicts after auto-resolve.');
     }
 
@@ -99,6 +99,7 @@ export async function setupConflictResolverHeadless(
                 settings,
                 shouldRenumber,
                 preferredSideHint: message.semanticChoice,
+                notebookResolutions: message.notebookResolutions,
             });
 
             fs.writeFileSync(conflictFile, serializeNotebook(resolvedNotebook), 'utf8');

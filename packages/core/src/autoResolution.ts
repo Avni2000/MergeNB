@@ -1,5 +1,6 @@
 import type { NotebookSemanticConflict, SemanticConflict, Notebook, MergeNBSettings } from './types';
-import { stableStringify } from './notebookUtils';
+import { mergeNotebookFields } from './notebookFields';
+import type { FieldConflict } from './fieldMerge';
 import { buildResolvedNotebookFromRows } from './semanticResolution';
 
 function isWhitespaceOnlyDifference(left: string, right: string): boolean {
@@ -23,6 +24,8 @@ export interface AutoResolveResult {
     resolvedNotebook: Notebook;
     /** Current-side cells retain their original indices for the three-column view. */
     currentNotebook: Notebook;
+    notebookConflicts: FieldConflict[];
+    settings: MergeNBSettings;
     /** Whether kernel metadata was auto-resolved */
     kernelAutoResolved: boolean;
 }
@@ -138,56 +141,16 @@ export function applyAutoResolutions(
         }
     }
 
-    // Detect kernel/language_info version differences (notebook-level metadata)
-    // Always detect and count these to prevent silent failure when setting is off
-    const currentKernel = semanticConflict.current?.metadata?.kernelspec;
-    const incomingKernel = semanticConflict.incoming?.metadata?.kernelspec;
-    const baseKernel = semanticConflict.base?.metadata?.kernelspec;
-
-    // Check if kernel versions differ between current and incoming
-      
-    const currentKernelStr = stableStringify(currentKernel ?? null);  
-    const incomingKernelStr = stableStringify(incomingKernel ?? null);  
-    const baseKernelStr = stableStringify(baseKernel ?? null);  
-
-    if (currentKernelStr !== incomingKernelStr && // current vs. incoming differ
-        (currentKernelStr !== baseKernelStr &&  // and current differs from base
-            incomingKernelStr !== baseKernelStr)) { // and incoming differs from base
-        // Kernel version differs. Handle based on autoResolveKernelVersion setting.
-        if (effectiveSettings.autoResolveKernelVersion) {
-            kernelAutoResolved = true;
-            autoResolvedCount++;
-            autoResolvedDescriptions.push('Kernel version: using current version');
-        } else {
-            autoResolvedDescriptions.push('Kernel version: conflict present (auto-resolve disabled — current version used)');
-        }
+    const fields = mergeNotebookFields(semanticConflict, settings.autoResolveKernelVersion);
+    const kernelKeys = new Set(fields.kernelFields.map(field => field.path[1]));
+    for (const key of kernelKeys) {
+        const label = key === 'kernelspec' ? 'Kernel version' : 'Python version';
+        autoResolvedDescriptions.push(settings.autoResolveKernelVersion
+            ? `${label}: using current version`
+            : `${label}: choose a value (auto-resolve disabled)`);
     }
-    
-
-    // Also check language_info version
-    const currentLangInfo = semanticConflict.current?.metadata?.language_info;
-    const incomingLangInfo = semanticConflict.incoming?.metadata?.language_info;
-    const baseLangInfo = semanticConflict.base?.metadata?.language_info;
-
-    
-    const currentLangStr = stableStringify(currentLangInfo ?? null);
-    const incomingLangStr = stableStringify(incomingLangInfo ?? null);
-    const baseLangStr = stableStringify(baseLangInfo ?? null);        
-    if (currentLangStr !== incomingLangStr && // current vs. incoming differ
-        (currentLangStr !== baseLangStr && // and current differs from base
-             incomingLangStr !== baseLangStr)) { // and incoming differs from base
-        // Language version differs. Handle based on autoResolveKernelVersion setting.
-        if (effectiveSettings.autoResolveKernelVersion) {
-            if (!kernelAutoResolved) {
-                autoResolvedCount++;
-                kernelAutoResolved = true;
-            }
-            autoResolvedDescriptions.push('Python version: using current version');
-        } else {
-            autoResolvedDescriptions.push('Python version: conflict present (auto-resolve disabled — current version used)');
-        }
-    }
-    
+    kernelAutoResolved = settings.autoResolveKernelVersion && kernelKeys.size > 0;
+    if (kernelAutoResolved) autoResolvedCount++;
 
     // Strip outputs from any remaining conflicted cells if enabled
     if (effectiveSettings.stripOutputs) {
@@ -220,6 +183,7 @@ export function applyAutoResolutions(
         })),
         settings,
         shouldRenumber: false,
+        allowUnresolvedNotebookFields: true,
     });
     return {
         remainingConflicts,
@@ -227,6 +191,8 @@ export function applyAutoResolutions(
         autoResolvedDescriptions,
         resolvedNotebook: mergedNotebook,
         currentNotebook,
+        notebookConflicts: fields.conflicts,
+        settings,
         kernelAutoResolved
     };
 }

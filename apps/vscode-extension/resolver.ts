@@ -209,7 +209,7 @@ export class NotebookConflictResolver {
         // If no manual conflicts remain, save and return. This also handles
         // unmerged notebooks whose branches already agree semantically
         // (for example, both sides made the same reorder).
-        if (autoResolveResult.remainingConflicts.length === 0) {
+        if (autoResolveResult.remainingConflicts.length === 0 && autoResolveResult.notebookConflicts.length === 0) {
             const shouldRenumber = await this.pickRenumberExecutionCounts();
 
             let finalNotebook = autoResolveResult.resolvedNotebook;
@@ -560,7 +560,8 @@ export class NotebookConflictResolver {
             resolution.markAsResolved,
             resolution.renumberExecutionCounts,
             autoResolveResult,
-            resolution.semanticChoice
+            resolution.semanticChoice,
+            resolution.notebookResolutions
         );
     }
 
@@ -574,7 +575,8 @@ export class NotebookConflictResolver {
         markAsResolved: boolean,
         shouldRenumber: boolean,
         autoResolveResult?: AutoResolveResult,
-        preferredSideHint?: PreferredSide
+        preferredSideHint?: PreferredSide,
+        notebookResolutions?: import('../../packages/core/src').FieldResolutions
     ): Promise<void> {
         const settings = getSettings();
 
@@ -590,6 +592,7 @@ export class NotebookConflictResolver {
             settings,
             shouldRenumber,
             preferredSideHint,
+            notebookResolutions,
         });
 
         await this.saveResolvedNotebook(uri, resolvedNotebook, markAsResolved);

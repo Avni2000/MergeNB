@@ -12,6 +12,8 @@ import type {
     UnifiedConflictData,
     MergeRow as MergeRowType,
 } from '../types';
+import { NotebookFields } from './NotebookFields';
+import type { FieldResolutions } from '../../../../core/src';
 import { MergeRow } from './MergeRow';
 import {
     createResolverStore,
@@ -28,7 +30,8 @@ interface ConflictResolverProps {
         markAsResolved: boolean,
         renumberExecutionCounts: boolean,
         resolvedRows: import('../types').ResolvedRow[],
-        semanticChoice?: 'base' | 'current' | 'incoming'
+        semanticChoice?: 'base' | 'current' | 'incoming',
+        notebookResolutions?: FieldResolutions
     ) => void;
     onCancel: () => void;
 }
@@ -109,7 +112,7 @@ export function ConflictResolver({
     // Recreate resolver state only when the conflict instance key changes.
     // This avoids resets caused by object identity churn on re-sent payloads.
     const resolverStore = useMemo(
-        () => createResolverStore(initialRows),
+        () => createResolverStore(initialRows, conflict.autoResolveResult?.notebookConflicts),
         [conflict.conflictKey]
     );
     const [historyOpen, setHistoryOpen] = useState(false);
@@ -126,6 +129,8 @@ export function ConflictResolver({
     const suppressApplyResolutionClickRef = useRef(false);
     const suppressGuardedClickRef = useRef(false);
 
+    const notebookChoices = useStore(resolverStore, state => state.notebookChoices);
+    const selectNotebookField = useStore(resolverStore, state => state.selectNotebookField);
     const choices = useStore(resolverStore, state => state.choices);
     const editingConflicts = useStore(resolverStore, state => state.editingConflicts);
     const rows = useStore(resolverStore, state => state.rows);
@@ -300,8 +305,8 @@ export function ConflictResolver({
     }, [kernelLanguage]);
 
     const conflictRows = useMemo(() => rows.filter(r => r.type === 'conflict'), [rows]);
-    const totalConflicts = conflictRows.length;
-    const resolvedCount = choices.size;
+    const totalConflicts = conflictRows.length + (conflict.autoResolveResult?.notebookConflicts.length ?? 0);
+    const resolvedCount = choices.size + Object.keys(notebookChoices).length;
     const allResolved = resolvedCount === totalConflicts;
     const unresolvedCount = totalConflicts - resolvedCount;
 
@@ -393,6 +398,7 @@ export function ConflictResolver({
         const {
             rows: liveRows,
             choices: liveChoices,
+            notebookChoices: liveNotebookChoices,
             takeAllChoice: liveTakeAllChoice,
             markAsResolved: liveMarkAsResolved,
             renumberExecutionCounts: liveRenumberExecutionCounts,
@@ -430,7 +436,8 @@ export function ConflictResolver({
             liveMarkAsResolved,
             liveRenumberExecutionCounts,
             resolvedRows,
-            semanticChoice
+            semanticChoice,
+            liveNotebookChoices
         );
     }, [onResolve, resolverStore]);
 
@@ -686,6 +693,14 @@ export function ConflictResolver({
                     )}
 
                 <div>
+                    {conflict.semanticConflict && conflict.autoResolveResult && <NotebookFields
+                        notebook={conflict.semanticConflict}
+                        conflicts={conflict.autoResolveResult.notebookConflicts}
+                        choices={notebookChoices}
+                        preferCurrentKernel={conflict.autoResolveResult.settings.autoResolveKernelVersion}
+                        showBase={showBaseColumn}
+                        onSelect={selectNotebookField}
+                    />}
                     {rows.map((row, i) => {
                         const conflictIdx = row?.conflictIndex ?? -1;
                         const resolutionState = conflictIdx >= 0 ? choices.get(conflictIdx) : undefined;

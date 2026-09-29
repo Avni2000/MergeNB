@@ -5,8 +5,10 @@
 
 import type { Notebook, NotebookCell, NotebookSemanticConflict, MergeNBSettings, ResolvedRow } from './types';
 import type { AutoResolveResult } from './conflictDetector';
-import { selectNonConflictMergedCell, stableStringify, sourceToCellFormat } from './notebookUtils';
+import { selectNonConflictMergedCell, sourceToCellFormat } from './notebookUtils';
 import { renumberExecutionCounts } from './notebookParser';
+import { mergeNotebookFields } from './notebookFields';
+import type { FieldResolutions } from './fieldMerge';
 import * as logger from './logger';
 
 export type PreferredSide = 'base' | 'current' | 'incoming';
@@ -18,52 +20,8 @@ interface BuildResolvedNotebookOptions {
     settings: MergeNBSettings;
     shouldRenumber: boolean;
     preferredSideHint?: PreferredSide;
-}
-
-function chooseMetadataValue(
-    baseValue: unknown,
-    currentValue: unknown,
-    incomingValue: unknown
-): unknown {
-    const baseStr = stableStringify(baseValue);
-    const currentStr = stableStringify(currentValue);
-    const incomingStr = stableStringify(incomingValue);
-
-    if (currentStr === incomingStr) return currentValue;
-    if (currentStr === baseStr) return incomingValue;
-    if (incomingStr === baseStr) return currentValue;
-    return currentValue;
-}
-
-function mergeNotebookMetadata(
-    baseMetadata: Record<string, unknown> | undefined,
-    currentMetadata: Record<string, unknown> | undefined,
-    incomingMetadata: Record<string, unknown> | undefined,
-    options: { preferKernelFromCurrent: boolean }
-): Record<string, unknown> {
-    const base = baseMetadata ?? {};
-    const current = currentMetadata ?? {};
-    const incoming = incomingMetadata ?? {};
-
-    const keys = new Set<string>([
-        ...Object.keys(base),
-        ...Object.keys(current),
-        ...Object.keys(incoming),
-    ]);
-
-    const merged: Record<string, unknown> = {};
-    for (const key of keys) {
-        if (options.preferKernelFromCurrent && (key === 'kernelspec' || key === 'language_info')) {
-            if (key in current) merged[key] = current[key];
-            else if (key in incoming) merged[key] = incoming[key];
-            else if (key in base) merged[key] = base[key];
-            continue;
-        }
-
-        merged[key] = chooseMetadataValue(base[key], current[key], incoming[key]);
-    }
-
-    return merged;
+    notebookResolutions?: FieldResolutions;
+    allowUnresolvedNotebookFields?: boolean;
 }
 
 function getCellForSide(
@@ -240,19 +198,17 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
         }
     }
 
-    const templateNotebook = currentNotebook || incomingNotebook || baseNotebook!;
-    const mergedMetadata = mergeNotebookMetadata(
-        baseNotebook?.metadata as any,
-        (autoResolvedNotebook || currentNotebook)?.metadata as any,
-        incomingNotebook?.metadata as any,
-        { preferKernelFromCurrent: settings.autoResolveKernelVersion }
-    );
-
+    const fields = mergeNotebookFields(semanticConflict, settings.autoResolveKernelVersion, options.notebookResolutions);
+    if (fields.conflicts.length > 0 && !options.allowUnresolvedNotebookFields) {
+        throw new Error('Resolve all notebook fields before applying the resolution.');
+    }
+    const notebooks = [baseNotebook, currentNotebook, incomingNotebook].filter((nb): nb is Notebook => !!nb);
     let resolvedNotebook: Notebook = {
-        nbformat: templateNotebook.nbformat,
-        nbformat_minor: templateNotebook.nbformat_minor,
-        metadata: JSON.parse(JSON.stringify(mergedMetadata)),
-        cells: resolvedCells
+        ...fields.value,
+        nbformat: notebooks[0].nbformat,
+        nbformat_minor: Math.max(...notebooks.map(nb => nb.nbformat_minor)),
+        metadata: fields.value.metadata as Notebook['metadata'],
+        cells: resolvedCells,
     };
 
     if (shouldRenumber) {

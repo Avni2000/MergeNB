@@ -8,6 +8,7 @@
  */
 
 import type {
+    FieldResolutions,
     NotebookCell,
     Notebook,
     CellMapping,
@@ -54,6 +55,7 @@ export interface UnifiedConflict {
 export interface UnifiedResolution {
     type: 'semantic';
     semanticChoice?: 'base' | 'current' | 'incoming';
+    notebookResolutions?: FieldResolutions;
     /** The complete resolved row structure from the UI (source of truth) */
     resolvedRows?: ResolvedRow[];
     // Whether to mark file as resolved by staging in Git
@@ -132,6 +134,7 @@ export type BrowserToExtensionMessage =
         /** The complete resolved row structure from the UI (source of truth) */
         resolvedRows: ResolvedRow[];
         semanticChoice?: 'base' | 'current' | 'incoming';
+        notebookResolutions?: FieldResolutions;
         markAsResolved?: boolean;
         renumberExecutionCounts?: boolean;
     }

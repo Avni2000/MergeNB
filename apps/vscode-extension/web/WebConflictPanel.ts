@@ -120,6 +120,7 @@ export class WebConflictPanel {
             type?: string;
             resolvedRows?: ResolvedRow[];
             semanticChoice?: string;
+        notebookResolutions?: import('../../../packages/core/src').FieldResolutions;
             markAsResolved?: boolean;
             renumberExecutionCounts?: boolean;
         };
@@ -144,6 +145,7 @@ export class WebConflictPanel {
     private async _handleResolution(message: {
         resolvedRows?: ResolvedRow[];
         semanticChoice?: string;
+        notebookResolutions?: import('../../../packages/core/src').FieldResolutions;
         markAsResolved?: boolean;
         renumberExecutionCounts?: boolean;
     }): Promise<void> {
@@ -154,6 +156,7 @@ export class WebConflictPanel {
                         type: 'semantic',
                         semanticChoice: message.semanticChoice as 'base' | 'current' | 'incoming' | undefined,
                         resolvedRows: message.resolvedRows,
+                        notebookResolutions: message.notebookResolutions,
                         markAsResolved: message.markAsResolved ?? false,
                         renumberExecutionCounts: message.renumberExecutionCounts ?? false
                     });

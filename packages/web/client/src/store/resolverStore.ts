@@ -1,7 +1,7 @@
 import { enableMapSet } from 'immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { immer } from 'zustand/middleware/immer';
-import { normalizeCellSource, sortByPosition } from '../../../../core/src';
+import { normalizeCellSource, sortByPosition, type FieldResolutions, type FieldConflict, type FieldChoice } from '../../../../core/src';
 import type { MergeRow as MergeRowType, NotebookCell, ResolutionChoice } from '../types';
 
 enableMapSet();
@@ -19,6 +19,7 @@ export type TakeAllChoice = 'base' | 'current' | 'incoming';
 
 interface ResolverSnapshot {
     choices: Map<number, ResolutionState>;
+    notebookChoices: FieldResolutions;
     rows: MergeRowType[];
     markAsResolved: boolean;
     renumberExecutionCounts: boolean;
@@ -37,12 +38,14 @@ interface HistoryState {
 
 interface ResolverStoreState {
     choices: Map<number, ResolutionState>;
+    notebookChoices: FieldResolutions;
     editingConflicts: Set<number>;
     rows: MergeRowType[];
     markAsResolved: boolean;
     renumberExecutionCounts: boolean;
     takeAllChoice?: TakeAllChoice;
     history: HistoryState;
+    selectNotebookField: (path: string[], choice: FieldChoice | undefined) => void;
     selectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => void;
     startEditing: (index: number) => void;
     stopEditing: (index: number) => void;
@@ -85,6 +88,7 @@ function buildInitialHistory(rows: MergeRowType[]): HistoryState {
             label: 'Initial state',
             snapshot: {
                 choices: cloneChoices(new Map()),
+                notebookChoices: {},
                 rows: cloneRows(rows),
                 markAsResolved: INITIAL_MARK_AS_RESOLVED,
                 renumberExecutionCounts: INITIAL_RENUMBER_EXECUTION_COUNTS,
@@ -109,6 +113,7 @@ function recordHistory(
         label,
         snapshot: {
             choices: cloneChoices(state.choices),
+            notebookChoices: { ...state.notebookChoices },
             rows: cloneRows(state.rows),
             markAsResolved: overrides?.markAsResolved ?? state.markAsResolved,
             renumberExecutionCounts: overrides?.renumberExecutionCounts ?? state.renumberExecutionCounts,
@@ -121,6 +126,7 @@ function recordHistory(
 
 function applySnapshot(state: ResolverStoreState, snapshot: ResolverSnapshot): void {
     state.choices = cloneChoices(snapshot.choices);
+    state.notebookChoices = { ...snapshot.notebookChoices };
     state.rows = cloneRows(snapshot.rows);
     state.markAsResolved = snapshot.markAsResolved;
     state.renumberExecutionCounts = snapshot.renumberExecutionCounts;
@@ -153,19 +159,25 @@ function sortRowsByPosition(rows: MergeRowType[]): MergeRowType[] {
     }));
 }
 
-export function createResolverStore(initialRows: MergeRowType[]): ResolverStore {
+export function createResolverStore(initialRows: MergeRowType[], notebookConflicts: FieldConflict[] = []): ResolverStore {
     let unmatchGroupCounter = 0;
     const generateUnmatchGroupId = () => `unmatch-${++unmatchGroupCounter}`;
 
     return createStore<ResolverStoreState>()(
         immer((set) => ({
             choices: new Map(),
+            notebookChoices: {},
             editingConflicts: new Set(),
             rows: cloneRows(initialRows),
             markAsResolved: INITIAL_MARK_AS_RESOLVED,
             renumberExecutionCounts: INITIAL_RENUMBER_EXECUTION_COUNTS,
             takeAllChoice: undefined,
             history: buildInitialHistory(initialRows),
+            selectNotebookField: (path, choice) => set(state => {
+                if (choice) state.notebookChoices[JSON.stringify(path)] = choice;
+                else delete state.notebookChoices[JSON.stringify(path)];
+                recordHistory(state, `Notebook ${path.join('.')} (${choice ?? 'unresolved'})`);
+            }),
             selectChoice: (index: number, choice: ResolutionChoice, resolvedContent: string) => set(state => {
                 state.choices.set(index, {
                     choice,
@@ -216,6 +228,13 @@ export function createResolverStore(initialRows: MergeRowType[]): ResolverStore 
                     didChange = true;
                 });
 
+                for (const field of notebookConflicts) {
+                    const key = JSON.stringify(field.path);
+                    if (!Object.hasOwn(state.notebookChoices, key)) {
+                        state.notebookChoices[key] = choice;
+                        didChange = true;
+                    }
+                }
                 if (!didChange) return;
                 state.editingConflicts.clear();
                 state.takeAllChoice = choice;

@@ -7,6 +7,7 @@ import React, { useEffect } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { ConflictResolver } from './ConflictResolver';
 import { injectStyles } from '../styles';
+import type { FieldResolutions } from '../../../../core/src';
 import type { ResolvedRow } from '../types';
 
 export function App(): React.ReactElement {
@@ -23,13 +24,15 @@ export function App(): React.ReactElement {
         markAsResolved: boolean,
         renumberExecutionCounts: boolean,
         resolvedRows: ResolvedRow[],
-        semanticChoice?: 'base' | 'current' | 'incoming'
+        semanticChoice?: 'base' | 'current' | 'incoming',
+        notebookResolutions?: FieldResolutions
     ) => {
         sendMessage({
             command: 'resolve',
             type: 'semantic',
             resolvedRows,
             semanticChoice,
+            notebookResolutions,
             markAsResolved,
             renumberExecutionCounts,
         });

@@ -20,3 +20,4 @@ export * from './semanticResolution';
 
 export * from './cellMerge';
 export * from './fieldMerge';
+export * from './notebookFields';

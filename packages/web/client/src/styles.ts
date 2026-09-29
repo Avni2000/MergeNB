@@ -1,3 +1,4 @@
+import { notebookFieldsStyles } from './components/notebookFieldsStyles';
 /**
  * @file styles.ts
  * @description Shared styles for the conflict resolver UI.
@@ -1715,13 +1716,13 @@ export function injectStyles(theme: 'dark' | 'light' = 'light', scope?: string):
         const id = scope ? 'mergenb-styles-scoped' : 'mergenb-styles';
         const existing = document.getElementById(id);
         if (existing) {
-            existing.textContent = getStyles(theme, scope);
+            existing.textContent = notebookFieldsStyles + getStyles(theme, scope);
             return;
         }
 
         const style = document.createElement('style');
         style.id = id;
-        style.textContent = getStyles(theme, scope);
+        style.textContent = notebookFieldsStyles + getStyles(theme, scope);
         document.head.appendChild(style);
     }
 }
