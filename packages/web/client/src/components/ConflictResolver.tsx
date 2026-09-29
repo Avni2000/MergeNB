@@ -102,9 +102,9 @@ export function ConflictResolver({
 }: ConflictResolverProps): React.ReactElement {
     const initialRows = useMemo(() => (
         conflict.semanticConflict
-            ? buildMergeRowsFromSemantic(conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook)
+            ? buildMergeRowsFromSemantic(conflict.semanticConflict, conflict.autoResolveResult?.currentNotebook)
             : []
-    ), [conflict.semanticConflict, conflict.autoResolveResult?.resolvedNotebook]);
+    ), [conflict.semanticConflict, conflict.autoResolveResult?.currentNotebook]);
 
     // Recreate resolver state only when the conflict instance key changes.
     // This avoids resets caused by object identity churn on re-sent payloads.

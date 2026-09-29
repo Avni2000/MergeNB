@@ -154,7 +154,7 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
     const baseNotebook = semanticConflict.base;
     const currentNotebook = semanticConflict.current;
     const incomingNotebook = semanticConflict.incoming;
-    const autoResolvedNotebook = autoResolveResult?.resolvedNotebook;
+    const autoResolvedNotebook = autoResolveResult?.currentNotebook;
 
     if (!currentNotebook && !incomingNotebook && !baseNotebook) {
         throw new Error('Cannot apply resolutions: no notebook versions available.');

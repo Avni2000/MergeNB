@@ -7,6 +7,7 @@
  */
 
 import { NotebookCell } from './types';
+import { mergeCell } from './cellMerge';
 
 export function stableStringify(value: unknown): string {
     if (value === undefined) return 'undefined';
@@ -39,58 +40,15 @@ export function normalizeCellSource(source: string | string[]): string {
     return source;
 }
 
-/**
- * Choose the effective merged cell for a row that is not marked as a conflict.
- * Uses source-based 3-way logic so one-sided edits are preserved:
- * - base == current, incoming changed => choose incoming
- * - base == incoming, current changed => choose current
- * - otherwise prefer current for deterministic behavior
- */
+/** Assemble every clean field change in a unified row. */
 export function selectNonConflictMergedCell(
     baseCell?: NotebookCell,
     currentCell?: NotebookCell,
     incomingCell?: NotebookCell
 ): NotebookCell | undefined {
-    if (baseCell && currentCell && incomingCell) {
-        const baseSource = normalizeCellSource(baseCell.source);
-        const currentSource = normalizeCellSource(currentCell.source);
-        const incomingSource = normalizeCellSource(incomingCell.source);
-
-        const currentMatchesBase = currentSource === baseSource;
-        const incomingMatchesBase = incomingSource === baseSource;
-
-        if (currentMatchesBase && !incomingMatchesBase) {
-            return incomingCell;
-        }
-        if (!currentMatchesBase && incomingMatchesBase) {
-            return currentCell;
-        }
-
-        // Includes unchanged rows and same-result concurrent edits.
-        // If source is identical, still consider one-sided metadata edits.
-        if (currentSource === incomingSource) {
-            const baseMetadata = stableStringify(baseCell.metadata ?? {});
-            const currentMetadata = stableStringify(currentCell.metadata ?? {});
-            const incomingMetadata = stableStringify(incomingCell.metadata ?? {});
-
-            const currentMetadataMatchesBase = currentMetadata === baseMetadata;
-            const incomingMetadataMatchesBase = incomingMetadata === baseMetadata;
-
-            if (currentMetadataMatchesBase && !incomingMetadataMatchesBase) {
-                return incomingCell;
-            }
-            if (!currentMetadataMatchesBase && incomingMetadataMatchesBase) {
-                return currentCell;
-            }
-
-            return currentCell;
-        }
-
-        // Defensive fallback; true conflicts should be handled elsewhere.
-        return currentCell;
-    }
-
-    return currentCell || incomingCell || baseCell;
+    if (currentCell && incomingCell) return mergeCell(baseCell, currentCell, incomingCell).cell;
+    if (baseCell && !currentCell && !incomingCell) return undefined;
+    return currentCell ?? incomingCell;
 }
 
 /**

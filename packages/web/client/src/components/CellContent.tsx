@@ -16,6 +16,7 @@ import * as logger from '../../../../core/src';
 import type { Highlighter } from '@lezer/highlight';
 import { highlightCode } from '@lezer/highlight';
 import { MarkdownContent } from './MarkdownContent';
+import { CellFields } from './CellFields';
 import { CellOutputs } from './CellOutputs';
 
 export const mergeNBEditorStructure: Extension = EditorView.theme({
@@ -317,6 +318,7 @@ function CellContentInner({
                     />
                 )}
             </div>
+            <CellFields cell={cell} open={isConflict && normalizeCellSource(cell.source) === normalizeCellSource(compareCell?.source ?? '')} />
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
                 <CellOutputs
                     outputs={cell.outputs}

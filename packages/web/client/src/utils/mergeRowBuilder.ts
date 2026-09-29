@@ -8,6 +8,8 @@ import { computeReorderedRowIndexSet } from './reorderUtils';
 
 const conflictPriority: Record<SemanticConflict['type'], number> = {
     'cell-modified': 0,
+    'attachments-changed': 4,
+    'cell-fields-changed': 4,
     'cell-added': 1,
     'cell-deleted': 2,
     'cell-reordered': 3,

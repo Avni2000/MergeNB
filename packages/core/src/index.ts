@@ -17,3 +17,6 @@ export * from './mime';
 export * from './positionUtils';
 
 export * from './semanticResolution';
+
+export * from './cellMerge';
+export * from './fieldMerge';

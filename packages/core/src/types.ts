@@ -25,6 +25,8 @@ export type SemanticConflictType =
     | 'cell-deleted'         // Cell removed in current or incoming
     | 'cell-modified'        // Cell content changed in both branches
     | 'cell-reordered'       // Cells appear in different order
+    | 'attachments-changed'
+    | 'cell-fields-changed'
     | 'metadata-changed'     // Cell metadata differs
     | 'outputs-changed'      // Cell outputs differ (execution results)
     | 'execution-count-changed'; // execution_count differs
