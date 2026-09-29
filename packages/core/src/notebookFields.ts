@@ -1,7 +1,7 @@
 import type { Notebook, NotebookSemanticConflict } from './types';
 import { mergeFields, type FieldResolutions } from './fieldMerge';
 
-export function notebookFields(notebook?: Notebook): Record<string, unknown> {
+function notebookFields(notebook?: Notebook): Record<string, unknown> {
     if (!notebook) return {};
     return Object.fromEntries(Object.entries(notebook).filter(([key]) =>
         key !== 'cells' && key !== 'nbformat' && key !== 'nbformat_minor'

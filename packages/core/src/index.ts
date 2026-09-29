@@ -24,4 +24,4 @@ export * from './notebookFields';
 export * from './notebookValidation';
 export * from './cellIds';
 export * from './resolvedCell';
-export { inferPreferredSide } from './resolutionOrder';
+export { inferPreferredSide, orderAgreedRows } from './resolutionOrder';

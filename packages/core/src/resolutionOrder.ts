@@ -1,6 +1,16 @@
 import type { ResolvedRow, NotebookCell } from './types';
 import type { PreferredSide } from './semanticResolution';
 
+/** Retain an order both branches already agree on, including automatic saves. */
+export function orderAgreedRows<T extends ResolvedRow>(rows: T[]): T[] {
+    const present = rows.filter(row => row.currentCell || row.incomingCell || row.resolution);
+    if (!present.every(row => row.currentCellIndex !== undefined && row.incomingCellIndex !== undefined)) return rows;
+    const current = [...present].sort((a, b) => a.currentCellIndex! - b.currentCellIndex!);
+    const incoming = [...present].sort((a, b) => a.incomingCellIndex! - b.incomingCellIndex!);
+    if (current.every((row, index) => row === incoming[index])) return current;
+    return rows;
+}
+
 function getCellForSide(
     row: ResolvedRow,
     side: PreferredSide
@@ -75,4 +85,3 @@ export function inferPreferredSide(
     const inferred = [...uniqueChoices][0];
     return isConsistentTakeAllSelection(resolvedRows, inferred, false) ? inferred : undefined;
 }
-

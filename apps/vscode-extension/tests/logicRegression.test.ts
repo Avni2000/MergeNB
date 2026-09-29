@@ -594,22 +594,22 @@ export async function run(): Promise<void> {
         nbformat_minor: 5,
         metadata: {},
         cells: [
-            makeMarkdownCell('shared-order-a'),
-            makeMarkdownCell('shared-order-b'),
+            { ...makeMarkdownCell('shared-order-a'), id: 'shared-order-a' },
+            { ...makeMarkdownCell('shared-order-b'), id: 'shared-order-b' },
         ],
     };
     const sharedReorderCurrent: Notebook = {
         ...sharedReorderBase,
         cells: [
-            makeMarkdownCell('shared-order-b'),
-            makeMarkdownCell('shared-order-a'),
+            { ...makeMarkdownCell('shared-order-b'), id: 'shared-order-b' },
+            { ...makeMarkdownCell('shared-order-a'), id: 'shared-order-a' },
         ],
     };
     const sharedReorderIncoming: Notebook = {
         ...sharedReorderBase,
         cells: [
-            makeMarkdownCell('shared-order-b'),
-            makeMarkdownCell('shared-order-a'),
+            { ...makeMarkdownCell('shared-order-b'), id: 'shared-order-b' },
+            { ...makeMarkdownCell('shared-order-a'), id: 'shared-order-a' },
         ],
     };
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mergenb-shared-reorder-'));

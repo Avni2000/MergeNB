@@ -162,7 +162,7 @@ function getOutputTextFallback(output: CellOutput): string {
         }
     }
 
-    return JSON.stringify(output, null, 2);
+    return '[Unsupported output]\n' + JSON.stringify(output, null, 2);
 }
 
 function shouldTrustOutputMimeType(mimeType: string, isTrusted: boolean): boolean {

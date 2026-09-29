@@ -141,7 +141,7 @@ function goToHistoryIndex(state: ResolverStoreState, targetIndex: number): void 
     state.history.index = targetIndex;
 }
 
-export function getCellForSide(
+function getCellForSide(
     row: MergeRowType,
     side: TakeAllChoice
 ): NotebookCell | undefined {

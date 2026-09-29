@@ -2,15 +2,15 @@
  * Normalize cell source to a consistent string format.
  * Notebook sources can be string or string[].
  */
-export function normalizeCellSource(source: string | string[] | undefined): string {
-    if (Array.isArray(source)) {
+export function normalizeCellSource(source: unknown): string {
+    if (Array.isArray(source) && source.every(line => typeof line === 'string')) {
         return source.join('');
     }
-    return source ?? '';
+    return typeof source === 'string' ? source : '';
 }
 
 /**
- * Convert cell source back to the array format expected by nbformat.
+ * Encode edited cell source as an nbformat multiline string array.
  * Avoids producing empty strings at the end when source ends with \n.
  */
 export function sourceToCellFormat(source: string): string[] {

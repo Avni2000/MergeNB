@@ -8,7 +8,7 @@ import type { AutoResolveResult } from './conflictDetector';
 import { renumberExecutionCounts } from './notebookParser';
 import { mergeNotebookFields } from './notebookFields';
 import type { FieldResolutions } from './fieldMerge';
-import { inferPreferredSide } from './resolutionOrder';
+import { inferPreferredSide, orderAgreedRows } from './resolutionOrder';
 import { resolveCell } from './resolvedCell';
 import { repairCellIds } from './cellIds';
 
@@ -47,7 +47,7 @@ export function buildResolvedNotebookFromRows(options: BuildResolvedNotebookOpti
     const resolvedCells: NotebookCell[] = [];
     const preferredSide = inferPreferredSide(resolvedRows, preferredSideHint);
 
-    let rowsForResolution = resolvedRows;
+    let rowsForResolution = orderAgreedRows(resolvedRows);
     if (preferredSide) {
         const indexKey = preferredSide === 'base'
             ? 'baseCellIndex'

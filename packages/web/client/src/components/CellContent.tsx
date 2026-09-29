@@ -318,7 +318,7 @@ function CellContentInner({
                     />
                 )}
             </div>
-            <CellFields cell={cell} open={isConflict && normalizeCellSource(cell.source) === normalizeCellSource(compareCell?.source ?? '')} />
+            <CellFields cell={cell} showOutputs={showOutputs} open={isConflict && normalizeCellSource(cell.source) === normalizeCellSource(compareCell?.source ?? '')} />
             {showOutputs && cellType === 'code' && cell.outputs && cell.outputs.length > 0 && (
                 <CellOutputs
                     outputs={cell.outputs}

@@ -1,4 +1,4 @@
-import { sortByPosition, detectReordering, type Notebook } from '../../../../core/src';
+import { sortByPosition, detectReordering, orderAgreedRows, type Notebook } from '../../../../core/src';
 import type {
     MergeRow as MergeRowType,
     NotebookSemanticConflict,
@@ -89,7 +89,7 @@ export function buildMergeRowsFromSemantic(
     const sortedRows = sortMergeRowsByPosition(rows);
     const hasGlobalReorderConflict = detectReordering(conflict.cellMappings);
     if (!hasGlobalReorderConflict) {
-        return sortedRows;
+        return orderAgreedRows(sortedRows);
     }
 
     const reorderedRowIndices = computeReorderedRowIndexSet(sortedRows);
