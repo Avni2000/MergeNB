@@ -8,45 +8,8 @@
  * - Resolution types used by the semantic resolver UI
  */
 
-export interface NotebookCell {
-    cell_type: 'code' | 'markdown' | 'raw';
-    source: string | string[];
-    metadata: Record<string, unknown>;
-    execution_count?: number | null;
-    outputs?: CellOutput[];
-    id?: string;
-}
-
-export interface CellOutput {
-    output_type: 'stream' | 'display_data' | 'execute_result' | 'error';
-    data?: Record<string, unknown>;
-    text?: string | string[];
-    name?: string;
-    execution_count?: number | null;
-    ename?: string;
-    evalue?: string;
-    traceback?: string[];
-}
-
-export interface NotebookMetadata {
-    kernelspec?: {
-        display_name: string;
-        language: string;
-        name: string;
-    };
-    language_info?: {
-        name: string;
-        version?: string;
-    };
-    [key: string]: unknown;
-}
-
-export interface Notebook {
-    nbformat: number;
-    nbformat_minor: number;
-    metadata: NotebookMetadata;
-    cells: NotebookCell[];
-}
+export type { Notebook, NotebookCell, NotebookMetadata, CellOutput, MimeBundle } from './notebookTypes';
+import type { Notebook, NotebookCell } from './notebookTypes';
 
 /**
  * Resolution choices for semantic conflict resolution.

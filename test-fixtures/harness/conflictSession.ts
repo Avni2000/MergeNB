@@ -68,6 +68,7 @@ export async function setupConflictResolverHeadless(
         enableUndoRedoHotkeys: settings.enableUndoRedoHotkeys,
         showBaseColumn: settings.showBaseColumn,
         theme: settings.theme,
+        isTrusted: settings.trustContent,
     };
 
     const server = getWebServer();

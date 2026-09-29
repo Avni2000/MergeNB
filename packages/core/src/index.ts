@@ -12,6 +12,7 @@ export * from './logger';
 export * from './notebookParser';
 
 export * from './notebookUtils';
+export * from './mime';
 
 export * from './positionUtils';
 

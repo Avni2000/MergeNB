@@ -13,7 +13,8 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import CodeMirror, { Extension } from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import type { MergeRow as MergeRowType, ResolutionChoice } from '../types';
-import { CellContent, CellSource, EMPTY_EXTENSIONS, MarkdownContent, mergeNBEditorStructure } from './CellContent';
+import { MarkdownContent } from './MarkdownContent';
+import { CellContent, CellSource, EMPTY_EXTENSIONS, mergeNBEditorStructure } from './CellContent';
 import { WarningModal } from './WarningModal';
 import { normalizeCellSource, selectNonConflictMergedCell } from '../../../../core/src';
 import { githubDark, githubLight } from '@uiw/codemirror-theme-github';
@@ -442,6 +443,7 @@ function MergeRowInner({
                                 <div className="resolved-content-static">
                                     <MarkdownContent
                                         source={displayedResolvedContent}
+                                        attachments={(resolutionState.choice === 'base' ? row.baseCell : resolutionState.choice === 'current' ? row.currentCell : row.incomingCell)?.attachments}
                                         isTrusted={isTrusted}
                                         isLightweight={isLightweight}
                                     />
